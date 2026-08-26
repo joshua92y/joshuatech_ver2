@@ -144,6 +144,14 @@ try {
     Assert 'guard: relative *.spec.ts -> allow' ($r.code -eq 0 -and [string]::IsNullOrWhiteSpace($r.out)) (Detail $r)
     $r = Invoke-Hook 'tester-write-guard.ps1' @{ hook_event_name = 'PreToolUse'; tool_name = 'Read'; tool_input = @{ file_path = 'src/app.ts' }; cwd = $repo } $repo
     Assert 'guard: Read is not guarded -> no output' ($r.code -eq 0 -and [string]::IsNullOrWhiteSpace($r.out)) (Detail $r)
+    $r = Invoke-Hook 'tester-write-guard.ps1' @{ hook_event_name = 'PreToolUse'; tool_name = 'Write'; tool_input = @{ file_path = 'tests/../src/app.ts' }; cwd = $repo } $repo
+    Assert 'guard: relative traversal tests/../src -> deny' ($r.code -eq 0 -and $r.out -match '"permissionDecision":"deny"' -and $r.out -match 'src/app\.ts') (Detail $r)
+    $r = Invoke-Hook 'tester-write-guard.ps1' @{ hook_event_name = 'PreToolUse'; tool_name = 'Write'; tool_input = @{ file_path = "$repo\tests\..\src\app.ts" }; cwd = $repo } $repo
+    Assert 'guard: absolute traversal -> deny' ($r.code -eq 0 -and $r.out -match '"permissionDecision":"deny"') (Detail $r)
+    $r = Invoke-Hook 'tester-write-guard.ps1' @{ hook_event_name = 'PreToolUse'; tool_name = 'Write'; tool_input = @{ file_path = "${repo}tests\x.ts" }; cwd = $repo } $repo
+    Assert 'guard: sibling-dir prefix trick -> deny (outside repo)' ($r.code -eq 0 -and $r.out -match 'outside the repository') (Detail $r)
+    $r = Invoke-Hook 'tester-write-guard.ps1' @{ hook_event_name = 'PreToolUse'; tool_name = 'Write'; tool_input = @{ file_path = '\\server\share\tests\a.test.ts' }; cwd = $repo } $repo
+    Assert 'guard: UNC path with test-like name -> deny (outside repo)' ($r.code -eq 0 -and $r.out -match 'outside the repository') (Detail $r)
 } finally {
     Remove-Fixtures
 }
