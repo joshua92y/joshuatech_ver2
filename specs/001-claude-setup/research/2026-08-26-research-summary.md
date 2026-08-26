@@ -18,6 +18,7 @@
 - `.claude/workflows/*.js`: `export const meta = {...}` + `agent()/pipeline()/parallel()` 스크립트. `/workflows`에서 저장하면 `/workflow-name`.
 - 프로젝트 로컬 플러그인: `.claude-plugin/plugin.json` + `skills/ agents/ hooks/ .mcp.json` (플러그인 루트에). `claude --plugin-dir ./my-plugin`으로 테스트.
 - 자동 메모리: `~/.claude/projects/<project>/memory/MEMORY.md`(첫 200줄 로드) — CLAUDE.md와 별개.
+- 추가 검증(2026-08-26, 외부 리뷰 대응): SKILL.md frontmatter도 `hooks`를 지원(스킬 호출 이후 세션 동안 활성 — 최초 트리거로는 부적합). 훅 핸들러 타입 `command`/`prompt`(안정)/`agent`(실험). UserPromptSubmit 훅의 stdout·`systemMessage`·`additionalContext`는 모두 모델 컨텍스트에 들어감(`systemMessage`는 사용자에게도 표시). PreToolUse deny의 `permissionDecisionReason`은 모델에 전달. **`settings.json`의 `skillOverrides: {"<skill>": "user-invocable-only"}`** 로 SKILL.md 수정 없이 명시 호출 전용화 가능. 프로젝트 훅은 서브에이전트 도구 호출에도 발화하며 입력에 `agent_id`/`agent_type` 포함.
 
 ## 2. superpowers 5.1.0 규약 (경로: `~/.claude/plugins/cache/superpowers-dev/superpowers/5.1.0/skills/`)
 

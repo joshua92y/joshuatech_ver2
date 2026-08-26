@@ -36,6 +36,11 @@ L5 수준 MSA를 지향하며, 학습 과정을 사이트 콘텐츠로 발행(le
 | D9 | 언어 | **에이전트 파일 영어, 나머지 한국어, 에이전트 파일 한국어 미러 `docs/kr/*_kr.md`** | `.claude/rules/`·`.claude/agents/` 안의 모든 .md는 자동 로드되므로 미러는 그 밖에 둔다 |
 | D10 | Tester | **테스트 코드 작성 가능(Edit/Write), 테스트 경로만 허용** | 에이전트 훅으로 경로 가드 강제 |
 | D11 | 훅 | **훅은 트리거·게이트만, 판단은 경계별 서브에이전트 리뷰** | approval-review / finish 스킬이 서브에이전트를 병렬 디스패치 |
+| D12 | 활성 feature 해석 | **env → 브랜치명↔디렉터리 → feature.json 순, 실패·불일치 시 fail-closed** | 외부 리뷰(2026-08-26) 반영 — feature.json은 gitignored·체크아웃별이라 worktree에 없음 |
+| D13 | 생성 스킬 통제 | **`settings.json` `skillOverrides`로 명시 호출 전용화**(SKILL.md 무수정) | Spec Kit 업그레이드 내구성 |
+| D14 | 확장 범위 | **5종 모두 SP-0**(git·agent-context·selftest·archive·adrkit) — 외부 리뷰의 축소안 불채택 | 사용자 결정; 서드파티 2종은 아카이브 URL 검토 후 설치 |
+| D15 | 승인 훅 | **넓은 키워드 유지** — 명시 명령 전환 불채택 | 사용자 결정; 훅은 지시 주입만 하므로 오탐 비용 낮음 |
+| D16 | 원격·CI·병렬 에이전트 | **GitHub 원격은 SP-0, 최소 CI·Orca 병렬 규칙은 SP-1 이후** | 사용자 결정 |
 
 ---
 
@@ -89,7 +94,8 @@ L5 수준 MSA를 지향하며, 학습 과정을 사이트 콘텐츠로 발행(le
 
 1. **Given** `.specify/feature.json`이 `specs/002-smoke`를 가리키고 `reviews/*-finish.md`가 없음, **When** `Skill(superpowers:finishing-a-development-branch)` 호출, **Then** 훅이 `permissionDecision: deny`와 "`/finish`를 먼저 실행" 메시지를 반환한다.
 2. **Given** `/finish`가 완료되어 `reviews/YYYY-MM-DD-finish.md`에 `Status: Approved`, `report.md`, `content/study/002-smoke.mdx`가 존재, **When** 같은 호출, **Then** 통과한다.
-3. **Given** `.specify/feature.json`이 없음(예: `main`에서 작업), **When** 같은 호출, **Then** 게이트를 적용하지 않고 통과한다.
+3. **Given** `.specify/feature.json`이 없지만 현재 브랜치가 `002-smoke`, **When** 같은 호출, **Then** 브랜치명으로 `specs/002-smoke/`를 해석해 같은 검사를 수행한다.
+4. **Given** env·브랜치·feature.json 어느 것으로도 feature를 해석할 수 없거나, 브랜치명과 feature.json이 서로 다른 디렉터리를 가리킴, **When** 같은 호출, **Then** `permissionDecision: deny`와 사유(해석 실패 또는 불일치)를 반환한다(fail-closed).
 
 ---
 
@@ -156,9 +162,9 @@ feature가 main에 머지되면 `/speckit-archive`가 `.specify/memory/{spec,pla
 
 ### Edge Cases
 
-- `.specify/feature.json`이 없거나 가리키는 디렉터리가 없을 때: finish-gate는 게이트를 적용하지 않고 통과, approval-review·finish 스킬은 사용자에게 활성 feature를 묻는다.
+- 활성 feature 해석은 `SPECIFY_FEATURE_DIRECTORY` env → 현재 브랜치명↔`specs/NNN-slug` 매핑 → `.specify/feature.json` 순서다. finish-gate는 셋 다 실패하거나 서로 불일치하면 deny(fail-closed), approval-review·finish 스킬은 사용자에게 활성 feature를 묻는다. feature.json은 gitignored·체크아웃별 편의 상태일 뿐 정본이 아니다(정본 = git 브랜치 + `specs/<feature>/`).
 - 훅 스크립트 자체가 오류로 죽으면 exit 0(fail-open)으로 작업을 막지 않는다. 게이트 불충족만 deny.
-- `specify upgrade`가 `.claude/skills/speckit-*`를 덮어써 `disable-model-invocation: true`가 풀릴 수 있다 → `/finish`의 점검 항목 + selftest 후 재적용.
+- `specify upgrade`가 `.claude/skills/speckit-*`를 덮어써도 명시 호출 전용화는 `settings.json`의 `skillOverrides`에 있으므로 유지된다. 업그레이드 후에는 `/speckit-selftest`와 `docs/runbooks/spec-kit-upgrade.md`의 재검증 목록을 수행한다.
 - 두 superpowers 플러그인이 다시 동시에 켜지면 SessionStart 훅이 이중 주입된다 → CLAUDE.md의 전제조건 절에 명시.
 - PowerShell 실행 정책이 스크립트를 막으면 훅 명령에 `-ExecutionPolicy Bypass`를 명시한다.
 - 브랜치명과 활성 feature 디렉터리가 어긋나면 `speckit-git-validate`로 검출한다(Spec Kit은 브랜치가 아니라 feature.json을 기준으로 삼는다).
@@ -169,11 +175,11 @@ feature가 main에 머지되면 `/speckit-archive`가 `.specify/memory/{spec,pla
 ### Functional Requirements
 
 **설치·기반**
-- **FR-001**: 저장소는 git으로 초기화되고 기본 브랜치는 `main`이다. 작업은 `NNN-slug` 브랜치(또는 `.worktrees/NNN-slug`)에서만 한다.
+- **FR-001**: 저장소는 git으로 초기화되고 기본 브랜치는 `main`이며 `.gitattributes`(`* text=auto eol=lf`)를 둔다. GitHub 원격(private)을 `gh repo create`로 만들고 `main`과 feature 브랜치를 push한다. 작업은 `NNN-slug` 브랜치(또는 `.worktrees/NNN-slug`)에서만 한다.
 - **FR-002**: Spec Kit은 `specify init --here --integration claude --script ps`로 설치하고, 번들 확장 `git`·`agent-context`·`selftest`와 커뮤니티 확장 `archive`·`adrkit`을 설치한다(커뮤니티 확장은 아카이브 URL 검토 후 `--from`).
 - **FR-003**: `git` 확장 설정은 `branch_numbering: sequential`, 기본 템플릿 `{number}-{slug}`, `auto_commit.default: false`, `commit_style: conventional`이다.
 - **FR-004**: 사용자 레벨 `~/.claude/settings.json`에서 `superpowers@claude-plugins-official`를 비활성화하고 `superpowers@superpowers-dev`(5.1.0)만 유지한다.
-- **FR-005**: `.claude/skills/speckit-*/SKILL.md`의 frontmatter는 `disable-model-invocation: true`로 바꿔 명시 호출만 허용한다.
+- **FR-005**: Spec Kit이 생성한 `speckit-*` 스킬은 `.claude/settings.json`의 `skillOverrides`(`"user-invocable-only"`)로 명시 호출만 허용한다. 생성된 SKILL.md는 수정하지 않는다(업그레이드 내구성).
 
 **문서·경로**
 - **FR-006**: `CLAUDE.md`는 200줄 이하, 첫 줄에 `@AGENTS.md`를 import하며, Spec Kit `agent-context` 확장의 `<!-- SPECKIT START/END -->` 관리 블록을 포함한다.
@@ -183,7 +189,7 @@ feature가 main에 머지되면 `/speckit-archive`가 `.specify/memory/{spec,pla
 - **FR-010**: `specs/README.md`는 번호·제목·Status·우선순위 표이며 각 `spec.md`의 `**Status**` 헤더에서 재생성 가능해야 한다. 완료된 feature 디렉터리는 이동하지 않는다.
 - **FR-011**: `docs/decisions/NNNN-<title>.md`는 MADR 4.0 minimal 형식이며 `0000-use-madr.md`와 `0001-adopt-spec-kit-with-superpowers.md`로 시작한다. 번호는 재사용하지 않고 수정 대신 supersede한다.
 - **FR-012**: `CHANGELOG.md`는 Keep a Changelog 1.1.0 형식(`Unreleased` 절, ISO 날짜)이다.
-- **FR-013**: 에이전트 파일(`CLAUDE.md`, `AGENTS.md`, `.specify/memory/constitution.md`, `.claude/rules/*`, `.claude/agents/*`, 프로젝트 스킬)은 영어로 작성하고, 한국어 미러를 `docs/kr/`에 같은 상대 구조 + `_kr` 접미로 둔다. spec/plan/report/학습 노트/대화/주석은 한국어, 식별자·slug는 영어다.
+- **FR-013**: 에이전트 파일(`CLAUDE.md`, `AGENTS.md`, `.specify/memory/constitution.md`, `.claude/rules/*`, `.claude/agents/*`, 프로젝트 스킬)은 영어로 작성하고, 한국어 미러를 `docs/kr/`에 같은 상대 구조 + `_kr` 접미로 둔다. spec/plan/report/학습 노트/대화/주석은 한국어, 식별자·slug는 영어다. 각 에이전트 파일 상단에 "Canonical language: English / Korean mirror: docs/kr (convenience only) / On conflict, English prevails / Sync: /finish (best-effort)" 선언을 둔다. 미러 갱신은 마감을 막지 않으며 `translation-pending` 상태를 허용한다.
 
 **constitution**
 - **FR-014**: constitution은 최소 6개 원칙을 갖는다 — Spec-First, Test-First(NON-NEGOTIABLE), Tenant Boundary(모든 데이터 소유·격리 경계를 spec에 명시), Observability-Ready(로그·메트릭·롤백 경로를 plan에 명시), Simplicity(YAGNI), Learning-in-Public(feature마다 학습 노트). Governance 절에 개정 규칙(SemVer)을 둔다.
@@ -192,8 +198,8 @@ feature가 main에 머지되면 `/speckit-archive`가 `.specify/memory/{spec,pla
 **에이전트·스킬·훅**
 - **FR-016**: `.claude/agents/tester.md`는 tools `Read, Grep, Glob, Bash, Edit, Write`를 가지며, frontmatter `hooks`로 `PreToolUse(Edit|Write)`에 `tester-write-guard.ps1`을 걸어 테스트 경로 외 쓰기를 deny한다. spec의 User Story별 PASS/FAIL/SKIP과 재현 절차를 보고한다.
 - **FR-017**: `.claude/skills/approval-review/`는 `boundaries/*.md`(security, tenant-data, operability, trends, spec-consistency)마다 서브에이전트 1개를 병렬 디스패치하고, spec-consistency 경계는 `/speckit-analyze` 결과와 checklist 상태를 사용한다. 결과는 `reviews/YYYY-MM-DD-approval.md`에 기록하고 사용자 확정 후 `spec.md` Status를 `Approved`로 바꾼다.
-- **FR-018**: `.claude/skills/finish/`는 순서대로 ① `report.md` 생성 ② `content/study/NNN-slug.mdx` 초안 생성 ③ `CHANGELOG.md` Unreleased 갱신 ④ 필요 시 `/speckit-adrkit-draft` 안내 ⑤ `docs/kr` 미러 동기화 ⑥ `boundaries/*.md`(report-vs-diff, e2e-evidence, study-contract, decisions)별 서브에이전트 병렬 리뷰 → `reviews/YYYY-MM-DD-finish.md`(`Status: Approved | Issues`)를 수행한다. Issues면 수정 후 ⑥을 재실행한다.
-- **FR-019**: 훅은 세 개다. `approval-review.ps1`(UserPromptSubmit: 승인 키워드 `승인|approve|approved|LGTM|진행해` 감지 시 `/approval-review` 실행 지시를 `systemMessage`로 출력), `finish-gate.ps1`(PreToolUse matcher `Skill`: `tool_input.skill`이 `finishing-a-development-branch`를 포함하면 `.specify/feature.json`의 feature 디렉터리에서 `reviews/*-finish.md`의 `Status: Approved`·`report.md`·`content/study/<basename>*.mdx`를 확인, 없으면 `permissionDecision: deny`), `tester-write-guard.ps1`(PreToolUse Edit|Write: 경로 화이트리스트 외 deny). 모두 스크립트 오류 시 exit 0.
+- **FR-018**: `.claude/skills/finish/`는 순서대로 ① `report.md` 생성 ② `content/study/NNN-slug.mdx` 초안 생성 ③ `CHANGELOG.md` Unreleased 갱신 ④ 필요 시 `/speckit-adrkit-draft` 안내 ⑤ `docs/kr` 미러 동기화(best-effort, 미완료 시 `translation-pending` 표시, 마감 비차단) ⑥ `boundaries/*.md`(report-vs-diff, e2e-evidence, study-contract, decisions)별 서브에이전트 병렬 리뷰 → `reviews/YYYY-MM-DD-finish.md`(`Status: Approved | Issues`)를 수행한다. Issues면 수정 후 ⑥을 재실행한다.
+- **FR-019**: 훅은 세 개다. `approval-review.ps1`(UserPromptSubmit: 승인 키워드 `승인|approve|approved|LGTM|진행해` 감지 시 `/approval-review` 실행 지시를 `systemMessage`로 출력), `finish-gate.ps1`(PreToolUse matcher `Skill`: `tool_input.skill`이 `finishing-a-development-branch`를 포함하면 활성 feature를 D12 순서(env → 브랜치명 → feature.json)로 해석하고, 해석 실패·불일치 또는 `reviews/*-finish.md`의 `Status: Approved`·`report.md`·`content/study/<basename>*.mdx` 중 하나라도 없으면 `permissionDecision: deny`), `tester-write-guard.ps1`(PreToolUse Edit|Write: 경로 화이트리스트 외 deny). 모두 스크립트 오류 시 exit 0.
 - **FR-020**: `.claude/settings.json`은 `permissions.deny`에 `Bash(rm -rf *)`, `Bash(git reset --hard*)`, `Bash(git push --force*)`, `Bash(git push -f*)`, `Bash(git clean -fd*)`, `Bash(docker system prune*)`를 두고 훅 2종(approval-review, finish-gate)을 등록한다. 훅 명령은 `powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/<name>.ps1`이다.
 - **FR-021**: `.claude/rules/`는 `specs.md`(paths: `specs/**`), `docs.md`(paths: `docs/**`), `content.md`(paths: `content/**`) 세 파일이며 각각 해당 경로의 형식·계약만 담는다.
 
@@ -202,7 +208,9 @@ feature가 main에 머지되면 `/speckit-archive`가 `.specify/memory/{spec,pla
 - **FR-023**: 학습 노트 본문은 `## 문제`, `## 배운 개념`, `## 선택과 대안`, `## 결과와 검증`, `## 다음 학습` 5개 절을 가진다.
 
 **도구 경계(CLAUDE.md 규칙)**
-- **FR-024**: CLAUDE.md는 다음을 명시한다 — Spec Kit 명령은 명시 호출만; `speckit-implement` 대신 superpowers SDD 사용; SDD·Tester·리뷰 서브에이전트에는 task 슬라이스와 관련 절만 전달; `.specify/feature.json`이 활성 feature의 유일한 출처; 승인 전 구현 금지; 마감은 `/finish` → finishing → 머지 → `/speckit-archive` 순서.
+- **FR-024**: CLAUDE.md는 다음을 명시한다 — Spec Kit 명령은 명시 호출만; `speckit-implement` 대신 superpowers SDD 사용; SDD·Tester·리뷰 서브에이전트에는 task 슬라이스와 관련 절만 전달; 활성 feature는 env → 브랜치명 → `.specify/feature.json` 순으로 해석하며 정본은 git 브랜치 + `specs/<feature>/`; 승인 전 구현 금지; 마감은 `/finish` → finishing → 머지 → `/speckit-archive` 순서.
+
+- **FR-025**: `docs/runbooks/spec-kit-upgrade.md`에 커스터마이즈 레지스터(파일별 원본 Spec Kit 버전·원본 경로·변경 이유·재검증 명령)와 `specify upgrade` 절차를 둔다. AGENTS.md는 활성 Spec Kit integration이 `claude` 하나임과, 다른 에이전트(Codex 등)는 AGENTS.md·constitution·`specs/`만 읽는다는 것을 명시한다.
 
 ### Key Entities
 
@@ -212,24 +220,27 @@ feature가 main에 머지되면 `/speckit-archive`가 `.specify/memory/{spec,pla
 - **StudyNote**: `content/study/NNN-slug.mdx`. FR-022 계약. 사이트(SP-1)가 소비.
 - **Decision**: `docs/decisions/NNNN-*.md`. MADR 4.0 minimal. adrkit이 plan 검토에 사용.
 - **Constitution**: `.specify/memory/constitution.md`. 원칙·게이트·거버넌스. plan의 Constitution Check가 참조.
-- **ActiveFeaturePointer**: `.specify/feature.json` (gitignored). 훅·스킬이 대상 feature를 결정하는 기준.
+- **ActiveFeaturePointer**: `.specify/feature.json` (gitignored, 체크아웃별 편의 상태). 훅·스킬은 `SPECIFY_FEATURE_DIRECTORY` env → 브랜치명 → 이 파일 순으로 대상 feature를 해석한다. 정본은 git 브랜치와 `specs/<feature>/`.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: `/speckit-selftest`가 통과하고 `.claude/skills/speckit-*` 10개 + 확장 스킬이 모두 `disable-model-invocation: true`다.
-- **SC-002**: 훅 3종이 샘플 stdin JSON으로 단위 검증된다 — approval 키워드 → systemMessage 출력, 비키워드 → 무출력; finish-gate 산출물 없음 → deny / 있음 → 통과 / feature.json 없음 → 통과; tester-write-guard `tests/e2e/a.test.ts` → allow, `src/a.ts` → deny.
+- **SC-001**: `/speckit-selftest`가 통과하고 `.claude/skills/speckit-*` 10개 + 확장 스킬이 모두 `settings.json` `skillOverrides`로 명시 호출 전용이다(생성 파일 무수정).
+- **SC-002**: 훅 3종이 샘플 stdin JSON으로 단위 검증된다 — approval 키워드 → systemMessage 출력, 비키워드 → 무출력; finish-gate 산출물 없음 → deny / 있음 → 통과 / feature.json 없음 + 브랜치 `NNN-slug` → 브랜치로 해석 / 해석 불가·불일치 → deny; tester-write-guard `tests/e2e/a.test.ts` → allow, `src/a.ts` → deny.
 - **SC-003**: `002-smoke`가 US1의 시나리오 1~5를 모두 통과하고, `specs/002-smoke/`에 spec·plan·tasks·reviews(approval, finish)·report가, `content/study/002-smoke.mdx`와 `CHANGELOG.md` Unreleased 항목이 존재하며 `.specify/memory/spec.md`에 통합된다.
 - **SC-004**: `CLAUDE.md`가 200줄 이하이고, `/hooks`·`/agents`·`/skills`에 훅 2종·tester·프로젝트 스킬 2종이 등록되어 보인다.
 - **SC-005**: `docs/kr/`가 프로젝트 작성 에이전트 파일 전부(CLAUDE, AGENTS, constitution, rules 3, tester, 스킬 2)에 대해 `_kr` 미러를 갖는다(커버리지 100%).
 - **SC-006**: `docs/decisions/0000`, `0001`이 MADR 형식이고 `specs/README.md`가 001·002를 올바른 상태로 나열한다.
 - **SC-007**: 사용자 레벨 설정에서 superpowers 플러그인이 하나만 활성화되어 세션 시작 시 using-superpowers 주입이 1회만 발생한다.
+- **SC-008**: `docs/runbooks/spec-kit-upgrade.md`가 커스터마이즈 파일마다 원본 Spec Kit 버전·원본 경로·변경 이유·재검증 명령을 기록하고 업그레이드 절차를 담는다.
+- **SC-009**: GitHub 원격에 `main`과 `001-claude-setup`이 push되어 있다.
 
 ## Assumptions
 
 - 1인 개발(팀 인수인계 형식 없음). 개발기는 Windows 11 + PowerShell 7, Git Bash 보조. 훅은 PowerShell 단일 스크립트다(Linux 개발기가 생기면 `.sh` 변형을 추가한다).
 - `uv`(또는 pipx)로 `specify` CLI를 설치할 수 있다. CLI는 init·upgrade·확장 관리에만 필요하고 일상 명령은 `.specify/scripts/powershell/*`만 쓴다.
+- `gh` CLI가 인증되어 있어 private 원격 저장소를 만들 수 있다. 없으면 원격 생성은 사용자가 수동으로 하고 push만 수행한다.
 - superpowers 5.1.0의 SDD는 task당 리뷰어 2명(spec, quality)이며 재리뷰 루프를 갖는다. 5.1.0에는 plan 헤더 `Spec:`과 `Global Constraints`가 없으므로 E2E·테넌트 경계 요구는 CLAUDE.md 규칙 + tasks 템플릿 override로 전달한다.
 - 커뮤니티 확장(`archive`, `adrkit`)은 discovery-only 카탈로그이므로 설치 전 아카이브 URL을 검토한다. 설치 실패 시 해당 기능은 수동 절차(README 문서화)로 대체하고 SP-0 완료를 막지 않는다.
 - SP-0은 스택 중립이다. 코드 도메인 규칙·에이전트·스킬은 SP-1(스택 결정) 이후 같은 명명 패턴으로 추가한다.
@@ -260,7 +271,7 @@ archive / adrkit 확장                    finishing-a-development-branch       
 
 ```
 joshuatech_ver2/
-├── AGENTS.md  CLAUDE.md  CHANGELOG.md  README.md  .gitignore           [P]
+├── AGENTS.md  CLAUDE.md  CHANGELOG.md  README.md  .gitignore  .gitattributes   [P]
 ├── .specify/
 │   ├── memory/constitution.md [SK→P]  · spec.md plan.md changelog.md [RT, archive]
 │   ├── templates/*-template.md [SK]  · templates/overrides/tasks-template.md [P]
@@ -277,7 +288,7 @@ joshuatech_ver2/
 │   └── hooks/{approval-review,finish-gate,tester-write-guard}.ps1 [P]
 ├── specs/README.md [P] · specs/001-claude-setup/{spec.md,plan.md,research/,reviews/,report.md} [P]
 │   └── specs/NNN-slug/{spec,plan,tasks,research,data-model,quickstart}.md contracts/ checklists/ [SK] + reviews/ report.md [P]
-├── docs/README.md · docs/decisions/{0000,0001}-*.md · docs/kr/** · docs/runbooks/ [P/RT]
+├── docs/README.md · docs/decisions/{0000,0001}-*.md · docs/kr/** · docs/runbooks/spec-kit-upgrade.md [P]
 ├── content/study/NNN-slug.mdx [P/RT]
 └── .worktrees/ .superpowers/ [RT][GI]
 ```
@@ -306,7 +317,7 @@ joshuatech_ver2/
 
 **CLAUDE.md (EN, <200줄)** — `@AGENTS.md` · 전제조건(플러그인 단독, uv) · 도구 경계 규칙(FR-024) · 경로 오버라이드(FR-007, FR-008) · 워크플로우 요약 · 훅·스킬·에이전트 목록 · 언어 규칙(FR-013) · `docs/README.md` 링크 · SPECKIT 관리 블록.
 
-**AGENTS.md (EN)** — 프로젝트 개요, 현재 스택(SP-0: 없음), 명령어(Spec Kit·훅 테스트), 디렉터리 맵, 커밋 규칙(Conventional Commits, 한국어 설명 허용), 브랜치 규칙.
+**AGENTS.md (EN)** — 프로젝트 개요, 현재 스택(SP-0: 없음), 명령어(Spec Kit·훅 테스트), 디렉터리 맵, 커밋 규칙(Conventional Commits, 한국어 설명 허용), 브랜치 규칙, 활성 integration(claude)과 타 에이전트의 읽기 범위.
 
 **constitution (EN)** — FR-014의 6원칙 + Governance(SemVer, 개정은 `/speckit-constitution`).
 
@@ -323,14 +334,15 @@ joshuatech_ver2/
 **훅 I/O 계약**
 - 입력: stdin JSON(`hook_event_name`, `prompt`/`tool_name`/`tool_input`, `cwd`).
 - `approval-review.ps1`: 키워드 매칭 시 `{"systemMessage": "..."}` 출력, 아니면 무출력. exit 0.
-- `finish-gate.ps1`: `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"..."}}` 또는 무출력(allow). exit 0.
+- `finish-gate.ps1`: `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"..."}}` 또는 무출력(allow). exit 0. 활성 feature 해석은 env → 브랜치명 → feature.json, 실패·불일치 시 deny. `permissionDecisionReason`은 모델에도 전달된다.
+- 참고: 프로젝트 훅은 서브에이전트의 도구 호출에도 발화하며 입력에 `agent_type`이 포함되므로 tester 가드를 settings 훅으로 두는 것도 가능하다. 응집도 때문에 에이전트 frontmatter 훅을 유지한다.
 - `tester-write-guard.ps1`: 위와 같은 deny 계약. 화이트리스트 glob: `tests/**`, `e2e/**`, `**/*.test.*`, `**/*.spec.*`, `**/__tests__/**`.
 
 **settings.json** — FR-020. `additionalDirectories`는 없음(SP-0).
 
 ### 5. 데이터 흐름
 
-- 활성 feature: `create-new-feature.ps1`/`speckit-specify` → `.specify/feature.json` → 모든 훅·스킬이 여기서 `feature_directory`를 읽는다.
+- 활성 feature: `create-new-feature.ps1`/`speckit-specify` → `.specify/feature.json`(편의) + 브랜치 `NNN-slug`(정본). 훅·스킬은 env → 브랜치명 → feature.json 순으로 해석한다.
 - 승인: 사용자 프롬프트 → 훅(systemMessage) → 컨트롤러가 `/approval-review` → 서브에이전트 N개(읽기 전용) → 리뷰 파일 → 사용자 확정 → spec Status.
 - 마감: `/finish` → report/study/CHANGELOG/kr 생성 → 서브에이전트 리뷰 → finish 리뷰 파일 → finishing 스킬 호출 시 게이트가 파일을 검사.
 - 학습: report + spec + reviews → study 초안(draft) → SP-1 사이트가 `content/study`를 콘텐츠 컬렉션으로 읽어 발행(draft=false 전환은 사람이).
@@ -341,7 +353,7 @@ joshuatech_ver2/
 - Tester: 환경 부재 → SKIP + 사유. FAIL → 컨트롤러가 SDD 루프 복귀(3회 넘으면 systematic-debugging).
 - converge: 갭이 `unrequested`(요청 밖 구현)면 제거 task 또는 spec 개정을 사용자에게 묻는다.
 - 확장 설치 실패: 기능을 수동 절차로 대체하고 `report.md` Validation에 기록.
-- Spec Kit 업그레이드 후: `/speckit-selftest` + `disable-model-invocation` 재적용(`/finish` 점검 항목).
+- Spec Kit 업그레이드 후: `docs/runbooks/spec-kit-upgrade.md` 절차(`/speckit-selftest` + 레지스터의 재검증 명령). `skillOverrides`는 settings에 있어 영향 없음.
 
 ### 7. 테스트·검증 전략
 
@@ -355,6 +367,9 @@ joshuatech_ver2/
 - 스택 결정 시: `.claude/rules/<domain>.md`(paths), `.claude/agents/<domain>-builder.md`(skills 프리로드), `boundaries/<domain>.md`, `apps/<app>/CLAUDE.md`, `settings.json` allow 목록.
 - 서비스 증가 시: `agent-assign` 확장, `.specify/workflows/overlays/`(헤드리스 사이클), `security-review`/`review` 확장, 프로젝트 로컬 플러그인화(`.claude-plugin/`).
 - 운영 시작 시: `docs/runbooks/`, `pr-bridge`, `changelog`, `taskstoissues`, 3단 브랜치 승격(develop/release/main).
+- 병렬 에이전트(Orca 등) 도입 시(SP-1 이후): `docs/runbooks/parallel-agents.md`(worktree별 scope, 에이전트 프롬프트 템플릿, 승인 후 spec/plan/tasks read-only), Orca worktree 경로와 `.worktrees/` 정합 확인, Codex 등 비-Claude 에이전트는 훅이 없으므로 AGENTS.md + CI로 통제.
+- 최소 CI(SP-1 이후): `.github/workflows/ci.yml`(훅 단위 테스트·마크다운 린트·CLAUDE.md 200줄 검사), main 보호 규칙.
+- `.specify/memory/product.md`·`architecture.md`(SP-1 산출물): 스택·경계 결정 후 현재 시스템의 지속 지식으로 승격.
 
 ### 9. 서브 프로젝트 분해 (로드맵)
 
