@@ -1,0 +1,11 @@
+# 줄 끝은 저장소에서 항상 LF. Windows 작업 복사본도 LF로 체크아웃한다.
+* text=auto eol=lf
+*.ps1 text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.png binary
+*.jpg binary
+*.webp binary
+*.gif binary
