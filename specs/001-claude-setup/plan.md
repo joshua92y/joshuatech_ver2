@@ -2239,7 +2239,7 @@ Expected: 변경 없음, 브랜치 `001-claude-setup`.
 
 Run (세션 내):
 ```
-/speckit-specify specs/README.md의 feature 인덱스 표를 각 specs/NNN-slug/spec.md 헤더(H1 제목, **Status** 줄)에서 재생성하는 PowerShell 스크립트 scripts/update-specs-index.ps1를 추가한다. 표 열은 번호·Feature·Status·우선순위(spec.md에 **Priority** 줄이 없으면 '—')·링크(spec, plan이 있으면 plan). 기존 표의 머리말 문단은 유지한다. short name: smoke
+/speckit-specify specs/README.md의 feature 인덱스 표를 각 specs/NNN-slug/spec.md 헤더(H1 제목, **Status** 줄)에서 재생성하는 PowerShell 스크립트 scripts/update-specs-index.ps1를 추가한다. 표 열은 번호·Feature·Status·우선순위(spec.md에 **Priority** 줄이 없으면 '—')·링크(spec, plan이 있으면 plan). Status 셀은 `**Status**:` 줄의 값에서 괄호 안 첫 쉼표 이후의 주석을 제거해 `Approved (2026-08-26)` 형태로 정규화한다(예: `Approved (2026-08-26, 외부 리뷰 반영판)` → `Approved (2026-08-26)`). 기존 표의 머리말 문단은 유지한다. short name: smoke
 ```
 Expected: `speckit.git.feature`가 먼저 실행되어 브랜치 `002-smoke` 생성 → `specs/002-smoke/spec.md`(User Story·FR·SC 포함, `[NEEDS CLARIFICATION]` ≤ 3) → `.specify/feature.json`이 `specs/002-smoke`를 가리킴. `git branch --show-current` = `002-smoke`.
 

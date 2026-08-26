@@ -258,7 +258,7 @@ Spec Kit (WHAT)                          superpowers 5.1.0 (HOW)                
 constitution / specify / clarify         brainstorming (아키텍처급 착수)          tester 에이전트 (E2E, 테스트 코드)
 plan (Constitution Check) / checklist    subagent-driven-development (실행)      approval-review 스킬 (경계별 리뷰)
 tasks (실행 계획) / analyze / converge   test-driven-development                finish 스킬 (report·study·리뷰)
-git / agent-context / selftest 확장      requesting/receiving-code-review        훅 3종 (트리거·게이트·가드)
+git / agent-context / archive 확장       requesting/receiving-code-review        훅 3종 (트리거·게이트·가드)
 archive 확장 (adrkit 보류)             finishing-a-development-branch          rules 3 · settings · docs/kr
                                          using-git-worktrees / systematic-debugging
 ```
