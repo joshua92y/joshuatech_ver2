@@ -47,7 +47,7 @@ Assert 'approval: keyword -> systemMessage mentions /approval-review' ($r.code -
 $r = Invoke-Hook 'approval-review.ps1' @{ hook_event_name = 'UserPromptSubmit'; prompt = '오늘 날씨 어때'; cwd = $repo } $repo
 Assert 'approval: no keyword -> no output' ($r.code -eq 0 -and [string]::IsNullOrWhiteSpace($r.out)) $r.out
 $r = Invoke-Hook 'approval-review.ps1' @{ hook_event_name = 'UserPromptSubmit'; prompt = 'lgtm'; cwd = $repo } $repo
-Assert 'approval: lgtm (case-insensitive) -> systemMessage' ($r.out -match 'approval-review') $r.out
+Assert 'approval: lgtm (case-insensitive) -> systemMessage' ($r.code -eq 0 -and $r.out -match 'approval-review') $r.out
 
 # ---------- finish-gate ----------
 $finishing = @{ hook_event_name = 'PreToolUse'; tool_name = 'Skill'; tool_input = @{ skill = 'superpowers:finishing-a-development-branch'; args = '' } }
