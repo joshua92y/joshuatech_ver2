@@ -1048,7 +1048,7 @@ try {
 - [ ] **Step 2: 전체 테스트 GREEN**
 
 Run: `pwsh -NoProfile -File tests/hooks/run-hook-tests.ps1`
-Expected: 마지막 줄 `19 passed, 0 failed`, exit code 0.
+Expected: 마지막 줄 `23 passed, 0 failed`, exit code 0.
 
 - [ ] **Step 3: 커밋**
 
@@ -1058,6 +1058,8 @@ git commit -m "feat(hooks): tester-write-guard 훅 — 테스트 경로 외 쓰�
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
+
+> **실행 기록 (2026-08-26)**: 품질 리뷰가 우회 3건(`tests/../src` 순회, 저장소 접두 충돌 `…ver2tests\`, 저장소 밖 UNC 경로의 `*.test.*`)을 재현하여 정본(`.claude/hooks/tester-write-guard.ps1`)을 위 코드 블록과 다르게 고쳤다 — `GetFullPath` 정규화 후 저장소 포함 검사(`root/` 접두 필수), 2단계 구조(입력 파싱 fail-open / 경로 판정 fail-closed). 하네스에 guard 4케이스 추가(총 23).
 
 ---
 
