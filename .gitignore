@@ -1,0 +1,14 @@
+# Spec Kit runtime state (active feature pointer is per-checkout)
+.specify/feature.json
+.specify/extensions/*/local-config.yml
+
+# superpowers plugin workspaces
+.worktrees/
+.superpowers/
+
+# Claude Code local overrides
+.claude/settings.local.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
