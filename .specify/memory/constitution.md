@@ -1,50 +1,43 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+> Canonical language: English. Korean mirror: docs/kr/constitution_kr.md (convenience only). On conflict, English prevails. Sync: /finish (best-effort).
+
+# JoshuaTech v2 Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Spec-First
+Every change larger than a typo starts as a feature under `specs/NNN-slug/` with a `spec.md` (user stories, functional requirements, success criteria) before any code. The spec is the authority the plan and tasks argue from; code that contradicts an approved spec is a defect, not a design decision. Feature directories are immutable history: a change of intended behavior is a new feature directory, never a silent edit of a completed one.
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### II. Test-First (NON-NEGOTIABLE)
+No production code without a failing test first. Every user story phase in `tasks.md` MUST contain test tasks that are written and observed failing before implementation tasks, plus one end-to-end scenario executed by the `tester` agent from the user's point of view. Any template wording that makes tests optional is overridden by this article.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### III. Tenant Boundary
+The product is designed as a multi-tenant SaaS even while it serves a single tenant. Every data-owning entity MUST name its owner and its isolation key (or state why it is global) in the spec's Key Entities; every service boundary MUST state what data it owns and what it merely references. Cross-boundary access goes through explicit contracts (APIs, events), never shared tables or implicit joins.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### IV. Observability-Ready
+Each plan MUST state how the feature is observed in production — structured logs with a correlation id, the metrics that indicate health — and its rollback path. A feature without a rollback path is not ready to ship.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### V. Simplicity
+Build the smallest thing that satisfies the spec (YAGNI). New frameworks, extensions, or abstractions require a documented reason in `plan.md` Complexity Tracking or an ADR under `docs/decisions/`. Prefer deleting over adding.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+### VI. Learning-in-Public
+Every completed feature produces a learning note in `content/study/NNN-slug.mdx` (the problem, what was learned, which alternatives were rejected and why, how it was verified, what to learn next). The note is a first-class deliverable checked by the finish gate, and the site publishes it.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+## Platform Constraints
+- The stack is undecided until SP-1; this constitution is stack-neutral and applies to tooling, documents, and future code alike.
+- Secrets never enter the repository; configuration comes from the environment or a secret manager.
+- Destructive operations (history rewrites, force pushes, data deletion, infrastructure teardown) require explicit human approval.
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
-
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+## Development Workflow & Quality Gates
+1. Intake: `/speckit-specify` (superpowers brainstorming for architecture-level work), then `/speckit-clarify` when ambiguous.
+2. Plan: `/speckit-plan` (Constitution Check gate) → `/speckit-checklist` → `/speckit-tasks`.
+3. Approval: `/approval-review` runs per-boundary reviews (security, tenant/data, operability, trends, spec consistency) and records `reviews/*-approval.md`; the spec Status becomes Approved only after the human confirms.
+4. Build: superpowers subagent-driven-development executes `tasks.md` with TDD and per-task review; `/speckit-implement` is not used.
+5. Converge: `/speckit-converge` until Converged.
+6. Verify: the `tester` agent executes every user story end-to-end.
+7. Finish: `/finish` writes `report.md`, the learning note, the CHANGELOG entry, and `reviews/*-finish.md`; the finish gate blocks `finishing-a-development-branch` until that review is Approved.
+8. Integrate: merge, then archive the feature into `.specify/memory/` so the current state of the system stays readable.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
+This constitution supersedes all other practices in this repository. Amendments go through `/speckit-constitution`, bump the version (MAJOR: principle removed or redefined incompatibly; MINOR: principle or section added; PATCH: wording), and record a Sync Impact Report. Every plan's Constitution Check and every approval/finish review verifies compliance; violations are justified in Complexity Tracking or rejected. Agent operating mechanics live in `CLAUDE.md` and `AGENTS.md`; durable decisions live in `docs/decisions/`.
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
-
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-08-26
