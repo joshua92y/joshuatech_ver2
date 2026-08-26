@@ -2,12 +2,21 @@
   "permissions": {
     "deny": [
       "Bash(rm -rf *)",
+      "Bash(rm -fr *)",
+      "Bash(rm -r *)",
+      "Bash(rm -R *)",
+      "Bash(sudo rm *)",
       "Bash(git reset --hard*)",
-      "Bash(git reset --hard)",
+      "Bash(git * reset --hard*)",
       "Bash(git push --force*)",
       "Bash(git push -f*)",
-      "Bash(git clean -fd*)",
-      "Bash(docker system prune*)"
+      "Bash(git push * --force*)",
+      "Bash(git push * -f*)",
+      "Bash(git clean -f*)",
+      "Bash(git clean -d*)",
+      "Bash(git clean --force*)",
+      "Bash(docker system prune*)",
+      "Bash(docker * prune*)"
     ]
   },
   "hooks": {
@@ -17,7 +26,7 @@
           {
             "type": "command",
             "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/approval-review.ps1",
-            "timeout": 5
+            "timeout": 10
           }
         ]
       }
