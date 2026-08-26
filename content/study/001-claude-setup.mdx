@@ -39,7 +39,7 @@ v1 포트폴리오는 Django·FastAPI·Next.js를 기술 계층으로 쪼갠 "�
 
 ## 결과와 검증
 
-훅 3종은 stdin JSON 샘플로 단위 검증했고(23 케이스: 경로 순회·접두 충돌·UNC·깨진 feature.json·오래된 리뷰 등 리뷰에서 발견된 우회를 회귀 테스트로 추가), `002-smoke`로 specify → plan → tasks → 승인 리뷰 → SDD → converge → E2E → finish → finishing → archive 사이클을 1회 실주행했다. 세부 결과는 `specs/001-claude-setup/report.md`의 Validation 절에 있다.
+훅 3종은 stdin JSON 샘플로 단위 검증했다(23 케이스: 경로 순회·접두 충돌·UNC·깨진 feature.json·오래된 리뷰 등 리뷰에서 발견된 우회를 회귀 테스트로 추가). 전체 사이클(specify → plan → tasks → 승인 리뷰 → SDD → converge → E2E → finish → finishing → archive)은 `002-smoke`로 1회 실주행해 검증하며, 그 결과와 세션 재시작 후의 훅·스킬 등록 확인은 `specs/001-claude-setup/report.md`의 Validation 절에 기록한다(이 문단은 마감 시 실제 결과로 갱신).
 
 ## 다음 학습
 

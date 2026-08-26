@@ -17,6 +17,8 @@
 - Do NOT use superpowers `writing-plans`; `tasks.md` is the only implementation plan (the sole exception was `specs/001-claude-setup/plan.md`).
 - When brainstorming is used, the design is saved as `specs/NNN-slug/spec.md` in Spec Kit spec-template format: run `.specify/scripts/powershell/create-new-feature.ps1 -ShortName <slug> -Json` to allocate the directory, fill that `spec.md`, then continue with `/speckit-plan`.
 - Give subagents task slices and the relevant sections only — never whole spec or plan files.
+- `/speckit-tasks`: the resolved template (`.specify/templates/overrides/tasks-template.md`) says tests are MANDATORY; that overrides the generated skill prompt's "tests optional" wording. Every user story phase gets test-first tasks plus one E2E task for the `tester`.
+- Hooks are registered with repository-relative paths; keep the session's working directory at the repository root (use `git -C`, `-C`, or absolute paths instead of `cd`).
 - Read `.specify/memory/constitution.md` before planning and `docs/decisions/` before any architectural change.
 
 ## Lifecycle

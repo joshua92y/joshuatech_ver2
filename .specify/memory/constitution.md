@@ -1,3 +1,11 @@
+<!--
+SYNC IMPACT REPORT
+Version change: (template) -> 1.0.0 (initial ratification, 2026-08-26)
+Added principles: I. Spec-First; II. Test-First (NON-NEGOTIABLE); III. Tenant Boundary; IV. Observability-Ready; V. Simplicity; VI. Learning-in-Public
+Added sections: Platform Constraints; Development Workflow & Quality Gates; Governance
+Templates: .specify/templates/overrides/tasks-template.md enforces II (tests mandatory, E2E per story); plan/spec templates unchanged (Constitution Check reads this file at runtime)
+Follow-ups: none
+-->
 > Canonical language: English. Korean mirror: docs/kr/constitution_kr.md (convenience only). On conflict, English prevails. Sync: /finish (best-effort).
 
 # JoshuaTech v2 Constitution

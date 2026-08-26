@@ -7,7 +7,7 @@ paths:
 # Rules for `specs/`
 
 - One feature = one immutable directory `specs/NNN-slug/`, created by Spec Kit (`/speckit-specify`, or `.specify/scripts/powershell/create-new-feature.ps1 -ShortName <slug> -Json` when brainstorming writes the spec). Never rename, move, or delete a feature directory; a change of intent is a new feature.
-- `spec.md` header `**Status**` values: `Draft` → `Approved (YYYY-MM-DD)` → `Done (YYYY-MM-DD)`. Only `/approval-review` (after the human confirms) sets Approved; only the archive step after merge sets Done.
+- `spec.md` header `**Status**` values: `Draft` → `Approved (YYYY-MM-DD)` → `Done (YYYY-MM-DD)`. Only `/approval-review` (after the human confirms) sets Approved; after the merge and `/speckit-archive-run`, the controller sets Done by hand (the archive skill only rewrites `Draft` → `Completed`, which never applies to an Approved spec).
 - Spec Kit files (`spec.md`, `plan.md`, `tasks.md`, `research.md`, `data-model.md`, `quickstart.md`, `contracts/`, `checklists/`) keep the Spec Kit template headings. Project additions per feature:
   - `reviews/YYYY-MM-DD-approval.md` — one section per boundary, `## 종합 의견`, `## 사용자 결정`.
   - `reviews/YYYY-MM-DD-finish.md` — `Status: Approved | Issues` on line 2, one section per boundary, `## Issues`.

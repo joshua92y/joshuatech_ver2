@@ -75,5 +75,5 @@ Show `종합 의견` and the fix list, then use AskUserQuestion with options 승
 
 ## Never
 - Never set Approved without the human's explicit answer in step 5.
-- Never paste whole files into reviewer prompts; excerpts only.
+- Never paste whole spec/plan/tasks files into reviewer prompts; excerpts only (the boundary file itself is included in full — it is the rubric).
 - Never start implementation from this skill.
