@@ -1,0 +1,57 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(git reset --hard*)",
+      "Bash(git reset --hard)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git clean -fd*)",
+      "Bash(docker system prune*)"
+    ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/approval-review.ps1",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/finish-gate.ps1",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "skillOverrides": {
+    "speckit-agent-context-update": "user-invocable-only",
+    "speckit-analyze": "user-invocable-only",
+    "speckit-archive-run": "user-invocable-only",
+    "speckit-checklist": "user-invocable-only",
+    "speckit-clarify": "user-invocable-only",
+    "speckit-constitution": "user-invocable-only",
+    "speckit-converge": "user-invocable-only",
+    "speckit-git-commit": "user-invocable-only",
+    "speckit-git-feature": "user-invocable-only",
+    "speckit-git-initialize": "user-invocable-only",
+    "speckit-git-remote": "user-invocable-only",
+    "speckit-git-validate": "user-invocable-only",
+    "speckit-implement": "user-invocable-only",
+    "speckit-plan": "user-invocable-only",
+    "speckit-specify": "user-invocable-only",
+    "speckit-tasks": "user-invocable-only",
+    "speckit-taskstoissues": "user-invocable-only"
+  }
+}
