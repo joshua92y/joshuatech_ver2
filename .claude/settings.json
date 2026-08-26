@@ -16,7 +16,18 @@
       "Bash(git clean -d*)",
       "Bash(git clean --force*)",
       "Bash(docker system prune*)",
-      "Bash(docker * prune*)"
+      "Bash(docker * prune*)",
+      "PowerShell(git reset --hard*)",
+      "PowerShell(git * reset --hard*)",
+      "PowerShell(git push --force*)",
+      "PowerShell(git push -f*)",
+      "PowerShell(git push * --force*)",
+      "PowerShell(git push * -f*)",
+      "PowerShell(git clean -f*)",
+      "PowerShell(git clean -d*)",
+      "PowerShell(git clean --force*)",
+      "PowerShell(docker system prune*)",
+      "PowerShell(docker * prune*)"
     ]
   },
   "hooks": {
@@ -25,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/approval-review.ps1",
+            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File \"${CLAUDE_PROJECT_DIR}/.claude/hooks/approval-review.ps1\"",
             "timeout": 10
           }
         ]
@@ -37,7 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/finish-gate.ps1",
+            "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File \"${CLAUDE_PROJECT_DIR}/.claude/hooks/finish-gate.ps1\"",
             "timeout": 10
           }
         ]
@@ -45,22 +56,22 @@
     ]
   },
   "skillOverrides": {
-    "speckit-agent-context-update": "user-invocable-only",
-    "speckit-analyze": "user-invocable-only",
-    "speckit-archive-run": "user-invocable-only",
-    "speckit-checklist": "user-invocable-only",
-    "speckit-clarify": "user-invocable-only",
-    "speckit-constitution": "user-invocable-only",
-    "speckit-converge": "user-invocable-only",
-    "speckit-git-commit": "user-invocable-only",
-    "speckit-git-feature": "user-invocable-only",
-    "speckit-git-initialize": "user-invocable-only",
-    "speckit-git-remote": "user-invocable-only",
-    "speckit-git-validate": "user-invocable-only",
-    "speckit-implement": "user-invocable-only",
-    "speckit-plan": "user-invocable-only",
-    "speckit-specify": "user-invocable-only",
-    "speckit-tasks": "user-invocable-only",
-    "speckit-taskstoissues": "user-invocable-only"
+    "speckit-agent-context-update": "name-only",
+    "speckit-analyze": "name-only",
+    "speckit-archive-run": "name-only",
+    "speckit-checklist": "name-only",
+    "speckit-clarify": "name-only",
+    "speckit-constitution": "name-only",
+    "speckit-converge": "name-only",
+    "speckit-git-commit": "name-only",
+    "speckit-git-feature": "name-only",
+    "speckit-git-initialize": "name-only",
+    "speckit-git-remote": "name-only",
+    "speckit-git-validate": "name-only",
+    "speckit-implement": "name-only",
+    "speckit-plan": "name-only",
+    "speckit-specify": "name-only",
+    "speckit-tasks": "name-only",
+    "speckit-taskstoissues": "name-only"
   }
 }

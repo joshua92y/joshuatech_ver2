@@ -1142,6 +1142,8 @@ git commit -m "feat(claude): settings — 파괴 명령 deny, 훅 2종 등록, s
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
+> **실행 기록 (2026-08-26)**: 리뷰 반영으로 정본은 위 JSON과 다르다 — deny 패턴 16개(`git push * --force*`, `git * reset --hard*`, `rm -r*` 변형, `docker * prune*` 추가), approval 훅 timeout 10s. `skillOverrides`는 17개(핵심 10 + git 5 + agent-context-update + archive-run). 최종 리뷰 반영: `skillOverrides` 값은 `name-only`(`user-invocable-only`는 모델의 모든 Skill 호출을 막아 스킬 연쇄·컨트롤러 호출까지 차단됨을 문서로 확인), `PowerShell(...)` deny 11개 추가(도구별 네임스페이스 분리), 훅 경로는 `${CLAUDE_PROJECT_DIR}` 플레이스홀더(cwd 변경에 견딤).
+
 ---
 
 ### Task 15: `tester` 에이전트 + 한국어 미러
@@ -1866,10 +1868,12 @@ Expected: `200` 이하(초안은 약 70줄).
 
 ```bash
 git add CLAUDE.md docs/kr/CLAUDE_kr.md
-git commit -m "docs: CLAUDE.md 운영 규칙(도구 경계·라이프사이클·feature 해석·훅 표) + kr 미러
+git commit -m "docs: CLAUDE.md 운영 규칙(도구 경계·라이프사이클·훅 표) + kr 미러
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
+
+> **실행 기록 (2026-08-26)**: 정본(57줄)은 위 초안에 두 줄을 더한다 — `/speckit-tasks` 실행 시 override 템플릿의 MANDATORY가 생성 스킬 프롬프트의 "tests optional" 문구보다 우선한다는 규칙(Task 8 리뷰), 훅 상대 경로 때문에 세션 cwd를 루트에 유지하라는 주의(Task 14 리뷰). 8단계의 archive 명령은 실제 이름 `/speckit-archive-run specs/<NNN-slug>`. 배치 실행: Task 14·20·21·23은 병렬 구현 후 컨트롤러가 커밋했고, 미러 제목은 규칙(제목 동일 유지)에 맞춰 영어로 복원했다.
 
 ---
 

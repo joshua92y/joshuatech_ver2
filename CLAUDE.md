@@ -7,10 +7,10 @@
 ## Prerequisites
 - Exactly one superpowers plugin is enabled at user level: `superpowers@superpowers-dev` (5.1.0). Keep `superpowers@claude-plugins-official` disabled (it double-injects the SessionStart hook).
 - The Spec Kit CLI (`specify`, installed with `uv`, in `~/.local/bin`) is needed only for init, upgrade, and extension management; daily commands use `.specify/scripts/powershell/*.ps1`.
-- Hooks run as `pwsh -NoProfile -ExecutionPolicy Bypass -File …`; PowerShell 7 must be on PATH.
+- Hooks run as `pwsh -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PROJECT_DIR}/.claude/hooks/<name>.ps1"` (Git Bash is the hook shell on Windows); PowerShell 7 must be on PATH.
 
 ## Tool boundaries
-- **Spec Kit owns WHAT**: constitution, `specs/NNN-slug/{spec,plan,tasks,research,…}`, analyze, converge, archive. `speckit-*` skills are user-invocable only (settings `skillOverrides`); invoke them explicitly, never guess at them.
+- **Spec Kit owns WHAT**: constitution, `specs/NNN-slug/{spec,plan,tasks,research,…}`, analyze, converge, archive. `speckit-*` skills are listed name-only (settings `skillOverrides`: descriptions hidden so they never auto-trigger); invoke one only when the user asks or the lifecycle step below calls for it — never guess.
 - **superpowers owns HOW**: brainstorming (architecture-level intake only), test-driven-development, subagent-driven-development, requesting-code-review, receiving-code-review, finishing-a-development-branch, using-git-worktrees, systematic-debugging, verification-before-completion.
 - **This repository owns the gates**: the `tester` agent, `/approval-review`, `/finish`, and the hooks in `.claude/hooks/`.
 - Do NOT use `speckit-implement`; superpowers subagent-driven-development executes `tasks.md`.
@@ -18,7 +18,7 @@
 - When brainstorming is used, the design is saved as `specs/NNN-slug/spec.md` in Spec Kit spec-template format: run `.specify/scripts/powershell/create-new-feature.ps1 -ShortName <slug> -Json` to allocate the directory, fill that `spec.md`, then continue with `/speckit-plan`.
 - Give subagents task slices and the relevant sections only — never whole spec or plan files.
 - `/speckit-tasks`: the resolved template (`.specify/templates/overrides/tasks-template.md`) says tests are MANDATORY; that overrides the generated skill prompt's "tests optional" wording. Every user story phase gets test-first tasks plus one E2E task for the `tester`.
-- Hooks are registered with repository-relative paths; keep the session's working directory at the repository root (use `git -C`, `-C`, or absolute paths instead of `cd`).
+- Hooks resolve their scripts through `${CLAUDE_PROJECT_DIR}`, so they survive `cd`; still prefer `git -C` and absolute paths over `cd` so relative paths in commands stay valid.
 - Read `.specify/memory/constitution.md` before planning and `docs/decisions/` before any architectural change.
 
 ## Lifecycle

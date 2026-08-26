@@ -10,7 +10,7 @@ hooks:
     - matcher: "Edit|Write|MultiEdit|NotebookEdit"
       hooks:
         - type: command
-          command: pwsh -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/tester-write-guard.ps1
+          command: pwsh -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PROJECT_DIR}/.claude/hooks/tester-write-guard.ps1"
           timeout: 5
 ---
 ```

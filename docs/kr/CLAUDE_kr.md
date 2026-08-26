@@ -1,3 +1,4 @@
+> translation-pending (2026-08-26): Prerequisites·Tool boundaries 3개 항목(훅 경로 플레이스홀더, skillOverrides name-only, cwd 주의) 갱신 필요.
 > 번역본(편의용). 정본은 영어 원본 `CLAUDE.md`이며 충돌 시 영어가 우선한다. 동기화: /finish.
 
 > (정본은 `AGENTS.md`를 import한다)

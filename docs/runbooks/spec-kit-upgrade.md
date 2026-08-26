@@ -15,7 +15,7 @@ Spec Kit이 관리하는 파일 중 프로젝트가 손댄 것과, 관리 파일
 | `.specify/templates/overrides/tasks-template.md` | 1.0.2.dev0 | `templates/tasks-template.md` | 테스트 필수화 + 스토리별 E2E task(헌법 II) | `pwsh .specify/scripts/powershell/resolve-template.ps1 tasks-template` 출력에 `MANDATORY` 7건 이상, `OPTIONAL` 0건 |
 | `.specify/memory/constitution.md` | 1.0.2.dev0 | `templates/constitution-template.md` | 프로젝트 헌법 본문 | 플레이스홀더 `[…]` 0건(`tests/run-all.ps1`) |
 | `.specify/extensions/git/git-config.yml` | git ext 1.0.0 | `extensions/git/git-config.yml` | `commit_style: conventional` | `Select-String commit_style .specify/extensions/git/git-config.yml` → conventional |
-| `.claude/settings.json` `skillOverrides` | — | (Claude Code 설정) | `speckit-*` 17개 명시 호출 전용 | `tests/run-all.ps1`의 skillOverrides 검사 통과 |
+| `.claude/settings.json` `skillOverrides` | — | (Claude Code 설정) | `speckit-*` 17개 name-only(설명 숨김, 자동 트리거 차단) | `tests/run-all.ps1`의 skillOverrides 검사 통과 |
 | `CLAUDE.md` `<!-- SPECKIT START/END -->` | agent-context ext 1.0.0 | — | plan 경로 관리 블록 | 마커 2개 존재, 블록 안에 최신 plan 경로 |
 | `.specify/extensions/archive/` | archive 1.3.0 (community) | https://github.com/stn1slv/spec-kit-archive | 머지 후 `.specify/memory/{spec,plan,changelog}.md` 통합 | 스킬 `speckit-archive-run` 존재; `/speckit-archive-run specs/<feature>` 동작 |
 | (보류) `adrkit` | 0.1.2 (community) | https://github.com/mbeacom/adrkit | ADR 컨텍스트·검토·초안 | 설치 시 `ADRKIT_DIR=docs/decisions` 환경 변수 규약 결정 후 레지스터 갱신 |

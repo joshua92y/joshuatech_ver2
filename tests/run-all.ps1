@@ -19,8 +19,8 @@ Check "CLAUDE.md lines ($n) <= 200" ($n -ge 0 -and $n -le 200) 'missing or too l
 $s = $null
 if (Test-Path .claude/settings.json) { $s = Get-Content .claude/settings.json -Raw | ConvertFrom-Json }
 $skills = (Get-ChildItem .claude/skills -Directory | Where-Object Name -like 'speckit-*').Name
-$missing = @($skills | Where-Object { -not ($s -and $s.skillOverrides -and $s.skillOverrides.PSObject.Properties[$_]) })
-Check 'skillOverrides covers speckit-*' ($s -and $missing.Count -eq 0) ($missing -join ', ')
+$missing = @($skills | Where-Object { -not ($s -and $s.skillOverrides -and $s.skillOverrides.$_ -eq 'name-only') })
+Check 'skillOverrides name-only for every speckit-*' ($s -and $missing.Count -eq 0) ($missing -join ', ')
 Check 'hooks registered (UserPromptSubmit + PreToolUse Skill)' ($s -and $s.hooks.UserPromptSubmit.Count -ge 1 -and $s.hooks.PreToolUse[0].matcher -eq 'Skill') 'settings.json missing or hooks not registered'
 
 # 4. Korean mirror coverage (SC-005)
