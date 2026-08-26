@@ -11,7 +11,7 @@ description: "Close the active feature: write report.md, draft the learning note
 
 `/speckit-converge`가 Converged를 보고하고 tester가 PASS(또는 사유가 기록된 SKIP)를 보고한 뒤에 실행합니다. `finish-gate` 훅이 확인하는 산출물을 생성합니다: `report.md`, `content/study/<feature>.mdx`, 그리고 2번째 줄이 정확히 `Status: Approved`인 가장 최신 `reviews/YYYY-MM-DD-finish.md`.
 
-## 0. 기능 식별 및 사전 조건
+## 0. Resolve the feature and preconditions
 approval-review와 동일한 방식으로 기능을 식별합니다(env → 브랜치 → feature.json 순; 식별 불가하거나 불일치하면 질문). `tasks.md`에 체크되지 않은 `- [ ]` 작업 줄이 없는지 확인합니다(체크리스트는 제외). 남아 있으면 중단하고 목록을 나열합니다.
 
 ## 1. `report.md`
@@ -29,7 +29,7 @@ approval-review와 동일한 방식으로 기능을 식별합니다(env → 브�
 <follow-ups, deferred items, risks>
 ```
 
-## 2. 학습 노트 초안
+## 2. Learning note draft
 `.claude/rules/content.md`를 따라 `content/study/<NNN-slug>.mdx`를 작성합니다: `draft: true`, `change: "<NNN-slug>"`, spec·plan·report·관련 decision을 나열하는 `sources`를 포함한 완전한 frontmatter; 그리고 5개 섹션 `## 문제`, `## 배운 개념`, `## 선택과 대안`, `## 결과와 검증`, `## 다음 학습`. 실질적인 출처: spec의 결정 표, plan의 Complexity Tracking, approval review의 findings, report. 노트가 이미 존재하면 `-2` 파일을 만들기 전에 먼저 확인을 구합니다.
 
 ## 3. CHANGELOG
@@ -38,10 +38,10 @@ approval-review와 동일한 방식으로 기능을 식별합니다(env → 브�
 ## 4. Decisions
 기능이 지속적인 결정(프레임워크, 경계, 데이터 소유권, 프로토콜, 컨벤션)을 내렸다면 `docs/decisions/NNNN-<title>.md`(MADR minimal, `status: proposed`)를 작성합니다 — adrkit draft 명령이 설치되어 있으면 그것을 사용하고, 아니면 수동으로 작성한 뒤 report에서 링크합니다. 그렇지 않으면 report의 Summary에 "no durable decision"이라고 적습니다.
 
-## 5. 한국어 미러 (best-effort, 절대 차단하지 않음)
+## 5. Korean mirrors (best-effort, never blocking)
 이 기능에서 변경된 각 에이전트 파일(`CLAUDE.md`, `AGENTS.md`, `.specify/memory/constitution.md`, `.claude/rules/*`, `.claude/agents/*`, `.claude/skills/*/SKILL.md`)마다 그 `docs/kr/` 미러를 갱신합니다. 컨텍스트나 시간이 부족하면 오래된 미러 앞에 `> translation-pending (YYYY-MM-DD)`를 붙이는 것으로 대신하고 report에 언급합니다.
 
-## 6. Finish review — 경계마다 서브에이전트 1개, 병렬 실행
+## 6. Finish review — one subagent per boundary, in parallel
 `boundaries/`의 경계: `report-vs-diff.md`, `e2e-evidence.md`, `study-contract.md`, `decisions.md`. 각 경계 파일과 그 파일이 명시한 입력만을 함께 넘겨 `general-purpose` 서브에이전트를 하나씩 배정합니다. `specs/<feature>/reviews/YYYY-MM-DD-finish.md`를 작성합니다:
 
 ```markdown
@@ -62,7 +62,7 @@ Status: Approved | Issues
 ```
 2번째 줄은 정확히 `Status: Approved` 또는 `Status: Issues`여야 합니다(finish-gate 훅이 가장 최신 `*-finish.md`와 그 첫 Status 줄을 읽습니다). 모든 경계가 ✅를 보고할 때만 `Status: Approved`입니다. Issues인 경우: 문제를 고치고(report, note, changelog, tests), Approved가 될 때까지 6단계를 다시 실행합니다.
 
-## 7. 인계
+## 7. Hand off
 `specs/README.md`를 재생성합니다(archive 전까지 Status는 Approved로 유지). `docs(<NNN-slug>): report·학습 노트·finish 리뷰`로 커밋합니다. 사용자에게 알립니다: "finish complete — run superpowers:finishing-a-development-branch from the feature branch (the gate resolves the feature from the branch name); after the merge run the archive skill" 그리고 `.claude/skills/speckit-archive*` 아래에 나열된 archive 스킬의 정확한 이름을 알려줍니다.
 
 ## Boundaries (요약)

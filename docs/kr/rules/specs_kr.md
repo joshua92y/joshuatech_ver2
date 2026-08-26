@@ -5,10 +5,10 @@ paths:
   - "specs/**"
 ```
 
-# `specs/` 규칙
+# Rules for `specs/`
 
 - 기능 하나 = 불변 디렉터리 하나 `specs/NNN-slug/`, Spec Kit로 생성한다 (`/speckit-specify`, 또는 브레인스토밍이 스펙을 작성할 때는 `.specify/scripts/powershell/create-new-feature.ps1 -ShortName <slug> -Json`). 기능 디렉터리는 절대 이름을 바꾸거나, 옮기거나, 삭제하지 않는다; 의도가 바뀌면 새 기능이다.
-- `spec.md` 헤더의 `**Status**` 값: `Draft` → `Approved (YYYY-MM-DD)` → `Done (YYYY-MM-DD)`. `/approval-review`만 (사람이 확인한 뒤) Approved로 설정하고, 병합 후 아카이브 단계만 Done으로 설정한다.
+- `spec.md` 헤더의 `**Status**` 값: `Draft` → `Approved (YYYY-MM-DD)` → `Done (YYYY-MM-DD)`. `/approval-review`만 (사람이 확인한 뒤) Approved로 설정하고, 병합과 `/speckit-archive-run` 이후에 컨트롤러가 Done을 직접 설정한다(archive 스킬은 `Draft` → `Completed`만 바꾸므로 Approved 상태의 spec에는 적용되지 않는다).
 - Spec Kit 파일들(`spec.md`, `plan.md`, `tasks.md`, `research.md`, `data-model.md`, `quickstart.md`, `contracts/`, `checklists/`)은 Spec Kit 템플릿 제목 구조를 유지한다. 기능별 프로젝트 추가 파일:
   - `reviews/YYYY-MM-DD-approval.md` — 경계마다 한 섹션, `## 종합 의견`, `## 사용자 결정`.
   - `reviews/YYYY-MM-DD-finish.md` — 2번째 줄에 `Status: Approved | Issues`, 경계마다 한 섹션, `## Issues`.

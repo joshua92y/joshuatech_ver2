@@ -5,7 +5,7 @@ paths:
   - "content/**"
 ```
 
-# `content/` 규칙
+# Rules for `content/`
 
 `content/study/*.mdx`는 사이트가 소비하는(SP-1부터) 공개 학습 노트다. 계약:
 

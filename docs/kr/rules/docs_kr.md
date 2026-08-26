@@ -5,7 +5,7 @@ paths:
   - "docs/**"
 ```
 
-# `docs/` 규칙
+# Rules for `docs/`
 
 - `docs/README.md`는 문서 색인이다; 새 문서는 모두 여기에 추가한다.
 - `docs/decisions/NNNN-<kebab-title>.md`는 MADR 4.0 minimal 형식을 따른다:

@@ -11,14 +11,14 @@ description: "Run parallel per-boundary subagent reviews (security, tenant-data,
 
 구현 전 게이트(gate). `specs/<feature>/reviews/YYYY-MM-DD-approval.md`를 생성하며, 사람이 확인한 뒤에만 spec의 Status를 Approved로 설정한다.
 
-## 1. 활성 기능 확인
+## 1. Resolve the active feature
 순서: `$env:SPECIFY_FEATURE_DIRECTORY` → 현재 git 브랜치 `NNN-slug`와 `specs/<branch>/` → `.specify/feature.json`의 `feature_directory`. 어느 것도 확인되지 않거나 서로 다르면 사용자에게 어떤 기능을 검토할지 묻는다. `spec.md`, `plan.md`, `tasks.md`, 존재한다면 `checklists/*.md`를 읽는다. `plan.md`나 `tasks.md`가 없으면 중단하고 어떤 Spec Kit 명령을 실행해야 하는지 사용자에게 알린다.
 
-## 2. 기계 입력 수집
+## 2. Gather machine inputs
 - `/speckit-analyze`를 (읽기 전용으로) 실행하고 그 보고서를 spec-consistency 리뷰어를 위해 보관한다.
 - `checklists/*.md`의 미체크 `- [ ]` 항목 수를 센다.
 
-## 3. 경계마다 리뷰어 한 명씩 파견 — 한 메시지에서 병렬로
+## 3. Dispatch one reviewer per boundary — in parallel, in one message
 `boundaries/` 안의 각 파일(`security.md`, `tenant-data.md`, `operability.md`, `trends.md`, `spec-consistency.md`)마다 `general-purpose` 서브에이전트를 하나씩 파견한다. 프롬프트:
 
 ```
@@ -36,7 +36,7 @@ Return ONLY the output format defined in the boundary file.
 ```
 `trends` 리뷰어는 WebSearch를 사용할 수 있고 반드시 URL을 인용해야 한다; 나머지 네 명은 아무것도 가져오면(fetch) 안 된다.
 
-## 4. 리뷰 파일 작성
+## 4. Write the review file
 `specs/<feature>/reviews/YYYY-MM-DD-approval.md`:
 
 ```markdown
@@ -70,15 +70,15 @@ Inputs: spec.md (Status: Draft), plan.md, tasks.md, checklists: <n> unchecked, /
 ```
 상태 셀 값: ✅ 충족 · ⚠️ 보완 · ❌ 위반 · — 해당 없음.
 
-## 5. 사람에게 확인 요청
+## 5. Ask the human
 `종합 의견`과 수정 목록을 보여준 다음, AskUserQuestion으로 승인 / 수정 후 재검토 / 재설계 선택지를 제시한다.
 - 승인: 오늘 날짜로 체크박스를 표시하고, `spec.md`에 `**Status**: Approved (YYYY-MM-DD)`를 설정하고, `specs/README.md`를 재생성하고, `docs(<NNN-slug>): approval 리뷰 및 Status Approved`로 커밋한다.
 - 수정 후 재검토: 수정 사항을 Spec Kit 작업(`/speckit-clarify`, `/speckit-plan`, `/speckit-tasks`)으로 나열한 뒤, 이 스킬을 다시 실행한다.
 - 재설계: 중단한다; 다음 단계는 사용자가 결정한다.
 
-## 하지 말 것
+## Never
 - 5단계에서 사람의 명시적 답변 없이 Approved로 설정하지 말 것.
-- 리뷰어 프롬프트에 파일 전체를 붙여넣지 말 것; 발췌만 사용할 것.
+- 리뷰어 프롬프트에 spec/plan/tasks 파일 전체를 붙여넣지 말 것; 발췌만 사용할 것(경계 파일 자체는 루브릭이므로 전문을 포함한다).
 - 이 스킬에서 구현을 시작하지 말 것.
 
 ## Boundaries (요약)
