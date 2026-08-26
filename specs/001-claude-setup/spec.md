@@ -38,7 +38,7 @@ L5 수준 MSA를 지향하며, 학습 과정을 사이트 콘텐츠로 발행(le
 | D11 | 훅 | **훅은 트리거·게이트만, 판단은 경계별 서브에이전트 리뷰** | approval-review / finish 스킬이 서브에이전트를 병렬 디스패치 |
 | D12 | 활성 feature 해석 | **env → 브랜치명↔디렉터리 → feature.json 순, 실패·불일치 시 fail-closed** | 외부 리뷰(2026-08-26) 반영 — feature.json은 gitignored·체크아웃별이라 worktree에 없음 |
 | D13 | 생성 스킬 통제 | **`settings.json` `skillOverrides`로 명시 호출 전용화**(SKILL.md 무수정) | Spec Kit 업그레이드 내구성 |
-| D14 | 확장 범위 | **5종 모두 SP-0**(git·agent-context·selftest·archive·adrkit) — 외부 리뷰의 축소안 불채택 | 사용자 결정; 서드파티 2종은 아카이브 URL 검토 후 설치 |
+| D14 | 확장 범위 | **4종 SP-0**(git·agent-context·archive·adrkit; selftest는 1.0.2 카탈로그에 없어 제외 — 2026-08-26 확인) — 외부 리뷰의 축소안 불채택 | 사용자 결정; 서드파티 2종은 아카이브 URL 검토 후 설치 |
 | D15 | 승인 훅 | **넓은 키워드 유지** — 명시 명령 전환 불채택 | 사용자 결정; 훅은 지시 주입만 하므로 오탐 비용 낮음 |
 | D16 | 원격·CI·병렬 에이전트 | **GitHub 원격은 SP-0, 최소 CI·Orca 병렬 규칙은 SP-1 이후** | 사용자 결정 |
 
@@ -164,7 +164,7 @@ feature가 main에 머지되면 `/speckit-archive`가 `.specify/memory/{spec,pla
 
 - 활성 feature 해석은 `SPECIFY_FEATURE_DIRECTORY` env → 현재 브랜치명↔`specs/NNN-slug` 매핑 → `.specify/feature.json` 순서다. finish-gate는 셋 다 실패하거나 서로 불일치하면 deny(fail-closed), approval-review·finish 스킬은 사용자에게 활성 feature를 묻는다. feature.json은 gitignored·체크아웃별 편의 상태일 뿐 정본이 아니다(정본 = git 브랜치 + `specs/<feature>/`). feature.json 단독으로는 feature를 해석하지 않는다(env 또는 `NNN-slug` 브랜치가 없으면 deny) — 리뷰 반영 2026-08-26.
 - 훅 스크립트의 **입력 파싱** 오류는 exit 0·무출력(fail-open)으로 작업을 막지 않는다. finish-gate는 스킬 매칭 이후의 게이트 로직에서 발생한 예외·git 부재·깨진 feature.json을 모두 deny(사유 포함)로 처리한다(fail-closed, 리뷰 반영 2026-08-26). approval-review는 전 구간 fail-open; tester-write-guard는 경로 판정 단계의 예외를 deny로 처리한다.
-- `specify upgrade`가 `.claude/skills/speckit-*`를 덮어써도 명시 호출 전용화는 `settings.json`의 `skillOverrides`에 있으므로 유지된다. 업그레이드 후에는 `/speckit-selftest`와 `docs/runbooks/spec-kit-upgrade.md`의 재검증 목록을 수행한다.
+- `specify upgrade`가 `.claude/skills/speckit-*`를 덮어써도 명시 호출 전용화는 `settings.json`의 `skillOverrides`에 있으므로 유지된다. 업그레이드 후에는 `specify check`, `tests/run-all.ps1`과 `docs/runbooks/spec-kit-upgrade.md`의 재검증 목록을 수행한다.
 - 두 superpowers 플러그인이 다시 동시에 켜지면 SessionStart 훅이 이중 주입된다 → CLAUDE.md의 전제조건 절에 명시.
 - PowerShell 실행 정책이 스크립트를 막으면 훅 명령에 `-ExecutionPolicy Bypass`를 명시한다.
 - 브랜치명과 활성 feature 디렉터리가 어긋나면 `speckit-git-validate`로 검출한다(Spec Kit은 브랜치가 아니라 feature.json을 기준으로 삼는다).
@@ -176,7 +176,7 @@ feature가 main에 머지되면 `/speckit-archive`가 `.specify/memory/{spec,pla
 
 **설치·기반**
 - **FR-001**: 저장소는 git으로 초기화되고 기본 브랜치는 `main`이며 `.gitattributes`(`* text=auto eol=lf`)를 둔다. GitHub 원격(private)을 `gh repo create`로 만들고 `main`과 feature 브랜치를 push한다. 작업은 `NNN-slug` 브랜치(또는 `.worktrees/NNN-slug`)에서만 한다.
-- **FR-002**: Spec Kit은 `specify init --here --integration claude --script ps`로 설치하고, 번들 확장 `git`·`agent-context`·`selftest`와 커뮤니티 확장 `archive`·`adrkit`을 설치한다(커뮤니티 확장은 아카이브 URL 검토 후 `--from`).
+- **FR-002**: Spec Kit은 `specify init --here --integration claude --script ps`로 설치하고, 번들 확장 `git`·`agent-context`와 커뮤니티 확장 `archive`·`adrkit`을 설치한다(커뮤니티 확장은 아카이브 URL 검토 후 `--from`).
 - **FR-003**: `git` 확장 설정은 `branch_numbering: sequential`, 기본 템플릿 `{number}-{slug}`, `auto_commit.default: false`, `commit_style: conventional`이다.
 - **FR-004**: 사용자 레벨 `~/.claude/settings.json`에서 `superpowers@claude-plugins-official`를 비활성화하고 `superpowers@superpowers-dev`(5.1.0)만 유지한다.
 - **FR-005**: Spec Kit이 생성한 `speckit-*` 스킬은 `.claude/settings.json`의 `skillOverrides`(`"user-invocable-only"`)로 명시 호출만 허용한다. 생성된 SKILL.md는 수정하지 않는다(업그레이드 내구성).
@@ -226,7 +226,7 @@ feature가 main에 머지되면 `/speckit-archive`가 `.specify/memory/{spec,pla
 
 ### Measurable Outcomes
 
-- **SC-001**: `/speckit-selftest`가 통과하고 `.claude/skills/speckit-*` 10개 + 확장 스킬이 모두 `settings.json` `skillOverrides`로 명시 호출 전용이다(생성 파일 무수정).
+- **SC-001**: `specify check`와 `tests/run-all.ps1`이 통과하고 `.claude/skills/speckit-*` 10개 + 확장 스킬이 모두 `settings.json` `skillOverrides`로 명시 호출 전용이다(생성 파일 무수정).
 - **SC-002**: 훅 3종이 샘플 stdin JSON으로 단위 검증된다 — approval 키워드 → systemMessage 출력, 비키워드 → 무출력; finish-gate 산출물 없음 → deny / 있음 → 통과 / feature.json 없음 + 브랜치 `NNN-slug` → 브랜치로 해석 / 해석 불가·불일치 → deny; tester-write-guard `tests/e2e/a.test.ts` → allow, `src/a.ts` → deny.
 - **SC-003**: `002-smoke`가 US1의 시나리오 1~5를 모두 통과하고, `specs/002-smoke/`에 spec·plan·tasks·reviews(approval, finish)·report가, `content/study/002-smoke.mdx`와 `CHANGELOG.md` Unreleased 항목이 존재하며 `.specify/memory/spec.md`에 통합된다.
 - **SC-004**: `CLAUDE.md`가 200줄 이하이고, `/hooks`·`/agents`·`/skills`에 훅 2종·tester·프로젝트 스킬 2종이 등록되어 보인다.
@@ -244,7 +244,7 @@ feature가 main에 머지되면 `/speckit-archive`가 `.specify/memory/{spec,pla
 - superpowers 5.1.0의 SDD는 task당 리뷰어 2명(spec, quality)이며 재리뷰 루프를 갖는다. 5.1.0에는 plan 헤더 `Spec:`과 `Global Constraints`가 없으므로 E2E·테넌트 경계 요구는 CLAUDE.md 규칙 + tasks 템플릿 override로 전달한다.
 - 커뮤니티 확장(`archive`, `adrkit`)은 discovery-only 카탈로그이므로 설치 전 아카이브 URL을 검토한다. 설치 실패 시 해당 기능은 수동 절차(README 문서화)로 대체하고 SP-0 완료를 막지 않는다.
 - SP-0은 스택 중립이다. 코드 도메인 규칙·에이전트·스킬은 SP-1(스택 결정) 이후 같은 명명 패턴으로 추가한다.
-- 이 문서의 `/speckit-archive`, `/speckit-selftest`, `/speckit-adrkit-*`는 확장 명령의 **예상** 이름이다. 실제 슬래시 이름은 설치 후 `.claude/skills/speckit-*/` 목록으로 확정하고 CLAUDE.md에 그 이름을 쓴다.
+- 이 문서의 `/speckit-archive`, `/speckit-adrkit-*`는 확장 명령의 **예상** 이름이다. 실제 슬래시 이름은 설치 후 `.claude/skills/speckit-*/` 목록으로 확정하고 CLAUDE.md에 그 이름을 쓴다.
 
 ---
 
@@ -276,7 +276,7 @@ joshuatech_ver2/
 │   ├── memory/constitution.md [SK→P]  · spec.md plan.md changelog.md [RT, archive]
 │   ├── templates/*-template.md [SK]  · templates/overrides/tasks-template.md [P]
 │   ├── scripts/powershell/*.ps1 [SK]
-│   ├── extensions/{git,agent-context,selftest,archive,adrkit}/ [EXT] · extensions.yml [EXT]
+│   ├── extensions/{git,agent-context,archive,adrkit}/ [EXT] · extensions.yml [EXT]
 │   ├── workflows/speckit/workflow.yml [SK]
 │   ├── integrations/ · integration.json · init-options.json [SK]
 │   └── feature.json [RT][GI]
@@ -296,7 +296,7 @@ joshuatech_ver2/
 ### 3. 워크플로우 — 전체 킷 배치
 
 핵심 명령: `constitution`(제정·개정) · `specify`(일반 착수) · `clarify`(≤5문항) · `plan` · `checklist` · `tasks`(유일한 실행 계획) · `analyze`(approval 경계로 사용) · `implement`(**미사용**, SDD가 대체) · `converge`(구현 후 갭) · `taskstoissues`(원격 생기면).
-번들 확장: `git`(SP-0) · `agent-context`(SP-0) · `selftest`(SP-0) · `assess`(Tier 2, 아이디어 가치 판단) · `bug`(Tier 2, spec 없는 버그 경로).
+번들 확장: `git`(SP-0) · `agent-context`(SP-0) · `assess`(Tier 2, 아이디어 가치 판단) · `bug`(Tier 2, spec 없는 버그 경로).
 커뮤니티: `archive`(SP-0) · `adrkit`(SP-0) · `reconcile`/`security-review`/`review`/`pr-bridge`/`changelog`(Tier 2) · `agent-assign`(SP-1 이후) · 브릿지/worktree/tdd/branch-convention(미채택 — superpowers와 CLAUDE.md 규칙이 담당).
 프리셋 `lean`/`constitution-sync` 미채택. 워크플로우 엔진 오버레이는 Tier 2.
 
@@ -353,12 +353,12 @@ joshuatech_ver2/
 - Tester: 환경 부재 → SKIP + 사유. FAIL → 컨트롤러가 SDD 루프 복귀(3회 넘으면 systematic-debugging).
 - converge: 갭이 `unrequested`(요청 밖 구현)면 제거 task 또는 spec 개정을 사용자에게 묻는다.
 - 확장 설치 실패: 기능을 수동 절차로 대체하고 `report.md` Validation에 기록.
-- Spec Kit 업그레이드 후: `docs/runbooks/spec-kit-upgrade.md` 절차(`/speckit-selftest` + 레지스터의 재검증 명령). `skillOverrides`는 settings에 있어 영향 없음.
+- Spec Kit 업그레이드 후: `docs/runbooks/spec-kit-upgrade.md` 절차(`specify check` + `tests/run-all.ps1` + 레지스터의 재검증 명령). `skillOverrides`는 settings에 있어 영향 없음.
 
 ### 7. 테스트·검증 전략
 
 - 단위: 훅 3종 × 시나리오(SC-002)를 PowerShell에서 stdin JSON으로 실행해 stdout 검증.
-- 통합: Claude Code에서 `/hooks`, `/agents`, `/skills` 등록 확인, `/speckit-selftest`.
+- 통합: Claude Code에서 `/hooks`, `/agents`, `/skills` 등록 확인, `specify check`.
 - E2E: `002-smoke` 전 흐름 실주행(SC-003). 스모크 작업은 `specs/README.md` 인덱스 재생성 스크립트처럼 코드가 거의 없는 작업으로 고른다.
 - 문서: CLAUDE.md 줄 수, kr 미러 커버리지, MADR 형식 검사.
 

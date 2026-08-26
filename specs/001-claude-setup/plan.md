@@ -47,7 +47,7 @@ joshuatech_ver2/
 ├── .specify/                                       Task 4(생성) · 5·6·7(확장) · 8(override) · 9(헌법)
 │   ├── memory/constitution.md
 │   ├── templates/overrides/tasks-template.md
-│   ├── extensions/{git,agent-context,selftest,archive,adrkit}/ · extensions.yml
+│   ├── extensions/{git,agent-context,archive,adrkit}/ · extensions.yml
 │   └── (init 생성물: scripts/powershell, templates, workflows, integrations, init-options.json)
 ├── .claude/
 │   ├── settings.json                               Task 14
@@ -229,15 +229,15 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 ## Phase B — Spec Kit 구성
 
-### Task 5: 번들 확장 `git`·`agent-context`·`selftest`
+### Task 5: 번들 확장 `git`·`agent-context` (selftest는 1.0.2 카탈로그에 없어 제외 — 실행 기록 2026-08-26)
 
 **Files:**
-- Create(생성됨): `.specify/extensions/{git,agent-context,selftest}/**`, `.specify/extensions.yml`, `.claude/skills/speckit-git-*`, `speckit-agent-context-update`, selftest 스킬
+- Create(생성됨): `.specify/extensions/{git,agent-context}/**`, `.specify/extensions.yml`, `.claude/skills/speckit-git-*`, `speckit-agent-context-update`
 - Modify: `.specify/extensions/git/git-config.yml`
 
 - [ ] **Step 1: 설치**
 
-Run: `specify extension add git; specify extension add agent-context; specify extension add selftest`
+Run: `specify extension add git; specify extension add agent-context`
 Expected: 각각 `Installed extension '<id>'`와 등록된 명령 수. `.specify/extensions.yml`이 생기고 `hooks:`에 `before_specify: speckit.git.feature`, `after_plan: speckit.agent-context.update` 등이 나열된다.
 
 - [ ] **Step 2: git 확장 설정 — Conventional Commit 메시지, 자동 커밋 off 유지**
@@ -253,7 +253,7 @@ Expected: `speckit-git-commit, speckit-git-feature, speckit-git-initialize, spec
 
 ```bash
 git add .specify .claude
-git commit -m "chore(speckit): git·agent-context·selftest 확장 설치, commit_style=conventional
+git commit -m "chore(speckit): git·agent-context 확장 설치, commit_style=conventional
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
@@ -1122,7 +1122,7 @@ foreach ($n in ($names | Sort-Object)) { $settings.skillOverrides[$n] = 'user-in
 $settings | ConvertTo-Json -Depth 10 | Set-Content .claude/settings.json -Encoding utf8
 Get-Content .claude/settings.json | Select-String 'user-invocable-only' | Measure-Object | Select-Object -ExpandProperty Count
 ```
-Expected: 마지막 줄이 설치된 `speckit-*` 스킬 수(핵심 10 + git 5 + agent-context 1 + selftest 1 + archive n + adrkit 3 = 21 이상).
+Expected: 마지막 줄이 설치된 `speckit-*` 스킬 수(핵심 10 + git 5 + agent-context 1 + archive n + adrkit 3 = 20 이상).
 
 - [ ] **Step 3: JSON 유효성·훅 등록 확인**
 
@@ -2202,8 +2202,8 @@ Claude Code를 재시작한다(훅·settings·에이전트·스킬은 세션 시
 
 - [ ] **Step 2: Spec Kit selftest**
 
-Run (세션 내): `/speckit-selftest` (Task 5 Step 3에서 기록한 실제 스킬 이름)
-Expected: 스크립트·템플릿·통합 manifest 검사 전부 통과, 실패 0.
+Run: `specify check` (selftest 확장은 카탈로그에 없어 제외)
+Expected: git·Claude Code 감지, 오류 없음. 관리 파일 무결성은 `tests/run-all.ps1`과 매니페스트 diff로 확인.
 
 - [ ] **Step 3: 등록 확인**
 

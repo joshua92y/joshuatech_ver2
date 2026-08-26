@@ -12,3 +12,6 @@
 # OS / editor
 .DS_Store
 Thumbs.db
+
+# Spec Kit extension catalog cache (machine-local)
+.specify/extensions/.cache/
