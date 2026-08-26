@@ -38,7 +38,7 @@ L5 수준 MSA를 지향하며, 학습 과정을 사이트 콘텐츠로 발행(le
 | D11 | 훅 | **훅은 트리거·게이트만, 판단은 경계별 서브에이전트 리뷰** | approval-review / finish 스킬이 서브에이전트를 병렬 디스패치 |
 | D12 | 활성 feature 해석 | **env → 브랜치명↔디렉터리 → feature.json 순, 실패·불일치 시 fail-closed** | 외부 리뷰(2026-08-26) 반영 — feature.json은 gitignored·체크아웃별이라 worktree에 없음 |
 | D13 | 생성 스킬 통제 | **`settings.json` `skillOverrides`로 명시 호출 전용화**(SKILL.md 무수정) | Spec Kit 업그레이드 내구성 |
-| D14 | 확장 범위 | **4종 SP-0**(git·agent-context·archive·adrkit; selftest는 1.0.2 카탈로그에 없어 제외 — 2026-08-26 확인) — 외부 리뷰의 축소안 불채택 | 사용자 결정; 서드파티 2종은 아카이브 URL 검토 후 설치 |
+| D14 | 확장 범위 | **3종 SP-0**(git·agent-context·archive; selftest는 1.0.2 카탈로그에 없고 adrkit은 spec-kit <0.16 버전 게이트로 설치 불가 — 2026-08-26 확인, ADR은 MADR 수작성) — 외부 리뷰의 축소안 불채택 | 사용자 결정; 서드파티 2종은 아카이브 URL 검토 후 설치 |
 | D15 | 승인 훅 | **넓은 키워드 유지** — 명시 명령 전환 불채택 | 사용자 결정; 훅은 지시 주입만 하므로 오탐 비용 낮음 |
 | D16 | 원격·CI·병렬 에이전트 | **GitHub 원격은 SP-0, 최소 CI·Orca 병렬 규칙은 SP-1 이후** | 사용자 결정 |
 
@@ -176,7 +176,7 @@ feature가 main에 머지되면 `/speckit-archive`가 `.specify/memory/{spec,pla
 
 **설치·기반**
 - **FR-001**: 저장소는 git으로 초기화되고 기본 브랜치는 `main`이며 `.gitattributes`(`* text=auto eol=lf`)를 둔다. GitHub 원격(private)을 `gh repo create`로 만들고 `main`과 feature 브랜치를 push한다. 작업은 `NNN-slug` 브랜치(또는 `.worktrees/NNN-slug`)에서만 한다.
-- **FR-002**: Spec Kit은 `specify init --here --integration claude --script ps`로 설치하고, 번들 확장 `git`·`agent-context`와 커뮤니티 확장 `archive`·`adrkit`을 설치한다(커뮤니티 확장은 아카이브 URL 검토 후 `--from`).
+- **FR-002**: Spec Kit은 `specify init --here --integration claude --script ps`로 설치하고, 번들 확장 `git`·`agent-context`와 커뮤니티 확장 `archive`를 설치한다(아카이브 URL 검토 후 `--from`; adrkit은 spec-kit <0.16 게이트로 제외, ADR은 MADR 수작성).
 - **FR-003**: `git` 확장 설정은 `branch_numbering: sequential`, 기본 템플릿 `{number}-{slug}`, `auto_commit.default: false`, `commit_style: conventional`이다.
 - **FR-004**: 사용자 레벨 `~/.claude/settings.json`에서 `superpowers@claude-plugins-official`를 비활성화하고 `superpowers@superpowers-dev`(5.1.0)만 유지한다.
 - **FR-005**: Spec Kit이 생성한 `speckit-*` 스킬은 `.claude/settings.json`의 `skillOverrides`(`"user-invocable-only"`)로 명시 호출만 허용한다. 생성된 SKILL.md는 수정하지 않는다(업그레이드 내구성).
@@ -244,7 +244,7 @@ feature가 main에 머지되면 `/speckit-archive`가 `.specify/memory/{spec,pla
 - superpowers 5.1.0의 SDD는 task당 리뷰어 2명(spec, quality)이며 재리뷰 루프를 갖는다. 5.1.0에는 plan 헤더 `Spec:`과 `Global Constraints`가 없으므로 E2E·테넌트 경계 요구는 CLAUDE.md 규칙 + tasks 템플릿 override로 전달한다.
 - 커뮤니티 확장(`archive`, `adrkit`)은 discovery-only 카탈로그이므로 설치 전 아카이브 URL을 검토한다. 설치 실패 시 해당 기능은 수동 절차(README 문서화)로 대체하고 SP-0 완료를 막지 않는다.
 - SP-0은 스택 중립이다. 코드 도메인 규칙·에이전트·스킬은 SP-1(스택 결정) 이후 같은 명명 패턴으로 추가한다.
-- 이 문서의 `/speckit-archive`, `/speckit-adrkit-*`는 확장 명령의 **예상** 이름이다. 실제 슬래시 이름은 설치 후 `.claude/skills/speckit-*/` 목록으로 확정하고 CLAUDE.md에 그 이름을 쓴다.
+- 이 문서의 `/speckit-archive`는 확장 명령의 **예상** 이름이다(실제 설치 결과: `/speckit-archive-run`). 실제 슬래시 이름은 설치 후 `.claude/skills/speckit-*/` 목록으로 확정하고 CLAUDE.md에 그 이름을 쓴다.
 
 ---
 
@@ -259,7 +259,7 @@ constitution / specify / clarify         brainstorming (아키텍처급 착수) 
 plan (Constitution Check) / checklist    subagent-driven-development (실행)      approval-review 스킬 (경계별 리뷰)
 tasks (실행 계획) / analyze / converge   test-driven-development                finish 스킬 (report·study·리뷰)
 git / agent-context / selftest 확장      requesting/receiving-code-review        훅 3종 (트리거·게이트·가드)
-archive / adrkit 확장                    finishing-a-development-branch          rules 3 · settings · docs/kr
+archive 확장 (adrkit 보류)             finishing-a-development-branch          rules 3 · settings · docs/kr
                                          using-git-worktrees / systematic-debugging
 ```
 
@@ -276,7 +276,7 @@ joshuatech_ver2/
 │   ├── memory/constitution.md [SK→P]  · spec.md plan.md changelog.md [RT, archive]
 │   ├── templates/*-template.md [SK]  · templates/overrides/tasks-template.md [P]
 │   ├── scripts/powershell/*.ps1 [SK]
-│   ├── extensions/{git,agent-context,archive,adrkit}/ [EXT] · extensions.yml [EXT]
+│   ├── extensions/{git,agent-context,archive}/ [EXT] · extensions.yml [EXT]
 │   ├── workflows/speckit/workflow.yml [SK]
 │   ├── integrations/ · integration.json · init-options.json [SK]
 │   └── feature.json [RT][GI]
@@ -297,7 +297,7 @@ joshuatech_ver2/
 
 핵심 명령: `constitution`(제정·개정) · `specify`(일반 착수) · `clarify`(≤5문항) · `plan` · `checklist` · `tasks`(유일한 실행 계획) · `analyze`(approval 경계로 사용) · `implement`(**미사용**, SDD가 대체) · `converge`(구현 후 갭) · `taskstoissues`(원격 생기면).
 번들 확장: `git`(SP-0) · `agent-context`(SP-0) · `assess`(Tier 2, 아이디어 가치 판단) · `bug`(Tier 2, spec 없는 버그 경로).
-커뮤니티: `archive`(SP-0) · `adrkit`(SP-0) · `reconcile`/`security-review`/`review`/`pr-bridge`/`changelog`(Tier 2) · `agent-assign`(SP-1 이후) · 브릿지/worktree/tdd/branch-convention(미채택 — superpowers와 CLAUDE.md 규칙이 담당).
+커뮤니티: `archive`(SP-0) · `adrkit`(Tier 2 — 1.0.x 호환 버전 출시 후) · `reconcile`/`security-review`/`review`/`pr-bridge`/`changelog`(Tier 2) · `agent-assign`(SP-1 이후) · 브릿지/worktree/tdd/branch-convention(미채택 — superpowers와 CLAUDE.md 규칙이 담당).
 프리셋 `lean`/`constitution-sync` 미채택. 워크플로우 엔진 오버레이는 Tier 2.
 
 ```

@@ -304,7 +304,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 7: 커뮤니티 확장 `adrkit` (검토 후 설치, ADR 경로 = `docs/decisions`)
+### Task 7: 커뮤니티 확장 `adrkit` — **실행 기록 2026-08-26: 설치 불가**(확장 요구 spec-kit >=0.13,<0.16 vs 설치 1.0.2; npm `@adrkit/cli` 별도 필요; ADR 경로는 env `ADRKIT_DIR` 전용). 검토는 통과. ADR은 MADR 수작성, adrkit은 Tier 2로 이월.
 
 **Files:**
 - Create(생성됨): `.specify/extensions/adrkit/**`, `.claude/skills/speckit-adrkit-*/`
@@ -1122,7 +1122,7 @@ foreach ($n in ($names | Sort-Object)) { $settings.skillOverrides[$n] = 'user-in
 $settings | ConvertTo-Json -Depth 10 | Set-Content .claude/settings.json -Encoding utf8
 Get-Content .claude/settings.json | Select-String 'user-invocable-only' | Measure-Object | Select-Object -ExpandProperty Count
 ```
-Expected: 마지막 줄이 설치된 `speckit-*` 스킬 수(핵심 10 + git 5 + agent-context 1 + archive n + adrkit 3 = 20 이상).
+Expected: 마지막 줄이 설치된 `speckit-*` 스킬 수(핵심 10 + git 5 + agent-context 1 + archive 1 = 17).
 
 - [ ] **Step 3: JSON 유효성·훅 등록 확인**
 
