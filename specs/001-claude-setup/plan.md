@@ -840,6 +840,8 @@ git commit -m "test(hooks): 훅 단위 테스트 하네스 추가 (RED)
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
+> **실행 기록 (2026-08-26)**: 구현 후 리뷰에서 (a) "출력 없음 = allow" 단언 6개가 exit code를 검사하지 않아 훅 크래시가 PASS로 위장될 수 있는 결함(Critical), (b) 임시 픽스처 미정리, (c) 잔류 `SPECIFY_FEATURE_DIRECTORY` 미초기화가 지적되어 모두 반영했다. 정본은 `tests/hooks/run-hook-tests.ps1`이며 위 코드 블록과 다음 점이 다르다: 모든 단언에 `$r.code -eq 0 -and`, `Detail $r`(출력+code), `try/finally`로 픽스처 삭제(`Remove-Fixtures`)·env 정리, `report\.md` 이스케이프. RED 기대값(0/13, exit 1)은 동일.
+
 ---
 
 ### Task 11: `approval-review.ps1` (UserPromptSubmit)
