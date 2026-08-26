@@ -998,6 +998,8 @@ git commit -m "feat(hooks): finish-gate 훅 — feature 해석(env→브랜치�
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
+> **실행 기록 (2026-08-26)**: 품질 리뷰 반영으로 정본(`.claude/hooks/finish-gate.ps1`)은 위 코드 블록과 다르다 — ① 입력 파싱(1단계)만 fail-open, 게이트(2단계)는 예외·git 부재·깨진 feature.json 모두 **deny**(fail-closed); ② 최신 `*-finish.md`의 첫 `Status:` 줄이 정확히 `Approved`(대소문자 구분, `(YYYY-MM-DD)` 허용)일 때만 통과; ③ `.specify/feature.json` 단독 해석 불허(env 또는 `NNN-slug` 브랜치 필수, feature.json은 일치 검사용); ④ report·study는 비어 있지 않은 파일이어야 함; ⑤ 경로 정규화(`GetFullPath` + 끝 구분자 제거), `-LiteralPath`, `git -C $root`; ⑥ `tool_input.name` 폴백. 하네스에 gate 6케이스 추가(총 19).
+
 ---
 
 ### Task 13: `tester-write-guard.ps1` (tester 에이전트 PreToolUse)
@@ -1046,7 +1048,7 @@ try {
 - [ ] **Step 2: 전체 테스트 GREEN**
 
 Run: `pwsh -NoProfile -File tests/hooks/run-hook-tests.ps1`
-Expected: 마지막 줄 `13 passed, 0 failed`, exit code 0.
+Expected: 마지막 줄 `19 passed, 0 failed`, exit code 0.
 
 - [ ] **Step 3: 커밋**
 

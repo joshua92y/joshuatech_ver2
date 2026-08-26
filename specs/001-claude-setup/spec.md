@@ -162,7 +162,7 @@ feature가 main에 머지되면 `/speckit-archive`가 `.specify/memory/{spec,pla
 
 ### Edge Cases
 
-- 활성 feature 해석은 `SPECIFY_FEATURE_DIRECTORY` env → 현재 브랜치명↔`specs/NNN-slug` 매핑 → `.specify/feature.json` 순서다. finish-gate는 셋 다 실패하거나 서로 불일치하면 deny(fail-closed), approval-review·finish 스킬은 사용자에게 활성 feature를 묻는다. feature.json은 gitignored·체크아웃별 편의 상태일 뿐 정본이 아니다(정본 = git 브랜치 + `specs/<feature>/`).
+- 활성 feature 해석은 `SPECIFY_FEATURE_DIRECTORY` env → 현재 브랜치명↔`specs/NNN-slug` 매핑 → `.specify/feature.json` 순서다. finish-gate는 셋 다 실패하거나 서로 불일치하면 deny(fail-closed), approval-review·finish 스킬은 사용자에게 활성 feature를 묻는다. feature.json은 gitignored·체크아웃별 편의 상태일 뿐 정본이 아니다(정본 = git 브랜치 + `specs/<feature>/`). feature.json 단독으로는 feature를 해석하지 않는다(env 또는 `NNN-slug` 브랜치가 없으면 deny) — 리뷰 반영 2026-08-26.
 - 훅 스크립트 자체가 오류로 죽으면 exit 0(fail-open)으로 작업을 막지 않는다. 게이트 불충족만 deny.
 - `specify upgrade`가 `.claude/skills/speckit-*`를 덮어써도 명시 호출 전용화는 `settings.json`의 `skillOverrides`에 있으므로 유지된다. 업그레이드 후에는 `/speckit-selftest`와 `docs/runbooks/spec-kit-upgrade.md`의 재검증 목록을 수행한다.
 - 두 superpowers 플러그인이 다시 동시에 켜지면 SessionStart 훅이 이중 주입된다 → CLAUDE.md의 전제조건 절에 명시.
@@ -200,7 +200,7 @@ feature가 main에 머지되면 `/speckit-archive`가 `.specify/memory/{spec,pla
 - **FR-017**: `.claude/skills/approval-review/`는 `boundaries/*.md`(security, tenant-data, operability, trends, spec-consistency)마다 서브에이전트 1개를 병렬 디스패치하고, spec-consistency 경계는 `/speckit-analyze` 결과와 checklist 상태를 사용한다. 결과는 `reviews/YYYY-MM-DD-approval.md`에 기록하고 사용자 확정 후 `spec.md` Status를 `Approved`로 바꾼다.
 - **FR-018**: `.claude/skills/finish/`는 순서대로 ① `report.md` 생성 ② `content/study/NNN-slug.mdx` 초안 생성 ③ `CHANGELOG.md` Unreleased 갱신 ④ 필요 시 `/speckit-adrkit-draft` 안내 ⑤ `docs/kr` 미러 동기화(best-effort, 미완료 시 `translation-pending` 표시, 마감 비차단) ⑥ `boundaries/*.md`(report-vs-diff, e2e-evidence, study-contract, decisions)별 서브에이전트 병렬 리뷰 → `reviews/YYYY-MM-DD-finish.md`(`Status: Approved | Issues`)를 수행한다. Issues면 수정 후 ⑥을 재실행한다.
 - **FR-019**: 훅은 세 개다. `approval-review.ps1`(UserPromptSubmit: 승인 키워드 `승인|approve|approved|LGTM|진행해` 감지 시 `/approval-review` 실행 지시를 `systemMessage`로 출력), `finish-gate.ps1`(PreToolUse matcher `Skill`: `tool_input.skill`이 `finishing-a-development-branch`를 포함하면 활성 feature를 D12 순서(env → 브랜치명 → feature.json)로 해석하고, 해석 실패·불일치 또는 `reviews/*-finish.md`의 `Status: Approved`·`report.md`·`content/study/<basename>*.mdx` 중 하나라도 없으면 `permissionDecision: deny`), `tester-write-guard.ps1`(PreToolUse Edit|Write: 경로 화이트리스트 외 deny). 모두 스크립트 오류 시 exit 0.
-- **FR-020**: `.claude/settings.json`은 `permissions.deny`에 `Bash(rm -rf *)`, `Bash(git reset --hard*)`, `Bash(git push --force*)`, `Bash(git push -f*)`, `Bash(git clean -fd*)`, `Bash(docker system prune*)`를 두고 훅 2종(approval-review, finish-gate)을 등록한다. 훅 명령은 `powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/<name>.ps1`이다.
+- **FR-020**: `.claude/settings.json`은 `permissions.deny`에 `Bash(rm -rf *)`, `Bash(git reset --hard*)`, `Bash(git push --force*)`, `Bash(git push -f*)`, `Bash(git clean -fd*)`, `Bash(docker system prune*)`를 두고 훅 2종(approval-review, finish-gate)을 등록한다. 훅 명령은 `pwsh -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/<name>.ps1`(PowerShell 7)이다.
 - **FR-021**: `.claude/rules/`는 `specs.md`(paths: `specs/**`), `docs.md`(paths: `docs/**`), `content.md`(paths: `content/**`) 세 파일이며 각각 해당 경로의 형식·계약만 담는다.
 
 **콘텐츠 계약**
