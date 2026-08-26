@@ -98,6 +98,43 @@ try {
     }
     Assert 'gate: env var resolves on main -> allow' ($r.code -eq 0 -and [string]::IsNullOrWhiteSpace($r.out)) (Detail $r)
 
+    $d = New-Fixture 'main' $ready $null
+    try {
+        $env:SPECIFY_FEATURE_DIRECTORY = 'specs/002-smoke/'
+        $r = Invoke-Hook 'finish-gate.ps1' ($finishing + @{ cwd = $d }) $d
+    } finally {
+        Remove-Item Env:SPECIFY_FEATURE_DIRECTORY -ErrorAction SilentlyContinue
+    }
+    Assert 'gate: env var with trailing slash -> allow' ($r.code -eq 0 -and [string]::IsNullOrWhiteSpace($r.out)) (Detail $r)
+
+    $d = New-Fixture 'main' $ready '{"feature_directory":"specs/002-smoke"}'
+    $r = Invoke-Hook 'finish-gate.ps1' ($finishing + @{ cwd = $d }) $d
+    Assert 'gate: feature.json alone on non-feature branch -> deny' ($r.code -eq 0 -and $r.out -match 'not authoritative') (Detail $r)
+
+    $d = New-Fixture '002-smoke' $ready '{ this is not json'
+    $r = Invoke-Hook 'finish-gate.ps1' ($finishing + @{ cwd = $d }) $d
+    Assert 'gate: malformed feature.json -> deny' ($r.code -eq 0 -and $r.out -match 'not valid JSON') (Detail $r)
+
+    $pending = $ready.Clone(); $pending['specs/002-smoke/reviews/2026-08-26-finish.md'] = "# Finish review`nStatus: Approved-pending"
+    $d = New-Fixture '002-smoke' $pending $null
+    $r = Invoke-Hook 'finish-gate.ps1' ($finishing + @{ cwd = $d }) $d
+    Assert 'gate: Status Approved-pending -> deny' ($r.code -eq 0 -and $r.out -match 'finish\.md') (Detail $r)
+
+    $stale = $ready.Clone(); $stale['specs/002-smoke/reviews/2026-01-01-finish.md'] = "# Old`nStatus: Approved"; $stale['specs/002-smoke/reviews/2026-08-26-finish.md'] = "# New`nStatus: Issues"
+    $d = New-Fixture '002-smoke' $stale $null
+    $r = Invoke-Hook 'finish-gate.ps1' ($finishing + @{ cwd = $d }) $d
+    Assert 'gate: newest review not Approved (older Approved) -> deny' ($r.code -eq 0 -and $r.out -match 'finish\.md') (Detail $r)
+
+    $d = New-Fixture '002-smoke' $ready $null
+    $savedPath = $env:PATH
+    try {
+        $env:PATH = Split-Path (Get-Command pwsh).Source
+        $r = Invoke-Hook 'finish-gate.ps1' ($finishing + @{ cwd = $d }) $d
+    } finally {
+        $env:PATH = $savedPath
+    }
+    Assert 'gate: git missing from PATH -> deny' ($r.code -eq 0 -and $r.out -match 'git is not on PATH') (Detail $r)
+
     # ---------- tester-write-guard ----------
     $r = Invoke-Hook 'tester-write-guard.ps1' @{ hook_event_name = 'PreToolUse'; tool_name = 'Write'; tool_input = @{ file_path = "$repo\tests\e2e\a.test.ts" }; cwd = $repo } $repo
     Assert 'guard: tests/e2e/*.test.ts -> allow' ($r.code -eq 0 -and [string]::IsNullOrWhiteSpace($r.out)) (Detail $r)
