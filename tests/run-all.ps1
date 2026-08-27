@@ -1,5 +1,6 @@
 # Repository checks. Run: pwsh -NoProfile -File tests/run-all.ps1
 $ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $false   # 자식 pwsh의 0이 아닌 종료 코드를 예외로 바꾸지 않는다(프로파일이 $true로 켜도 무관) — Check가 $LASTEXITCODE로 판정한다
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Set-Location $repo
 $script:fail = 0
@@ -17,7 +18,7 @@ Check 'scripts' ($LASTEXITCODE -eq 0) 'see scripts test output'
 
 # 1c. specs index freshness — 이 검사는 낡은 인덱스를 발견하면 specs/README.md를 갱신하는 부작용이 있다(FAIL이면 diff를 검토하고 커밋한다)
 $o = pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/update-specs-index.ps1 2>&1 | Out-String
-Check 'specs-index-fresh' ($LASTEXITCODE -eq 0 -and $o -match '\(unchanged\)') 'specs/README.md was stale (regenerated now) - review and commit'
+Check 'specs-index-fresh' ($LASTEXITCODE -eq 0 -and $o -match '\(unchanged\)') ("exit=$LASTEXITCODE; $($o.Trim()) -- if stale: README was regenerated now, review and commit specs/README.md; if error: fix the spec header and rerun")
 
 # 2. CLAUDE.md <= 200 lines
 $n = if (Test-Path CLAUDE.md) { (Get-Content CLAUDE.md).Count } else { -1 }

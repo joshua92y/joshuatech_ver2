@@ -1,7 +1,7 @@
 # update-specs-index.ps1 — specs/README.md의 feature 인덱스 표를 specs/<NNN-slug>/spec.md 헤더에서 재생성한다.
 #
 # 호출: pwsh -NoProfile -File scripts/update-specs-index.ps1 [-Root <path>]
-#   -Root <path>  저장소 루트. 기본값은 이 스크립트 파일의 상위 디렉터리(FR-014, cwd 무관).
+#   -Root <path>  저장소 루트. 기본값은 이 스크립트 파일의 상위 디렉터리(= 저장소 루트, scripts/의 상위; FR-014, cwd 무관).
 #                 <Root>/specs를 읽고 <Root>/specs/README.md를 쓴다. 외부 모듈·네트워크·git 미사용.
 # 종료 코드: 0 = 성공(경고가 있어도 0), 1 = 오류 1건 이상(specs/README.md 미변경).
 # 출력(specs/002-smoke/contracts/cli.md 요약):
@@ -82,6 +82,7 @@ try {
         exit 1
     }
     if ([string]::IsNullOrEmpty($Root)) { $Root = Split-Path $PSScriptRoot -Parent }
+    # 상대 경로·`~`를 .NET 프로세스 cwd가 아니라 PowerShell의 $PWD·PS 드라이브 기준으로 푼다([IO.Path]::GetFullPath를 쓰지 않은 이유)
     $Root = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Root)   # 알 수 없는 드라이브 등은 예외 → error:
     $specsDir = Join-Path $Root 'specs'
     $readmePath = Join-Path $specsDir 'README.md'
