@@ -64,7 +64,7 @@
 
 ### E2E for User Story 1 (MANDATORY — executed by the tester agent)
 
-- [ ] T006 [US1] E2E(Polish T013 이후 tester가 T009·T012와 함께 1회 dispatch로 실행): 사용자 관점 — (a) 저장소 실물에서 `pwsh -NoProfile -File scripts/update-specs-index.ps1` 실행 → stdout `specs/README.md: 2 features indexed (unchanged)`, `git diff --exit-code -- specs/README.md`가 0(저장소 파일을 바꾸지 않음), `specs/README.md` 표에 001·002 두 행이 각 `spec.md` 헤더와 일치하고 `| # |` 헤더 행 1개, 머리말 문단 존재; (b) 두 번째 실행도 `(unchanged)`(US1-3); (c) `Set-Location $env:TEMP` 후 절대 경로로 실행해도 같은 결과(US1-4); (d) `tests/scripts/fixtures/<guid>/`에 001·002 spec 사본으로 만든 임시 픽스처(`-Root`)에서 표가 새로 생성되어 (a)와 같은 행이 나오고, 끝나면 픽스처 삭제 — evidence recorded in the tester report(경로는 `<REPO>`/`<TEMP>`로 치환)
+- [X] T006 [US1] E2E(Polish T013 이후 tester가 T009·T012와 함께 1회 dispatch로 실행): 사용자 관점 — (a) 저장소 실물에서 `pwsh -NoProfile -File scripts/update-specs-index.ps1` 실행 → stdout `specs/README.md: 2 features indexed (unchanged)`, `git diff --exit-code -- specs/README.md`가 0(저장소 파일을 바꾸지 않음), `specs/README.md` 표에 001·002 두 행이 각 `spec.md` 헤더와 일치하고 `| # |` 헤더 행 1개, 머리말 문단 존재; (b) 두 번째 실행도 `(unchanged)`(US1-3); (c) `Set-Location $env:TEMP` 후 절대 경로로 실행해도 같은 결과(US1-4); (d) `tests/scripts/fixtures/<guid>/`에 001·002 spec 사본으로 만든 임시 픽스처(`-Root`)에서 표가 새로 생성되어 (a)와 같은 행이 나오고, 끝나면 픽스처 삭제 — evidence recorded in the tester report(경로는 `<REPO>`/`<TEMP>`로 치환)
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
@@ -86,7 +86,7 @@
 
 ### E2E for User Story 2 (MANDATORY — executed by the tester agent)
 
-- [ ] T009 [US2] E2E(T013 이후): 실행 시점의 `specs/001-claude-setup/spec.md` `**Status**` 헤더 값 X를 기록하고, 저장소 실물 실행 후 `specs/README.md`의 001 행 Status 셀이 X에 "첫 괄호 안 첫 쉼표 이후 제거·괄호 닫힘" 규칙을 적용한 값과 같은지 확인(2026-08-27 기준 X = `Approved (2026-08-26, 외부 리뷰 반영판)` → 셀 `Approved (2026-08-26)`); X에 주석이 없으면 `tests/scripts/fixtures/<guid>/`의 T007 픽스처 사본으로 대체 검증; 002 행은 헤더 값 그대로 — evidence recorded in the tester report
+- [X] T009 [US2] E2E(T013 이후): 실행 시점의 `specs/001-claude-setup/spec.md` `**Status**` 헤더 값 X를 기록하고, 저장소 실물 실행 후 `specs/README.md`의 001 행 Status 셀이 X에 "첫 괄호 안 첫 쉼표 이후 제거·괄호 닫힘" 규칙을 적용한 값과 같은지 확인(2026-08-27 기준 X = `Approved (2026-08-26, 외부 리뷰 반영판)` → 셀 `Approved (2026-08-26)`); X에 주석이 없으면 `tests/scripts/fixtures/<guid>/`의 T007 픽스처 사본으로 대체 검증; 002 행은 헤더 값 그대로 — evidence recorded in the tester report
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 
@@ -108,7 +108,7 @@
 
 ### E2E for User Story 3 (MANDATORY — executed by the tester agent)
 
-- [ ] T012 [US3] E2E(T013 이후): 사용자 관점 — `tests/scripts/fixtures/<guid>/`(쓰기 가드 허용 범위)에 `specs/001-x/spec.md`(Priority 없음, plan 없음)와 `specs/002-y/spec.md`(Status 줄 없음)를 만들고 `-Root`로 실행 → stderr에 `error: 002-y/spec.md: missing **Status** line`, 종료 코드 1, README 미생성; `002-y`의 Status를 추가하고 재실행 → 종료 코드 0, README 생성, 001 행 우선순위 `—`·링크 spec만, 002 행 존재; 끝나면 픽스처 삭제 — evidence recorded in the tester report(경로는 `<REPO>`/`<TEMP>`로 치환)
+- [X] T012 [US3] E2E(T013 이후): 사용자 관점 — `tests/scripts/fixtures/<guid>/`(쓰기 가드 허용 범위)에 `specs/001-x/spec.md`(Priority 없음, plan 없음)와 `specs/002-y/spec.md`(Status 줄 없음)를 만들고 `-Root`로 실행 → stderr에 `error: 002-y/spec.md: missing **Status** line`, 종료 코드 1, README 미생성; `002-y`의 Status를 추가하고 재실행 → 종료 코드 0, README 생성, 001 행 우선순위 `—`·링크 spec만, 002 행 존재; 끝나면 픽스처 삭제 — evidence recorded in the tester report(경로는 `<REPO>`/`<TEMP>`로 치환)
 
 **Checkpoint**: All user stories should now be independently functional
 
