@@ -25,7 +25,7 @@ if ([string]::IsNullOrEmpty($PSScriptRoot)) {
     exit 1
 }
 if ([string]::IsNullOrEmpty($Root)) { $Root = Split-Path $PSScriptRoot -Parent }
-$Root = [IO.Path]::GetFullPath($Root)
+$Root = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Root)
 $specsDir = Join-Path $Root 'specs'
 $readmePath = Join-Path $specsDir 'README.md'
 

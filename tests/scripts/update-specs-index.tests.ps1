@@ -2,6 +2,7 @@
 # Exit 0 = all pass, 1 = failures. 외부 테스트 프레임워크 없음(tests/hooks/run-hook-tests.ps1와 같은 구조).
 # 픽스처는 임시 디렉터리(specidx-<guid>)에 만들고 끝나면 지운다. 계약: specs/002-smoke/contracts/cli.md
 $ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $false
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $scriptPath = Join-Path $repo 'scripts/update-specs-index.ps1'
 $script:pass = 0
@@ -24,7 +25,8 @@ function New-Fixture([hashtable]$files = @{}) {
         $p = Join-Path $dir $rel
         New-Item -ItemType Directory -Path (Split-Path $p -Parent) -Force | Out-Null
         if ($files[$rel] -is [byte[]]) { [IO.File]::WriteAllBytes($p, $files[$rel]) }
-        else { [IO.File]::WriteAllText($p, [string]$files[$rel], [Text.UTF8Encoding]::new($false)) }
+        elseif ($files[$rel] -is [string]) { [IO.File]::WriteAllText($p, [string]$files[$rel], [Text.UTF8Encoding]::new($false)) }
+        else { throw "New-Fixture: value for '$rel' must be [string] or [byte[]]" }
     }
     return $dir
 }
@@ -40,7 +42,7 @@ function Invoke-Script([string]$root) {
     if (-not (Test-Path -LiteralPath $scriptPath)) { return @{ out = "<missing: $scriptPath>"; err = ''; code = 127 } }
     $errFile = Join-Path ([IO.Path]::GetTempPath()) ('specidx-stderr-' + [guid]::NewGuid().ToString('N') + '.txt')
     try {
-        $out = & pwsh -NoProfile -ExecutionPolicy Bypass -File $scriptPath -Root $root 2> $errFile
+        $out = & ([Environment]::ProcessPath) -NoProfile -ExecutionPolicy Bypass -File $scriptPath -Root $root 2> $errFile
         $code = $LASTEXITCODE
         $err = if (Test-Path -LiteralPath $errFile) { [IO.File]::ReadAllText($errFile) } else { '' }
     } finally {
