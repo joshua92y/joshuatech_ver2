@@ -65,6 +65,19 @@ function Invoke-Script([string]$root, [string]$file = $scriptPath, [string]$cwd)
 function Read-Text([string]$path) { [IO.File]::ReadAllText($path) }
 function Get-Stamp([string]$path) { (Get-Item -LiteralPath $path).LastWriteTimeUtc.Ticks }
 
+# 내용 비교는 ordinal로만 한다(-ceq는 문화권 비교라 무시 가능 문자를 건너뛴다).
+function Test-Same([string]$a, [string]$b) { [string]::Equals($a, $b, [StringComparison]::Ordinal) }
+
+# README 본문에서 `| <number> | …` 행을 찾아 셀 배열(번호·제목·Status·우선순위·링크)을 돌려준다. 없으면 빈 배열.
+function Get-IndexRow([string]$readmeText, [string]$number) {
+    foreach ($line in ($readmeText -split "`n")) {
+        if ($line.StartsWith("| $number | ", [StringComparison]::Ordinal) -and $line.EndsWith(' |', [StringComparison]::Ordinal)) {
+            return , [string[]]($line.Substring(2, $line.Length - 4) -split ' \| ')
+        }
+    }
+    return , [string[]]@()
+}
+
 # ---------- US1 기본 픽스처 ----------
 # README = 머리말 2문단 + 기존 표(내용은 틀림: 교체되어야 함) + 후행 문단
 $us1Pre = "# Feature 인덱스`n`n둘째 머리말 문단. 이 줄은 그대로 남아야 한다.`n`n"
@@ -90,6 +103,15 @@ function Test-TableLines([string[]]$lines, [string[]]$expected) {
     if ($i -lt 0 -or $i + $expected.Count -gt $lines.Count) { return $false }
     for ($k = 0; $k -lt $expected.Count; $k++) { if ($lines[$i + $k] -cne $expected[$k]) { return $false } }
     return $true
+}
+
+# ---------- US2 픽스처: Status 정규화 (FR-003, research R7) — README 없음(FR-011 기본 머리말) ----------
+$us2Files = @{
+    'specs/010-a/spec.md' = "# Feature Specification: a`n**Status**: Approved (2026-08-26, 외부 리뷰 반영판)`n"
+    'specs/011-b/spec.md' = "# Feature Specification: b`n**Status**: Done (2026-08-27)`n"
+    'specs/012-c/spec.md' = "# Feature Specification: c`n**Status**: Draft`n"
+    'specs/013-d/spec.md' = "# Feature Specification: d`n**Status**: Approved (2026-08-26, 주석) (extra)`n"
+    'specs/014-e/spec.md' = "# Feature Specification: e`n**Status**: Approved (2026-08-26,주석)`n"
 }
 
 try {
@@ -170,6 +192,31 @@ try {
         $r.code -eq 0 -and $r.out -ceq 'specs/README.md: 2 features indexed' -and -not $hasBom -and -not $hasCr -and $sameBytes -and
         $r2.code -eq 0 -and $r2.out -ceq 'specs/README.md: 2 features indexed (unchanged)'
     ) ((Format-Result $r) + ' / ' + (Format-Result $r2) + " bom=$hasBom cr=$hasCr sameBytes=$sameBytes")
+
+    # ---------- US2: Status 셀 정규화 — 첫 괄호 그룹의 첫 쉼표 이후만 제거 (FR-003, research R7) ----------
+    $d = New-Fixture $us2Files
+    $r = Invoke-Script $d
+    $after = Read-Text (Join-Path $d 'specs/README.md')
+    $cells = Get-IndexRow $after '010'
+    Assert 'US2-1: "Approved (2026-08-26, 외부 리뷰 반영판)" -> "Approved (2026-08-26)" (FR-003)' (
+        $r.code -eq 0 -and $cells.Count -eq 5 -and (Test-Same $cells[2] 'Approved (2026-08-26)')
+    ) ((Format-Result $r) + " cells=[$($cells -join ' / ')]")
+    $cells = Get-IndexRow $after '011'
+    Assert 'US2-2: "Done (2026-08-27)" (no comma) -> unchanged (FR-003)' (
+        $r.code -eq 0 -and $cells.Count -eq 5 -and (Test-Same $cells[2] 'Done (2026-08-27)')
+    ) ((Format-Result $r) + " cells=[$($cells -join ' / ')]")
+    $cells = Get-IndexRow $after '012'
+    Assert 'US2-3: "Draft" (no parenthesis) -> unchanged (FR-003)' (
+        $r.code -eq 0 -and $cells.Count -eq 5 -and (Test-Same $cells[2] 'Draft')
+    ) ((Format-Result $r) + " cells=[$($cells -join ' / ')]")
+    $cells = Get-IndexRow $after '013'
+    Assert 'US2-4: "Approved (2026-08-26, 주석) (extra)" -> only the first group replaced: "Approved (2026-08-26) (extra)" (R7)' (
+        $r.code -eq 0 -and $cells.Count -eq 5 -and (Test-Same $cells[2] 'Approved (2026-08-26) (extra)')
+    ) ((Format-Result $r) + " cells=[$($cells -join ' / ')]")
+    $cells = Get-IndexRow $after '014'
+    Assert 'US2-5: "Approved (2026-08-26,주석)" (no space after comma) -> "Approved (2026-08-26)" (FR-003)' (
+        $r.code -eq 0 -and $cells.Count -eq 5 -and (Test-Same $cells[2] 'Approved (2026-08-26)')
+    ) ((Format-Result $r) + " cells=[$($cells -join ' / ')]")
 } finally {
     Remove-Fixture
 }
