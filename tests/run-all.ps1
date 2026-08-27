@@ -11,6 +11,14 @@ function Check([string]$name, [bool]$ok, [string]$detail) {
 pwsh -NoProfile -ExecutionPolicy Bypass -File tests/hooks/run-hook-tests.ps1 | Out-Host
 Check 'hooks' ($LASTEXITCODE -eq 0) 'see hook test output'
 
+# 1b. scripts tests
+pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/update-specs-index.tests.ps1 | Out-Host
+Check 'scripts' ($LASTEXITCODE -eq 0) 'see scripts test output'
+
+# 1c. specs index freshness — 이 검사는 낡은 인덱스를 발견하면 specs/README.md를 갱신하는 부작용이 있다(FAIL이면 diff를 검토하고 커밋한다)
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/update-specs-index.ps1 2>&1 | Out-String
+Check 'specs-index-fresh' ($LASTEXITCODE -eq 0 -and $o -match '\(unchanged\)') 'specs/README.md was stale (regenerated now) - review and commit'
+
 # 2. CLAUDE.md <= 200 lines
 $n = if (Test-Path CLAUDE.md) { (Get-Content CLAUDE.md).Count } else { -1 }
 Check "CLAUDE.md lines ($n) <= 200" ($n -ge 0 -and $n -le 200) 'missing or too long'
