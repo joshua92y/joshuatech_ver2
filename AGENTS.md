@@ -15,7 +15,7 @@ Spec Kit integration: `claude` only (skills under `.claude/skills/speckit-*`). O
 | Feature paths / prerequisites | `pwsh .specify/scripts/powershell/check-prerequisites.ps1 -Json` |
 | Hook unit tests | `pwsh -NoProfile -File tests/hooks/run-hook-tests.ps1` |
 | All repository checks | `pwsh -NoProfile -File tests/run-all.ps1` |
-| Regenerate `specs/README.md` | `pwsh -NoProfile -File scripts/update-specs-index.ps1` (added by feature 002-smoke) |
+| Regenerate `specs/README.md` | `pwsh -NoProfile -File scripts/update-specs-index.ps1` |
 | Spec Kit CLI (init / upgrade / extensions) | `specify` from `~/.local/bin` (install via `uv`); procedure in `docs/runbooks/spec-kit-upgrade.md` |
 
 ## Layout
