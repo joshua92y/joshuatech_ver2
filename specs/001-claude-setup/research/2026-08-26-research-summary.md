@@ -61,3 +61,10 @@
 
 - `d:\code\egenauto-backend-cc`, `d:\code\egenauto-frontend-cc`, `d:\code\egenauto-backend-msa`: Planner/Builder/Tester/Reviewer 에이전트 + `plan-approval-review` 훅(UserPromptSubmit, 승인 키워드 → 보안·트렌드 검토 지시, sh/ps1) + `docs/plan/{01.main_plan.md, open/{slug}/main-plan.md, close/}` + `docs/update_log/update_v{X.Y.Z}.md`(Summary/Changes Made/Validation/Next Version Plan) + commit 스킬 + 3단 브랜치(develop/release/main).
 - `d:\code\joshuatech`(v1): `joshtech_study.md`(명령어 치트시트), `docs/user/*`(에이전트 비교 분석 보고서 — 분석+검증 에이전트 쌍 방식).
+
+## 6. 외부 자문: CI/CD 정책 (SP-1·SP-3 참고, SP-0 범위 밖)
+
+- 원문: [2026-08-26-cicd-policy-external.md](2026-08-26-cicd-policy-external.md) — "OCI + K3s + GHCR + Argo CD" GitOps 정책 제안(외부 AI 자문, 채택 안 됨).
+- 검토: [2026-08-26-cicd-policy-review.md](2026-08-26-cicd-policy-review.md) — 15 에이전트 다관점 검토(74건, 1차 출처 검증). 결론: 원칙 계층(불변 아티팩트·Git 정본·pull 기반·CI 무자격증명·rollback=revert)만 ADR 0002로 채택, K3s 세부는 SP-1 결정 후 조건부. 핵심 제약: OCI Always Free A1이 2026-06-15부터 **2 OCPU / 12 GB**, GitHub Free의 ruleset·environment·attestation은 **public repo 한정**, 원문의 GitHub Environment 게이트는 pull 기반 흐름에서 무효.
+- SP-1이 먼저 답할 것: 테넌시 실제 할당(인스턴스 종료 금지) → repo 공개 여부 → 런타임 트랙(Cloudflare-native / web CF + API K3s / web CF + API compose-pull) → web 호스팅(Pages vs Workers) → DB.
+- **결정(2026-08-27)**: ADR 0002(CI/CD 원칙)는 SP-0에서 만들지 않고 **SP-1에서 작성**한다(런타임 트랙 결정과 함께). 위 두 문서는 참고 자료로만 001에 보존한다.
