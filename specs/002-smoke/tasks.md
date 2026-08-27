@@ -118,10 +118,10 @@
 
 **Purpose**: 저장소 실물 적용, 검사 등록, 문서 문구 정리, quickstart 검증.
 
-- [ ] T013 저장소 실물 적용: `pwsh -NoProfile -File scripts/update-specs-index.ps1` 실행 → `specs/README.md` 표가 001(`Approved (2026-08-26)`, 우선순위 `—`, spec+plan)·002(헤더 Status, spec+plan) 두 행으로 재생성되고 `| # |` 헤더 행이 1개(기존 표가 교체됨, 중복 없음)임을 확인(001 `🔴`→`—`는 spec Assumptions대로); 머리말 문단의 "(002-smoke가 `scripts/update-specs-index.ps1`을 추가할 때까지는 수동)"을 "`pwsh -NoProfile -File scripts/update-specs-index.ps1`로 재생성한다"는 문구로 고친 뒤 스크립트를 한 번 더 실행해 `(unchanged)` 확인.
-- [ ] T014 `tests/run-all.ps1`에 검사 2개 추가(1번 hooks 검사 바로 뒤, 주석 `# 1b. scripts tests`, `# 1c. specs index freshness`): `pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/update-specs-index.tests.ps1 | Out-Host; Check 'scripts' ($LASTEXITCODE -eq 0) 'see scripts test output'` 그리고 `$o = pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/update-specs-index.ps1 2>&1 | Out-String; Check 'specs-index-fresh' ($LASTEXITCODE -eq 0 -and $o -match '\(unchanged\)') 'specs/README.md was stale (regenerated now) - review and commit'`(주석: 이 검사는 낡은 인덱스를 발견하면 파일을 갱신하는 부작용이 있다). 실행 → `PASS scripts`·`PASS specs-index-fresh` 포함 `ALL PASS`.
-- [ ] T015 [P] `AGENTS.md` Commands 표의 "Regenerate `specs/README.md`" 행에서 "(added by feature 002-smoke)" 제거; `docs/kr/AGENTS_kr.md`의 같은 행도 동일하게 정리(영어 제목 유지).
-- [ ] T016 quickstart.md 검증 실행(1·2·3·4·6 단계) 후 실제 출력(stdout 문구, `N passed, 0 failed`, `ALL PASS`)을 `specs/002-smoke/quickstart.md` 끝에 `## 검증 기록 (YYYY-MM-DD)` 절로 기록(절대 경로·계정명은 `<REPO>`/`<TEMP>`로 치환).
+- [X] T013 저장소 실물 적용: `pwsh -NoProfile -File scripts/update-specs-index.ps1` 실행 → `specs/README.md` 표가 001(`Approved (2026-08-26)`, 우선순위 `—`, spec+plan)·002(헤더 Status, spec+plan) 두 행으로 재생성되고 `| # |` 헤더 행이 1개(기존 표가 교체됨, 중복 없음)임을 확인(001 `🔴`→`—`는 spec Assumptions대로); 머리말 문단의 "(002-smoke가 `scripts/update-specs-index.ps1`을 추가할 때까지는 수동)"을 "`pwsh -NoProfile -File scripts/update-specs-index.ps1`로 재생성한다"는 문구로 고친 뒤 스크립트를 한 번 더 실행해 `(unchanged)` 확인.
+- [X] T014 `tests/run-all.ps1`에 검사 2개 추가(1번 hooks 검사 바로 뒤, 주석 `# 1b. scripts tests`, `# 1c. specs index freshness`): `pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/update-specs-index.tests.ps1 | Out-Host; Check 'scripts' ($LASTEXITCODE -eq 0) 'see scripts test output'` 그리고 `$o = pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/update-specs-index.ps1 2>&1 | Out-String; Check 'specs-index-fresh' ($LASTEXITCODE -eq 0 -and $o -match '\(unchanged\)') 'specs/README.md was stale (regenerated now) - review and commit'`(주석: 이 검사는 낡은 인덱스를 발견하면 파일을 갱신하는 부작용이 있다). 실행 → `PASS scripts`·`PASS specs-index-fresh` 포함 `ALL PASS`.
+- [X] T015 [P] `AGENTS.md` Commands 표의 "Regenerate `specs/README.md`" 행에서 "(added by feature 002-smoke)" 제거; `docs/kr/AGENTS_kr.md`의 같은 행도 동일하게 정리(영어 제목 유지).
+- [X] T016 quickstart.md 검증 실행(1·2·3·4·6 단계) 후 실제 출력(stdout 문구, `N passed, 0 failed`, `ALL PASS`)을 `specs/002-smoke/quickstart.md` 끝에 `## 검증 기록 (YYYY-MM-DD)` 절로 기록(절대 경로·계정명은 `<REPO>`/`<TEMP>`로 치환).
 
 ---
 
