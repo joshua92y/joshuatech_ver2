@@ -87,7 +87,7 @@ joshuatech_ver2/
 **Files:**
 - Create: `.gitattributes`
 
-- [ ] **Step 1: `.gitattributes` 작성**
+- [x] **Step 1: `.gitattributes` 작성**
 
 ```gitattributes
 # 줄 끝은 저장소에서 항상 LF. Windows 작업 복사본도 LF로 체크아웃한다.
@@ -103,12 +103,12 @@ joshuatech_ver2/
 *.gif binary
 ```
 
-- [ ] **Step 2: 정규화 확인**
+- [x] **Step 2: 정규화 확인**
 
 Run: `git add --renormalize . && git status --short`
 Expected: 출력에 `A  .gitattributes`만 있고 기존 3개 파일은 변경 없음(이미 LF로 커밋됨). 이후 `git add`에서 CRLF 경고가 사라진다.
 
-- [ ] **Step 3: 커밋**
+- [x] **Step 3: 커밋**
 
 ```bash
 git add .gitattributes
@@ -117,7 +117,7 @@ git commit -m "chore: .gitattributes로 LF 강제
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 4: GitHub private 원격 생성 + 현재 브랜치 push**
+- [x] **Step 4: GitHub private 원격 생성 + 현재 브랜치 push**
 
 Run: `gh repo create joshuatech_ver2 --private --source=. --remote=origin --push`
 Expected:
@@ -127,7 +127,7 @@ Expected:
 ✓ Pushed commits to https://github.com/joshua92y/joshuatech_ver2.git
 ```
 
-- [ ] **Step 5: main도 push하고 원격 확인**
+- [x] **Step 5: main도 push하고 원격 확인**
 
 Run: `git push -u origin main && git ls-remote --heads origin`
 Expected: `refs/heads/001-claude-setup`와 `refs/heads/main` 두 줄. (SC-009)
@@ -139,12 +139,12 @@ Expected: `refs/heads/001-claude-setup`와 `refs/heads/main` 두 줄. (SC-009)
 **Files:**
 - Modify: `C:\Users\2401\.claude\settings.json` (`enabledPlugins`) — 저장소 밖, 커밋 없음
 
-- [ ] **Step 1: 백업**
+- [x] **Step 1: 백업**
 
 Run: `pwsh -NoProfile -c "Copy-Item $HOME/.claude/settings.json $HOME/.claude/settings.json.bak-2026-08-26; Get-ChildItem $HOME/.claude/settings.json*"`
 Expected: `settings.json`과 `settings.json.bak-2026-08-26` 두 파일.
 
-- [ ] **Step 2: official 플러그인 비활성화**
+- [x] **Step 2: official 플러그인 비활성화**
 
 `C:\Users\2401\.claude\settings.json`의 `enabledPlugins`를 다음으로 바꾼다(다른 키는 그대로).
 
@@ -158,12 +158,12 @@ Expected: `settings.json`과 `settings.json.bak-2026-08-26` 두 파일.
 }
 ```
 
-- [ ] **Step 3: 확인**
+- [x] **Step 3: 확인**
 
 Run: `pwsh -NoProfile -c "(Get-Content $HOME/.claude/settings.json -Raw | ConvertFrom-Json).enabledPlugins"`
 Expected: `superpowers@superpowers-dev : True`, `superpowers@claude-plugins-official : False`.
 
-- [ ] **Step 4: 세션 재시작 후 검증 기록**
+- [x] **Step 4: 세션 재시작 후 검증 기록**
 
 다음 Claude Code 세션 시작 시 `/plugin`에서 superpowers가 1개(superpowers-dev 5.1.0)만 활성인지 확인하고, 결과를 Task 26의 `report.md` Validation에 적는다(SC-007).
 
@@ -173,23 +173,23 @@ Expected: `superpowers@superpowers-dev : True`, `superpowers@claude-plugins-offi
 
 **Files:** 없음(개발기 도구)
 
-- [ ] **Step 1: uv 설치**
+- [x] **Step 1: uv 설치**
 
 Run (pwsh): `winget install --id=astral-sh.uv -e --accept-source-agreements --accept-package-agreements`
 Expected: `Successfully installed`. winget이 없으면 대신 `pwsh -c "irm https://astral.sh/uv/install.ps1 | iex"`.
 
-- [ ] **Step 2: PATH 반영 후 버전 확인**
+- [x] **Step 2: PATH 반영 후 버전 확인**
 
 새 `pwsh` 창(또는 `uv tool update-shell` 후 새 창)에서
 Run: `uv --version`
 Expected: `uv 0.<x>.<y>` 한 줄.
 
-- [ ] **Step 3: specify CLI 설치 (v1.0.1 고정)**
+- [x] **Step 3: specify CLI 설치 (v1.0.1 고정)**
 
 Run: `uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v1.0.1`
 Expected: 마지막 줄 `Installed 1 executable: specify.exe`. 태그가 없다고 나오면 `…spec-kit.git@main`으로 재시도하고 실제 버전을 `docs/runbooks/spec-kit-upgrade.md`(Task 21) 레지스터에 적는다.
 
-- [ ] **Step 4: 동작 확인**
+- [x] **Step 4: 동작 확인**
 
 Run: `specify --version` 그리고 `specify check`
 Expected: `1.0.1`(또는 설치된 버전) 출력; `check`가 git 감지, Claude Code CLI 감지 여부를 표로 보여준다(없어도 Task 4에서 `--ignore-agent-tools`로 진행).
@@ -201,22 +201,22 @@ Expected: `1.0.1`(또는 설치된 버전) 출력; `check`가 git 감지, Claude
 **Files:**
 - Create(생성됨): `.specify/**`, `.claude/skills/speckit-*/SKILL.md` ×10
 
-- [ ] **Step 1: 초기화**
+- [x] **Step 1: 초기화**
 
 Run (저장소 루트, pwsh): `specify init --here --integration claude --script ps --non-interactive --force --ignore-agent-tools`
 Expected: 진행 표시 후 `Project ready` 류의 완료 메시지. 오류 없이 종료.
 
-- [ ] **Step 2: 생성물 검증**
+- [x] **Step 2: 생성물 검증**
 
 Run: `pwsh -NoProfile -c "(Get-ChildItem .claude/skills -Directory).Name; '---'; (Get-ChildItem .specify -Recurse -File).FullName -replace [regex]::Escape((Get-Location).Path + '\'), ''"`
 Expected: 스킬 10개 — `speckit-analyze, speckit-checklist, speckit-clarify, speckit-constitution, speckit-converge, speckit-implement, speckit-plan, speckit-specify, speckit-tasks, speckit-taskstoissues`. `.specify/` 아래에 `memory/constitution.md`, `templates/{checklist,constitution,plan,spec,tasks}-template.md`, `scripts/powershell/{check-prerequisites,common,create-new-feature,resolve-template,setup-plan,setup-tasks}.ps1`, `workflows/speckit/workflow.yml`, `integrations/claude.manifest.json`, `init-options.json`, `.gitignore`. `CLAUDE.md`는 생성되지 않는다(`Test-Path CLAUDE.md` → False).
 
-- [ ] **Step 3: 데모와 대조(선택)**
+- [x] **Step 3: 데모와 대조(선택)**
 
 Run: `pwsh -NoProfile -c "Compare-Object (Get-ChildItem .specify -Recurse -File | ForEach-Object { $_.FullName.Substring((Get-Location).Path.Length) }) (Get-ChildItem '$env:LOCALAPPDATA\Temp\claude\d--code-joshuatech-ver2\3f519c54-d0d7-41ee-85ba-61d3907e92eb\scratchpad\demo-claude\.specify' -Recurse -File | ForEach-Object { $_.FullName.Substring(($env:LOCALAPPDATA + '\Temp\claude\d--code-joshuatech-ver2\3f519c54-d0d7-41ee-85ba-61d3907e92eb\scratchpad\demo-claude').Length) })"`
 Expected: 차이 없음(빈 출력). 차이가 있으면 버전 차이이므로 레지스터에 메모.
 
-- [ ] **Step 4: 커밋**
+- [x] **Step 4: 커밋**
 
 ```bash
 git add .specify .claude
@@ -235,21 +235,21 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Create(생성됨): `.specify/extensions/{git,agent-context}/**`, `.specify/extensions.yml`, `.claude/skills/speckit-git-*`, `speckit-agent-context-update`
 - Modify: `.specify/extensions/git/git-config.yml`
 
-- [ ] **Step 1: 설치**
+- [x] **Step 1: 설치**
 
 Run: `specify extension add git; specify extension add agent-context`
 Expected: 각각 `Installed extension '<id>'`와 등록된 명령 수. `.specify/extensions.yml`이 생기고 `hooks:`에 `before_specify: speckit.git.feature`, `after_plan: speckit.agent-context.update` 등이 나열된다.
 
-- [ ] **Step 2: git 확장 설정 — Conventional Commit 메시지, 자동 커밋 off 유지**
+- [x] **Step 2: git 확장 설정 — Conventional Commit 메시지, 자동 커밋 off 유지**
 
 `.specify/extensions/git/git-config.yml`에서 `commit_style: fixed` → `commit_style: conventional`으로 바꾼다. `auto_commit.default: false`는 그대로 둔다(커밋은 SDD implementer가 task마다 수행).
 
-- [ ] **Step 3: 스킬 이름 기록**
+- [x] **Step 3: 스킬 이름 기록**
 
 Run: `pwsh -NoProfile -c "(Get-ChildItem .claude/skills -Directory | Where-Object Name -notin @('speckit-analyze','speckit-checklist','speckit-clarify','speckit-constitution','speckit-converge','speckit-implement','speckit-plan','speckit-specify','speckit-tasks','speckit-taskstoissues')).Name"`
 Expected: `speckit-git-commit, speckit-git-feature, speckit-git-initialize, speckit-git-remote, speckit-git-validate, speckit-agent-context-update, speckit-selftest`(selftest 이름은 실제 출력을 따른다). 이 목록을 Task 20(CLAUDE.md)·Task 21(런북)에 그대로 쓴다.
 
-- [ ] **Step 4: 커밋**
+- [x] **Step 4: 커밋**
 
 ```bash
 git add .specify .claude
@@ -265,12 +265,12 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 **Files:**
 - Create(생성됨): `.specify/extensions/archive/**`, `.claude/skills/speckit-archive*/`
 
-- [ ] **Step 1: 후보 아카이브 URL 확인**
+- [x] **Step 1: 후보 아카이브 URL 확인**
 
 Run: `specify extension info archive`
 Expected: 버전 `1.3.0`, 저장소 `https://github.com/stn1slv/spec-kit-archive`, `Candidate archive: https://github.com/stn1slv/spec-kit-archive/releases/download/…` 줄. 이 URL을 다음 단계의 `$url`에 넣는다.
 
-- [ ] **Step 2: 다운로드·내용 검토 (네트워크·파괴 명령 유무)**
+- [x] **Step 2: 다운로드·내용 검토 (네트워크·파괴 명령 유무)**
 
 ```powershell
 $url = "<Step 1의 Candidate archive URL>"
@@ -283,17 +283,17 @@ Get-ChildItem $tmp -Recurse -Include *.ps1,*.sh,*.py,*.md,*.yml | Select-String 
 ```
 Expected: `extension.yml`, `commands/*.md`, (있으면) `scripts/`. 두 번째 명령은 **빈 출력**이어야 한다. 일치가 있으면 해당 줄을 읽고 설치를 중단·보고한다(문서 예시의 무해한 언급이면 사유를 적고 진행).
 
-- [ ] **Step 3: 설치**
+- [x] **Step 3: 설치**
 
 Run: `specify extension add archive --from $url`
 Expected: `Installed extension 'archive'`; `.specify/extensions/archive/`와 `speckit-archive*` 스킬 생성.
 
-- [ ] **Step 4: 명령명·출력 경로 기록**
+- [x] **Step 4: 명령명·출력 경로 기록**
 
 Run: `pwsh -NoProfile -c "(Get-ChildItem .claude/skills -Directory | Where-Object Name -like 'speckit-archive*').Name; Get-Content .specify/extensions/archive/README.md | Select-Object -First 60"`
 Expected: 스킬 이름(예: `speckit-archive`)과 README의 출력 경로(`.specify/memory/…`). 이 이름과 경로를 Task 18(`finish` 스킬 7단계)·Task 20(CLAUDE.md 8단계)·Task 21(런북)에 반영한다.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add .specify .claude
@@ -310,12 +310,12 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Create(생성됨): `.specify/extensions/adrkit/**`, `.claude/skills/speckit-adrkit-*/`
 - Modify(있으면): `.specify/extensions/adrkit/adrkit-config.yml`
 
-- [ ] **Step 1: 후보 URL 확인**
+- [x] **Step 1: 후보 URL 확인**
 
 Run: `specify extension info adrkit`
 Expected: 버전 `0.1.2`, 저장소 `https://github.com/mbeacom/adrkit`, `Candidate archive:` URL.
 
-- [ ] **Step 2: 다운로드·검토** — Task 6 Step 2와 같은 스크립트를 `$tmp = Join-Path $env:TEMP 'speckit-adrkit-ext'`로 실행. Expected: 위험 패턴 검색 결과 빈 출력.
+- [x] **Step 2: 다운로드·검토** — Task 6 Step 2와 같은 스크립트를 `$tmp = Join-Path $env:TEMP 'speckit-adrkit-ext'`로 실행. Expected: 위험 패턴 검색 결과 빈 출력.
 
 - [ ] **Step 3: 설치**
 
@@ -327,7 +327,7 @@ Expected: `Installed extension 'adrkit'`; `speckit-adrkit-context`, `speckit-adr
 Run: `pwsh -NoProfile -c "Get-ChildItem .specify/extensions/adrkit -Recurse -File | Select-Object -ExpandProperty FullName; Get-Content .specify/extensions/adrkit/README.md | Select-String -Pattern 'docs/adr|decisions|--dir|adr_dir|directory' | Select-Object -First 10"`
 Expected: 설정 파일(`adrkit-config.yml` 또는 README가 지정하는 파일)에 ADR 디렉터리 키가 있다. 그 값을 `docs/decisions`로 바꾼다. 확장이 자체 CLI(`adrkit`)를 요구하면 `uv tool install adrkit`을 실행하고 `adrkit --version`으로 확인한다. 설정 키가 전혀 없고 `docs/adr`가 하드코딩이면 **`docs/decisions` 대신 `docs/adr`를 채택**하고 spec FR-011·Task 16(docs.md)·Task 21의 경로를 `docs/adr`로 통일한다(경로명은 규약 선택 사항이므로 spec 개정 없이 plan 메모로 처리).
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add .specify .claude
@@ -343,12 +343,12 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 **Files:**
 - Create: `.specify/templates/overrides/tasks-template.md`
 
-- [ ] **Step 1: 실패 확인(현재는 테스트가 선택)**
+- [x] **Step 1: 실패 확인(현재는 테스트가 선택)**
 
 Run: `pwsh -NoProfile -File .specify/scripts/powershell/resolve-template.ps1 tasks-template | Select-String -Pattern 'MANDATORY|OPTIONAL' | Select-Object -First 3`
 Expected: `Tests are OPTIONAL - only include them if explicitly requested` 등 OPTIONAL만 보인다.
 
-- [ ] **Step 2: override 파일 작성**
+- [x] **Step 2: override 파일 작성**
 
 `.specify/templates/overrides/tasks-template.md` (원본 1.0.1 템플릿을 복사해 아래 표시된 부분만 바꾼 전체 파일):
 
@@ -405,9 +405,9 @@ description: "Task list template for feature implementation (joshuatech override
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create project structure per implementation plan
-- [ ] T002 Initialize [language] project with [framework] dependencies
-- [ ] T003 [P] Configure linting and formatting tools
+- [x] T001 Create project structure per implementation plan
+- [x] T002 Initialize [language] project with [framework] dependencies
+- [x] T003 [P] Configure linting and formatting tools
 
 ---
 
@@ -419,12 +419,12 @@ description: "Task list template for feature implementation (joshuatech override
 
 Examples of foundational tasks (adjust based on your project):
 
-- [ ] T004 Setup database schema and migrations framework
-- [ ] T005 [P] Implement authentication/authorization framework
-- [ ] T006 [P] Setup API routing and middleware structure
-- [ ] T007 Create base models/entities that all stories depend on
-- [ ] T008 Configure error handling and logging infrastructure
-- [ ] T009 Setup environment configuration management
+- [x] T004 Setup database schema and migrations framework
+- [x] T005 [P] Implement authentication/authorization framework
+- [x] T006 [P] Setup API routing and middleware structure
+- [x] T007 Create base models/entities that all stories depend on
+- [x] T008 Configure error handling and logging infrastructure
+- [x] T009 Setup environment configuration management
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -440,21 +440,21 @@ Examples of foundational tasks (adjust based on your project):
 
 > **NOTE: Write these tests FIRST, run them, and confirm they FAIL before any implementation task below**
 
-- [ ] T010 [P] [US1] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T011 [P] [US1] Integration test for [user journey] in tests/integration/test_[name].py
+- [x] T010 [P] [US1] Contract test for [endpoint] in tests/contract/test_[name].py
+- [x] T011 [P] [US1] Integration test for [user journey] in tests/integration/test_[name].py
 
 ### Implementation for User Story 1
 
-- [ ] T012 [P] [US1] Create [Entity1] model in src/models/[entity1].py
-- [ ] T013 [P] [US1] Create [Entity2] model in src/models/[entity2].py
-- [ ] T014 [US1] Implement [Service] in src/services/[service].py (depends on T012, T013)
-- [ ] T015 [US1] Implement [endpoint/feature] in src/[location]/[file].py
-- [ ] T016 [US1] Add validation and error handling
-- [ ] T017 [US1] Add logging for user story 1 operations
+- [x] T012 [P] [US1] Create [Entity1] model in src/models/[entity1].py
+- [x] T013 [P] [US1] Create [Entity2] model in src/models/[entity2].py
+- [x] T014 [US1] Implement [Service] in src/services/[service].py (depends on T012, T013)
+- [x] T015 [US1] Implement [endpoint/feature] in src/[location]/[file].py
+- [x] T016 [US1] Add validation and error handling
+- [x] T017 [US1] Add logging for user story 1 operations
 
 ### E2E for User Story 1 (MANDATORY — executed by the tester agent)
 
-- [ ] T018 [US1] E2E: [Acceptance Scenario 1 from spec.md, as the user would do it] — evidence recorded in the tester report
+- [x] T018 [US1] E2E: [Acceptance Scenario 1 from spec.md, as the user would do it] — evidence recorded in the tester report
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
@@ -468,19 +468,19 @@ Examples of foundational tasks (adjust based on your project):
 
 ### Tests for User Story 2 (MANDATORY — write first, verify they FAIL) ⚠️
 
-- [ ] T019 [P] [US2] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T020 [P] [US2] Integration test for [user journey] in tests/integration/test_[name].py
+- [x] T019 [P] [US2] Contract test for [endpoint] in tests/contract/test_[name].py
+- [x] T020 [P] [US2] Integration test for [user journey] in tests/integration/test_[name].py
 
 ### Implementation for User Story 2
 
-- [ ] T021 [P] [US2] Create [Entity] model in src/models/[entity].py
-- [ ] T022 [US2] Implement [Service] in src/services/[service].py
-- [ ] T023 [US2] Implement [endpoint/feature] in src/[location]/[file].py
-- [ ] T024 [US2] Integrate with User Story 1 components (if needed)
+- [x] T021 [P] [US2] Create [Entity] model in src/models/[entity].py
+- [x] T022 [US2] Implement [Service] in src/services/[service].py
+- [x] T023 [US2] Implement [endpoint/feature] in src/[location]/[file].py
+- [x] T024 [US2] Integrate with User Story 1 components (if needed)
 
 ### E2E for User Story 2 (MANDATORY — executed by the tester agent)
 
-- [ ] T025 [US2] E2E: [Acceptance Scenario from spec.md] — evidence recorded in the tester report
+- [x] T025 [US2] E2E: [Acceptance Scenario from spec.md] — evidence recorded in the tester report
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 
@@ -494,18 +494,18 @@ Examples of foundational tasks (adjust based on your project):
 
 ### Tests for User Story 3 (MANDATORY — write first, verify they FAIL) ⚠️
 
-- [ ] T026 [P] [US3] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T027 [P] [US3] Integration test for [user journey] in tests/integration/test_[name].py
+- [x] T026 [P] [US3] Contract test for [endpoint] in tests/contract/test_[name].py
+- [x] T027 [P] [US3] Integration test for [user journey] in tests/integration/test_[name].py
 
 ### Implementation for User Story 3
 
-- [ ] T028 [P] [US3] Create [Entity] model in src/models/[entity].py
-- [ ] T029 [US3] Implement [Service] in src/services/[service].py
-- [ ] T030 [US3] Implement [endpoint/feature] in src/[location]/[file].py
+- [x] T028 [P] [US3] Create [Entity] model in src/models/[entity].py
+- [x] T029 [US3] Implement [Service] in src/services/[service].py
+- [x] T030 [US3] Implement [endpoint/feature] in src/[location]/[file].py
 
 ### E2E for User Story 3 (MANDATORY — executed by the tester agent)
 
-- [ ] T031 [US3] E2E: [Acceptance Scenario from spec.md] — evidence recorded in the tester report
+- [x] T031 [US3] E2E: [Acceptance Scenario from spec.md] — evidence recorded in the tester report
 
 **Checkpoint**: All user stories should now be independently functional
 
@@ -519,12 +519,12 @@ Examples of foundational tasks (adjust based on your project):
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] TXXX [P] Documentation updates in docs/
-- [ ] TXXX Code cleanup and refactoring
-- [ ] TXXX Performance optimization across all stories
-- [ ] TXXX [P] Additional unit tests in tests/unit/
-- [ ] TXXX Security hardening
-- [ ] TXXX Run quickstart.md validation
+- [x] TXXX [P] Documentation updates in docs/
+- [x] TXXX Code cleanup and refactoring
+- [x] TXXX Performance optimization across all stories
+- [x] TXXX [P] Additional unit tests in tests/unit/
+- [x] TXXX Security hardening
+- [x] TXXX Run quickstart.md validation
 
 ---
 
@@ -621,12 +621,12 @@ With multiple developers:
 - Avoid: vague tasks, same file conflicts, cross-story dependencies that break independence
 ```
 
-- [ ] **Step 3: override가 적용되는지 확인**
+- [x] **Step 3: override가 적용되는지 확인**
 
 Run: `pwsh -NoProfile -File .specify/scripts/powershell/resolve-template.ps1 tasks-template | Select-String -Pattern 'MANDATORY' | Measure-Object | Select-Object -ExpandProperty Count`
 Expected: `7` 이상(헤더 1 + 스토리별 테스트 절 3 + E2E 절 3). `OPTIONAL`은 0건.
 
-- [ ] **Step 4: 커밋**
+- [x] **Step 4: 커밋**
 
 ```bash
 git add .specify/templates/overrides/tasks-template.md
@@ -643,12 +643,12 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Modify: `.specify/memory/constitution.md` (init이 만든 플레이스홀더 파일을 전체 교체)
 - Create: `docs/kr/constitution_kr.md`
 
-- [ ] **Step 1: 플레이스홀더 상태 확인(실패 조건)**
+- [x] **Step 1: 플레이스홀더 상태 확인(실패 조건)**
 
 Run: `pwsh -NoProfile -c "(Select-String -Path .specify/memory/constitution.md -Pattern '\[[A-Z_0-9]+\]' -AllMatches).Count"`
 Expected: `10` 이상(템플릿 플레이스홀더가 남아 있음).
 
-- [ ] **Step 2: 헌법 작성 (전체 교체)**
+- [x] **Step 2: 헌법 작성 (전체 교체)**
 
 ```markdown
 > Canonical language: English. Korean mirror: docs/kr/constitution_kr.md (convenience only). On conflict, English prevails. Sync: /finish (best-effort).
@@ -696,16 +696,16 @@ This constitution supersedes all other practices in this repository. Amendments 
 **Version**: 1.0.0 | **Ratified**: 2026-08-26 | **Last Amended**: 2026-08-26
 ```
 
-- [ ] **Step 3: 플레이스홀더 0 확인**
+- [x] **Step 3: 플레이스홀더 0 확인**
 
 Run: `pwsh -NoProfile -c "(Select-String -Path .specify/memory/constitution.md -Pattern '\[[A-Z_0-9]+\]' -AllMatches).Count"`
 Expected: `0`.
 
-- [ ] **Step 4: 한국어 미러 작성**
+- [x] **Step 4: 한국어 미러 작성**
 
 `docs/kr/constitution_kr.md`: 첫 줄 `> 번역본(편의용). 정본은 영어 원본 \`.specify/memory/constitution.md\`이며 충돌 시 영어가 우선한다. 동기화: /finish.` 다음에 Step 2의 본문을 절 구조·번호·강조·코드 식별자(`specs/NNN-slug/`, `/speckit-*`, `tester`, `report.md` 등)를 그대로 두고 산문만 한국어로 번역한다. 마지막 버전 줄은 동일하게 유지한다.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add .specify/memory/constitution.md docs/kr/constitution_kr.md
@@ -721,7 +721,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 **Files:**
 - Create: `tests/hooks/run-hook-tests.ps1`
 
-- [ ] **Step 1: 테스트 스크립트 작성**
+- [x] **Step 1: 테스트 스크립트 작성**
 
 외부 테스트 프레임워크 없이 동작한다. 각 훅에 샘플 stdin JSON을 넣고 stdout/exit code를 검사한다. finish-gate 케이스는 임시 git 저장소를 만들어 브랜치·파일 상태를 재현한다.
 
@@ -826,12 +826,12 @@ Write-Host "`n$($script:pass) passed, $($script:fail) failed"
 if ($script:fail -gt 0) { exit 1 } else { exit 0 }
 ```
 
-- [ ] **Step 2: RED 확인**
+- [x] **Step 2: RED 확인**
 
 Run: `pwsh -NoProfile -File tests/hooks/run-hook-tests.ps1`
 Expected: 훅 스크립트가 없으므로 모든 케이스가 `FAIL … <missing: …>`, 마지막 줄 `0 passed, 13 failed`, exit code 1(`$LASTEXITCODE`).
 
-- [ ] **Step 3: 커밋**
+- [x] **Step 3: 커밋**
 
 ```bash
 git add tests/hooks/run-hook-tests.ps1
@@ -850,7 +850,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Create: `.claude/hooks/approval-review.ps1`
 - Test: `tests/hooks/run-hook-tests.ps1` (approval 3케이스)
 
-- [ ] **Step 1: 스크립트 작성**
+- [x] **Step 1: 스크립트 작성**
 
 ```powershell
 # approval-review hook (UserPromptSubmit).
@@ -884,12 +884,12 @@ If the message is not an approval of feature artifacts (it merely mentions appro
 }
 ```
 
-- [ ] **Step 2: 테스트**
+- [x] **Step 2: 테스트**
 
 Run: `pwsh -NoProfile -File tests/hooks/run-hook-tests.ps1 | Select-String 'approval'`
 Expected: `PASS approval: keyword …`, `PASS approval: no keyword …`, `PASS approval: lgtm …` 3줄 모두 PASS.
 
-- [ ] **Step 3: 커밋**
+- [x] **Step 3: 커밋**
 
 ```bash
 git add .claude/hooks/approval-review.ps1
@@ -906,7 +906,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Create: `.claude/hooks/finish-gate.ps1`
 - Test: `tests/hooks/run-hook-tests.ps1` (gate 6케이스)
 
-- [ ] **Step 1: 스크립트 작성**
+- [x] **Step 1: 스크립트 작성**
 
 ```powershell
 # finish-gate hook (PreToolUse, matcher: Skill).
@@ -984,12 +984,12 @@ try {
 }
 ```
 
-- [ ] **Step 2: 테스트**
+- [x] **Step 2: 테스트**
 
 Run: `pwsh -NoProfile -File tests/hooks/run-hook-tests.ps1 | Select-String 'gate'`
 Expected: `gate:` 6케이스 모두 PASS(other skill / artifacts missing → deny / present → allow / unresolvable → deny / mismatch → deny / env → allow).
 
-- [ ] **Step 3: 커밋**
+- [x] **Step 3: 커밋**
 
 ```bash
 git add .claude/hooks/finish-gate.ps1
@@ -1008,7 +1008,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Create: `.claude/hooks/tester-write-guard.ps1`
 - Test: `tests/hooks/run-hook-tests.ps1` (guard 4케이스)
 
-- [ ] **Step 1: 스크립트 작성**
+- [x] **Step 1: 스크립트 작성**
 
 ```powershell
 # tester-write-guard hook (PreToolUse Edit|Write|MultiEdit|NotebookEdit).
@@ -1045,12 +1045,12 @@ try {
 }
 ```
 
-- [ ] **Step 2: 전체 테스트 GREEN**
+- [x] **Step 2: 전체 테스트 GREEN**
 
 Run: `pwsh -NoProfile -File tests/hooks/run-hook-tests.ps1`
 Expected: 마지막 줄 `23 passed, 0 failed`, exit code 0.
 
-- [ ] **Step 3: 커밋**
+- [x] **Step 3: 커밋**
 
 ```bash
 git add .claude/hooks/tester-write-guard.ps1
@@ -1068,7 +1068,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 **Files:**
 - Create: `.claude/settings.json`
 
-- [ ] **Step 1: 기본 파일 작성**
+- [x] **Step 1: 기본 파일 작성**
 
 ```json
 {
@@ -1112,7 +1112,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 }
 ```
 
-- [ ] **Step 2: `skillOverrides`를 설치된 speckit-* 스킬 목록에서 생성**
+- [x] **Step 2: `skillOverrides`를 설치된 speckit-* 스킬 목록에서 생성**
 
 ```powershell
 $names = (Get-ChildItem .claude/skills -Directory | Where-Object Name -like 'speckit-*').Name
@@ -1124,16 +1124,16 @@ Get-Content .claude/settings.json | Select-String 'user-invocable-only' | Measur
 ```
 Expected: 마지막 줄이 설치된 `speckit-*` 스킬 수(핵심 10 + git 5 + agent-context 1 + archive 1 = 17).
 
-- [ ] **Step 3: JSON 유효성·훅 등록 확인**
+- [x] **Step 3: JSON 유효성·훅 등록 확인**
 
 Run: `pwsh -NoProfile -c "$s = Get-Content .claude/settings.json -Raw | ConvertFrom-Json; $s.hooks.PreToolUse[0].matcher; $s.hooks.UserPromptSubmit[0].hooks[0].command; $s.permissions.deny.Count"`
 Expected: `Skill`, approval-review 명령 문자열, `7`.
 
-- [ ] **Step 4: 세션 내 확인 메모**
+- [x] **Step 4: 세션 내 확인 메모**
 
 새 Claude Code 세션에서 `/hooks`에 UserPromptSubmit 1개·PreToolUse(Skill) 1개가 보이고, 일반 대화에서 "speckit-plan 실행해"라고 하지 않는 한 모델이 `speckit-*`를 스스로 호출하지 않는지 확인한다(SC-001·SC-004). 결과는 Task 26 report에 기록.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add .claude/settings.json
@@ -1152,7 +1152,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Create: `.claude/agents/tester.md`
 - Create: `docs/kr/agents/tester_kr.md`
 
-- [ ] **Step 1: 에이전트 작성**
+- [x] **Step 1: 에이전트 작성**
 
 ```markdown
 ---
@@ -1206,16 +1206,16 @@ Environment: <available / missing>
 ```
 ```
 
-- [ ] **Step 2: 미러 작성**
+- [x] **Step 2: 미러 작성**
 
 `docs/kr/agents/tester_kr.md`: 첫 줄 미러 선언(정본 `.claude/agents/tester.md`) 후, frontmatter는 코드 블록으로 그대로 인용하고 본문을 절 구조 유지하며 번역한다.
 
-- [ ] **Step 3: 확인**
+- [x] **Step 3: 확인**
 
 Run: `pwsh -NoProfile -c "(Get-Content .claude/agents/tester.md -TotalCount 12) -join [Environment]::NewLine"`
 Expected: `name: tester`, `tools: Read, Grep, Glob, Bash, Edit, Write`, `hooks:` 블록에 `tester-write-guard.ps1` 경로. 새 세션 `/agents`에 `tester`가 보이는지 Task 24에서 확인.
 
-- [ ] **Step 4: 커밋**
+- [x] **Step 4: 커밋**
 
 ```bash
 git add .claude/agents/tester.md docs/kr/agents/tester_kr.md
@@ -1232,7 +1232,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Create: `.claude/rules/specs.md`, `.claude/rules/docs.md`, `.claude/rules/content.md`
 - Create: `docs/kr/rules/specs_kr.md`, `docs/kr/rules/docs_kr.md`, `docs/kr/rules/content_kr.md`
 
-- [ ] **Step 1: `.claude/rules/specs.md`**
+- [x] **Step 1: `.claude/rules/specs.md`**
 
 ```markdown
 ---
@@ -1255,7 +1255,7 @@ paths:
 - Prose in Korean; identifiers, slugs, and file names in English/ASCII.
 ```
 
-- [ ] **Step 2: `.claude/rules/docs.md`**
+- [x] **Step 2: `.claude/rules/docs.md`**
 
 ```markdown
 ---
@@ -1286,7 +1286,7 @@ paths:
 - Prose in Korean; file names ASCII kebab-case.
 ```
 
-- [ ] **Step 3: `.claude/rules/content.md`**
+- [x] **Step 3: `.claude/rules/content.md`**
 
 ```markdown
 ---
@@ -1321,16 +1321,16 @@ sources:                            # required; may be empty; path = repo path o
 - Never include secrets, tokens, internal hostnames, or personal data.
 ```
 
-- [ ] **Step 4: 미러 3종 작성**
+- [x] **Step 4: 미러 3종 작성**
 
 `docs/kr/rules/{specs,docs,content}_kr.md`: 첫 줄 미러 선언(정본 각 `.claude/rules/<name>.md`), frontmatter는 코드 블록으로 인용, 본문 번역(코드 블록·경로·값은 그대로).
 
-- [ ] **Step 5: 확인**
+- [x] **Step 5: 확인**
 
 Run: `pwsh -NoProfile -c "Get-ChildItem .claude/rules, docs/kr/rules | Select-Object Name; Select-String -Path .claude/rules/*.md -Pattern '^paths:' | Measure-Object | Select-Object -ExpandProperty Count"`
 Expected: 파일 6개, `paths:` 3건.
 
-- [ ] **Step 6: 커밋**
+- [x] **Step 6: 커밋**
 
 ```bash
 git add .claude/rules docs/kr/rules
@@ -1348,7 +1348,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Create: `.claude/skills/approval-review/boundaries/{security,tenant-data,operability,trends,spec-consistency}.md`
 - Create: `docs/kr/skills/approval-review_kr.md`
 
-- [ ] **Step 1: `SKILL.md`**
+- [x] **Step 1: `SKILL.md`**
 
 ```markdown
 ---
@@ -1416,7 +1416,7 @@ Inputs: spec.md (Status: Draft), plan.md, tasks.md, checklists: <n> unchecked, /
 - 수정 필요 항목 (numbered, if any)
 
 ## 사용자 결정
-- [ ] 승인 (YYYY-MM-DD)
+- [x] 승인 (YYYY-MM-DD)
 ```
 Status cell values: ✅ 충족 · ⚠️ 보완 · ❌ 위반 · — 해당 없음.
 
@@ -1432,7 +1432,7 @@ Show `종합 의견` and the fix list, then use AskUserQuestion with options 승
 - Never start implementation from this skill.
 ```
 
-- [ ] **Step 2: `boundaries/security.md`**
+- [x] **Step 2: `boundaries/security.md`**
 
 ```markdown
 # Boundary: Security
@@ -1454,7 +1454,7 @@ Find security weaknesses in the design before code exists.
 `### Findings` — for each ⚠️/❌: severity (high/medium/low), what, where (spec/plan/tasks section), concrete fix.
 ```
 
-- [ ] **Step 3: `boundaries/tenant-data.md`**
+- [x] **Step 3: `boundaries/tenant-data.md`**
 
 ```markdown
 # Boundary: Tenant & data
@@ -1473,7 +1473,7 @@ Enforce constitution III (Tenant Boundary) and data ownership, even for single-t
 `| 항목 | 상태 | 비고 |` per checklist line; `### Findings` as in the security boundary.
 ```
 
-- [ ] **Step 4: `boundaries/operability.md`**
+- [x] **Step 4: `boundaries/operability.md`**
 
 ```markdown
 # Boundary: Operability
@@ -1492,7 +1492,7 @@ Enforce constitution IV (Observability-Ready) and SaaS-grade operations.
 `| 항목 | 상태 | 비고 |` per checklist line; `### Findings` as in the security boundary.
 ```
 
-- [ ] **Step 5: `boundaries/trends.md`**
+- [x] **Step 5: `boundaries/trends.md`**
 
 ```markdown
 # Boundary: Trends
@@ -1511,7 +1511,7 @@ Check the chosen libraries, tools, and patterns against current practice. WebSea
 `### Findings` — only items that should change the plan, with a URL each.
 ```
 
-- [ ] **Step 6: `boundaries/spec-consistency.md`**
+- [x] **Step 6: `boundaries/spec-consistency.md`**
 
 ```markdown
 # Boundary: Spec consistency
@@ -1531,16 +1531,16 @@ Ensure spec, plan, tasks, checklists, and constitution agree with each other.
 `| 항목 | 상태 | 비고 |` per checklist line; `### Findings` listing analyze CRITICAL/HIGH items and uncovered requirements.
 ```
 
-- [ ] **Step 7: 미러 작성**
+- [x] **Step 7: 미러 작성**
 
 `docs/kr/skills/approval-review_kr.md`: 미러 선언 후 `SKILL.md` 본문을 번역하고, 끝에 `## Boundaries (요약)` 절로 경계 5종의 목적·체크리스트를 한국어로 요약한다(경계 파일 자체는 미러하지 않는다).
 
-- [ ] **Step 8: 확인**
+- [x] **Step 8: 확인**
 
 Run: `pwsh -NoProfile -c "Get-ChildItem .claude/skills/approval-review -Recurse -File | Select-Object -ExpandProperty Name; (Get-Content .claude/skills/approval-review/SKILL.md -TotalCount 4) -join ' | '"`
 Expected: `SKILL.md, security.md, tenant-data.md, operability.md, trends.md, spec-consistency.md`; frontmatter에 `name: approval-review`.
 
-- [ ] **Step 9: 커밋**
+- [x] **Step 9: 커밋**
 
 ```bash
 git add .claude/skills/approval-review docs/kr/skills/approval-review_kr.md
@@ -1558,7 +1558,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Create: `.claude/skills/finish/boundaries/{report-vs-diff,e2e-evidence,study-contract,decisions}.md`
 - Create: `docs/kr/skills/finish_kr.md`
 
-- [ ] **Step 1: `SKILL.md`**
+- [x] **Step 1: `SKILL.md`**
 
 ```markdown
 ---
@@ -1626,7 +1626,7 @@ Status: Approved | Issues
 Regenerate `specs/README.md` (Status stays Approved until archive). Commit `docs(<NNN-slug>): report·학습 노트·finish 리뷰`. Tell the user: "finish complete — run superpowers:finishing-a-development-branch; after the merge run the archive skill" and name the archive skill exactly as listed under `.claude/skills/speckit-archive*`.
 ```
 
-- [ ] **Step 2: `boundaries/report-vs-diff.md`**
+- [x] **Step 2: `boundaries/report-vs-diff.md`**
 
 ```markdown
 # Boundary: Report vs diff
@@ -1647,7 +1647,7 @@ Regenerate `specs/README.md` (Status stays Approved until archive). Commit `docs
 `Verdict: ✅ | ❌` then a bullet list of mismatches (file or claim, what is wrong).
 ```
 
-- [ ] **Step 3: `boundaries/e2e-evidence.md`**
+- [x] **Step 3: `boundaries/e2e-evidence.md`**
 
 ```markdown
 # Boundary: E2E evidence
@@ -1667,7 +1667,7 @@ The tester's `## E2E Report` (from the conversation or `reviews/`); `spec.md` Us
 `Verdict: ✅ | ❌` then per-story table `| Story | Result | Evidence ok? |` and a bullet list of gaps.
 ```
 
-- [ ] **Step 4: `boundaries/study-contract.md`**
+- [x] **Step 4: `boundaries/study-contract.md`**
 
 ```markdown
 # Boundary: Study contract
@@ -1687,7 +1687,7 @@ The learning note follows `.claude/rules/content.md` and is worth publishing.
 `Verdict: ✅ | ❌` then a bullet list of contract violations (field or section, what to fix).
 ```
 
-- [ ] **Step 5: `boundaries/decisions.md`**
+- [x] **Step 5: `boundaries/decisions.md`**
 
 ```markdown
 # Boundary: Decisions
@@ -1708,16 +1708,16 @@ Durable decisions are recorded and unrequested changes are justified.
 `Verdict: ✅ | ❌` then a bullet list (missing ADR, contradiction, unjustified change).
 ```
 
-- [ ] **Step 6: 미러 작성**
+- [x] **Step 6: 미러 작성**
 
 `docs/kr/skills/finish_kr.md`: 미러 선언 후 `SKILL.md` 본문 번역 + `## Boundaries (요약)` 절에 경계 4종 요약.
 
-- [ ] **Step 7: 확인**
+- [x] **Step 7: 확인**
 
 Run: `pwsh -NoProfile -c "Get-ChildItem .claude/skills/finish -Recurse -File | Select-Object -ExpandProperty Name"`
 Expected: `SKILL.md, report-vs-diff.md, e2e-evidence.md, study-contract.md, decisions.md`.
 
-- [ ] **Step 8: 커밋**
+- [x] **Step 8: 커밋**
 
 ```bash
 git add .claude/skills/finish docs/kr/skills/finish_kr.md
@@ -1734,7 +1734,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Create: `AGENTS.md`
 - Create: `docs/kr/AGENTS_kr.md`
 
-- [ ] **Step 1: 작성**
+- [x] **Step 1: 작성**
 
 ```markdown
 > Canonical language: English. Korean mirror: docs/kr/AGENTS_kr.md (convenience only). On conflict, English prevails. Sync: /finish (best-effort).
@@ -1778,9 +1778,9 @@ tests/           hook tests and repository checks
 specify → clarify → plan → checklist → tasks → approval-review → build (TDD, subagent-driven) → converge → E2E (tester) → finish → finishing branch → merge → archive. Details: `CLAUDE.md` and the constitution.
 ```
 
-- [ ] **Step 2: 미러** — `docs/kr/AGENTS_kr.md`(정본 `AGENTS.md`), 표·트리·명령은 그대로.
+- [x] **Step 2: 미러** — `docs/kr/AGENTS_kr.md`(정본 `AGENTS.md`), 표·트리·명령은 그대로.
 
-- [ ] **Step 3: 커밋**
+- [x] **Step 3: 커밋**
 
 ```bash
 git add AGENTS.md docs/kr/AGENTS_kr.md
@@ -1797,7 +1797,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Create: `CLAUDE.md`
 - Create: `docs/kr/CLAUDE_kr.md`
 
-- [ ] **Step 1: 작성** — Task 5·6·7에서 기록한 실제 스킬 이름(archive 명령 등)을 8단계와 표에 그대로 쓴다.
+- [x] **Step 1: 작성** — Task 5·6·7에서 기록한 실제 스킬 이름(archive 명령 등)을 8단계와 표에 그대로 쓴다.
 
 ```markdown
 > Canonical language: English. Korean mirror: docs/kr/CLAUDE_kr.md (convenience only). On conflict, English prevails. Sync: /finish (best-effort).
@@ -1857,14 +1857,14 @@ Agent files (this file, `AGENTS.md`, the constitution, rules, agents, project sk
 <!-- SPECKIT END -->
 ```
 
-- [ ] **Step 2: 줄 수 확인**
+- [x] **Step 2: 줄 수 확인**
 
 Run: `pwsh -NoProfile -c "(Get-Content CLAUDE.md).Count"`
 Expected: `200` 이하(초안은 약 70줄).
 
-- [ ] **Step 3: 미러** — `docs/kr/CLAUDE_kr.md`(정본 `CLAUDE.md`). `@AGENTS.md` 줄은 미러에서 `> (정본은 AGENTS.md를 import한다)`로 바꾼다(미러는 import 대상이 아니다).
+- [x] **Step 3: 미러** — `docs/kr/CLAUDE_kr.md`(정본 `CLAUDE.md`). `@AGENTS.md` 줄은 미러에서 `> (정본은 AGENTS.md를 import한다)`로 바꾼다(미러는 import 대상이 아니다).
 
-- [ ] **Step 4: 커밋**
+- [x] **Step 4: 커밋**
 
 ```bash
 git add CLAUDE.md docs/kr/CLAUDE_kr.md
@@ -1882,7 +1882,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 **Files:**
 - Create: `docs/README.md`, `docs/decisions/0000-use-madr.md`, `docs/decisions/0001-adopt-spec-kit-with-superpowers.md`, `docs/runbooks/spec-kit-upgrade.md`, `CHANGELOG.md`, `README.md`, `specs/README.md`
 
-- [ ] **Step 1: `docs/README.md`**
+- [x] **Step 1: `docs/README.md`**
 
 ```markdown
 # 문서 인덱스
@@ -1899,7 +1899,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 | [kr/](kr/) | 에이전트 파일 한국어 미러(편의용, 정본은 영어) |
 ```
 
-- [ ] **Step 2: `docs/decisions/0000-use-madr.md`**
+- [x] **Step 2: `docs/decisions/0000-use-madr.md`**
 
 ```markdown
 ---
@@ -1925,7 +1925,7 @@ MADR 4.0 minimal을 `docs/decisions/`에 둔다. 번호는 재사용하지 않�
 - 나쁨: 결정마다 문서 한 편이 필요하다 — 횡단 결정으로 범위를 제한해 부담을 줄인다.
 ```
 
-- [ ] **Step 3: `docs/decisions/0001-adopt-spec-kit-with-superpowers.md`**
+- [x] **Step 3: `docs/decisions/0001-adopt-spec-kit-with-superpowers.md`**
 
 ```markdown
 ---
@@ -1952,7 +1952,7 @@ D를 채택한다. Spec Kit 1.0.1이 constitution·`specs/NNN-slug/`·analyze·c
 - 나쁨: 두 도구의 경계 규칙(CLAUDE.md)을 유지해야 하고, Spec Kit 명령 프롬프트가 커서 명시 호출로 제한해야 한다; 커뮤니티 확장 2종은 서드파티 신뢰 검토가 필요하다.
 ```
 
-- [ ] **Step 4: `docs/runbooks/spec-kit-upgrade.md`** — Task 3·5·6·7에서 확인한 실제 버전·스킬 이름을 채운다.
+- [x] **Step 4: `docs/runbooks/spec-kit-upgrade.md`** — Task 3·5·6·7에서 확인한 실제 버전·스킬 이름을 채운다.
 
 ```markdown
 # Spec Kit 업그레이드 런북 · 커스터마이즈 레지스터
@@ -1985,7 +1985,7 @@ Spec Kit이 관리하는 파일 중 프로젝트가 손댄 것과, 관리 파일
 `uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@<old-tag> --force` 후 브랜치를 버린다(`.specify/`는 git이 추적하므로 체크아웃으로 복구된다).
 ```
 
-- [ ] **Step 5: `CHANGELOG.md`**
+- [x] **Step 5: `CHANGELOG.md`**
 
 ```markdown
 # Changelog
@@ -1998,7 +1998,7 @@ Spec Kit이 관리하는 파일 중 프로젝트가 손댄 것과, 관리 파일
 - SP-0 Claude Code 기반 셋팅 — Spec Kit 1.0.1(+ git·agent-context·selftest·archive·adrkit 확장), 헌법 1.0.0, tester 에이전트, approval-review/finish 스킬, 훅 3종, 규칙 3종, 문서 정책(ADR·런북·kr 미러), 학습 노트 계약 ([specs/001-claude-setup](specs/001-claude-setup/))
 ```
 
-- [ ] **Step 6: `README.md`**
+- [x] **Step 6: `README.md`**
 
 ```markdown
 # joshuatech_ver2
@@ -2012,7 +2012,7 @@ Spec Kit이 관리하는 파일 중 프로젝트가 손댄 것과, 관리 파일
 - 변경 기록: [CHANGELOG.md](CHANGELOG.md)
 ```
 
-- [ ] **Step 7: `specs/README.md`**
+- [x] **Step 7: `specs/README.md`**
 
 ```markdown
 # Feature 인덱스
@@ -2024,7 +2024,7 @@ Spec Kit이 관리하는 파일 중 프로젝트가 손댄 것과, 관리 파일
 | 001 | Claude Code 기반 셋팅 (SP-0) | Approved (2026-08-26) | 🔴 | [spec](001-claude-setup/spec.md) · [plan](001-claude-setup/plan.md) |
 ```
 
-- [ ] **Step 8: 커밋**
+- [x] **Step 8: 커밋**
 
 ```bash
 git add docs README.md CHANGELOG.md specs/README.md
@@ -2040,7 +2040,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 **Files:**
 - Create: `content/study/001-claude-setup.mdx`
 
-- [ ] **Step 1: 작성** (계약: `.claude/rules/content.md`)
+- [x] **Step 1: 작성** (계약: `.claude/rules/content.md`)
 
 ```mdx
 ---
@@ -2093,12 +2093,12 @@ v1 포트폴리오는 Django·FastAPI·Next.js를 기술 계층으로 쪼갠 "�
 - Spec Kit 워크플로우 엔진 오버레이로 헤드리스 사이클을 돌릴 가치가 있는지.
 ```
 
-- [ ] **Step 2: 계약 확인**
+- [x] **Step 2: 계약 확인**
 
 Run: `pwsh -NoProfile -c "$t = Get-Content content/study/001-claude-setup.mdx -Raw; @('title:','description:','pubDate:','tags:','draft: true','change: \"001-claude-setup\"','sources:','## 문제','## 배운 개념','## 선택과 대안','## 결과와 검증','## 다음 학습') | ForEach-Object { if ($t -notmatch [regex]::Escape($_)) { \"MISSING $_\" } }; 'checked'"`
 Expected: `MISSING` 줄 없이 `checked`만.
 
-- [ ] **Step 3: 커밋**
+- [x] **Step 3: 커밋**
 
 ```bash
 git add content/study/001-claude-setup.mdx
@@ -2114,7 +2114,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 **Files:**
 - Create: `tests/run-all.ps1`
 
-- [ ] **Step 1: 작성**
+- [x] **Step 1: 작성**
 
 ```powershell
 # Repository checks. Run: pwsh -NoProfile -File tests/run-all.ps1
@@ -2178,12 +2178,12 @@ Write-Host ''
 if ($script:fail -eq 0) { Write-Host 'ALL PASS'; exit 0 } else { Write-Host "$($script:fail) FAILED"; exit 1 }
 ```
 
-- [ ] **Step 2: 실행**
+- [x] **Step 2: 실행**
 
 Run: `pwsh -NoProfile -File tests/run-all.ps1`
 Expected: 8개 검사 모두 `PASS`, 마지막 줄 `ALL PASS`, exit 0. 실패하면 해당 Task로 돌아가 고친다(이 시점에 `specs/002-smoke`는 아직 없으므로 검사 8은 001만 본다).
 
-- [ ] **Step 3: 커밋**
+- [x] **Step 3: 커밋**
 
 ```bash
 git add tests/run-all.ps1
@@ -2200,25 +2200,25 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 **Files:** 없음(검증만)
 
-- [ ] **Step 1: 새 세션 시작**
+- [x] **Step 1: 새 세션 시작**
 
 Claude Code를 재시작한다(훅·settings·에이전트·스킬은 세션 시작 시 로드). 시작 로그에 superpowers `using-superpowers` 주입이 **1회**만 보이는지 확인한다(SC-007).
 
-- [ ] **Step 2: Spec Kit selftest**
+- [x] **Step 2: Spec Kit selftest**
 
 Run: `specify check` (selftest 확장은 카탈로그에 없어 제외)
 Expected: git·Claude Code 감지, 오류 없음. 관리 파일 무결성은 `tests/run-all.ps1`과 매니페스트 diff로 확인.
 
-- [ ] **Step 3: 등록 확인**
+- [x] **Step 3: 등록 확인**
 
 세션 내 `/hooks` → `UserPromptSubmit` 1개(approval-review), `PreToolUse` matcher `Skill` 1개(finish-gate). `/agents` → `tester`. `/skills` → `approval-review`, `finish`, `speckit-*`(user-invocable only 표시). (SC-004)
 
-- [ ] **Step 4: 저장소 검사**
+- [x] **Step 4: 저장소 검사**
 
 Run: `pwsh -NoProfile -File tests/run-all.ps1`
 Expected: `ALL PASS`.
 
-- [ ] **Step 5: 결과 기록**
+- [x] **Step 5: 결과 기록**
 
 Step 1–4의 결과(통과/실패, 실패 시 사유)를 메모해 두고 Task 26의 `report.md` Validation 절에 옮긴다.
 
@@ -2230,12 +2230,12 @@ Step 1–4의 결과(통과/실패, 실패 시 사유)를 메모해 두고 Task 
 
 **Files(사이클이 생성):** `specs/002-smoke/{spec,plan,tasks}.md`, `checklists/`, `reviews/`, `report.md`, `scripts/update-specs-index.ps1`, `tests/scripts/update-specs-index.tests.ps1`, `content/study/002-smoke.mdx`, `CHANGELOG.md` 항목, `CLAUDE.md` SPECKIT 블록
 
-- [ ] **Step 1: 시작 상태**
+- [x] **Step 1: 시작 상태**
 
 Run: `git status --short; git branch --show-current`
 Expected: 변경 없음, 브랜치 `001-claude-setup`.
 
-- [ ] **Step 2: specify (git 확장이 브랜치 생성)**
+- [x] **Step 2: specify (git 확장이 브랜치 생성)**
 
 Run (세션 내):
 ```
@@ -2243,52 +2243,52 @@ Run (세션 내):
 ```
 Expected: `speckit.git.feature`가 먼저 실행되어 브랜치 `002-smoke` 생성 → `specs/002-smoke/spec.md`(User Story·FR·SC 포함, `[NEEDS CLARIFICATION]` ≤ 3) → `.specify/feature.json`이 `specs/002-smoke`를 가리킴. `git branch --show-current` = `002-smoke`.
 
-- [ ] **Step 3: clarify(마커가 있을 때만)**
+- [x] **Step 3: clarify(마커가 있을 때만)**
 
 Run: `/speckit-clarify` — `[NEEDS CLARIFICATION]`가 0개면 건너뛴다.
 Expected: 질문 ≤ 5, `## Clarifications` 절 추가.
 
-- [ ] **Step 4: plan → checklist → tasks**
+- [x] **Step 4: plan → checklist → tasks**
 
 Run: `/speckit-plan` → agent-context 확장의 after_plan 프롬프트에 **예** → `/speckit-checklist requirements` → `/speckit-tasks`
 Expected: `plan.md`(Constitution Check 통과), `CLAUDE.md`의 `<!-- SPECKIT START/END -->` 사이에 `specs/002-smoke/plan.md` 경로, `checklists/requirements.md`, `tasks.md`에 `### Tests for User Story 1 (MANDATORY` 절과 `E2E:` task가 있음(override 적용 확인: `Select-String -Path specs/002-smoke/tasks.md -Pattern 'MANDATORY|E2E:'` ≥ 2건).
 
-- [ ] **Step 5: 승인 훅 → approval-review**
+- [x] **Step 5: 승인 훅 → approval-review**
 
 세션에 `승인해줘`라고 입력한다.
 Expected: 응답 앞에 `[APPROVAL REVIEW HOOK]` 안내가 반영되어 Claude가 `/approval-review`를 먼저 실행한다 → 서브에이전트 5개 병렬 → `specs/002-smoke/reviews/2026-MM-DD-approval.md`(경계 5절 + 종합 의견) → AskUserQuestion에서 **승인** 선택 → `spec.md` `**Status**: Approved (날짜)` → 커밋. (US2)
 
-- [ ] **Step 6: 게이트 부정 케이스**
+- [x] **Step 6: 게이트 부정 케이스**
 
 Run (세션 내): `superpowers:finishing-a-development-branch` 스킬을 호출한다.
 Expected: finish-gate가 deny하고 사유에 `Missing: reviews/… 'Status: Approved', report.md, content/study/002-smoke*.mdx` 및 `Run /finish first`가 보인다. (US3-1) 결과를 메모.
 
-- [ ] **Step 7: 구현 (SDD)**
+- [x] **Step 7: 구현 (SDD)**
 
 Run: `superpowers:subagent-driven-development`로 `specs/002-smoke/tasks.md` 실행. 각 task는 tasks.md의 해당 줄 + plan의 관련 절만 전달.
 Expected: 테스트 task가 먼저 RED → 구현 → GREEN, task마다 커밋, `tasks.md` 체크박스 `[X]`. 산출: `scripts/update-specs-index.ps1`, `tests/scripts/update-specs-index.tests.ps1`(pwsh 단독 실행, exit 0/1). `pwsh -NoProfile -File scripts/update-specs-index.ps1` 실행 시 `specs/README.md` 표에 001·002 두 행.
 
-- [ ] **Step 8: converge**
+- [x] **Step 8: converge**
 
 Run: `/speckit-converge`
 Expected: `✅ Converged`(갭 0) 또는 갭 task 추가 → SDD로 처리 후 재실행하여 Converged.
 
-- [ ] **Step 9: E2E tester**
+- [x] **Step 9: E2E tester**
 
 Run: Agent 도구로 `tester` 서브에이전트 디스패치. 프롬프트에 `specs/002-smoke`, `spec.md`의 `## User Scenarios & Testing` 절 전문, 테스트 명령 `pwsh -NoProfile -File tests/scripts/update-specs-index.tests.ps1`를 넣는다.
 Expected: `## E2E Report — 002-smoke`, 모든 스토리 PASS(환경 부재 시 SKIP + 사유). FAIL이 있으면 SDD로 수정 후 재디스패치. (US4)
 
-- [ ] **Step 10: finish**
+- [x] **Step 10: finish**
 
 Run: `/finish`
 Expected: `specs/002-smoke/report.md`, `content/study/002-smoke.mdx`(frontmatter 계약 충족, `draft: true`, `change: "002-smoke"`), `CHANGELOG.md` Unreleased에 항목, `reviews/2026-MM-DD-finish.md`에 `Status: Approved`, `specs/README.md` 갱신, 커밋. (US5)
 
-- [ ] **Step 11: finishing (게이트 통과) → 001로 머지**
+- [x] **Step 11: finishing (게이트 통과) → 001로 머지**
 
 Run: `superpowers:finishing-a-development-branch` → 옵션 **1(Merge back to 001-claude-setup locally)**.
 Expected: 게이트 통과(출력 없음), 테스트 통과 확인 후 `002-smoke`가 `001-claude-setup`에 머지되고 브랜치 삭제. (US3-2)
 
-- [ ] **Step 12: 산출물 점검 + push**
+- [x] **Step 12: 산출물 점검 + push**
 
 Run: `pwsh -NoProfile -File tests/run-all.ps1; git push origin 001-claude-setup`
 Expected: `ALL PASS`(검사 8이 002 포함). 다음 파일이 모두 존재: `specs/002-smoke/{spec.md,plan.md,tasks.md,report.md}`, `specs/002-smoke/reviews/*-approval.md`, `specs/002-smoke/reviews/*-finish.md`, `content/study/002-smoke.mdx`, `scripts/update-specs-index.ps1`, `tests/scripts/update-specs-index.tests.ps1`; `CHANGELOG.md`에 002 항목; `CLAUDE.md` SPECKIT 블록. 원격 `001-claude-setup` 갱신.
@@ -2301,12 +2301,12 @@ Expected: `ALL PASS`(검사 8이 002 포함). 다음 파일이 모두 존재: `s
 - Create: `specs/001-claude-setup/report.md`, `specs/001-claude-setup/reviews/YYYY-MM-DD-finish.md`
 - Modify: `specs/001-claude-setup/spec.md`(Status), `specs/002-smoke/spec.md`(Status), `specs/README.md`, `.specify/memory/*`(archive 산출), `CHANGELOG.md`
 
-- [ ] **Step 1: 활성 feature를 001로 정렬**
+- [x] **Step 1: 활성 feature를 001로 정렬**
 
 Run: `pwsh -NoProfile -c "Remove-Item .specify/feature.json -ErrorAction SilentlyContinue; git branch --show-current"`
 Expected: `001-claude-setup`. (feature.json이 002를 가리키면 finish-gate가 불일치로 deny하므로 제거 → 브랜치 해석)
 
-- [ ] **Step 2: `/finish` (001)**
+- [x] **Step 2: `/finish` (001)**
 
 Run: `/finish`
 Expected: `specs/001-claude-setup/report.md` — Validation 절에 Task 2(플러그인 단일화), 14(설정), 24(selftest·등록), 25(smoke 산출물·게이트 deny/allow 결과), `tests/run-all.ps1` 결과를 기록. 학습 노트는 Task 22 것을 그대로 인정(`content/study/001-claude-setup*.mdx` 존재). CHANGELOG는 Task 21 항목 유지. 미러 동기화 단계: 001에서 변경된 에이전트 파일은 모두 미러를 갖고 있으므로 "동기화 대상 없음"을 report에 기록(US6 검증). `reviews/YYYY-MM-DD-finish.md` `Status: Approved`.

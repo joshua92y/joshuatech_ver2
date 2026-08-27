@@ -1,5 +1,4 @@
-> translation-pending (2026-08-26): Prerequisites·Tool boundaries 3개 항목(훅 경로 플레이스홀더, skillOverrides name-only, cwd 주의) 갱신 필요.
-> 번역본(편의용). 정본은 영어 원본 `CLAUDE.md`이며 충돌 시 영어가 우선한다. 동기화: /finish.
+> 번역본(편의용). 정본은 영어 원본 `CLAUDE.md`이며 충돌 시 영어가 우선한다. 동기화: /finish. (2026-08-27 재동기화)
 
 > (정본은 `AGENTS.md`를 import한다)
 
@@ -8,16 +7,18 @@
 ## Prerequisites
 - superpowers 플러그인은 사용자 레벨에서 정확히 하나만 활성화한다: `superpowers@superpowers-dev` (5.1.0). `superpowers@claude-plugins-official`은 비활성 상태로 유지한다(SessionStart 훅을 이중으로 주입하기 때문).
 - Spec Kit CLI(`specify`, `uv`로 설치, `~/.local/bin`)는 초기화, 업그레이드, 확장 관리에만 필요하다; 일상적인 명령에는 `.specify/scripts/powershell/*.ps1`을 사용한다.
-- 훅은 `pwsh -NoProfile -ExecutionPolicy Bypass -File …`로 실행된다; PowerShell 7이 PATH에 있어야 한다.
+- 훅은 `pwsh -NoProfile -ExecutionPolicy Bypass -File "${CLAUDE_PROJECT_DIR}/.claude/hooks/<name>.ps1"`로 실행된다(Windows에서 훅 셸은 Git Bash); PowerShell 7이 PATH에 있어야 한다.
 
 ## Tool boundaries
-- **Spec Kit owns WHAT**: constitution, `specs/NNN-slug/{spec,plan,tasks,research,…}`, analyze, converge, archive. `speckit-*` 스킬은 사용자가 직접 호출하는 용도로만 존재한다(설정 `skillOverrides`); 항상 명시적으로 호출하고 추측으로 사용하지 않는다.
+- **Spec Kit owns WHAT**: constitution, `specs/NNN-slug/{spec,plan,tasks,research,…}`, analyze, converge, archive. `speckit-*` 스킬은 이름만 노출된다(설정 `skillOverrides`: 설명을 숨겨 자동으로 발동하지 않게 함); 사용자가 요청하거나 아래 lifecycle 단계가 요구할 때만 호출하고 — 추측으로 사용하지 않는다.
 - **superpowers owns HOW**: brainstorming(아키텍처 수준 인테이크에만), test-driven-development, subagent-driven-development, requesting-code-review, receiving-code-review, finishing-a-development-branch, using-git-worktrees, systematic-debugging, verification-before-completion.
 - **This repository owns the gates**: `tester` 에이전트, `/approval-review`, `/finish`, 그리고 `.claude/hooks/`의 훅들.
 - `speckit-implement`는 사용하지 않는다; superpowers subagent-driven-development가 `tasks.md`를 실행한다.
 - superpowers `writing-plans`는 사용하지 않는다; `tasks.md`가 유일한 구현 계획이다(유일한 예외는 `specs/001-claude-setup/plan.md`였다).
 - brainstorming을 사용하는 경우, 설계 결과는 Spec Kit spec-template 형식으로 `specs/NNN-slug/spec.md`에 저장한다: `.specify/scripts/powershell/create-new-feature.ps1 -ShortName <slug> -Json`을 실행해 디렉터리를 할당하고, 그 `spec.md`를 채운 다음 `/speckit-plan`으로 이어간다.
 - 서브에이전트에는 태스크 단위와 관련 섹션만 전달한다 — spec이나 plan 파일 전체를 전달하지 않는다.
+- `/speckit-tasks`: 해석된 템플릿(`.specify/templates/overrides/tasks-template.md`)은 테스트가 MANDATORY라고 명시하며, 이것이 생성된 스킬 프롬프트의 "tests optional" 문구보다 우선한다. 모든 user story phase는 테스트 우선 task와 `tester`용 E2E task 하나를 갖는다.
+- 훅은 `${CLAUDE_PROJECT_DIR}`로 스크립트를 찾으므로 `cd`에도 살아남는다; 그래도 명령의 상대 경로가 유효하도록 `cd`보다 `git -C`와 절대 경로를 선호한다.
 - 계획 전에는 `.specify/memory/constitution.md`를, 아키텍처 변경 전에는 `docs/decisions/`를 읽는다.
 
 ## Lifecycle

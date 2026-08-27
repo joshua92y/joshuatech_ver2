@@ -2,6 +2,7 @@
 title: "AI 에이전트 저장소의 뼈대 세우기 — Spec Kit과 superpowers를 함께 쓰는 법"
 description: "포트폴리오 v2를 시작하며 계약(WHAT)과 실행(HOW)을 어떤 도구에 맡길지 정하고, 그 결정을 훅과 스킬로 강제한 과정."
 pubDate: 2026-08-26
+updatedDate: 2026-08-27
 tags: ["claude-code", "spec-kit", "superpowers", "spec-driven-development", "hooks"]
 series: "sp-0-claude-setup"
 seriesOrder: 1
@@ -39,7 +40,7 @@ v1 포트폴리오는 Django·FastAPI·Next.js를 기술 계층으로 쪼갠 "�
 
 ## 결과와 검증
 
-훅 3종은 stdin JSON 샘플로 단위 검증했다(23 케이스: 경로 순회·접두 충돌·UNC·깨진 feature.json·오래된 리뷰 등 리뷰에서 발견된 우회를 회귀 테스트로 추가). 전체 사이클(specify → plan → tasks → 승인 리뷰 → SDD → converge → E2E → finish → finishing → archive)은 `002-smoke`로 1회 실주행해 검증하며, 그 결과와 세션 재시작 후의 훅·스킬 등록 확인은 `specs/001-claude-setup/report.md`의 Validation 절에 기록한다(이 문단은 마감 시 실제 결과로 갱신).
+훅 3종은 stdin JSON 샘플로 단위 검증했다(23 케이스: 경로 순회·접두 충돌·UNC·깨진 feature.json·오래된 리뷰 등 리뷰에서 발견된 우회를 회귀 테스트로 추가). 전체 사이클은 2026-08-27에 `002-smoke`(specs 인덱스 재생성 스크립트)로 1회 실주행해 검증했다: 새 세션에서 훅 2(세 번째 훅 tester-write-guard는 settings가 아니라 tester 에이전트 정의에 붙는다)·tester·스킬 2가 로드되고 superpowers 주입은 1회였다; git 확장 훅이 브랜치를 만들었고, "승인" 입력에 승인 훅이 `/approval-review`(경계 5 리뷰)를 먼저 돌리게 했으며, finish-gate는 `/finish` 전의 finishing 호출을 계획한 문구로 거부하고 finish 산출물이 갖춰진 뒤 허용했다. 서브에이전트 구현(5 batch)의 2단계 리뷰와 converge 루프가 하네스가 통과한 상태의 실제 결함 3건을 잡았고(리뷰 2건, converge 1건), converge 2회(1차 LOW 4 → 2차 Converged), tester E2E 22 시나리오 전부 PASS, finish 리뷰 4건 ✅ 뒤 `001-claude-setup` 브랜치로 머지했다. 상세는 `specs/001-claude-setup/report.md`와 `specs/002-smoke/report.md`의 Validation 절에 있다.
 
 ## 다음 학습
 
