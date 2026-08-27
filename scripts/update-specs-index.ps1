@@ -49,15 +49,19 @@ function Find-FirstMatch([string[]]$lines, [string]$pattern) {
     return $null
 }
 
+# Status 정규화(FR-003, research R7): 첫 괄호 그룹의 첫 쉼표부터 닫는 괄호 앞까지를 지운다(1회만). 결과는 Trim.
+#   "Approved (2026-08-26, 주석) (extra)" → "Approved (2026-08-26) (extra)",  "Done (2026-08-27)"·"Draft" → 그대로
+function ConvertTo-NormalizedStatus([string]$s) { [regex]::new('\(([^,)]*),[^)]*\)').Replace($s, '($1)', 1).Trim() }
+
 # specs/<NNN-slug>/spec.md 헤더 → 항목. H1·Status 누락 시 빈 문자열(누락 보고는 별도 단계).
 function Get-FeatureEntry([string]$dirPath, [string]$name, [string]$number) {
     $lines = (ConvertTo-Lf (Read-Utf8Text (Join-Path $dirPath 'spec.md'))) -split "`n"
     $title = Find-FirstMatch $lines '^#\s+(.+?)\s*$'
     $title = if ($null -eq $title) { '' } else { ($title -creplace '^Feature Specification:\s*', '').Trim() }   # FR-002
     $status = Find-FirstMatch $lines '^\*\*Status\*\*:\s*(.+?)\s*$'
-    if ($null -eq $status) { $status = '' }
+    $status = if ($null -eq $status) { '' } else { ConvertTo-NormalizedStatus $status }                  # FR-003; 공백뿐인 값은 ''
     $priority = Find-FirstMatch $lines '^\*\*Priority\*\*:\s*(.+?)\s*$'
-    if ($null -eq $priority) { $priority = '—' }                                                       # FR-004
+    $priority = if ($null -eq $priority) { '—' } else { $priority.Trim() }                              # FR-004; 공백뿐인 값은 ''
     [pscustomobject]@{
         Dir      = $name
         Number   = $number
