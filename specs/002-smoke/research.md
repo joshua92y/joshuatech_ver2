@@ -45,6 +45,7 @@ Technical Context에 `NEEDS CLARIFICATION`은 없다. 아래는 구현 방식 �
 - **Decision**: 첫 번째 괄호 그룹에 한해 `\(([^,)]*),[^)]*\)` → `($1)`. 괄호 밖 텍스트와 괄호 없는 값은 그대로.
 - **Rationale**: spec FR-003 예시와 1:1 대응. 그룹 하나만 치환해 뒤따르는 괄호(드묾)를 건드리지 않는다.
 - **Alternatives considered**: 허용값(Draft/Approved/Done) 검증 — spec Assumptions에서 범위 밖으로 둠.
+- **2026-08-27 converge 추기**: 구현은 문자열 시작에 앵커된 `^([^(]*\()([^,)]*),[^)]*\)` → `$1$2)`를 쓴다(tasks T017). 위 정규식은 "첫 쉼표 있는 괄호"를 치환해 `Approved (2026-08-26) (note, x)`의 두 번째 괄호를 건드렸기 때문(FR-003 "첫 괄호" 문언과 불일치).
 
 ## R8. 정렬·번호
 
