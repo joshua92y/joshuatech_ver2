@@ -22,7 +22,7 @@
 
 **Acceptance Scenarios**:
 
-1. **Given** `specs/` 아래에 `spec.md`를 가진 feature 디렉터리 `001-claude-setup`, `002-smoke`가 있고 `001`에만 `plan.md`가 있음, **When** 재생성 명령을 실행, **Then** 표에는 정확히 두 행이 번호 오름차순으로 있고, 각 행은 `번호 | Feature | Status | 우선순위 | 링크` 열을 가지며, Feature 셀은 해당 `spec.md`의 H1에서 `Feature Specification:` 접두를 뺀 제목, 링크 셀은 `[spec](NNN-slug/spec.md)`에 `plan.md`가 있는 feature만 ` · [plan](NNN-slug/plan.md)`이 덧붙는다.
+1. **Given** `specs/` 아래에 `spec.md`를 가진 feature 디렉터리 `001-claude-setup`, `002-smoke`가 있고 `001`에만 `plan.md`가 있음, **When** 재생성 명령을 실행, **Then** 표에는 정확히 두 행이 번호 오름차순으로 있고, 각 행은 `# | Feature | Status | 우선순위 | 링크` 열(헤더 표기 `#` = 번호)을 가지며, Feature 셀은 해당 `spec.md`의 H1에서 `Feature Specification:` 접두를 뺀 제목, 링크 셀은 `[spec](NNN-slug/spec.md)`에 `plan.md`가 있는 feature만 ` · [plan](NNN-slug/plan.md)`이 덧붙는다.
 2. **Given** `specs/README.md`에 표 앞 머리말 문단(제목·설명)이 있음, **When** 명령을 실행, **Then** 표 앞의 내용과 표 뒤의 내용은 문자 단위로 그대로이고 표만 교체된다.
 3. **Given** 표가 이미 최신 상태, **When** 명령을 한 번 더 실행, **Then** 파일 내용이 바뀌지 않는다(멱등).
 4. **Given** 어느 작업 디렉터리에서든, **When** 명령을 실행, **Then** 항상 저장소의 `specs/`와 `specs/README.md`를 대상으로 동작한다.
@@ -58,7 +58,7 @@
 1. **Given** `spec.md`에 `**Priority**` 줄이 없음, **When** 재생성, **Then** 우선순위 셀은 `—`.
 2. **Given** `spec.md`에 `**Priority**: 🔴` 줄이 있음, **When** 재생성, **Then** 우선순위 셀은 `🔴`.
 3. **Given** feature 디렉터리에 `plan.md`가 없음, **When** 재생성, **Then** 링크 셀은 `[spec](…)`만.
-4. **Given** `specs/` 아래에 `README.md`처럼 `NNN-slug` 형식이 아닌 항목이나 `spec.md`가 없는 디렉터리가 있음, **When** 재생성, **Then** 그 항목은 표에 나타나지 않고(디렉터리인 경우 경고 메시지 출력), 나머지 feature는 정상 처리되며 명령은 성공으로 끝난다.
+4. **Given** `specs/` 아래에 `README.md`처럼 `NNN-slug` 형식이 아닌 항목이나 `spec.md`가 없는 디렉터리가 있음, **When** 재생성, **Then** 그 항목은 표에 나타나지 않고(`NNN-slug` 디렉터리에 `spec.md`가 없는 경우에만 경고 메시지 출력, 형식이 아닌 항목은 조용히 무시), 나머지 feature는 정상 처리되며 명령은 성공으로 끝난다.
 5. **Given** 어떤 `spec.md`에 H1 제목 또는 `**Status**` 줄이 없음, **When** 재생성, **Then** 문제 파일을 지목하는 오류 메시지가 출력되고 명령은 실패로 끝나며 `specs/README.md`는 변경되지 않는다.
 
 ---
@@ -71,7 +71,7 @@
 - `specs/README.md`가 없으면 기본 제목·머리말과 표로 새로 만든다; 파일은 있으나 표가 없으면 기존 내용 뒤에 표를 덧붙인다.
 - 표 뒤에 후행 텍스트가 있으면 그대로 보존한다.
 - 셀 값에 `|`가 포함되면 표가 깨지지 않도록 이스케이프한다.
-- 번호는 디렉터리 접두 그대로(`001`)이며 정렬은 숫자 기준이다. 같은 번호 접두를 가진 디렉터리가 둘 이상이면 모두 표시하고 이름순으로 정렬한다(오류 아님).
+- 번호는 디렉터리 접두 그대로(`001`)이며 정렬은 숫자 기준이다. 같은 번호 접두를 가진 디렉터리가 둘 이상이면 모두 표시하고 이름의 문자 코드 순(ordinal)으로 정렬한다(오류 아님).
 - `**Status**`·`**Priority**` 줄이 여러 번 나타나면 첫 번째 줄만 쓴다.
 - 입력 `spec.md`나 `README.md`가 BOM 또는 CRLF를 가져도 같은 결과를 낸다(BOM 제거, 줄바꿈은 LF로 정규화). "문자 단위 동일"(SC-004)은 줄바꿈 정규화 후의 문자 기준이다.
 - feature가 0개면 헤더 행과 구분 행만 있는 빈 표를 쓰고 성공 종료한다.
