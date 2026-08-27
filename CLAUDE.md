@@ -64,8 +64,10 @@ Layout table: `AGENTS.md` (imported above). Added since: `scripts/` (`update-spe
 
 ## Commands
 Commands table: `AGENTS.md`. Archive a merged feature: `/speckit-archive-run specs/<NNN-slug>`.
+Regenerate the specs index: `pwsh -NoProfile -File scripts/update-specs-index.ps1` (fail-closed, idempotent; `tests/run-all.ps1` check `specs-index-fresh` runs it for real, so a stale `specs/README.md` FAILs and is regenerated as a side effect — commit the result).
 
 ## Recent Changes
+- specs/002-smoke: specs index regeneration script (`scripts/update-specs-index.ps1`, fail-closed, atomic, idempotent) + 40-assertion harness + run-all checks `scripts`/`specs-index-fresh`; first full lifecycle run (approval-review → SDD → converge → tester → finish)
 - specs/001-claude-setup: SP-0 tooling — Spec Kit + superpowers + repo gates (hooks/skills/tester/rules/tests), docs policy, smoke feature 002 merged
 
 ## Known Issues & Gotchas
@@ -93,6 +95,21 @@ Commands table: `AGENTS.md`. Archive a merged feature: `/speckit-archive-run spe
 **Issue:** Six harness assertions passed while a hook crashed, because a crashed PreToolUse hook also prints nothing.
 **Root Cause:** The assertions checked stdout only, not the exit code; the path guard likewise accepted `tests/../src` and repo-prefix collisions before normalization.
 **Prevention Rule:** Every "allow" assertion requires exit code 0 and empty output; guards normalize with `GetFullPath` and require the `<root>/` prefix; gate logic fails closed, only input parsing fails open.
+
+### ⚠️ PowerShell `-ceq` is a culture-sensitive comparison
+**Issue:** A `specs/README.md` holding only a UTF-8 BOM compared equal to the regenerated text, so `update-specs-index.ps1` reported `(unchanged)` forever and never rewrote it.
+**Root Cause:** `-eq`/`-ceq` are linguistic (invariant-culture) comparisons that skip "ignorable" code points such as U+FEFF; the `c` prefix only toggles case sensitivity, it does not make the comparison ordinal.
+**Prevention Rule:** Compare file contents, paths, and identifiers with `[string]::Equals($a, $b, [StringComparison]::Ordinal)`; whenever an idempotency or "unchanged" check rests on string equality, add a BOM-only fixture to the harness.
+
+### ⚠️ `[IO.Path]::GetFullPath` resolves against the .NET cwd, not `$PWD`
+**Issue:** A relative `-Root` given to `update-specs-index.ps1` was resolved against the process's .NET working directory, which does not follow `Set-Location`, so the script scanned the wrong tree.
+**Root Cause:** PowerShell keeps its own location (`$PWD`) apart from `[Environment]::CurrentDirectory`, and every .NET path API — `GetFullPath`, `File.*` — uses the latter.
+**Prevention Rule:** Resolve user-supplied relative paths with `$ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($p)` before any .NET I/O; reserve `GetFullPath` for paths that are already absolute (as the hook guards above do), and default script roots from `$PSScriptRoot`, never from the cwd.
+
+### ⚠️ Bash tool mangles large Korean heredocs and collapses backslash pairs
+**Issue:** Writing Korean spec/report prose or regex-bearing script text through Bash heredocs produced corrupted text and turned a doubled backslash into a single one, silently breaking patterns.
+**Root Cause:** The Bash tool's quoting layer re-interprets backslashes and does not reliably round-trip long multibyte heredocs (observed on Windows / Git Bash during 002-smoke).
+**Prevention Rule:** Use the Write/Edit tools for Korean documents and for any file containing regexes or backslash paths; keep Bash for running commands. Verify a regex edit by running the harness, not by eyeballing the diff.
 
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,

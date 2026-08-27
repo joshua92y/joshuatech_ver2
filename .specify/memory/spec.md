@@ -1,6 +1,7 @@
 # Main Project Specification
 
 > **Revision**: 2026-08-27 — specs/001-claude-setup 아카이브(첫 아카이브: 시드 생성 후 spec 전체 반영)
+> **Revision**: 2026-08-27 — specs/002-smoke 아카이브(스토리 3·FR 14·엔티티 2·엣지 15·SC 7·가정 6 추가, 폴드 2: 002 FR-006 → FR-010, 002 "실행 환경" 가정 → AS-001; ID 재번호: User Story 1–3 → 8–10, FR-001–015 → FR-026–039, SC-001–007 → SC-010–016, 가정 → AS-008–013; Data Flow에 §11 인덱스 재생성 흐름 추가)
 
 ## User Scenarios & Testing
 
@@ -132,6 +133,63 @@ feature가 main에 머지되면 `/speckit-archive`가 `.specify/memory/{spec,pla
 
 ---
 
+### User Story 8 - 인덱스 한 번에 재생성 (Priority: P1)
+
+저장소 운영자는 feature의 `spec.md` 헤더를 바꾼 뒤(예: Status가 Approved로 바뀜) 명령 하나로 `specs/README.md`의 feature 인덱스 표를 다시 만든다. 표 위의 머리말 문단은 손대지 않는다. 표를 손으로 고치다가 헤더와 어긋나는 일이 사라진다.
+
+**Why this priority**: 이 feature의 존재 이유다. 인덱스는 `specs/` 규칙("헤더를 바꾸고 재생성한다, 표만 고치지 않는다")의 유일한 실행 수단이며, 이후 모든 feature의 finish·archive 단계가 이 명령에 의존한다.
+
+**Independent Test**: feature 디렉터리 2개(001, 002)가 있는 현재 저장소에서 명령을 실행하고, 표의 행 수·각 셀·머리말이 `spec.md` 헤더와 기존 머리말에 일치하는지 확인한다. 이 스토리만으로도 실사용 가치가 있다.
+
+**Acceptance Scenarios**:
+
+1. **Given** `specs/` 아래에 `spec.md`를 가진 feature 디렉터리 `001-claude-setup`, `002-smoke`가 있고 `001`에만 `plan.md`가 있음, **When** 재생성 명령을 실행, **Then** 표에는 정확히 두 행이 번호 오름차순으로 있고, 각 행은 `# | Feature | Status | 우선순위 | 링크` 열(헤더 표기 `#` = 번호)을 가지며, Feature 셀은 해당 `spec.md`의 H1에서 `Feature Specification:` 접두를 뺀 제목, 링크 셀은 `[spec](NNN-slug/spec.md)`에 `plan.md`가 있는 feature만 ` · [plan](NNN-slug/plan.md)`이 덧붙는다.
+2. **Given** `specs/README.md`에 표 앞 머리말 문단(제목·설명)이 있음, **When** 명령을 실행, **Then** 표 앞의 내용과 표 뒤의 내용은 문자 단위로 그대로이고 표만 교체된다.
+3. **Given** 표가 이미 최신 상태, **When** 명령을 한 번 더 실행, **Then** 파일 내용이 바뀌지 않는다(멱등).
+4. **Given** 어느 작업 디렉터리에서든, **When** 명령을 실행, **Then** 항상 저장소의 `specs/`와 `specs/README.md`를 대상으로 동작한다.
+
+[Source: specs/002-smoke/spec.md -> User Story 1]
+
+---
+
+### User Story 9 - Status 값 정규화 (Priority: P2)
+
+`spec.md`의 `**Status**` 줄에는 검토 이력 같은 주석이 괄호 안에 덧붙을 수 있다(`Approved (2026-08-26, 외부 리뷰 반영판)`). 인덱스에서는 상태와 날짜만 보이면 되므로 첫 쉼표 이후의 주석을 떼어 `Approved (2026-08-26)` 형태로 통일한다.
+
+**Why this priority**: 인덱스 표의 가독성과 일관성. 정규화가 없으면 표가 주석으로 길어지고 상태 비교(Draft/Approved/Done)가 어려워진다. US1 없이는 의미가 없으므로 P2.
+
+**Independent Test**: 주석 있는 값, 날짜만 있는 값, 괄호 없는 값을 각각 가진 `spec.md`로 표를 만들어 셀 값을 비교한다.
+
+**Acceptance Scenarios**:
+
+1. **Given** `**Status**: Approved (2026-08-26, 외부 리뷰 반영판)`, **When** 재생성, **Then** Status 셀은 `Approved (2026-08-26)`.
+2. **Given** `**Status**: Done (2026-08-27)`, **When** 재생성, **Then** 셀은 `Done (2026-08-27)` 그대로.
+3. **Given** `**Status**: Draft`(괄호 없음), **When** 재생성, **Then** 셀은 `Draft` 그대로.
+
+[Source: specs/002-smoke/spec.md -> User Story 2]
+
+---
+
+### User Story 10 - 결측값과 예외 상황 처리 (Priority: P3)
+
+헤더에 우선순위가 없거나 `plan.md`가 아직 없는 feature, `specs/` 안의 feature가 아닌 항목, 헤더가 깨진 `spec.md`가 있어도 명령은 예측 가능하게 동작한다: 있는 것은 표시하고, 없는 것은 `—`로 표시하며, 헤더가 깨진 경우에는 인덱스를 건드리지 않고 실패를 알린다.
+
+**Why this priority**: 현재 저장소에도 우선순위 줄이 없는 spec과 `plan.md`가 없는 feature가 있으므로 결측 처리는 첫 실행부터 필요하지만, 예외 케이스는 드물다.
+
+**Independent Test**: 우선순위 줄이 없는 spec, `plan.md`가 없는 feature, `spec.md`가 없는 디렉터리, Status 줄이 없는 spec을 각각 준비해 결과(셀 값, 경고/오류, 종료 상태, 인덱스 파일 변경 여부)를 확인한다.
+
+**Acceptance Scenarios**:
+
+1. **Given** `spec.md`에 `**Priority**` 줄이 없음, **When** 재생성, **Then** 우선순위 셀은 `—`.
+2. **Given** `spec.md`에 `**Priority**: 🔴` 줄이 있음, **When** 재생성, **Then** 우선순위 셀은 `🔴`.
+3. **Given** feature 디렉터리에 `plan.md`가 없음, **When** 재생성, **Then** 링크 셀은 `[spec](…)`만.
+4. **Given** `specs/` 아래에 `README.md`처럼 `NNN-slug` 형식이 아닌 항목이나 `spec.md`가 없는 디렉터리가 있음, **When** 재생성, **Then** 그 항목은 표에 나타나지 않고(`NNN-slug` 디렉터리에 `spec.md`가 없는 경우에만 경고 메시지 출력, 형식이 아닌 항목은 조용히 무시), 나머지 feature는 정상 처리되며 명령은 성공으로 끝난다.
+5. **Given** 어떤 `spec.md`에 H1 제목 또는 `**Status**` 줄이 없음, **When** 재생성, **Then** 문제 파일을 지목하는 오류 메시지가 출력되고 명령은 실패로 끝나며 `specs/README.md`는 변경되지 않는다.
+
+[Source: specs/002-smoke/spec.md -> User Story 3]
+
+---
+
 ### Edge Cases
 
 - 활성 feature 해석은 `SPECIFY_FEATURE_DIRECTORY` env → 현재 브랜치명↔`specs/NNN-slug` 매핑 → `.specify/feature.json` 순서다. finish-gate는 셋 다 실패하거나 서로 불일치하면 deny(fail-closed), approval-review·finish 스킬은 사용자에게 활성 feature를 묻는다. feature.json은 gitignored·체크아웃별 편의 상태일 뿐 정본이 아니다(정본 = git 브랜치 + `specs/<feature>/`). feature.json 단독으로는 feature를 해석하지 않는다(env 또는 `NNN-slug` 브랜치가 없으면 deny) — 리뷰 반영 2026-08-26. [Source: specs/001-claude-setup/spec.md -> "활성 feature 해석은"]
@@ -141,6 +199,23 @@ feature가 main에 머지되면 `/speckit-archive`가 `.specify/memory/{spec,pla
 - PowerShell 실행 정책이 스크립트를 막으면 훅 명령에 `-ExecutionPolicy Bypass`를 명시한다. [Source: specs/001-claude-setup/spec.md -> "PowerShell 실행 정책이 스크립트를 막으면"]
 - 브랜치명과 활성 feature 디렉터리가 어긋나면 `speckit-git-validate`로 검출한다(Spec Kit은 브랜치가 아니라 feature.json을 기준으로 삼는다). [Source: specs/001-claude-setup/spec.md -> "브랜치명과 활성 feature 디렉터리가 어긋나면"]
 - 서브에이전트에 spec/plan 전체를 투입하면 18k+ 토큰이 소모된다 → task 슬라이스만 전달(CLAUDE.md 규칙). [Source: specs/001-claude-setup/spec.md -> "서브에이전트에 spec/plan 전체를 투입하면"]
+
+**specs 인덱스 재생성 (002-smoke, `scripts/update-specs-index.ps1`)**
+- H1이 `Feature Specification:` 접두 없이 시작하면 H1 전체를 제목으로 쓴다. [Source: specs/002-smoke/spec.md -> "H1이 `Feature Specification:` 접두 없이 시작하면"]
+- 헤더 줄 사이에 빈 줄이 있는 형식(Spec Kit 템플릿)과 없는 형식(001 spec) 모두 같은 결과를 낸다. [Source: specs/002-smoke/spec.md -> "헤더 줄 사이에 빈 줄이 있는 형식"]
+- Status 값의 괄호 안에 쉼표가 없으면 그대로 두고, 첫 여는 괄호 이전의 상태 단어는 그대로 유지한다. [Source: specs/002-smoke/spec.md -> "Status 값의 괄호 안에 쉼표가 없으면"]
+- `specs/README.md`가 없으면 기본 제목·머리말과 표로 새로 만든다; 파일은 있으나 표가 없으면 기존 내용 뒤에 표를 덧붙인다. [Source: specs/002-smoke/spec.md -> "`specs/README.md`가 없으면 기본 제목·머리말과 표로 새로 만든다"]
+- 표 뒤에 후행 텍스트가 있으면 그대로 보존한다. [Source: specs/002-smoke/spec.md -> "표 뒤에 후행 텍스트가 있으면"]
+- 셀 값에 `|`가 포함되면 표가 깨지지 않도록 이스케이프한다. [Source: specs/002-smoke/spec.md -> "셀 값에 `|`가 포함되면"]
+- 번호는 디렉터리 접두 그대로(`001`)이며 정렬은 숫자 기준이다. 같은 번호 접두를 가진 디렉터리가 둘 이상이면 모두 표시하고 이름의 문자 코드 순(ordinal)으로 정렬한다(오류 아님). [Source: specs/002-smoke/spec.md -> "번호는 디렉터리 접두 그대로"]
+- `**Status**`·`**Priority**` 줄이 여러 번 나타나면 첫 번째 줄만 쓴다. [Source: specs/002-smoke/spec.md -> "`**Status**`·`**Priority**` 줄이 여러 번 나타나면"]
+- 입력 `spec.md`나 `README.md`가 BOM 또는 CRLF를 가져도 같은 결과를 낸다(BOM 제거, 줄바꿈은 LF로 정규화). "문자 단위 동일"(SC-013)은 줄바꿈 정규화 후의 문자 기준이다. [Source: specs/002-smoke/spec.md -> "입력 `spec.md`나 `README.md`가 BOM 또는 CRLF를 가져도"]
+- feature가 0개면 헤더 행과 구분 행만 있는 빈 표를 쓰고 성공 종료한다. [Source: specs/002-smoke/spec.md -> "feature가 0개면"]
+- 표가 없는 `README.md`에 덧붙일 때는 기존 내용의 끝 공백·개행을 제거한 뒤 빈 줄 하나를 두고 표를 붙이며, 파일은 개행 하나로 끝난다(반복 실행 시 동일). [Source: specs/002-smoke/spec.md -> "표가 없는 `README.md`에 덧붙일 때는"]
+- `specs/` 디렉터리 자체가 없으면 오류를 출력하고 실패 종료하며 아무것도 쓰지 않는다. [Source: specs/002-smoke/spec.md -> "`specs/` 디렉터리 자체가 없으면"]
+- `README.md`에 인덱스 표의 헤더 행이 둘 이상 있으면 어느 것을 교체할지 정할 수 없으므로 오류로 실패 종료하고 아무것도 쓰지 않는다. [Source: specs/002-smoke/spec.md -> "`README.md`에 인덱스 표의 헤더 행이 둘 이상 있으면"]
+- 입력 파일을 읽을 수 없거나 올바른 UTF-8이 아니거나, `README.md`를 쓸 수 없으면(권한·잠금) 문제를 지목하는 오류 한 줄을 출력하고 실패 종료하며 `README.md`는 변경되지 않는다. [Source: specs/002-smoke/spec.md -> "입력 파일을 읽을 수 없거나 올바른 UTF-8이 아니거나"]
+- 결과 파일은 UTF-8(BOM 없음)·LF로 저장한다(저장소 파일 규칙). [Source: specs/002-smoke/spec.md -> "결과 파일은 UTF-8(BOM 없음)·LF로 저장한다"]
 
 ## Requirements
 
@@ -158,7 +233,7 @@ feature가 main에 머지되면 `/speckit-archive`가 `.specify/memory/{spec,pla
 - **FR-007**: superpowers `brainstorming`의 spec 저장 경로는 활성 feature의 `specs/NNN-slug/spec.md`로 오버라이드하고, 이때 `create-new-feature.ps1 -ShortName <slug> -Json`으로 번호를 확보한 뒤 Spec Kit `spec-template.md` 형식으로 작성한다. [Source: specs/001-claude-setup/spec.md -> FR-007]
 - **FR-008**: superpowers `writing-plans`는 이 저장소에서 사용하지 않는다(`tasks.md`가 유일한 실행 계획). 예외는 `001-claude-setup`(Spec Kit 설치 전 부트스트랩)뿐이다. [Source: specs/001-claude-setup/spec.md -> FR-008]
 - **FR-009**: 각 feature 디렉터리는 Spec Kit 산출물 외에 `reviews/YYYY-MM-DD-{approval,finish}.md`와 `report.md`(Summary / Changes Made / Validation / Next)를 가진다. [Source: specs/001-claude-setup/spec.md -> FR-009]
-- **FR-010**: `specs/README.md`는 번호·제목·Status·우선순위 표이며 각 `spec.md`의 `**Status**` 헤더에서 재생성 가능해야 한다. 완료된 feature 디렉터리는 이동하지 않는다. [Source: specs/001-claude-setup/spec.md -> FR-010]
+- **FR-010**: `specs/README.md`는 번호·제목·Status·우선순위 표이며 각 `spec.md`의 `**Status**` 헤더에서 재생성 가능해야 한다. 완료된 feature 디렉터리는 이동하지 않는다. 표는 `| # | Feature | Status | 우선순위 | 링크 |` 헤더를 가지며 feature당 한 행, 번호 오름차순이어야 한다. [Source: specs/001-claude-setup/spec.md -> FR-010] [Source: specs/002-smoke/spec.md -> FR-006]
 - **FR-011**: `docs/decisions/NNNN-<title>.md`는 MADR 4.0 minimal 형식이며 `0000-use-madr.md`와 `0001-adopt-spec-kit-with-superpowers.md`로 시작한다. 번호는 재사용하지 않고 수정 대신 supersede한다. [Source: specs/001-claude-setup/spec.md -> FR-011]
 - **FR-012**: `CHANGELOG.md`는 Keep a Changelog 1.1.0 형식(`Unreleased` 절, ISO 날짜)이다. [Source: specs/001-claude-setup/spec.md -> FR-012]
 - **FR-013**: 에이전트 파일(`CLAUDE.md`, `AGENTS.md`, `.specify/memory/constitution.md`, `.claude/rules/*`, `.claude/agents/*`, 프로젝트 스킬)은 영어로 작성하고, 한국어 미러를 `docs/kr/`에 같은 상대 구조 + `_kr` 접미로 둔다. spec/plan/report/학습 노트/대화/주석은 한국어, 식별자·slug는 영어다. 각 에이전트 파일 상단에 "Canonical language: English / Korean mirror: docs/kr (convenience only) / On conflict, English prevails / Sync: /finish (best-effort)" 선언을 둔다. 미러 갱신은 마감을 막지 않으며 `translation-pending` 상태를 허용한다. [Source: specs/001-claude-setup/spec.md -> FR-013]
@@ -183,6 +258,22 @@ feature가 main에 머지되면 `/speckit-archive`가 `.specify/memory/{spec,pla
 - **FR-024**: CLAUDE.md는 다음을 명시한다 — Spec Kit 명령은 명시 호출만; `speckit-implement` 대신 superpowers SDD 사용; SDD·Tester·리뷰 서브에이전트에는 task 슬라이스와 관련 절만 전달; 활성 feature는 env → 브랜치명 → `.specify/feature.json` 순으로 해석하며 정본은 git 브랜치 + `specs/<feature>/`; 승인 전 구현 금지; 마감은 `/finish` → finishing → 머지 → `/speckit-archive` 순서. [Source: specs/001-claude-setup/spec.md -> FR-024]
 - **FR-025**: `docs/runbooks/spec-kit-upgrade.md`에 커스터마이즈 레지스터(파일별 원본 Spec Kit 버전·원본 경로·변경 이유·재검증 명령)와 `specify upgrade` 절차를 둔다. AGENTS.md는 활성 Spec Kit integration이 `claude` 하나임과, 다른 에이전트(Codex 등)는 AGENTS.md·constitution·`specs/`만 읽는다는 것을 명시한다. [Source: specs/001-claude-setup/spec.md -> FR-025]
 
+**specs 인덱스 재생성 (002-smoke)** — 아래에서 "명령"은 `scripts/update-specs-index.ps1`이다. 표의 헤더·행 규칙은 FR-010에 폴드되었다.
+- **FR-026**: 명령은 `specs/` 바로 아래에서 `NNN-slug` 형식(3자리 이상 숫자, 하이픈, 슬러그)의 디렉터리 중 `spec.md`를 가진 것만 feature로 인식해야 한다. [Source: specs/002-smoke/spec.md -> FR-001]
+- **FR-027**: 각 feature의 번호는 디렉터리 접두에서, Feature 제목은 `spec.md`의 첫 H1에서 `Feature Specification:` 접두와 양끝 공백을 제거한 값으로 얻어야 한다. [Source: specs/002-smoke/spec.md -> FR-002]
+- **FR-028**: Status는 `spec.md`의 `**Status**:` 줄 값에서 얻고, 첫 괄호 안에 쉼표가 있으면 첫 쉼표 이후를 제거하고 괄호를 닫아 `상태 (날짜)` 형태로 정규화해야 한다(예: `Approved (2026-08-26, 외부 리뷰 반영판)` → `Approved (2026-08-26)`). [Source: specs/002-smoke/spec.md -> FR-003]
+- **FR-029**: 우선순위는 `**Priority**:` 줄 값이며, 줄이 없으면 `—`를 써야 한다. [Source: specs/002-smoke/spec.md -> FR-004]
+- **FR-030**: 링크 셀은 `[spec](NNN-slug/spec.md)`이고, 같은 디렉터리에 `plan.md`가 있으면 ` · [plan](NNN-slug/plan.md)`을 덧붙여야 한다. [Source: specs/002-smoke/spec.md -> FR-005]
+- **FR-031**: 명령은 `specs/README.md`에서 표(헤더 행·구분 행·데이터 행의 연속 블록)만 교체하고, 표 앞의 머리말과 표 뒤의 내용은 그대로 보존해야 한다. [Source: specs/002-smoke/spec.md -> FR-007]
+- **FR-032**: 같은 입력으로 반복 실행해도 결과 파일이 동일해야 한다(멱등). [Source: specs/002-smoke/spec.md -> FR-008]
+- **FR-033**: 어떤 `spec.md`에 H1 또는 `**Status**` 줄이 없으면 그 파일을 지목하는 오류를 출력하고 실패 종료해야 하며, 이때 `specs/README.md`를 변경해서는 안 된다. [Source: specs/002-smoke/spec.md -> FR-009]
+- **FR-034**: `spec.md`가 없는 `NNN-slug` 디렉터리는 경고를 출력하고 건너뛰되 명령은 성공 종료해야 한다; `NNN-slug` 형식이 아닌 항목은 조용히 무시해야 한다. [Source: specs/002-smoke/spec.md -> FR-010]
+- **FR-035**: `specs/README.md`가 없으면 기본 제목·머리말과 표로 새로 만들고, 표가 없는 파일이면 기존 내용 뒤에 표를 덧붙여야 한다. [Source: specs/002-smoke/spec.md -> FR-011]
+- **FR-036**: 결과 파일은 UTF-8(BOM 없음)·LF 줄바꿈으로 저장해야 한다. [Source: specs/002-smoke/spec.md -> FR-012]
+- **FR-037**: 셀 값의 `|` 문자는 표를 깨뜨리지 않도록 이스케이프해야 한다. [Source: specs/002-smoke/spec.md -> FR-013]
+- **FR-038**: 명령은 현재 작업 디렉터리와 무관하게 자신이 속한 저장소의 `specs/`를 대상으로 동작해야 한다. [Source: specs/002-smoke/spec.md -> FR-014]
+- **FR-039**: 명령은 성공 시 종료 코드 0, 실패 시 0이 아닌 종료 코드로 결과를 알려야 한다. [Source: specs/002-smoke/spec.md -> FR-015]
+
 ### Key Entities
 
 - **Feature**: `specs/NNN-slug/` 디렉터리. Spec Kit 산출물(spec/plan/tasks/research/data-model/quickstart/contracts/checklists) + 프로젝트 산출물(reviews/, report.md). 상태는 `spec.md` `**Status**` 헤더(Draft → Approved → Done). [Source: specs/001-claude-setup/spec.md -> "Feature"]
@@ -194,6 +285,10 @@ feature가 main에 머지되면 `/speckit-archive`가 `.specify/memory/{spec,pla
 - **ActiveFeaturePointer**: `.specify/feature.json` (gitignored, 체크아웃별 편의 상태). 훅·스킬은 `SPECIFY_FEATURE_DIRECTORY` env → 브랜치명 → 이 파일 순으로 대상 feature를 해석한다. 정본은 git 브랜치와 `specs/<feature>/`. [Source: specs/001-claude-setup/spec.md -> "ActiveFeaturePointer"]
 
 위 엔터티는 모두 저장소 안의 문서·설정 파일이며, 원 spec에는 엔터티별 데이터 소유자(owner)·격리 경계 진술이 없다(아카이브 시 보완하지 않음).
+
+**specs 인덱스 재생성 (002-smoke)**
+- **Feature 인덱스 항목**: 하나의 feature 디렉터리를 대표하는 행. 속성: 번호, 제목, 정규화된 Status, 우선순위(없으면 `—`), 링크(spec, 선택적으로 plan). 소유자: 저장소 자체(전역 메타데이터 — 제품·테넌트 데이터가 아닌 개발 도구 산출물이므로 격리 키 없음). 원천은 각 `spec.md` 헤더이며 인덱스는 파생물이다. 필드(데이터 모델 `FeatureEntry`): `dirName`(`^\d{3,}-[A-Za-z0-9][A-Za-z0-9-]*$`에 맞고 `spec.md`가 있을 때만 인식), `number`(숫자 접두 문자열 그대로), `title`(첫 `# ` 줄, 접두·공백 제거; 없으면 오류), `statusRaw`(첫 `**Status**:` 줄; 없으면 오류), `status`(첫 괄호 그룹에서 첫 쉼표 이후 제거), `priority`(첫 `**Priority**:` 줄; 없으면 `—`), `hasPlan`(`<dir>/plan.md` 존재 여부), `specLink`/`planLink`(README 기준 상대 경로). [Source: specs/002-smoke/spec.md -> "Feature 인덱스 항목"] [Source: specs/002-smoke/data-model.md -> "FeatureEntry"]
+- **인덱스 문서**: `specs/README.md`. 구조: 머리말(보존) + 표(재생성) + 후행 텍스트(보존). 소유자: 저장소(전역, 위 항목과 같은 이유). 표 블록은 명령이 소유하며(`spec.md` 헤더의 파생물 — 표를 손으로 고친 내용은 다음 재생성에서 폐기된다), 머리말·후행 텍스트는 사람이 소유한다(명령은 읽어서 그대로 보존만 한다). 명령은 입력 `spec.md`·`plan.md`를 쓰거나 지우지 않으며, 이력·백업·롤백은 git이 담당한다. 부분(데이터 모델 `IndexDocument`): `preamble`(표 헤더 행 `| # |` 이전 전부, 문자 단위 보존), `table`(헤더 + 구분 + 행들, 번호 오름차순), `trailer`(표 블록 이후 전부, 보존); 파일 없음 → 기본 제목·머리말 + 표, 표 없음 → 기존 내용 + 빈 줄 + 표; UTF-8(BOM 없음)·LF; 조립 결과가 기존과 같으면 쓰지 않음. Status 값은 `Draft` → `Approved (YYYY-MM-DD)` → `Done (YYYY-MM-DD)`(specs 규칙)이며 검증하지 않고 정규화만 한다. [Source: specs/002-smoke/spec.md -> "인덱스 문서"] [Source: specs/002-smoke/data-model.md -> "IndexDocument"] [Source: specs/002-smoke/data-model.md -> "## Status 값(참고)"]
 
 ## Success Criteria
 
@@ -208,16 +303,29 @@ feature가 main에 머지되면 `/speckit-archive`가 `.specify/memory/{spec,pla
 - **SC-007**: 사용자 레벨 설정에서 superpowers 플러그인이 하나만 활성화되어 세션 시작 시 using-superpowers 주입이 1회만 발생한다. [Source: specs/001-claude-setup/spec.md -> SC-007]
 - **SC-008**: `docs/runbooks/spec-kit-upgrade.md`가 커스터마이즈 파일마다 원본 Spec Kit 버전·원본 경로·변경 이유·재검증 명령을 기록하고 업그레이드 절차를 담는다. [Source: specs/001-claude-setup/spec.md -> SC-008]
 - **SC-009**: GitHub 원격에 `main`과 `001-claude-setup`이 push되어 있다. [Source: specs/001-claude-setup/spec.md -> SC-009]
+- **SC-010**: 명령 1회 실행으로 현재 저장소의 모든 feature(2개)가 표에 나타나고, 모든 셀 값이 해당 `spec.md` 헤더에서 규칙대로 도출한 기대값과 100% 일치한다. [Source: specs/002-smoke/spec.md -> SC-001]
+- **SC-011**: 같은 상태에서 2회 연속 실행하면 두 번째 실행 후 파일 변경이 0바이트다. [Source: specs/002-smoke/spec.md -> SC-002]
+- **SC-012**: Status 정규화 검증 세트(주석 있음 / 날짜만 / 괄호 없음)의 결과가 기대값과 100% 일치한다. [Source: specs/002-smoke/spec.md -> SC-003]
+- **SC-013**: 머리말과 후행 텍스트는 실행 전후 문자 단위로 100% 동일하다. [Source: specs/002-smoke/spec.md -> SC-004]
+- **SC-014**: feature 100개까지 5초 이내에 완료된다. [Source: specs/002-smoke/spec.md -> SC-005]
+- **SC-015**: 헤더가 깨진 `spec.md`가 하나라도 있으면 100% 실패로 보고되고 인덱스 파일은 변경되지 않는다. [Source: specs/002-smoke/spec.md -> SC-006]
+- **SC-016**: 자동 테스트가 단독으로 실행되어 통과/실패를 종료 코드로 알리며, 재생성 후 저장소 전체 검사(`tests/run-all.ps1`)가 계속 모두 통과한다. [Source: specs/002-smoke/spec.md -> SC-007]
 
 ## Assumptions
 
-- **AS-001**: 1인 개발(팀 인수인계 형식 없음). 개발기는 Windows 11 + PowerShell 7, Git Bash 보조. 훅은 PowerShell 단일 스크립트다(Linux 개발기가 생기면 `.sh` 변형을 추가한다). [Source: specs/001-claude-setup/spec.md -> "1인 개발(팀 인수인계 형식 없음)"]
+- **AS-001**: 1인 개발(팀 인수인계 형식 없음). 개발기는 Windows 11 + PowerShell 7, Git Bash 보조. 훅은 PowerShell 단일 스크립트다(Linux 개발기가 생기면 `.sh` 변형을 추가한다). 실행 환경: PowerShell 7이 PATH에 있다(훅과 `scripts/update-specs-index.ps1`의 공통 전제). [Source: specs/001-claude-setup/spec.md -> "1인 개발(팀 인수인계 형식 없음)"] [Source: specs/002-smoke/spec.md -> "실행 환경: PowerShell 7이 PATH에 있다"]
 - **AS-002**: `uv`(또는 pipx)로 `specify` CLI를 설치할 수 있다. CLI는 init·upgrade·확장 관리에만 필요하고 일상 명령은 `.specify/scripts/powershell/*`만 쓴다. [Source: specs/001-claude-setup/spec.md -> "uv(또는 pipx)로 specify CLI를 설치할 수 있다"]
 - **AS-003**: `gh` CLI가 인증되어 있어 private 원격 저장소를 만들 수 있다. 없으면 원격 생성은 사용자가 수동으로 하고 push만 수행한다. [Source: specs/001-claude-setup/spec.md -> "gh CLI가 인증되어 있어"]
 - **AS-004**: superpowers 5.1.0의 SDD는 task당 리뷰어 2명(spec, quality)이며 재리뷰 루프를 갖는다. 5.1.0에는 plan 헤더 `Spec:`과 `Global Constraints`가 없으므로 E2E·테넌트 경계 요구는 CLAUDE.md 규칙 + tasks 템플릿 override로 전달한다. [Source: specs/001-claude-setup/spec.md -> "superpowers 5.1.0의 SDD는 task당 리뷰어 2명"]
 - **AS-005**: 커뮤니티 확장(`archive`, `adrkit`)은 discovery-only 카탈로그이므로 설치 전 아카이브 URL을 검토한다. 설치 실패 시 해당 기능은 수동 절차(README 문서화)로 대체하고 SP-0 완료를 막지 않는다. [Source: specs/001-claude-setup/spec.md -> "커뮤니티 확장(archive, adrkit)은 discovery-only 카탈로그이므로"]
 - **AS-006**: SP-0은 스택 중립이다. 코드 도메인 규칙·에이전트·스킬은 SP-1(스택 결정) 이후 같은 명명 패턴으로 추가한다. [Source: specs/001-claude-setup/spec.md -> "SP-0은 스택 중립이다"]
 - **AS-007**: SP-0 spec 본문의 `/speckit-archive`는 확장 명령의 **예상** 이름이다(실제 설치 결과: `/speckit-archive-run`). 실제 슬래시 이름은 설치 후 `.claude/skills/speckit-*/` 목록으로 확정하고 CLAUDE.md에 그 이름을 쓴다. [Source: specs/001-claude-setup/spec.md -> "이 문서의 /speckit-archive는 확장 명령의 예상 이름이다"]
+- **AS-008**: 산출물의 경로와 이름은 사용자가 지정했다: `scripts/update-specs-index.ps1`. 저장소의 도구 언어 관례(PowerShell 7, 훅·검사 스크립트와 동일)와 일치하며, 자동 테스트는 `tests/scripts/` 아래에 둔다(AGENTS.md 테스트 경로 규칙). [Source: specs/002-smoke/spec.md -> "산출물의 경로와 이름은 사용자가 지정했다"]
+- **AS-009**: 001 spec에는 `**Priority**` 줄이 없으므로 첫 재생성 후 001 행의 우선순위는 현재 수동 표기 `🔴` 대신 `—`가 된다. 의도된 결과다. 우선순위를 표시하려면 헤더에 `**Priority**` 줄을 추가해야 하는데, 001은 Approved 상태라 이번 feature에서는 손대지 않는다. [Source: specs/002-smoke/spec.md -> "001 spec에는 `**Priority**` 줄이 없으므로"]
+- **AS-010**: 우선순위 값은 헤더의 문자열(예: `🔴`, `P1`)을 검증 없이 그대로 표시한다. [Source: specs/002-smoke/spec.md -> "우선순위 값은 헤더의 문자열"]
+- **AS-011**: `specs/README.md` 머리말의 "(002-smoke가 … 추가할 때까지는 수동)" 문구는 이 feature가 완료되면 한 번 수동으로 갱신한다. 머리말은 명령이 보존하므로 이후 재생성에 영향이 없다. [Source: specs/002-smoke/spec.md -> "`specs/README.md` 머리말의"]
+- **AS-012**: 이 feature가 완료되기 전까지 002 행은 머리말 규칙대로 수동으로 유지한다(저장소 검사 8이 모든 feature의 인덱스 등재를 요구함). [Source: specs/002-smoke/spec.md -> "이 feature가 완료되기 전까지 002 행은"]
+- **AS-013**: 범위 밖: 변경 여부만 검사하는 검증 전용 모드, 여러 `specs/` 루트, 정렬·열 구성 옵션, 표 이외의 README 내용 생성. [Source: specs/002-smoke/spec.md -> "범위 밖: 변경 여부만 검사하는 검증 전용 모드"]
 
 ## Data Flow / Architecture
 
@@ -417,3 +525,10 @@ joshuatech_ver2/
 | 5.1.0 SDD 리뷰어 2명으로 느림 | 작은 동형 task는 하나로 묶어 tasks.md 작성 |
 
 [Source: specs/001-claude-setup/spec.md -> "### 10. 리스크"]
+
+### 11. specs 인덱스 재생성 데이터 흐름 (002-smoke)
+
+- 원천과 파생물: 각 `specs/<NNN-slug>/spec.md` 헤더(첫 H1, 첫 `**Status**:` 줄, 첫 `**Priority**:` 줄)와 `plan.md` 존재 여부가 원천이고, `specs/README.md`의 표 블록은 파생물이다. 표 블록은 명령(`scripts/update-specs-index.ps1`)이 소유하고 머리말·후행 텍스트는 사람이 소유한다(명령은 읽어서 그대로 보존만 한다). 명령은 입력을 쓰거나 지우지 않으며 이력·백업·롤백은 git이 담당한다. [Source: specs/002-smoke/data-model.md -> "FeatureEntry"] [Source: specs/002-smoke/data-model.md -> "IndexDocument"]
+- 파이프라인: ① 수집 — `<Root>/specs` 바로 아래 `^[0-9]{3,}-[A-Za-z0-9][A-Za-z0-9-]*$` 디렉터리만(ASCII 숫자; 정션·심볼릭 링크는 `-Attributes !ReparsePoint`로 제외), `spec.md` 없으면 stderr 경고 후 건너뜀, 각 spec.md를 엄격한 UTF-8(`UTF8Encoding($false, $true)`)로 읽어 BOM 제거·LF 정규화 후 첫 `^#\s+(.+)$`·첫 `**Status**` 줄·첫 `**Priority**` 줄을 찾고 `plan.md` 존재 여부를 기록 → ② 검증 — H1 또는 Status가 없는 파일은 오류 목록에 추가하고 순회 후 1건 이상이면 모두 stderr 출력 + `exit 1`(README를 읽거나 쓰기 전에) → ③ 변환 — 제목에서 `^Feature Specification:\s*` 제거·Trim, Status는 첫 괄호 그룹만 정규화, Priority 없으면 `—`, 링크 `[spec](<dir>/spec.md)`(+ ` · [plan](<dir>/plan.md)`), 모든 셀은 `\`→`\\` 먼저 그다음 `|`→`\|` → ④ 정렬·조립 — 번호 문자열을 (길이, ordinal) 순, 동률은 디렉터리명 ordinal(정수 캐스트 없음); 헤더 `| # | Feature | Status | 우선순위 | 링크 |`, 구분 `|---|---|---|---|---|`, 행들 → ⑤ README 병합 — 원문을 읽어(비교용 보관) BOM 제거·LF 정규화한 텍스트에서 `^\| # \|` 줄을 센다: 0개면 `content.TrimEnd() + "\n\n" + table + "\n"`, 1개면 그 줄부터 연속된 `|` 시작 줄 블록을 표로 보고 `preamble + table + trailer`, 2개 이상이면 `error: specs/README.md: multiple index tables` + `exit 1`; 파일 없음 → 기본 머리말(`# Feature 인덱스` + 한 문단) + 표 → ⑥ 쓰기 — 조립 결과를 디스크 원문과 비교해 같으면 쓰지 않고 `(unchanged)`(CRLF/BOM이던 README는 첫 실행에서 한 번 LF·BOM 없음으로 재기록), 다르면 같은 디렉터리의 임시 파일에 `WriteAllText(..., UTF8Encoding($false))` 후 `File.Move(tmp, target, overwrite)`로 교체; 본문 전체는 `try/catch`로 감싸 모든 예외를 `error: <사유>` 한 줄 + `exit 1`로 보고; stdout `specs/README.md: N features indexed[ (unchanged)]`, `exit 0`. [Source: specs/002-smoke/plan.md -> "## Implementation Approach"]
+- 관측·건강 지표·롤백: 실행마다 stdout 한 줄 요약, stderr `warning:`/`error:` 접두 메시지(spec 상대 경로 포함, 스택 없음), 종료 코드 0/1; 상관 id 불필요(단일 프로세스, 단일 출력 파일; 호출 맥락 = run-all 검사명 또는 lifecycle 단계). 건강 지표 = `tests/run-all.ps1`의 `scripts`(테스트 통과)·`specs-index-fresh`(실물 인덱스가 헤더와 일치)·검사 8(모든 feature 등재). 롤백 = `git checkout -- specs/README.md`(파생물, 재생성 가능); 스크립트 제거 = 파일 삭제 + run-all 검사 항목 제거(커밋 revert). [Source: specs/002-smoke/plan.md -> "## Observability & Rollback"]
+- 명령 계약(매개변수 `-Root`, 메시지, 종료 코드, 표 스키마, 안정성 약속)은 `specs/002-smoke/contracts/cli.md`가 고정하며 통합본 plan의 "Interfaces & Contracts" 절에 반영되어 있다. [Source: specs/002-smoke/contracts/cli.md -> "## 안정성 약속"]

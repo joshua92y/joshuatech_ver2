@@ -2311,23 +2311,23 @@ Expected: `001-claude-setup`. (feature.json이 002를 가리키면 finish-gate�
 Run: `/finish`
 Expected: `specs/001-claude-setup/report.md` — Validation 절에 Task 2(플러그인 단일화), 14(설정), 24(selftest·등록), 25(smoke 산출물·게이트 deny/allow 결과), `tests/run-all.ps1` 결과를 기록. 학습 노트는 Task 22 것을 그대로 인정(`content/study/001-claude-setup*.mdx` 존재). CHANGELOG는 Task 21 항목 유지. 미러 동기화 단계: 001에서 변경된 에이전트 파일은 모두 미러를 갖고 있으므로 "동기화 대상 없음"을 report에 기록(US6 검증). `reviews/YYYY-MM-DD-finish.md` `Status: Approved`.
 
-- [ ] **Step 3: finishing → main 머지 → push**
+- [x] **Step 3: finishing → main 머지 → push**
 
 Run: `superpowers:finishing-a-development-branch` → 옵션 **1(Merge back to main locally)** → 이어서 `git push origin main`
 Expected: 게이트 통과, `main`에 001 전체가 머지되고 로컬 `001-claude-setup` 삭제. 원격 정리: `git push origin --delete 001-claude-setup`.
 
-- [ ] **Step 4: archive (main에서)**
+- [x] **Step 4: archive (main에서)**
 
 Run (세션 내): Task 6 Step 4에서 기록한 archive 스킬을 `001-claude-setup`, `002-smoke` 순서로 실행.
 Expected: `.specify/memory/` 아래 통합본 파일(README가 지정한 경로)에 두 feature 내용이 반영. `git status`에 변경 파일이 보임. (US7)
 
-- [ ] **Step 5: Status Done + 인덱스 재생성**
+- [x] **Step 5: Status Done + 인덱스 재생성**
 
 `specs/001-claude-setup/spec.md`와 `specs/002-smoke/spec.md`의 `**Status**` 줄을 `Done (YYYY-MM-DD)`로 바꾼다.
 Run: `pwsh -NoProfile -File scripts/update-specs-index.ps1; pwsh -NoProfile -File tests/run-all.ps1`
 Expected: `specs/README.md` 두 행 모두 `Done`, `ALL PASS`.
 
-- [ ] **Step 6: 커밋·push**
+- [x] **Step 6: 커밋·push**
 
 ```bash
 git add -A

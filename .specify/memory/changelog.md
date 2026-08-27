@@ -2,6 +2,27 @@
 
 ## Merged Features Log
 
+### specs 인덱스 재생성 스크립트 (smoke) — archived 2026-08-27
+**Branch:** 002-smoke
+**Spec:** [specs/002-smoke/spec.md](../../specs/002-smoke/spec.md)
+
+**What was added:**
+- US1 인덱스 한 번에 재생성: 저장소 운영자가 `spec.md` 헤더를 바꾼 뒤 `pwsh -NoProfile -File scripts/update-specs-index.ps1` 하나로 `specs/README.md`의 feature 인덱스 표(`| # | Feature | Status | 우선순위 | 링크 |`, 번호 오름차순, `plan.md`가 있으면 plan 링크)를 다시 만든다. 표 블록만 교체하고 머리말·후행 텍스트는 문자 단위로 보존, 같은 입력이면 파일을 쓰지 않으며(`(unchanged)`), 어느 작업 디렉터리에서든 저장소의 `specs/`를 대상으로 동작(`-Root` 기본값 = 스크립트 상위 디렉터리).
+- US2 Status 값 정규화: `**Status**` 값의 첫 괄호 그룹에서 첫 쉼표 이후 주석을 제거해 `Approved (2026-08-26, 외부 리뷰 반영판)` → `Approved (2026-08-26)`; 날짜만 있거나 괄호가 없는 값은 그대로(구현은 문자열 시작에 앵커한 정규식 — converge에서 "첫 쉼표 있는 괄호" 결함 수정).
+- US3 결측값과 예외 상황 처리: `**Priority**` 없으면 `—`, `plan.md` 없으면 spec 링크만, `NNN-slug` 형식이 아닌 항목은 조용히 무시, `spec.md` 없는 `NNN-slug` 디렉터리는 `warning:` 후 건너뜀(exit 0); H1/`**Status**` 결손·읽을 수 없는 입력(권한·잘못된 UTF-8)·쓸 수 없는 README(권한·잠금)·표 헤더 중복·`specs/` 부재는 `error:` 한 줄 + exit 1로 실패하고 README를 건드리지 않는다(fail-closed, 임시 파일 + 교체의 원자적 쓰기). BOM/CRLF 입력 정규화, `\`·`|` 이스케이프, feature 0개 빈 표, 번호 중복 ordinal 정렬, 출력 UTF-8(BOM 없음)·LF.
+- 저장소 실물 적용: `specs/README.md`를 스크립트로 재생성(001 행 우선순위 `🔴` → `—` — 001 spec에 `**Priority**` 줄이 없어 의도된 결과; 002 행 추가; 머리말을 "스크립트로 재생성한다"로 갱신), `tests/run-all.ps1`에 `scripts`·`specs-index-fresh` 검사 추가, `AGENTS.md`·`docs/kr/AGENTS_kr.md` Commands 행에서 "(added by feature 002-smoke)" 제거 + 복구 힌트 추가, CLAUDE.md SPECKIT 블록이 `specs/002-smoke/plan.md`를 가리킴.
+- SP-0 스모크 테스트(001 SC-003): specify → clarify(생략) → plan → checklist → tasks → 승인(approval-review: analyze 6건 CRITICAL 0 + 경계 5 리뷰 MEDIUM 4·LOW 15·nit 2 전부 반영) → SDD(batch 5 + Phase 7, 리뷰가 잡은 결함 3건) → converge 2회(✅ Converged) → tester E2E(US1 4·US2 3·US3 5·Edge 10 PASS, FAIL/SKIP 0) → finish 전체 사이클을 처음으로 실주행. 내구적 결정 없음. 헌법 I–VI PASS, Complexity Tracking 해당 없음(의존성 0, 단일 파일; 유일한 추가 표면은 테스트 격리용 `-Root`).
+- 계약 외 동작 2건(converge T019, 정당화됨): 읽기 전용 README 사전 검사 메시지 `error: specs/README.md is read-only: <path>`; 빈 README(0바이트·공백뿐)는 선행 빈 줄 없이 표부터 기록. 계약 문서 갱신은 다음 feature.
+
+**New Components:**
+- `scripts/update-specs-index.ps1`(185줄, PowerShell 7.6.5+, 의존성 0; `-Root` 매개변수; 수집 → 엄격 UTF-8 파싱 → 정규화 → 표 조립 → README 표 블록 교체/덧붙임/생성 → 원자적 쓰기; 전역 try/catch, 헤더 주석에 복구 절차)
+- `tests/scripts/update-specs-index.tests.ps1`(532줄; 프레임워크 없는 자체 하네스 `Assert`/`Test-Group`/`New-Fixture`/`Invoke-Script`/`Test-Same`/`Get-IndexRow`, 40 단언, 자식 pwsh 21회 ≈16초)
+- `tests/run-all.ps1` 검사 항목 `scripts`(하네스 실행)·`specs-index-fresh`(실물 인덱스가 `(unchanged)`인지; 낡으면 재생성하는 부작용 명시) + `$PSNativeCommandUseErrorActionPreference = $false`
+- 명령 계약 `specs/002-smoke/contracts/cli.md`(매개변수·메시지·종료 코드·표 스키마·안정성 약속) — 통합본 plan "Interfaces & Contracts" 절에 반영
+- feature 산출물 `specs/002-smoke/{spec,plan,tasks,research,data-model,quickstart,report}.md`, `checklists/{requirements,requirements-quality}.md`, `reviews/2026-08-27-{approval,finish}.md`; 학습 노트 `content/study/002-smoke.mdx`; `CHANGELOG.md` 항목
+
+**Tasks Completed:** 19/19 tasks
+
 ### Claude Code 기반 셋팅 (SP-0) — archived 2026-08-27
 **Branch:** 001-claude-setup
 **Spec:** [specs/001-claude-setup/spec.md](../../specs/001-claude-setup/spec.md)

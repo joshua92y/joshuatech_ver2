@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-claude-setup`
 **Created**: 2026-08-26
-**Status**: Approved (2026-08-26, 외부 리뷰 반영판)
+**Status**: Done (2026-08-27)
 **Input**: User description: "개발 포트폴리오 사이트 v2 — 최대한 확장성 있고 대규모로 기획, 공부(학습) 개념 포함, Claude 셋팅부터 시작"
 
 > 이 문서는 superpowers `brainstorming` 스킬로 도출한 설계 스펙이다. Spec Kit 설치 전에 작성되었으므로

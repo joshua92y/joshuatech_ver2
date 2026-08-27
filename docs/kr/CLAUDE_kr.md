@@ -64,8 +64,10 @@
 
 ## Commands
 명령 표는 `AGENTS.md`. 머지된 feature 아카이브: `/speckit-archive-run specs/<NNN-slug>`.
+specs 인덱스 재생성: `pwsh -NoProfile -File scripts/update-specs-index.ps1`(fail-closed, 멱등; `tests/run-all.ps1`의 `specs-index-fresh` 검사가 실제로 실행하므로 낡은 `specs/README.md`는 FAIL이 나면서 부작용으로 재생성된다 — 결과를 커밋한다).
 
 ## Recent Changes
+- specs/002-smoke: specs 인덱스 재생성 스크립트(`scripts/update-specs-index.ps1`, fail-closed·원자적·멱등) + 40 단언 하네스 + run-all 검사 `scripts`/`specs-index-fresh`; 첫 전체 lifecycle 실주행(approval-review → SDD → converge → tester → finish)
 - specs/001-claude-setup: SP-0 도구화 — Spec Kit + superpowers + 저장소 게이트(훅/스킬/tester/규칙/테스트), 문서 정책, 스모크 feature 002 머지
 
 ## Known Issues & Gotchas
@@ -93,6 +95,21 @@
 **Issue:** 훅이 크래시해도 하네스 단언 6개가 통과했다 — 크래시한 PreToolUse 훅도 아무것도 출력하지 않기 때문이다.
 **Root Cause:** 단언이 종료 코드가 아니라 stdout만 검사했다; 경로 가드도 정규화 전에는 `tests/../src`와 저장소 접두 충돌을 허용했다.
 **Prevention Rule:** 모든 "allow" 단언은 종료 코드 0과 빈 출력을 함께 요구한다; 가드는 `GetFullPath`로 정규화하고 `<root>/` 접두를 요구한다; 게이트 로직은 fail-closed, 입력 파싱만 fail-open.
+
+### ⚠️ PowerShell `-ceq` is a culture-sensitive comparison
+**Issue:** UTF-8 BOM만 있는 `specs/README.md`가 재생성된 텍스트와 같다고 비교되어 `update-specs-index.ps1`이 영원히 `(unchanged)`를 보고하고 다시 쓰지 않았다.
+**Root Cause:** `-eq`/`-ceq`는 언어학적(불변 문화권) 비교라 U+FEFF 같은 "무시 가능" 코드 포인트를 건너뛴다; `c` 접두는 대소문자 구분만 바꿀 뿐 ordinal 비교로 만들지 않는다.
+**Prevention Rule:** 파일 내용·경로·식별자는 `[string]::Equals($a, $b, [StringComparison]::Ordinal)`로 비교한다; 멱등성·"unchanged" 검사가 문자열 동등성에 기대면 BOM-only 픽스처를 하네스에 추가한다.
+
+### ⚠️ `[IO.Path]::GetFullPath` resolves against the .NET cwd, not `$PWD`
+**Issue:** `update-specs-index.ps1`에 넘긴 상대 `-Root`가 `Set-Location`을 따라가지 않는 프로세스의 .NET 작업 디렉터리 기준으로 해석되어 엉뚱한 트리를 훑었다.
+**Root Cause:** PowerShell은 자기 위치(`$PWD`)를 `[Environment]::CurrentDirectory`와 별도로 유지하고, `GetFullPath`·`File.*` 등 모든 .NET 경로 API는 후자를 쓴다.
+**Prevention Rule:** 사용자가 준 상대 경로는 .NET I/O 전에 `$ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($p)`로 해석한다; `GetFullPath`는 이미 절대인 경로에만 쓰고(위 훅 가드처럼), 스크립트 루트 기본값은 cwd가 아니라 `$PSScriptRoot`에서 잡는다.
+
+### ⚠️ Bash tool mangles large Korean heredocs and collapses backslash pairs
+**Issue:** 한국어 spec/report 산문이나 정규식이 든 스크립트 텍스트를 Bash heredoc으로 쓰면 텍스트가 깨지고 백슬래시 두 개가 하나로 접혀 패턴이 조용히 망가졌다.
+**Root Cause:** Bash 도구의 따옴표 처리 계층이 백슬래시를 재해석하고 긴 멀티바이트 heredoc을 안정적으로 왕복시키지 못한다(002-smoke 중 Windows / Git Bash에서 관찰).
+**Prevention Rule:** 한국어 문서와 정규식·백슬래시 경로가 든 파일은 Write/Edit 도구로 쓴다; Bash는 명령 실행에만 쓴다. 정규식 편집은 diff를 눈으로 보지 말고 하네스를 돌려 검증한다.
 
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
