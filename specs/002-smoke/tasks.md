@@ -78,11 +78,11 @@
 
 ### Tests for User Story 2 (MANDATORY — write first, verify they FAIL) ⚠️
 
-- [ ] T007 [US2] `tests/scripts/update-specs-index.tests.ps1`에 US2 단언 추가(픽스처: `010-a` Status `Approved (2026-08-26, 외부 리뷰 반영판)`, `011-b` Status `Done (2026-08-27)`, `012-c` Status `Draft`, `013-d` Status `Approved (2026-08-26, 주석) (extra)`, `014-e` Status `Approved (2026-08-26,주석)`): 셀이 각각 `Approved (2026-08-26)`, `Done (2026-08-27)`, `Draft`, `Approved (2026-08-26) (extra)`(첫 괄호 그룹만 치환, research R7), `Approved (2026-08-26)`(쉼표 뒤 공백 없음)(FR-003). 실행 → 주석 케이스 FAIL 확인.
+- [X] T007 [US2] `tests/scripts/update-specs-index.tests.ps1`에 US2 단언 추가(픽스처: `010-a` Status `Approved (2026-08-26, 외부 리뷰 반영판)`, `011-b` Status `Done (2026-08-27)`, `012-c` Status `Draft`, `013-d` Status `Approved (2026-08-26, 주석) (extra)`, `014-e` Status `Approved (2026-08-26,주석)`): 셀이 각각 `Approved (2026-08-26)`, `Done (2026-08-27)`, `Draft`, `Approved (2026-08-26) (extra)`(첫 괄호 그룹만 치환, research R7), `Approved (2026-08-26)`(쉼표 뒤 공백 없음)(FR-003). 실행 → 주석 케이스 FAIL 확인.
 
 ### Implementation for User Story 2
 
-- [ ] T008 [US2] `scripts/update-specs-index.ps1`에 정규화 함수 `ConvertTo-NormalizedStatus([string]$s)` 추가: `[regex]::new('\(([^,)]*),[^)]*\)').Replace($s, '($1)', 1)` (첫 그룹 1회만), 결과 Trim; T004의 statusRaw에 적용. 테스트 실행 → US1+US2 PASS.
+- [X] T008 [US2] `scripts/update-specs-index.ps1`에 정규화 함수 `ConvertTo-NormalizedStatus([string]$s)` 추가: `[regex]::new('\(([^,)]*),[^)]*\)').Replace($s, '($1)', 1)` (첫 그룹 1회만), 결과 Trim; T004의 statusRaw에 적용. 테스트 실행 → US1+US2 PASS.
 
 ### E2E for User Story 2 (MANDATORY — executed by the tester agent)
 
