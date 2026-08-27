@@ -82,5 +82,56 @@ $entries.Sort([Comparison[object]] {
     return [StringComparer]::Ordinal.Compare($a.Dir, $b.Dir)
 })
 
-[Console]::Error.WriteLine('error: not implemented')
-exit 1
+# ---------- 표 조립 ----------
+# 셀 이스케이프: `\` → `\\` 먼저, 그다음 `|` → `\|` (FR-013; 이미 `\|`인 값도 깨지지 않는다)
+function ConvertTo-Cell([string]$value) { $value.Replace('\', '\\').Replace('|', '\|') }
+
+function Format-Row($entry) {
+    $links = "[spec]($($entry.Dir)/spec.md)"
+    if ($entry.HasPlan) { $links += " · [plan]($($entry.Dir)/plan.md)" }
+    return "| $($entry.Number) | $(ConvertTo-Cell $entry.Title) | $(ConvertTo-Cell $entry.Status) | $(ConvertTo-Cell $entry.Priority) | $links |"
+}
+
+$table = (@('| # | Feature | Status | 우선순위 | 링크 |', '|---|---|---|---|---|') + @($entries | ForEach-Object { Format-Row $_ })) -join "`n"
+
+# ---------- README 병합 ----------
+# 파일 없음 → 기본 머리말 + 표 (FR-011). 있음 → `| # |` 헤더 줄부터 연속된 `|` 줄 블록만 교체, 앞뒤는 그대로 (FR-007).
+$defaultPreamble = "# Feature 인덱스`n`n" + '각 feature의 `spec.md` 헤더에서 `scripts/update-specs-index.ps1`로 재생성한다. 디렉터리는 이동·삭제하지 않는다(불변 이력). 상태: Draft → Approved → Done.' + "`n`n"
+$raw = $null   # 디스크 원문(BOM·CRLF 포함). 비교는 이 값과 하므로 CRLF/BOM README는 1회 LF·BOM 없음으로 재기록된다.
+if (Test-Path -LiteralPath $readmePath -PathType Leaf) {
+    $raw = Read-Utf8Text $readmePath
+    $lines = (ConvertTo-Lf $raw) -split "`n"
+    $headerIdx = @(0..($lines.Count - 1) | Where-Object { $lines[$_] -cmatch '^\| # \|' })
+    if ($headerIdx.Count -ge 2) {
+        [Console]::Error.WriteLine('error: specs/README.md: multiple index tables')
+        exit 1
+    }
+    if ($headerIdx.Count -eq 0) {
+        $new = (ConvertTo-Lf $raw).TrimEnd() + "`n`n" + $table + "`n"
+    } else {
+        $start = $headerIdx[0]
+        $end = $start
+        while ($end + 1 -lt $lines.Count -and $lines[$end + 1].StartsWith('|')) { $end++ }
+        $preamble = if ($start -gt 0) { $lines[0..($start - 1)] } else { @() }
+        $trailer = if ($end -lt $lines.Count - 1) { $lines[($end + 1)..($lines.Count - 1)] } else { @() }
+        $new = (@($preamble) + @($table) + @($trailer)) -join "`n"
+    }
+} else {
+    $new = $defaultPreamble + $table + "`n"
+}
+
+# ---------- 쓰기 (멱등·원자적) ----------
+$count = $entries.Count
+if ($null -ne $raw -and $new -ceq $raw) {
+    Write-Output "specs/README.md: $count features indexed (unchanged)"
+    exit 0
+}
+$tmp = Join-Path $specsDir ('README.md.' + [guid]::NewGuid().ToString('N') + '.tmp')
+try {
+    [IO.File]::WriteAllText($tmp, $new, [Text.UTF8Encoding]::new($false))   # UTF-8, BOM 없음, LF (FR-012)
+    [IO.File]::Move($tmp, $readmePath, $true)                               # 원자적 교체
+} finally {
+    if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+}
+Write-Output "specs/README.md: $count features indexed"
+exit 0
