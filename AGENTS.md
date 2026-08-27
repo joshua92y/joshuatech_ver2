@@ -15,7 +15,7 @@ Spec Kit integration: `claude` only (skills under `.claude/skills/speckit-*`). O
 | Feature paths / prerequisites | `pwsh .specify/scripts/powershell/check-prerequisites.ps1 -Json` |
 | Hook unit tests | `pwsh -NoProfile -File tests/hooks/run-hook-tests.ps1` |
 | All repository checks | `pwsh -NoProfile -File tests/run-all.ps1` |
-| Regenerate `specs/README.md` | `pwsh -NoProfile -File scripts/update-specs-index.ps1` |
+| Regenerate `specs/README.md` | `pwsh -NoProfile -File scripts/update-specs-index.ps1` — if run-all `scripts`/`specs-index-fresh` fails: run it, then commit `specs/README.md`; on `error: <dir>/spec.md: …`: fix that spec header and rerun |
 | Spec Kit CLI (init / upgrade / extensions) | `specify` from `~/.local/bin` (install via `uv`); procedure in `docs/runbooks/spec-kit-upgrade.md` |
 
 ## Layout

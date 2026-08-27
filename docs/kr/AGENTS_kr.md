@@ -15,7 +15,7 @@ Spec Kit 통합 대상은 `claude`뿐이다(`.claude/skills/speckit-*` 아래의
 | 기능 경로 / 사전 조건 | `pwsh .specify/scripts/powershell/check-prerequisites.ps1 -Json` |
 | 훅(hook) 단위 테스트 | `pwsh -NoProfile -File tests/hooks/run-hook-tests.ps1` |
 | 전체 저장소 점검 | `pwsh -NoProfile -File tests/run-all.ps1` |
-| `specs/README.md` 재생성 | `pwsh -NoProfile -File scripts/update-specs-index.ps1` |
+| `specs/README.md` 재생성 | `pwsh -NoProfile -File scripts/update-specs-index.ps1` — run-all `scripts`/`specs-index-fresh`가 FAIL이면 실행 후 `specs/README.md`를 커밋; `error: <dir>/spec.md: …`이면 해당 spec 헤더를 고치고 재실행 |
 | Spec Kit CLI(초기화 / 업그레이드 / 확장) | `~/.local/bin`의 `specify`(`uv`로 설치); 절차는 `docs/runbooks/spec-kit-upgrade.md` |
 
 ## Layout
