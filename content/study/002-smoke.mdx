@@ -1,0 +1,65 @@
+---
+title: "180줄짜리 스크립트로 전체 사이클을 실주행하며 배운 것 — fail-closed CLI, ordinal 비교, 원자적 쓰기"
+description: "specs 인덱스 재생성 스크립트를 스모크 feature로 삼아 specify→승인→SDD→converge→E2E→finish를 처음 완주하고, 리뷰 루프가 잡아낸 세 가지 실제 결함에서 PowerShell 도구 작성의 원칙을 정리한 기록."
+pubDate: 2026-08-27
+tags: ["claude-code", "spec-kit", "superpowers", "powershell", "testing", "subagent-driven-development"]
+series: "sp-0-claude-setup"
+seriesOrder: 2
+draft: true
+change: "002-smoke"
+sources:
+  - { title: "spec", path: "specs/002-smoke/spec.md" }
+  - { title: "plan", path: "specs/002-smoke/plan.md" }
+  - { title: "research", path: "specs/002-smoke/research.md" }
+  - { title: "CLI contract", path: "specs/002-smoke/contracts/cli.md" }
+  - { title: "approval review", path: "specs/002-smoke/reviews/2026-08-27-approval.md" }
+  - { title: "report", path: "specs/002-smoke/report.md" }
+  - { title: "PowerShell about_Character_Encoding", url: "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_character_encoding" }
+  - { title: ".NET String.Equals(String, String, StringComparison)", url: "https://learn.microsoft.com/en-us/dotnet/api/system.string.equals" }
+---
+
+## 문제
+
+001에서 만든 규칙 하나가 처음부터 사람 손에 기대고 있었다: `specs/README.md`의 feature 인덱스 표는 "각 spec.md 헤더를 바꾸고 재생성한다, 표만 고치지 않는다"인데, 재생성할 도구가 없어서 표를 손으로 고쳤다. 그 결과 001 행에는 spec 헤더에 없는 우선순위 `🔴`가 적혀 있었고, Status 셀에는 `Approved (2026-08-26, 외부 리뷰 반영판)` 같은 검토 주석이 그대로 따라 들어올 참이었다. 표가 헤더의 파생물이 되려면 파생을 수행하는 명령이 있어야 했다.
+
+동시에 001이 세운 사이클(specify → plan → checklist → tasks → 승인 리뷰 → 서브에이전트 구현 → converge → tester → finish → 게이트)이 실제로 굴러가는지는 아직 아무도 확인하지 않았다. 그래서 이 작은 스크립트를 "스모크 feature"로 삼았다: 산출물은 PowerShell 파일 하나지만, 사이클의 모든 단계를 처음으로 실주행하는 것이 진짜 목표였다.
+
+## 배운 개념
+
+- **fail-closed CLI**: 파생물을 만드는 도구는 "부분적으로 맞는 결과"를 쓰면 안 된다. 어느 spec이라도 H1이나 `**Status**`가 없으면 모든 오류를 모아 stderr로 보고하고 종료 코드 1, README는 읽지도 쓰지도 않는다. 표 헤더가 둘이면 어느 것을 교체할지 정할 수 없으므로 역시 실패한다. 이 원칙을 지키려면 본문 전체를 `try/catch`로 감싸 어떤 예외도 `error: <메시지>` 한 줄로 끝내야 하는데, try는 `-Root` 해석보다 앞에서 시작해야 한다(알 수 없는 드라이브도 예외를 던진다). `exit`는 catch에 잡히지 않는다는 것을 실험으로 확인했다.
+- **PowerShell의 문자열 비교는 문화권 비교다**: `-ceq`는 대소문자만 구분할 뿐 ICU 기반이라 U+FEFF(BOM)·ZWSP 같은 "무시 가능 문자"를 건너뛴다. `` 'abc' -ceq "`u{FEFF}abc" ``가 True다(두 번째 문자열 앞에 U+FEFF가 있다). 그래서 "내용이 같으면 쓰지 않는다"를 `-ceq`로 구현하면 BOM만 있는 README가 영원히 `(unchanged)`로 남는다. 리뷰어가 이 결함을 재현해 냈고, `[string]::Equals($a, $b, [StringComparison]::Ordinal)`로 고쳤다. `StartsWith`·`IndexOf`·`Sort-Object`도 같은 함정이 있어 전부 ordinal로 통일했다.
+- **`ReadAllText`는 BOM을 조용히 벗긴다**: 디스크 원문과 비교하려면 `ReadAllBytes` + `UTF8Encoding($false, $true)`로 엄격히 디코딩해야 한다. 이 선택은 덤으로 잘못된 바이트(CP949 저장본 등)를 U+FFFD로 조용히 치환하지 않고 오류로 만든다. 쓰기 쪽은 `Set-Content`가 OS 줄바꿈(Windows CRLF)을 쓰므로 `.gitattributes`(LF)와 충돌한다 — `[IO.File]::WriteAllText`에 LF로 조립한 문자열을 넘기는 것이 정석이다.
+- **원자적 쓰기**: `WriteAllText`는 잘라낸 뒤 쓰므로 중단되면 잘린 README가 남고, 다음 실행은 표 탐지에 실패해 머리말을 잃은 결과를 "정상"으로 만들 수 있다. 같은 디렉터리에 `README.md.<guid>.tmp`로 쓴 뒤 `File.Move($tmp, $target, $true)`로 교체하면 실패해도 원본이 남는다. 읽기 전용은 Windows에서만 `Move`가 실패하고 Linux `rename(2)`는 덮어쓰므로, 계약("오류 시 README 미변경")을 플랫폼과 무관하게 지키려면 쓰기 전에 `FileInfo.IsReadOnly`를 명시적으로 검사해야 한다.
+- **`$PWD`와 .NET cwd는 다르다**: `[IO.Path]::GetFullPath($rel)`은 프로세스 cwd 기준이고 `Set-Location`은 그것을 갱신하지 않는다. 대화형 세션에서 `-Root joshuatech_ver2`가 엉뚱한 저장소를 가리킬 수 있었다. `$ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath()`는 `$PWD`·PS 드라이브·`~`를 모두 올바르게 푼다.
+- **정규식은 문언에 앵커하라**: spec은 "첫 괄호 안에 쉼표가 있으면"이라고 했는데 `\(([^,)]*),[^)]*\)`는 "첫 쉼표 있는 괄호"를 치환한다. 실제 Status 값에서는 차이가 없어 하네스 40개가 모두 통과했지만, converge가 spec 문언과 코드를 대조해 잡아냈다. `^([^(]*\()([^,)]*),[^)]*\)` → `$1$2)`로 앵커하고 회귀 단언을 넣었다.
+- **프레임워크 없는 하네스도 격리가 필요하다**: 단언이 40개로 늘자 한 그룹의 예외(`ReadAllBytes` 파일 없음)가 요약 줄 없이 전체를 중단시켰다. `Test-Group($name, $body)`가 `try { . $body } catch { FAIL 1건 기록 }`으로 그룹을 격리하니 실패가 늘 카운트로 남는다. 자식 pwsh 기동이 ≈0.5초라 "실행 1회에 단언 여러 개"로 묶어 21회 ≈16초에 맞췄다.
+- **2단계 리뷰 루프의 가치**: 구현자 → spec 준수 리뷰 → 품질 리뷰를 batch마다 돌렸더니 리뷰가 잡은 실제 결함이 셋(상대 `-Root`, `-ceq` BOM, 정규식 앵커)이고, 모두 하네스가 통과한 상태에서 발견됐다. 리뷰어에게 "보고서를 믿지 말고 RED를 직접 재현하라"고 시킨 것이 효과적이었다.
+
+## 선택과 대안
+
+| 결정 | 채택 | 기각한 대안 | 이유 |
+|---|---|---|---|
+| 테스트 방식 | 자체 하네스(Assert/Test-Group, exit 0/1) | Pester 5/6 | pwsh 7에 동봉되지 않아 설치 단계가 늘고(헌법 V), 훅 하네스와 구조를 맞추는 편이 저장소 관례에 맞음 |
+| 표 블록 인식 | `\| # \|` 헤더 행부터 연속 `\|` 행 | `<!-- START/END -->` 마커 | 마커가 더 견고하지만 README 형식 변경이 필요; 헤더가 고정 시그니처라 실용적으로 충분. 헤더가 둘이면 fail-closed |
+| 파일 읽기 | `ReadAllBytes` + 엄격 UTF-8 | `ReadAllText` | BOM을 벗겨 "BOM만 다른 파일"을 감지하지 못하고 잘못된 바이트를 조용히 치환 |
+| 내용 비교 | `[string]::Equals(…, Ordinal)` | `-ceq` | 문화권 비교가 U+FEFF를 무시 — 실제 결함 |
+| `-Root` 해석 | `GetUnresolvedProviderPathFromPSPath` | `[IO.Path]::GetFullPath` | .NET cwd ≠ `$PWD` — 다른 저장소를 덮어쓸 수 있는 결함 |
+| 쓰기 | 임시 파일 + `File.Move(overwrite)` + 읽기 전용 사전 검사 | `WriteAllText` 직접 | 중단 시 잘린 파일; Linux에서 읽기 전용 덮어쓰기 |
+| 낡은 인덱스 감지 | run-all `specs-index-fresh`(실물 실행이 `(unchanged)`인지; 낡으면 재생성 부작용을 명시) | `-Check` 매개변수 | 계약에 새 표면을 더하지 않고, 복구 절차("실행 후 커밋")와 일치. 부작용은 주석과 FAIL 상세에 기록 |
+| 정규화 정규식 | `^` 앵커 첫 괄호 그룹 | 첫 "쉼표 있는 괄호" | spec FR-003 문언("첫 괄호") 일치 — converge가 잡음 |
+| 숫자 정렬 | (길이, ordinal) 튜플, 캐스트 없음 | `[long]` 캐스트 | 20자리 이상·유니코드 숫자에서 예외; ASCII `[0-9]`로 한정 |
+
+## 결과와 검증
+
+- 하네스 `tests/scripts/update-specs-index.tests.ps1`: **40 passed, 0 failed**(T001 1·US1 7·US2 7·US3 8·Edge 17), 자식 프로세스 21회 ≈16초. 각 스토리의 테스트 커밋이 RED로 시작(0/1 → 1/6 → 10/3 → 19/19 → 39/1)해 구현 커밋에서 GREEN.
+- `tests/run-all.ps1`: 12건 PASS(`hooks` 23/23, `scripts`, `specs-index-fresh` 포함) → `ALL PASS`, ≈37초.
+- 실물 `specs/README.md`: 스크립트로 재생성, 001 행 `🔴` → `—`(헤더에 없는 값은 표시하지 않는다), 두 행 모두 헤더와 일치, 재실행 시 `(unchanged)`; 100 feature 픽스처 ≈0.9초(기준 5초).
+- 승인 리뷰(경계 5): CRITICAL/HIGH 0, MEDIUM 4·LOW 15 → 승인 전 모두 반영. converge 1차 LOW 4 → Phase 7 3 task → 2차 Converged. tester E2E: US1 4·US2 3·US3 5·Edge 10 시나리오 **전부 PASS**, 예외 경로 포함, 테스트 파일 추가 없이 기존 하네스로 충분.
+- 사이클 검증(001 SC-003): git 확장 훅이 브랜치를 만들고, 승인 키워드 훅이 `/approval-review`를 먼저 돌리게 했으며, finish-gate가 `/finish` 전의 finishing 호출을 계획한 문구로 거부했다. 계획대로 동작하지 않은 것은 없었고, Bash 도구가 큰 한국어 heredoc과 `\\`를 다루지 못해 문서·정규식 편집을 Write/Edit로 돌린 것이 유일한 운영상 교훈이었다.
+
+## 다음 학습
+
+- Linux pwsh에서 같은 하네스를 돌려 읽기 전용 사전 검사·문화권 비교·경로 처리가 실측으로도 같은지 확인(CI는 SP-3 결정 후).
+- PSScriptAnalyzer를 run-all에 얹기 — 함수명은 이미 승인 동사·단수 명사로 맞춰 두었다.
+- 표 탐지를 마커 방식으로 바꿀지: README에 표가 둘 이상 필요해지는 순간이 기준.
+- SP-1 스택 결정 — 이 스크립트는 스택 중립이지만, 사이트가 `content/study/*.mdx`를 읽기 시작하면 인덱스와 학습 노트의 관계(feature → 노트 링크)를 표에 넣을지 다시 본다.
