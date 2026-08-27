@@ -111,7 +111,7 @@ if (Test-Path -LiteralPath $readmePath -PathType Leaf) {
     } else {
         $start = $headerIdx[0]
         $end = $start
-        while ($end + 1 -lt $lines.Count -and $lines[$end + 1].StartsWith('|')) { $end++ }
+        while ($end + 1 -lt $lines.Count -and $lines[$end + 1].StartsWith('|', [StringComparison]::Ordinal)) { $end++ }
         $preamble = if ($start -gt 0) { $lines[0..($start - 1)] } else { @() }
         $trailer = if ($end -lt $lines.Count - 1) { $lines[($end + 1)..($lines.Count - 1)] } else { @() }
         $new = (@($preamble) + @($table) + @($trailer)) -join "`n"
@@ -122,7 +122,7 @@ if (Test-Path -LiteralPath $readmePath -PathType Leaf) {
 
 # ---------- 쓰기 (멱등·원자적) ----------
 $count = $entries.Count
-if ($null -ne $raw -and $new -ceq $raw) {
+if ($null -ne $raw -and [string]::Equals($new, $raw, [StringComparison]::Ordinal)) {   # -ceq는 문화권 비교라 BOM(U+FEFF) 등 무시 가능 문자를 건너뛴다
     Write-Output "specs/README.md: $count features indexed (unchanged)"
     exit 0
 }

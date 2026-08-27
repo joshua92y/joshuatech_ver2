@@ -152,6 +152,24 @@ try {
     Assert 'US1-4: no -Root from another cwd -> resolves root from script location, no README under cwd (FR-014)' (
         $r.code -eq 0 -and (Test-TableLines ($after -split "`n") $us1Table) -and -not (Test-Path -LiteralPath $strayReadme)
     ) ((Format-Result $r) + " stray=$(Test-Path -LiteralPath $strayReadme) readme=[$after]")
+
+    # ---------- US1-7: BOM만 있는 LF README(표는 이미 올바름) -> 1회 재기록(BOM 제거), 그 뒤 (unchanged) (FR-012) ----------
+    $expected = $us1Pre + ($us1Table -join "`n") + "`n" + $us1Post
+    $expectedBytes = [Text.UTF8Encoding]::new($false).GetBytes($expected)
+    $bomFiles = $us1Files.Clone()
+    $bomFiles['specs/README.md'] = [byte[]]([byte[]](0xEF, 0xBB, 0xBF) + $expectedBytes)
+    $d = New-Fixture $bomFiles
+    $readme = Join-Path $d 'specs/README.md'
+    $r = Invoke-Script $d
+    $bytes = [IO.File]::ReadAllBytes($readme)
+    $hasBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+    $hasCr = [Array]::IndexOf($bytes, [byte]13) -ge 0
+    $sameBytes = [Linq.Enumerable]::SequenceEqual([byte[]]$bytes, [byte[]]$expectedBytes)
+    $r2 = Invoke-Script $d
+    Assert 'US1-7: BOM-only LF README with correct table -> rewritten once without BOM, then "(unchanged)" (FR-012)' (
+        $r.code -eq 0 -and $r.out -ceq 'specs/README.md: 2 features indexed' -and -not $hasBom -and -not $hasCr -and $sameBytes -and
+        $r2.code -eq 0 -and $r2.out -ceq 'specs/README.md: 2 features indexed (unchanged)'
+    ) ((Format-Result $r) + ' / ' + (Format-Result $r2) + " bom=$hasBom cr=$hasCr sameBytes=$sameBytes")
 } finally {
     Remove-Fixture
 }
