@@ -160,6 +160,8 @@ $us2Files = @{
     'specs/012-c/spec.md' = "# Feature Specification: c`n**Status**: Draft`n"
     'specs/013-d/spec.md' = "# Feature Specification: d`n**Status**: Approved (2026-08-26, 주석) (extra)`n"
     'specs/014-e/spec.md' = "# Feature Specification: e`n**Status**: Approved (2026-08-26,주석)`n"
+    'specs/015-f/spec.md' = "# Feature Specification: f`n**Status**: Approved (2026-08-26) (note, x)`n"          # 첫 괄호에 쉼표 없음 → 원문 그대로 (T017)
+    'specs/016-g/spec.md' = "# Feature Specification: g`n**Status**: Approved (2026-08-26, 주석) (extra, y)`n"    # 첫 괄호만 정규화, 뒤 괄호는 그대로 (T017)
 }
 
 # ---------- US3 픽스처 A: 누락값·무시 항목·경고·같은 번호·이스케이프·BOM/CRLF·CR·중복 줄 — README 없음(FR-011) ----------
@@ -305,6 +307,14 @@ try {
         $cells = Get-IndexRow $after '014'
         Assert 'US2-5: "Approved (2026-08-26,주석)" (no space after comma) -> "Approved (2026-08-26)" (FR-003)' (
             $r.code -eq 0 -and $cells.Count -eq 5 -and (Test-Same $cells[2] 'Approved (2026-08-26)')
+        ) ((Format-Result $r) + " cells=[$($cells -join ' / ')]")
+        $cells = Get-IndexRow $after '015'
+        Assert 'US2-6: "Approved (2026-08-26) (note, x)" (first group has no comma) -> unchanged; later groups are never touched (FR-003, T017)' (
+            $r.code -eq 0 -and $cells.Count -eq 5 -and (Test-Same $cells[2] 'Approved (2026-08-26) (note, x)')
+        ) ((Format-Result $r) + " cells=[$($cells -join ' / ')]")
+        $cells = Get-IndexRow $after '016'
+        Assert 'US2-7: "Approved (2026-08-26, 주석) (extra, y)" -> only the first group normalised: "Approved (2026-08-26) (extra, y)" (FR-003, T017)' (
+            $r.code -eq 0 -and $cells.Count -eq 5 -and (Test-Same $cells[2] 'Approved (2026-08-26) (extra, y)')
         ) ((Format-Result $r) + " cells=[$($cells -join ' / ')]")
     }
 
