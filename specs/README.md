@@ -5,3 +5,4 @@
 | # | Feature | Status | 우선순위 | 링크 |
 |---|---|---|---|---|
 | 001 | Claude Code 기반 셋팅 (SP-0) | Approved (2026-08-26) | 🔴 | [spec](001-claude-setup/spec.md) · [plan](001-claude-setup/plan.md) |
+| 002 | specs 인덱스 재생성 스크립트 (smoke) | Draft | — | [spec](002-smoke/spec.md) |
