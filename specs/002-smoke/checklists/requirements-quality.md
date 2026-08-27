@@ -12,9 +12,9 @@
 
 - [ ] CHK001 feature 디렉터리 인식 규칙이 슬러그 문자 집합(대문자·끝 하이픈·언더스코어)까지 완전히 정의되어 있는가? [Completeness, Spec §FR-001]
 - [ ] CHK002 표의 다섯 열(번호·Feature·Status·우선순위·링크) 각각의 출처 헤더 줄이 요구사항에 하나씩 대응되는가? [Completeness, Spec §FR-002–FR-005]
-- [ ] CHK003 `specs/README.md`가 없을 때 생성할 기본 제목·머리말의 실제 문구가 정의되어 있는가? [Gap, Spec §FR-011]
-- [ ] CHK004 `**Status**` 줄이 두 번 이상 나타날 때 어느 줄을 쓰는지 정의되어 있는가? [Gap, Spec §FR-003]
-- [ ] CHK005 `specs/` 디렉터리 자체가 없을 때의 동작(오류·종료 코드·README 불변)이 spec에도 명시되어 있는가, 아니면 data-model에만 있는가? [Completeness, Spec §Edge Cases, data-model §진단 출력]
+- [x] CHK003 `specs/README.md`가 없을 때 생성할 기본 제목·머리말의 실제 문구가 정의되어 있는가? [Gap, Spec §FR-011] — 근거: tasks T005·plan §5(기본 머리말 문구 정의)
+- [x] CHK004 `**Status**` 줄이 두 번 이상 나타날 때 어느 줄을 쓰는지 정의되어 있는가? [Gap, Spec §FR-003] — 근거: spec Edge Cases "첫 번째 줄만"
+- [x] CHK005 `specs/` 디렉터리 자체가 없을 때의 동작(오류·종료 코드·README 불변)이 spec에도 명시되어 있는가, 아니면 data-model에만 있는가? [Completeness, Spec §Edge Cases, data-model §진단 출력] — 근거: spec Edge Cases "specs/ 부재 → 오류·미기록"
 
 ## Requirement Clarity
 
@@ -23,27 +23,27 @@
 - [ ] CHK008 "첫 H1"이 `# `로 시작하는 첫 줄로 정의되는지, 코드 펜스 안의 `#`은 제외하는지 명시되어 있는가? [Ambiguity, Spec §FR-002]
 - [ ] CHK009 `Feature Specification:` 접두 제거가 대소문자·공백 허용 범위까지 명시되어 있는가? [Clarity, Spec §FR-002]
 - [ ] CHK010 이미 `\|`를 포함한 셀 값에 대한 이스케이프 규칙(이중 이스케이프 방지)이 정의되어 있는가? [Clarity, Spec §FR-013]
-- [ ] CHK011 경고·오류 메시지의 형식(접두, 경로 표기)이 테스트가 매칭할 수 있을 만큼 구체적으로 명시되어 있는가? [Clarity, Spec §FR-009/FR-010, contracts/cli.md §출력]
+- [x] CHK011 경고·오류 메시지의 형식(접두, 경로 표기)이 테스트가 매칭할 수 있을 만큼 구체적으로 명시되어 있는가? [Clarity, Spec §FR-009/FR-010, contracts/cli.md §출력] — 근거: contracts/cli.md §출력(메시지 형식)
 
 ## Requirement Consistency
 
-- [ ] CHK012 열 이름이 US1-1(`번호 | Feature | Status | 우선순위 | 링크`)과 FR-006(`| # | Feature | Status | 우선순위 | 링크 |`) 사이에서 일치하는가(`번호` vs `#`)? [Consistency, Spec §US1-1 vs §FR-006]
+- [x] CHK012 열 이름이 US1-1(`번호 | Feature | Status | 우선순위 | 링크`)과 FR-006(`| # | Feature | Status | 우선순위 | 링크 |`) 사이에서 일치하는가(`번호` vs `#`)? [Consistency, Spec §US1-1 vs §FR-006] — 근거: spec US1-1 "헤더 표기 # = 번호"(2026-08-27 정정)
 - [ ] CHK013 종료 코드 요구(FR-015)가 data-model 진단 표의 모든 상황과 모순 없이 대응되는가? [Consistency, Spec §FR-015, data-model §진단 출력]
-- [ ] CHK014 비-`NNN-slug` 항목은 "조용히 무시", `spec.md` 없는 `NNN-slug` 디렉터리는 "경고"라는 구분이 다른 절(US3-4, Edge Cases)에서도 같은 말로 쓰였는가? [Consistency, Spec §FR-010, §US3-4]
+- [x] CHK014 비-`NNN-slug` 항목은 "조용히 무시", `spec.md` 없는 `NNN-slug` 디렉터리는 "경고"라는 구분이 다른 절(US3-4, Edge Cases)에서도 같은 말로 쓰였는가? [Consistency, Spec §FR-010, §US3-4] — 근거: spec US3-4 = FR-010 범위로 정정(2026-08-27)
 - [ ] CHK015 001 행 우선순위가 `—`로 바뀐다는 가정이 specs 규칙("헤더를 바꾸고 재생성, 표만 고치지 않음")과 충돌하지 않는가? [Consistency, Spec §Assumptions, rules/specs.md]
 
 ## Acceptance Criteria Quality
 
-- [ ] CHK016 SC-004 "문자 단위 100% 동일"이 plan §5의 "CRLF는 파싱 전 LF로 정규화"와 양립하는가(바이트가 아니라 문자 기준임이 명시되었는가)? [Measurability, Spec §SC-004, Plan §Implementation Approach 5]
+- [x] CHK016 SC-004 "문자 단위 100% 동일"이 plan §5의 "CRLF는 파싱 전 LF로 정규화"와 양립하는가(바이트가 아니라 문자 기준임이 명시되었는가)? [Measurability, Spec §SC-004, Plan §Implementation Approach 5] — 근거: spec Edge Cases "줄바꿈 정규화 후 문자 기준"
 - [ ] CHK017 SC-005(feature 100개, 5초)의 측정 환경·측정 방법이 정의되어 있는가? [Measurability, Spec §SC-005]
 - [ ] CHK018 SC-001 "기대값과 100% 일치"의 기대값 도출 규칙이 열마다 정의되어 검증자가 독립적으로 계산할 수 있는가? [Measurability, Spec §SC-001]
 
 ## Scenario Coverage
 
 - [ ] CHK019 실패 실행(README 미변경) 이후의 복구 경로(spec 수정 → 재실행)가 요구사항으로 적혀 있는가? [Coverage, Recovery, Spec §FR-009]
-- [ ] CHK020 같은 번호 접두를 가진 디렉터리가 둘 이상일 때의 처리(둘 다 표시·정렬 규칙 또는 오류)가 정의되어 있는가? [Coverage, Gap]
-- [ ] CHK021 입력 `spec.md`가 BOM 또는 CRLF를 가질 때의 요구사항이 정의되어 있는가? [Coverage, Edge Case, Gap]
-- [ ] CHK022 feature가 0개일 때의 결과(헤더만 있는 표인지, 표 생략인지)가 정의되어 있는가? [Edge Case, Gap]
+- [x] CHK020 같은 번호 접두를 가진 디렉터리가 둘 이상일 때의 처리(둘 다 표시·정렬 규칙 또는 오류)가 정의되어 있는가? [Coverage, Gap] — 근거: spec Edge Cases "번호 중복 → 모두 표시, ordinal"
+- [x] CHK021 입력 `spec.md`가 BOM 또는 CRLF를 가질 때의 요구사항이 정의되어 있는가? [Coverage, Edge Case, Gap] — 근거: spec Edge Cases "BOM/CRLF 입력 동일 결과"
+- [x] CHK022 feature가 0개일 때의 결과(헤더만 있는 표인지, 표 생략인지)가 정의되어 있는가? [Edge Case, Gap] — 근거: spec Edge Cases "feature 0개 → 빈 표"
 
 ## Non-Functional Requirements
 
@@ -57,7 +57,7 @@
 
 ## Ambiguities & Conflicts
 
-- [ ] CHK027 "표가 없는 파일이면 기존 내용 뒤에 덧붙인다"에서 구분자(빈 줄 수, 끝 개행)가 멱등성을 보장할 만큼 정의되어 있는가? [Ambiguity, Spec §FR-011, §FR-008]
+- [x] CHK027 "표가 없는 파일이면 기존 내용 뒤에 덧붙인다"에서 구분자(빈 줄 수, 끝 개행)가 멱등성을 보장할 만큼 정의되어 있는가? [Ambiguity, Spec §FR-011, §FR-008] — 근거: spec Edge Cases "끝 공백 제거 + 빈 줄 1 + 개행 1"
 - [ ] CHK028 "첫 쉼표 이후 제거"가 쉼표 뒤 공백이 없는 경우와 닫는 괄호 재부착까지 포함해 정의되어 있는가? [Ambiguity, Spec §FR-003]
 
 ## Notes
@@ -66,5 +66,5 @@
 - Leave items unchecked when they still require clarification, correction, or reviewer evaluation
 - `/speckit-implement` reads checklist checkbox state as a gate and must not modify markers
 - `checklists/requirements.md` has a separate built-in lifecycle maintained by `/speckit-specify` and `/speckit-clarify`
-- 2026-08-27 생성 시점에 발견한 갭 중 CHK004·CHK005·CHK016·CHK020·CHK021·CHK022·CHK027은 같은 날 spec.md Edge Cases에 기본값을 추가해 대응했다(리뷰어가 확인 후 체크). CHK003·CHK011은 data-model.md·contracts/cli.md에 정의되어 있고 spec은 이를 참조하지 않는다 — 리뷰어 판단 사항.
+- 2026-08-27 approval review(spec-consistency F10)에 따라 근거가 확인된 11개를 체크하고 근거 위치를 적었다(승인자 확인 대상). 생성 시점에 발견한 갭 중 CHK004·CHK005·CHK016·CHK020·CHK021·CHK022·CHK027은 같은 날 spec.md Edge Cases에 기본값을 추가해 대응했다(리뷰어가 확인 후 체크). CHK003·CHK011은 data-model.md·contracts/cli.md에 정의되어 있고 spec은 이를 참조하지 않는다 — 리뷰어 판단 사항.
 - Items are numbered sequentially for easy reference

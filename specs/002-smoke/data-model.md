@@ -42,3 +42,6 @@
 | `spec.md` 없는 `NNN-slug` 디렉터리 | stderr `warning: skip <dir>: spec.md missing` | 0 | 갱신 |
 | H1 또는 `**Status**` 누락 | stderr `error: <specs 기준 상대 경로>: missing H1 title` / `missing **Status** line` (파일마다 1줄) | 1 | 미변경 |
 | `specs/` 없음 | stderr `error: specs directory not found: <path>` | 1 | 미변경 |
+| 저장소 루트 해석 불가(`$PSScriptRoot` 비어 있음) | stderr `error: cannot resolve repository root` | 1 | 미변경 |
+| README에 표 헤더 행 2개 이상 | stderr `error: specs/README.md: multiple index tables` | 1 | 미변경 |
+| 읽기·쓰기·디코딩 실패(권한, 잠금, 잘못된 UTF-8) | stderr `error: <.NET 예외 메시지>` 한 줄(스택 없음) | 1 | 미변경(쓰기는 임시 파일 + 교체) |

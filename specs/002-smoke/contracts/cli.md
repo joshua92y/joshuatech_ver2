@@ -26,7 +26,8 @@ pwsh -NoProfile -File scripts/update-specs-index.ps1 [-Root <path>]
 - 파일: `<Root>/specs/README.md` (규칙은 [data-model.md](../data-model.md) IndexDocument).
 - stdout(성공): `specs/README.md: <N> features indexed` 또는 `specs/README.md: <N> features indexed (unchanged)`.
 - stderr(경고): `warning: skip <dir>: spec.md missing`.
-- stderr(오류): `error: <NNN-slug>/spec.md: missing H1 title`, `error: <NNN-slug>/spec.md: missing **Status** line`, `error: specs directory not found: <path>`.
+- stderr(오류): `error: <NNN-slug>/spec.md: missing H1 title`, `error: <NNN-slug>/spec.md: missing **Status** line`, `error: specs directory not found: <path>`, `error: specs/README.md: multiple index tables`, `error: cannot resolve repository root`, 그리고 I/O·디코딩 실패는 `error: <.NET 예외 메시지>` 한 줄(스택 없음).
+- 번호 접두는 ASCII 숫자(`[0-9]{3,}`)만 인식하며 자릿수 제한 없이 (길이, 문자 코드) 순으로 정렬한다.
 
 ## 종료 코드
 
@@ -49,6 +50,7 @@ pwsh -NoProfile -File scripts/update-specs-index.ps1 [-Root <path>]
 
 ## 안정성 약속
 
-- 같은 입력 → 같은 바이트(멱등), 변경 없으면 파일을 쓰지 않는다.
+- 같은 입력 → 같은 바이트(멱등), 변경 없으면 파일을 쓰지 않는다. 쓰기는 임시 파일 + 교체(원자적)이며, 오류 시 `README.md`는 변경되지 않는다.
+- 입력 `spec.md`·`plan.md`는 읽기 전용이다.
 - 표 앞·뒤 텍스트는 문자 단위로 불변.
 - 출력 파일은 UTF-8(BOM 없음)·LF.

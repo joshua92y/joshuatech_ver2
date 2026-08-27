@@ -4,7 +4,7 @@
 
 ## 전제
 
-- PowerShell 7(`pwsh`)이 PATH에 있다(훅과 같은 전제). 확인: `pwsh -NoProfile -c '$PSVersionTable.PSVersion'` → `7.x`.
+- PowerShell 7.6 LTS **7.6.5 이상**(`pwsh`)이 PATH에 있다(훅과 같은 전제; 2026-08-17 보안 수정 포함 버전). 확인: `pwsh -NoProfile -c '$PSVersionTable.PSVersion'` → `7.6.5` 이상.
 - 아래 명령은 저장소 루트(`d:\code\joshuatech_ver2`) 기준 상대 경로다(스크립트 자체는 cwd 무관).
 
 ## 1. 단위·계약 테스트 (구현 전 RED → 구현 후 GREEN)
@@ -52,7 +52,7 @@ pwsh -NoProfile -c 'Set-Location $env:TEMP; & "d:/code/joshuatech_ver2/scripts/u
 pwsh -NoProfile -File tests/run-all.ps1
 ```
 
-- `PASS scripts` 항목을 포함해 `ALL PASS`.
+- `PASS scripts`·`PASS specs-index-fresh` 항목을 포함해 `ALL PASS`.
 
 ## 7. E2E (tester 에이전트)
 
