@@ -39,9 +39,10 @@ function Find-FirstMatch([string[]]$lines, [string]$pattern) {
     return $null
 }
 
-# Status 정규화(FR-003, research R7): 첫 괄호 그룹의 첫 쉼표부터 닫는 괄호 앞까지를 지운다(1회만). 결과는 Trim.
-#   "Approved (2026-08-26, 주석) (extra)" → "Approved (2026-08-26) (extra)",  "Done (2026-08-27)"·"Draft" → 그대로
-function ConvertTo-NormalizedStatus([string]$s) { [regex]::new('\(([^,)]*),[^)]*\)').Replace($s, '($1)', 1).Trim() }
+# Status 정규화(FR-003, research R7): 첫 번째 괄호 그룹에 쉼표가 있을 때만 그 첫 쉼표부터 닫는 괄호 앞까지를 지운다(1회만). 결과는 Trim.
+#   정규식이 문자열 시작(^)에 앵커되어 있으므로 첫 괄호 그룹만 검사하며, 두 번째 이후 괄호 그룹은 쉼표가 있어도 절대 건드리지 않는다.
+#   "Approved (2026-08-26, 주석) (extra, y)" → "Approved (2026-08-26) (extra, y)",  "Approved (2026-08-26) (note, x)"·"Done (2026-08-27)"·"Draft" → 그대로
+function ConvertTo-NormalizedStatus([string]$s) { [regex]::new('^([^(]*\()([^,)]*),[^)]*\)').Replace($s, '$1$2)', 1).Trim() }
 
 # 셀 값 정리: 홀로 남은 CR 제거(출력에 CR이 절대 없도록, FR-012) + Trim
 function ConvertTo-CellText([string]$s) { $s.Replace("`r", '').Trim() }
