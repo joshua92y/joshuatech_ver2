@@ -163,7 +163,8 @@ $us2Files = @{
 }
 
 # ---------- US3 픽스처 A: 누락값·무시 항목·경고·같은 번호·이스케이프·BOM/CRLF·CR·중복 줄 — README 없음(FR-011) ----------
-# 한 번 실행으로 (1)(2)(3)(7)(8)(9)(10a)(12)(18)(19)(21)을 모두 검사한다. 표에 오르는 feature = 11개(020-empty는 경고 후 건너뜀).
+# 한 번 실행으로 T010 (1)(2)(3)(7)(8)(9)(10a)(12)와 리뷰 추가분 Edge-14·15·17을 모두 검사한다(T010 번호는 (1)–(16); Edge-13~17은 리뷰 추가).
+# 표에 오르는 feature = 11개(020-empty는 경고 후 건너뜀).
 $us3Files = @{
     'specs/notes/index.md'    = "# notes`n"                                                  # 비-NNN 디렉터리: 조용히 무시
     'specs/zz-x/spec.md'      = "# Feature Specification: zz`n**Status**: Draft`n"           # 비-NNN 디렉터리: 조용히 무시
@@ -188,7 +189,7 @@ $us3ErrFiles = @{
     'specs/001-alpha/spec.md' = $us1Files['specs/001-alpha/spec.md']
     'specs/030-bad/spec.md'   = "# Feature Specification: bad`n**Priority**: 🔴`n"     # Status 줄 없음
     'specs/031-noh1/spec.md'  = "**Status**: Draft`n"                                   # H1 없음
-    'specs/070-ws/spec.md'    = "# Feature Specification: ws`n**Status**:   `n"        # 공백뿐인 Status → 누락 취급 (17)
+    'specs/070-ws/spec.md'    = "# Feature Specification: ws`n**Status**:   `n"        # 공백뿐인 Status → 누락 취급 (Edge-13, 리뷰 추가)
 }
 
 # ---------- Edge 픽스처: 100 feature(SC-005) ----------

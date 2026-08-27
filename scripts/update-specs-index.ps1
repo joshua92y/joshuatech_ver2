@@ -94,13 +94,16 @@ try {
     # ---------- 수집 ----------
     # feature 디렉터리: NNN-slug(ASCII 숫자 3자리 이상 + 하이픈 + ASCII slug), 정션·심볼릭 링크 제외. 그 밖의 항목은 조용히 무시.
     # spec.md가 없는 NNN 디렉터리는 경고 후 건너뛴다(FR-010; 종료 코드에 영향 없음).
+    # 디렉터리는 이름 ordinal 순으로 훑는다 — 경고(warning: skip …)가 파일시스템과 무관하게 늘 같은 순서로 나온다.
+    $dirs = [Collections.Generic.List[object]]::new([object[]]@(Get-ChildItem -LiteralPath $specsDir -Directory -Attributes !ReparsePoint | Where-Object Name -CMatch '^[0-9]{3,}-[A-Za-z0-9][A-Za-z0-9-]*$'))
+    $dirs.Sort([Comparison[object]] { param($a, $b) [StringComparer]::Ordinal.Compare($a.Name, $b.Name) })
     $entries = [Collections.Generic.List[object]]::new()
-    foreach ($dir in @(Get-ChildItem -LiteralPath $specsDir -Directory -Attributes !ReparsePoint | Where-Object Name -CMatch '^[0-9]{3,}-[A-Za-z0-9][A-Za-z0-9-]*$')) {
+    foreach ($dir in $dirs) {
         if (-not (Test-Path -LiteralPath (Join-Path $dir.FullName 'spec.md') -PathType Leaf)) {
             [Console]::Error.WriteLine("warning: skip $($dir.Name): spec.md missing")
             continue
         }
-        $number = $dir.Name.Substring(0, $dir.Name.IndexOf('-'))
+        $number = $dir.Name.Substring(0, $dir.Name.IndexOf([char]'-'))
         $entries.Add((Get-FeatureEntry $dir.FullName $dir.Name $number))
     }
     # 정렬: (번호 길이, 번호 ordinal, 디렉터리명 ordinal) — 숫자 캐스트 없이 자릿수가 커도 안전
@@ -160,7 +163,9 @@ try {
         exit 0
     }
     # 읽기 전용 README는 플랫폼과 무관하게 실패시킨다(Linux rename은 읽기 전용 대상도 덮어쓴다). README는 그대로 남는다.
-    if ((Test-Path -LiteralPath $readmePath -PathType Leaf) -and (Get-Item -LiteralPath $readmePath).IsReadOnly) {
+    #   FileInfo로 검사한다(프로바이더 무관): Get-Item은 Hidden 파일을 못 찾아 엉뚱한 메시지(Could not find item)를 낸다.
+    #   $raw ≠ $null ⇔ README가 존재한다(없는 파일의 FileInfo.IsReadOnly는 true이므로 이 가드가 필요하다).
+    if ($null -ne $raw -and [IO.FileInfo]::new($readmePath).IsReadOnly) {
         throw "specs/README.md is read-only: $readmePath"
     }
     $tmp = Join-Path $specsDir ('README.md.' + [guid]::NewGuid().ToString('N') + '.tmp')
