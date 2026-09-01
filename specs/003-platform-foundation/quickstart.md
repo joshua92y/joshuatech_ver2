@@ -55,10 +55,10 @@ ACCESS=$(curl -s -X POST https://auth.joshuatech.dev/application/o/token/ -d gra
 echo $ACCESS | cut -d. -f2 | base64 -d | jq '{aud, tenant_id, exp}'        # aud identity-admin, tenant_id 존재, exp = iat+300
 curl -s -X POST … -d audience=portfolio-core …                             # error: invalid_target (SP-1 미허용)
 ```
-3. 폐기: `curl -X POST https://joshuatech.dev/api/auth/logout -H 'x-csrf-token: …' -b jt_session=…` → 1초 뒤 `curl -H "Authorization: Bearer $ACCESS" -H "CF-Access-Client-Id: …" https://identity-admin-api.joshuatech.dev/tenants/me` → 401 `session_revoked`.
+3. 폐기: `curl -X POST https://joshuatech.dev/api/auth/logout -H 'x-csrf-token: …' -b jt_session=…` → 1초 뒤 `curl -H "Authorization: Bearer $ACCESS" -H "CF-Access-Client-Id: …" https://identity-m2m-prod.joshuatech.dev/tenants/me` → 401 `session_revoked`.
 4. Authentik 관리자에서 세션 삭제 → identity-admin 로그에 `authentik_webhook` reason 기록 → 같은 401.
 5. OpenFGA: `fga tuple write --store-id $STORE user:<sub> member tenant:<id>` → `fga query check user:<sub> member tenant:<id>` → `{"allowed":true}`.
-6. Access: `curl -sI https://admin-identity-admin.joshuatech.dev/admin/` → 302(Access 로그인); 서비스 토큰 헤더로 `identity-admin-api…/health` → 200.
+6. Access: `curl -sI https://admin.joshuatech.dev/identity-admin/admin/` → 302(Access 로그인); 서비스 토큰 헤더로 `identity-m2m-prod…/health` → 200.
 
 ## US5 — 웹 hello·BFF 왕복
 
@@ -85,7 +85,7 @@ docker buildx build --platform linux/arm64 -t sample-pod:test .                 
 for i in 1 2 3; do kubectl top nodes; sleep 600; done            # A ≤ 9 GB, B ≤ 8 GB
 kubectl top pods -A --sort-by=memory | head -15                   # report 표 입력
 oci usage-api usage-summary request-summarized-usages --tenant-id $T --time-usage-started 2026-09-01T00:00:00Z --time-usage-ended 2026-10-01T00:00:00Z --granularity MONTHLY --query-type COST --group-by '["service"]'   # Compute ≤ 3 SGD
-oci budgets budget list --compartment-id $T                       # $1·$5 알림 2개
+oci budgets budget list --compartment-id $T                       # 예산 35 SGD 1개, 알림 규칙 4개
 ```
 Grafana Cloud: 대시보드 3개에 데이터, 알림 규칙 2개 `Normal`. Sentry: identity-admin `raise` 테스트 이벤트 1건(`request_id` 태그).
 

@@ -85,7 +85,7 @@ DB 테이블 `session_revocation_log`(감사·재적용용):
 | 파티션 | 3 (파티션 키 `tenant_id`) |
 | 보존 | `retention.ms` 7일, `cleanup.policy` delete |
 | 복제 | 1 (단일 노드), `min.insync.replicas` 1 |
-| 사용자 | `<pod>`(prod) · `dev-<pod>`(dev), SCRAM-SHA-512, 비밀은 Strimzi가 생성 → ESO가 아니라 Strimzi Secret을 pod가 직접 참조 |
+| 사용자 | `<pod>`(prod) · `dev-<pod>`(dev), SCRAM-SHA-512. 비밀번호 원천은 Vault `kv/{env}/kafka/<pod>` → ESO → `KafkaUser.spec.authentication.password.valueFrom.secretKeyRef`(kafka ns) + 앱 ns에도 같은 경로의 ExternalSecret; 클러스터 CA(`jt-kafka-cluster-ca-cert`)는 ESO kubernetes provider로 앱 ns에 미러 |
 | ACL | 자기 토픽 `Write`·`Describe`, 구독 토픽 `Read`·`Describe`, 그룹 `<pod>-*` `Read`, DLQ `Write` |
 
 ## 7. Database / Role — 소유 platform-gitops (CNPG 선언)
@@ -97,7 +97,7 @@ DB 테이블 `session_revocation_log`(감사·재적용용):
 | app role | `<pod_snake>_app` — `LOGIN NOBYPASSRLS`, 테이블 비소유, `GRANT SELECT/INSERT/UPDATE/DELETE`만, `FORCE ROW LEVEL SECURITY` 적용 대상 |
 | 접근 경계 | role은 자기 database에만 `CONNECT`. 다른 database `CONNECT` 권한 없음 |
 | 비밀 | Vault `kv/{env}/db/<pod_snake>/{owner,app}` → ESO → CNPG `managed.roles[].passwordSecret` |
-| 확장 | `pgvector`(assistant 대비), `pg_bigm`(검색 폴백) — database별 `CREATE EXTENSION`은 owner role |
+| 확장 | `pgvector`(standard 이미지 내장, assistant 대비) — database별 `CREATE EXTENSION`은 owner role. `pg_bigm`은 자체 확장 이미지가 필요해 SP-3로 이월 |
 
 RLS 정책 표준(django-common 헬퍼가 생성):
 
@@ -138,8 +138,8 @@ CREATE POLICY tenant_isolation ON <t>
 | Group | `tenant:joshuatech`, `platform-admin` | 정책 바인딩·RBAC 매핑 |
 | Application + Provider(OAuth2) | `web-bff`(confidential, PKCE, token exchange grant, redirect `https://joshuatech.dev/api/auth/callback`, access 300 s, refresh 30 d 회전), `identity-admin`(자기 signing key·JWKS, Federated Providers = [`web-bff`]), `argocd`·`vault`·`grafana`(OIDC, 그룹 클레임) | 각 provider의 `issuer` = `https://auth.joshuatech.dev/application/o/<slug>/` |
 | ScopeMapping | `tenant_id`(사용자 attribute `tenant_id` 또는 그룹 `tenant:*`에서 파생) | 모든 access/ID 토큰에 포함 |
-| NotificationTransport + Rule | webhook(generic) → `https://identity-admin-api.joshuatech.dev/webhooks/authentik`, 이벤트 `logout`·`login`·`model_deleted(session)` | 공유 비밀 헤더 |
-| Outpost(proxy) | Django admin forward-auth(`admin-*` 호스트) | SP-1은 identity-admin admin만 |
+| NotificationTransport + Rule | webhook(generic) → `https://identity-m2m-prod.joshuatech.dev/webhooks/authentik`, 이벤트 `logout`·`login`·`model_deleted(session)` | 공유 비밀 헤더 |
+| Outpost(proxy) | Django admin forward-auth(`admin.` 호스트) | SP-1은 identity-admin admin만 |
 
 - Blueprints는 YAML 파일로 ConfigMap 마운트, `authentik_blueprints` 라벨로 자동 적용. 비밀 값은 `!Env`로 ExternalSecret에서 주입.
 

@@ -106,7 +106,7 @@ SP-0(001·002)은 도구·관례만 만들었고 애플리케이션 스택은 �
 3. **Given** 사용자가 로그인 상태, **When** BFF의 `/api/auth/logout`을 호출하면, **Then** identity-admin이 Authentik refresh 토큰을 revoke하고 Dragonfly에 `revoked:{sub}`(not-before)를 기록하며 Kafka `identity-admin.session.revoked`를 발행하고, 1초 뒤 같은 access 토큰으로 identity-admin을 호출하면 401이다.
 4. **Given** Authentik 관리자가 사용자 세션을 삭제함, **When** Authentik 웹훅(logout 이벤트)이 identity-admin에 도착하면, **Then** 3번과 같은 거부 목록 기록이 일어난다.
 5. **Given** OpenFGA가 `identity` 네임스페이스에서 `pg-main`의 `openfga` DB로 동작함, **When** 초기 모델(`tenant#member`)을 store에 쓰고 check API를 호출하면, **Then** 튜플 유무에 따라 allowed true/false가 돌아온다.
-6. **Given** `admin-identity-admin.joshuatech.dev`(Django admin)와 `identity-admin-api.joshuatech.dev`가 Cloudflare Access 뒤에 있음, **When** Access 헤더 없이 호출하면, **Then** Cloudflare가 403을 돌려주고, BFF의 서비스 토큰(Service Auth 정책)으로 호출하면 통과한다.
+6. **Given** `admin.joshuatech.dev`(Django admin)와 `identity-m2m-prod.joshuatech.dev`가 Cloudflare Access 뒤에 있음, **When** Access 헤더 없이 호출하면, **Then** Cloudflare가 403을 돌려주고, BFF의 서비스 토큰(Service Auth 정책)으로 호출하면 통과한다.
 
 ---
 
@@ -122,7 +122,7 @@ SP-0(001·002)은 도구·관례만 만들었고 애플리케이션 스택은 �
 
 1. **Given** `apps/web`(Next.js 16.3 + `@opennextjs/cloudflare`)이 `generateStaticParams`로 `[lang]` 페이지를 전부 프리렌더함, **When** main에 머지되어 `wrangler deploy`되면, **Then** `joshuatech.dev/{ko,en,ja}`가 200이고, 페이지 GET은 Worker의 캐시 가로채기(정적 자산 `cdn-cgi/_next_cache`)로 응답하되 CPU p95 ≤ 10 ms·Error 1102 0건이며, `_next/static/*`는 정적 자산 요청(무료)으로 집계된다. (OpenNext는 프리렌더 HTML도 Worker를 거친다 — plan A1)
 2. **Given** `packages/content`가 `content/study/*.mdx`를 zod 스키마로 검증함, **When** hello 페이지를 빌드하면, **Then** 001·002 학습 노트의 제목·날짜·태그가 목록에 나오고, `draft: true`인 노트는 프로덕션 빌드에서 제외되며, 스키마에 맞지 않는 frontmatter(예: `pubDate` 누락)는 빌드를 실패시킨다.
-3. **Given** BFF Route Handler `/api/health`가 있음, **When** 호출하면, **Then** BFF는 Access 서비스 토큰 헤더로 `identity-admin-api.joshuatech.dev/health`를 호출해 200을 중계하고 응답에 `x-request-id`를 남기며, 왕복 p95를 report에 기록한다.
+3. **Given** BFF Route Handler `/api/health`가 있음, **When** 호출하면, **Then** BFF는 Access 서비스 토큰 헤더로 `identity-m2m-prod.joshuatech.dev/health`를 호출해 200을 중계하고 응답에 `x-request-id`를 남기며, 왕복 p95를 report에 기록한다.
 4. **Given** PR이 열림, **When** `ci.yml`이 OpenNext 빌드를 하면, **Then** `scripts/bundle-budget.mjs`가 서버 번들 gzip 크기를 출력하고 2.5 MiB 초과 시 실패한다. 또한 `deploy-web.yml`이 `wrangler versions upload --preview-alias pr-<n>`으로 프리뷰 URL을 PR 코멘트에 남긴다.
 5. **Given** i18n 라우트, **When** `/ja`에 번역이 없는 노트를 열면, **Then** ko 본문을 보여주고 "번역 없음" 표시를 붙인다.
 
@@ -143,7 +143,7 @@ pod 구현자(SP-2의 서브에이전트)는 copier 템플릿 한 번으로 테�
 3. **Given** outbox 모델과 릴레이 command가 있음, **When** 도메인 쓰기와 outbox 삽입이 한 트랜잭션에서 커밋되면, **Then** 릴레이가 5초 내 CloudEvents JSON을 토픽에 발행하고 행을 삭제하며, 발행 실패 시 `attempts`를 올리고 행을 남긴다.
 4. **Given** 인증 미들웨어가 있음, **When** 유효한 JWT로 호출하되 Dragonfly에 `revoked:{sub}`가 있으면, **Then** 401이고, iss·aud가 다르면 401이며, 유효하면 `tenant_id`가 요청 컨텍스트와 로그에 실린다.
 5. **Given** structlog·OTel 설정이 있음, **When** 요청을 처리하면, **Then** JSON 로그에 `request_id`·`tenant_id`·`trace_id`가 있고 OTLP 트레이스가 Alloy로 전송된다.
-6. **Given** `apps/identity-admin`이 이 템플릿으로 생성됨, **When** gitops `apps/identity-admin/overlays/{dev,prod}`를 sync하면, **Then** `identity-admin-apidev.`·`identity-admin-api.joshuatech.dev/health`가 200이고 ExternalSecret으로 DB·Kafka·Authentik 비밀이 주입된다.
+6. **Given** `apps/identity-admin`이 이 템플릿으로 생성됨, **When** gitops `apps/identity-admin/overlays/{dev,prod}`를 sync하면, **Then** `identity-m2m-dev.`·`identity-m2m-prod.joshuatech.dev/health`가 200이고 ExternalSecret으로 DB·Kafka·Authentik 비밀이 주입된다.
 
 ---
 
@@ -261,7 +261,7 @@ pod 구현자(SP-2의 서브에이전트)는 copier 템플릿 한 번으로 테�
 - **FR-023**: 세션 정본은 Authentik이며, BFF는 암호화된 refresh 토큰을 HttpOnly·Secure·SameSite=Lax 쿠키로 보관하고 access 토큰(5분 TTL)을 isolate 캐시한다. BFF는 요청 처리 전 identity-admin `/session/check`(2초 캐시)로 폐기 여부를 확인한다.
 - **FR-024**: 로그아웃·관리자 폐기·Authentik 세션 삭제(웹훅)는 identity-admin이 처리해 Authentik 토큰 revoke, Dragonfly `revoked:{sub}`(not-before, TTL = access TTL) 기록, Kafka `identity-admin.session.revoked` 발행을 수행해야 한다. 모든 pod의 인증 미들웨어는 JWT 검증 뒤 Dragonfly를 1회 조회해 거부해야 한다.
 - **FR-025**: OpenFGA를 `identity` 네임스페이스에 설치(DB `openfga`)하고 초기 모델(`tenant#member`)과 env별 store를 선언해야 한다. 튜플 쓰기는 관계를 정의하는 pod만 한다(SP-1에서는 identity-admin의 `tenant#member`).
-- **FR-026**: Cloudflare Access 정책: `<pod>-api.*`·`<pod>-apidev.*`는 Service Auth(BFF 서비스 토큰)만, `admin-*`·`argo.`·`vault.`·`kibana.`·Traefik 대시보드는 GitHub IdP 로그인 필수여야 한다. 서비스 토큰은 Vault에 보관하고 1년 만료·회전 런북을 둔다.
+- **FR-026**: Cloudflare Access 정책: `<alias>-m2m-prod.*`·`<alias>-m2m-dev.*`는 Service Auth(BFF 서비스 토큰)만, `admin.`·`argo.`·`vault.`·`kibana.`·Traefik 대시보드는 GitHub IdP 로그인 필수여야 한다. 서비스 토큰은 Vault에 보관하고 1년 만료·회전 런북을 둔다.
 
 **웹·콘텐츠**
 
@@ -344,6 +344,7 @@ pod 구현자(SP-2의 서브에이전트)는 copier 템플릿 한 번으로 테�
 - Grafana Cloud Free·Sentry Free 계정은 운영자가 만들고 토큰을 Vault에 넣는다. GitHub App(gitops 커밋용)과 GHCR public 이미지도 운영자 권한으로 만든다.
 - v1 데이터는 백업·임포트하지 않는다(사용자 결정 2026-08-28). v1 저장소 자체는 보존한다.
 - 학습 노트 001·002는 이미 `rules/content.md` 계약을 따르므로 hello 페이지의 콘텐츠 로더 검증 입력으로 쓸 수 있다.
+- 외부 계정(2026-09-01 사용자 확인, 비밀 아님): Cloudflare Zero Trust 팀 `joshua-tech`(팀 도메인 `joshua-tech.cloudflareaccess.com`, Free) · Grafana Cloud 스택 `https://joshuatech.grafana.net/`(조직 `joshuatech`, 관리자·contact point 이메일 joshua92y@gmail.com) · Sentry 조직 slug `joshtech`(팀 `joshtech`). 호스트명 규약은 contracts/hostnames-and-access.md: pod API `<alias>-m2m-<env>.joshuatech.dev`, 관리자 UI `admin.joshuatech.dev/<pod>/`.
 - ES/ECK·Kibana(D11)는 SP-3에서 구현하지만 노드 RAM 예산에 자리(A 1 GB, B 2 GB)를 남긴다.
 
 ## Design
@@ -354,7 +355,7 @@ pod 구현자(SP-2의 서브에이전트)는 copier 템플릿 한 번으로 테�
 브라우저 ─HTTPS─▶ Cloudflare(DNS·proxied·Access·WAF)
                     ├─ 정적 자산(무료) ─▶ Workers: Next.js OpenNext lean(프리렌더 + BFF Route Handlers)
                     └─ 80/443(Cloudflare IP만, AOP mTLS) ─▶ 노드 A Traefik ─▶ Ingress(host) ─▶ pod / Authentik / Argo UI
-BFF ─(토큰 교환 후, Access 서비스 토큰)─▶ <pod>-api.joshuatech.dev
+BFF ─(토큰 교환 후, Access 서비스 토큰)─▶ <alias>-m2m-<env>.joshuatech.dev
 
 노드 A role=platform (2 OCPU/13 GB): K3s server·Traefik·cert-manager·Argo CD·Vault+ESO·Strimzi Kafka·Authentik·OpenFGA·Alloy·cloudflared  ≈ 8.3 GB
 노드 B role=data     (2 OCPU/13 GB): K3s agent·CNPG pg-main·Dragonfly(dev·prod)·앱 pod+워커(dev·prod)·cloudflared          ≈ 7.5 GB
@@ -399,11 +400,11 @@ platform-gitops/ (public)
 
 1. 브라우저 → BFF `/api/auth/login` → Authentik Authorization Code + PKCE(`web-bff`, confidential).
 2. 콜백에서 토큰 수신(aud=web-bff, `tenant_id`) → 암호화 refresh 쿠키(HttpOnly·Secure·SameSite=Lax) 설정, access는 isolate 캐시(5분).
-3. API 호출 시 BFF는 identity-admin `/session/check`(2초 캐시)로 폐기 확인 → RFC 8693 교환(audience = 대상 pod) → `<pod>-api.joshuatech.dev` 호출 + `CF-Access-Client-Id/Secret`.
+3. API 호출 시 BFF는 identity-admin `/session/check`(2초 캐시)로 폐기 확인 → RFC 8693 교환(audience = 대상 pod) → `<alias>-m2m-<env>.joshuatech.dev` 호출 + `CF-Access-Client-Id/Secret`.
 4. Cloudflare Access(Service Auth) → AOP mTLS → Traefik Ingress → pod: JWKS로 iss·aud·exp 검증 → Dragonfly 거부 목록 조회 → `tenant_id` → `SET LOCAL` → RLS.
 5. 폐기: 로그아웃/관리자 폐기/Authentik 웹훅 → identity-admin → Authentik revoke + Dragonfly `revoked:{sub}` + Kafka `identity-admin.session.revoked`.
 
-호스트: `joshuatech.dev`(웹) · `auth.`(Authentik) · `<pod>-api.` / `<pod>-apidev.` · `admin-<pod>.` · `argo.` `vault.` `kibana.`(SP-3) · `cdn.`(R2). 전부 proxied, Full(strict).
+호스트: `joshuatech.dev`(웹) · `auth.`(Authentik) · `<alias>-m2m-prod.` / `<alias>-m2m-dev.` · `admin.`(경로 `/<pod>/`) · `argo.` `vault.` `kibana.`(SP-3) · `cdn.`(R2). 전부 proxied, Full(strict).
 
 ### 4. pod 템플릿·데이터·이벤트
 

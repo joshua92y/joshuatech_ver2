@@ -12,7 +12,7 @@
 | `owns_events` | `["session.revoked"]` | 발행 토픽 entity.event 목록 → `events/` 스텁·KafkaTopic 예시 생성 |
 | `consumes_events` | `[]` | 소비 토픽 목록 → consumer 스텁 |
 | `has_celery` | true | Celery 워커·beat 매니페스트 생성 여부 |
-| `has_admin` | true | Django admin 활성 + `admin-<pod>` Ingress |
+| `has_admin` | true | Django admin 활성 + `admin.joshuatech.dev` 호스트의 `PathPrefix(/<pod>)` Ingress(`FORCE_SCRIPT_NAME=/<pod>`) |
 
 ## 생성 트리
 

@@ -1,6 +1,6 @@
 # Contract: identity-admin API (SP-1 범위)
 
-Django 6.1 + Ninja 1.7. 호스트 `identity-admin-api.joshuatech.dev`(prod) · `identity-admin-apidev.joshuatech.dev`(dev). 모든 요청은 Cloudflare Access(Service Auth)와 Traefik(AOP mTLS)을 통과한 뒤 도착한다. 오류는 RFC 9457. 응답 헤더에 `x-request-id`를 되돌린다.
+Django 6.1 + Ninja 1.7. 호스트 `identity-m2m-prod.joshuatech.dev`(prod) · `identity-m2m-dev.joshuatech.dev`(dev). 모든 요청은 Cloudflare Access(Service Auth)와 Traefik(AOP mTLS)을 통과한 뒤 도착한다. 오류는 RFC 9457. 응답 헤더에 `x-request-id`를 되돌린다.
 
 ## 인증 계층 (django-common 미들웨어)
 
