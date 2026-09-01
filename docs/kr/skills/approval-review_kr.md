@@ -3,7 +3,7 @@
 ```yaml
 ---
 name: approval-review
-description: "Run parallel per-boundary subagent reviews (security, tenant-data, operability, trends, spec-consistency) before a feature's spec/plan/tasks is marked Approved. Use when the user approves a feature, says 승인/approve/LGTM, or asks for a pre-approval review."
+description: "Run parallel per-boundary subagent reviews (security, tenant-data, operability, trends, spec-consistency, k8s-security for infra features) before a feature's spec/plan/tasks is marked Approved. Use when the user approves a feature, says 승인/approve/LGTM, or asks for a pre-approval review."
 ---
 ```
 
@@ -19,7 +19,7 @@ description: "Run parallel per-boundary subagent reviews (security, tenant-data,
 - `checklists/*.md`의 미체크 `- [ ]` 항목 수를 센다.
 
 ## 3. Dispatch one reviewer per boundary — in parallel, in one message
-`boundaries/` 안의 각 파일(`security.md`, `tenant-data.md`, `operability.md`, `trends.md`, `spec-consistency.md`)마다 `general-purpose` 서브에이전트를 하나씩 파견한다. 프롬프트:
+`boundaries/` 안의 각 파일(`security.md`, `tenant-data.md`, `operability.md`, `trends.md`, `spec-consistency.md`, `k8s-security.md` — 마지막은 Kubernetes/GitOps/인프라 리소스를 선언하는 feature에만 적용하고 그 외에는 건너뛴다)마다 `general-purpose` 서브에이전트를 하나씩 파견한다. `k8s-security` 리뷰어에게는 호스트명·Access 정책·GitOps 배치·시크릿 경로를 설명하는 `contracts/` 발췌도 준다. 프롬프트:
 
 ```
 You are the <boundary> reviewer for feature <NNN-slug>. Read-only: do not edit any file.

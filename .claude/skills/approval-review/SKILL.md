@@ -1,6 +1,6 @@
 ---
 name: approval-review
-description: "Run parallel per-boundary subagent reviews (security, tenant-data, operability, trends, spec-consistency) before a feature's spec/plan/tasks is marked Approved. Use when the user approves a feature, says 승인/approve/LGTM, or asks for a pre-approval review."
+description: "Run parallel per-boundary subagent reviews (security, tenant-data, operability, trends, spec-consistency, k8s-security for infra features) before a feature's spec/plan/tasks is marked Approved. Use when the user approves a feature, says 승인/approve/LGTM, or asks for a pre-approval review."
 ---
 > Canonical language: English. Korean mirror: docs/kr/skills/approval-review_kr.md (convenience only). On conflict, English prevails. Sync: /finish (best-effort).
 
@@ -16,7 +16,7 @@ In order: `$env:SPECIFY_FEATURE_DIRECTORY` → current git branch `NNN-slug` wit
 - Count unchecked `- [ ]` items in `checklists/*.md`.
 
 ## 3. Dispatch one reviewer per boundary — in parallel, in one message
-For each file in `boundaries/` (`security.md`, `tenant-data.md`, `operability.md`, `trends.md`, `spec-consistency.md`) dispatch one `general-purpose` subagent. Prompt:
+For each file in `boundaries/` (`security.md`, `tenant-data.md`, `operability.md`, `trends.md`, `spec-consistency.md`, `k8s-security.md` — the last one applies to features that declare Kubernetes/GitOps/infra resources; skip it otherwise) dispatch one `general-purpose` subagent. The `k8s-security` reviewer also receives the `contracts/` excerpts that describe hostnames, access policies, GitOps layout and secret paths. Prompt:
 
 ```
 You are the <boundary> reviewer for feature <NNN-slug>. Read-only: do not edit any file.
