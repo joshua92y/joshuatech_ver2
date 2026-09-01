@@ -31,7 +31,7 @@
 
 | 토픽 | subject | data | 발행 | 소비(예정) |
 |---|---|---|---|---|
-| `identity-admin.session.revoked` | `user:<sub>` | `sub`(string, req) · `sid`(string\|null) · `nbf`(int epoch, req) · `reason`(enum logout·logout_all·admin·authentik_webhook·tenant_suspended, req) | identity-admin | insights(SP-3). 거부 목록 재적용에는 쓰지 않는다 — pod는 Dragonfly를 직접 조회하고, 재적용은 identity-admin의 DB 대조(contracts/denylist.md) |
+| `identity-admin.session.revoked` | `user:<sub>` | `sub`(string, req) · `sid`(string\|null) · `nbf`(int epoch, req) · `reason`(enum logout·logout_all·admin·authentik_webhook·tenant_suspended, req) | identity-admin | insights(SP-3). 거부 목록 재적용에는 쓰지 않는다 — pod는 Dragonfly를 직접 조회하고, 재적용은 identity-admin의 30 s 무조건 재적용(contracts/denylist.md) |
 | `identity-admin.user.registered` | `user:<sub>` | `sub` · `email_hash`(sha256) · `tenant_id` · `role` · `registered_at` | identity-admin(SP-2) | portfolio-core·engagement(투영), notification(환영 메일) |
 | `identity-admin.tenant.created` | `tenant:<id>` | `tenant_id` · `slug` · `display_name` | identity-admin(SP-2) | 모든 pod(테넌트 시드) |
 | `portfolio-core.note.published` | `note:<slug>` | `slug` · `lang` · `title` · `tags[]` · `published_at` · `change` | portfolio-core(SP-2, CI notes-sync) | search(색인), notification(구독 알림), insights |
@@ -44,13 +44,26 @@
 - 금지: 필드 삭제·이름 변경·타입 변경, `required` 추가, enum 값 삭제. 필요하면 새 토픽 `…v2`를 만들고 둘 다 발행하는 기간을 둔다.
 - 검사 방식: `main`의 스키마와 PR 스키마를 필드 단위로 비교(스크립트 `packages/events/scripts/check-compat.mjs`), 위반 시 실패.
 
+## 발행 API (`django_common.outbox.publish`)
+
+```python
+def publish(topic: str, subject: str, data: dict, *, tenant_id: UUID | str | None = None) -> OutboxEvent: ...
+```
+
+- `tenant_id`는 **키워드 전용 선택 인자**다. 생략하면 요청 트랜잭션의 테넌트 컨텍스트(`app.tenant_id`)에서 읽는다. 컨텍스트가 있는 요청 경로(A 등급 도메인 쓰기)는 인자를 넘기지 않고, 컨텍스트가 없는 경로(웹훅·관리자 revoke·기동 시 작업 — 전부 등급 B 테이블 위에서 돈다)는 **명시적으로 넘긴다**.
+- **컨텍스트도 없고 인자도 없으면 `OutboxUsageError`** 를 던진다(`tenantid` 없는 봉투가 Kafka로 나가는 것을 막는다). `transaction.atomic()` 밖에서 호출해도 같은 예외다.
+- 확정된 `tenant_id`가 봉투의 `tenantid`와 outbox 행의 `partition_key`가 된다.
+- 웹훅·관리자 revoke가 넘길 `tenant_id`는 `TenantMembership`에서 토큰·본문의 `sub`로 조회한 값이다(없으면 400 — contracts/identity-admin-api.md).
+
 ## outbox 릴레이 (django-common)
 
-- 실행: pod당 `manage.py outbox_relay` 프로세스 1개(Deployment의 `relay` 컨테이너, web과 같은 pod), 폴링 500 ms, 배치 100. **app role**로 실행하며 `outbox` 테이블은 등급 B(pod 전역, RLS 미적용)라 모든 테넌트의 행을 읽는다(T060: 테넌트 A·B 행이 모두 릴레이되고 각 `tenantid`·파티션 키가 맞음).
-- 트랜잭션 규칙: outbox INSERT는 도메인 쓰기와 같은 `transaction.atomic()` 안에서만. 라이브러리는 autocommit 상태의 INSERT를 예외로 막는다.
+- 실행: pod당 `manage.py outbox_relay` 프로세스 1개(Deployment의 `relay` 컨테이너, web과 같은 pod), 폴링 500 ms, 배치 100. **app role**로 실행하며 `outbox` 테이블은 등급 B(pod 전역, RLS 미적용)라 모든 테넌트의 행을 읽는다(T061: 테넌트 A·B 행이 모두 릴레이되고 각 `tenantid`·파티션 키가 맞음).
+- **선택 조건**: `WHERE dead_at IS NULL ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 100`. dead 행은 다시 집지 않는다(재발행 폭주 방지) — 재처리는 `dead_at`을 비우는 수동 command로만.
+- 트랜잭션 규칙: outbox INSERT는 도메인 쓰기와 같은 `transaction.atomic()` 안에서만. 라이브러리는 autocommit 상태의 INSERT를 `OutboxUsageError`로 막는다.
 - 프로듀서: confluent-kafka idempotent producer, SASL_SSL SCRAM-SHA-512, `delivery.timeout.ms` 30000.
 - 실패: 프로듀서 오류 시 `attempts += 1`, `last_error` 기록, 지수 백오프(최대 5분). **`attempts ≥ max_attempts(10)`이면 원본 봉투를 `<pod>.dlq`로 발행(+ `error` 헤더)하고 `dead_at`을 기록**한다(행 유지, 재처리는 수동 command).
-- 관측(relay 컨테이너 `prometheus_client` 9464, `k8s.grafana.com/scrape: "true"`): `outbox_pending`(gauge), `outbox_oldest_pending_seconds`(가장 오래된 pending의 나이, 알림 `OutboxOldestPending` > 60 s), `outbox_dead_total`(counter).
+- **dead 행 purge**: 일 1회 `dead_at + 30 d < now()`인 행을 삭제한다(Celery beat). `outbox` 테이블이 무한히 자라지 않게 하는 유일한 경로이며, 30일은 수동 재처리 여유다.
+- 관측(relay 컨테이너 `prometheus_client` 9464, `k8s.grafana.com/scrape: "true"`): `outbox_pending`(gauge, `dead_at IS NULL`만 셈), `outbox_oldest_pending_seconds`(가장 오래된 pending의 나이, 알림 `OutboxOldestPending` > 60 s), `outbox_dead_total`(counter).
 
 ## 소비자 규칙
 

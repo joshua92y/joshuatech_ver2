@@ -9,7 +9,7 @@
 | `kube-system` | traefik · coredns · metrics-server (K3s 번들) | `privileged` | K3s 시스템 컴포넌트(svclb hostPort 등) |
 | `argocd` | Argo CD | `restricted` | |
 | `vault` | Vault(Raft 1, ocikms seal) | `restricted` | |
-| `external-secrets` | ESO + SA `eso-platform`·`eso-dev`·`eso-prod` | `restricted` | |
+| `external-secrets` | ESO + SA `eso-platform`·`eso-dev`·`eso-prod`·`eso-data`·`eso-ca-reader` | `restricted` | |
 | `cert-manager` | cert-manager(DNS-01 와일드카드 1장 → `kube-system` TLSStore) | `baseline` | |
 | `cnpg-system` | CNPG operator + barman-cloud plugin | `baseline` | |
 | `data` | pg-main(CNPG) · kafka(Strimzi) · dragonfly | `baseline` | |
@@ -17,58 +17,114 @@
 | `jt-dev` | pod dev 배포(identity-admin …) | `restricted` | |
 | `jt-prod` | pod prod 배포 | `restricted` | |
 | `monitoring` | alloy(k8s-monitoring: metrics·logs·node-exporter) | `privileged` | hostPath `/var/log`(alloy-logs), node-exporter hostNetwork |
-| `system-upgrade` | system-upgrade-controller + Plan Job | `privileged` | hostPID · `chroot /host`(K3s 업그레이드·`platform-backup.sh --pre-upgrade`) |
+| `system-upgrade` | system-upgrade-controller + Plan Job | `privileged` | hostPID · hostIPC · hostNetwork · `chroot /host`(K3s 업그레이드·`platform-backup.sh --pre-upgrade`) |
 | `cloudflared` | cloudflared 터널 커넥터 | `restricted` | |
 | `reloader` | Stakater Reloader | `restricted` | |
 
 - `observability`라는 이름은 쓰지 않는다(→ `monitoring`).
-- 라벨: `pod-security.kubernetes.io/enforce=<레벨>` + `warn`·`audit`은 같은 레벨. 레벨을 올리는 변경(baseline → restricted)은 approval-review `k8s-security` 경계 대상.
-- **`platform/policies/`는 이 표의 네임스페이스를 전부 선언해야 한다.** validate.yml(T033)이 `platform/policies`의 Namespace 목록 = 이 표(14개)임을 lint하고, T031이 클러스터의 모든 네임스페이스가 PSA 라벨 + 아래 정책 3종을 가짐을 단언한다.
+- 라벨: `pod-security.kubernetes.io/enforce=<레벨>` + `warn`·`audit`은 같은 레벨. **PSA 레벨을 바꾸는 변경은 상향(baseline → restricted)·하향(restricted → baseline) 모두** approval-review `k8s-security` 경계 대상이다.
+- **`platform/policies/`는 이 표의 네임스페이스를 전부 선언해야 한다.** `kube-system`은 K3s가 이미 만든 네임스페이스이므로 **라벨만 SSA로 패치**하고(정책은 `deny-imds`만), 나머지 13개는 Namespace + 라벨 + 아래 정책을 선언한다. validate.yml(T033)이 `platform/policies`의 Namespace 목록 = 이 표(14개)임을 lint하고, T031이 클러스터의 모든 네임스페이스가 PSA 라벨 + 해당 정책을 가짐을 단언한다.
+- helm 차트로 배포하는 컴포넌트(Vault·Authentik·OpenFGA·Reloader)는 차트 values에 `runAsNonRoot: true` · `allowPrivilegeEscalation: false` · `capabilities.drop: [ALL]` · `seccompProfile.type: RuntimeDefault` **4항목을 명시**한다(차트 기본값에 기대지 않는다). PSA `restricted` ns에서 이 값이 빠지면 admission이 거부한다.
 
-## 정책 3종 (네임스페이스마다)
+## 정책 세트 (공통 5종)
 
 | 정책 | 내용 | 적용 범위 |
 |---|---|---|
-| `default-deny` | `policyTypes: [Ingress, Egress]`, `podSelector: {}`, 규칙 없음 | `kube-system` 제외 전 ns |
-| `allow-dns` | egress → `kube-system` `k8s-app=kube-dns` 53/UDP·53/TCP | `kube-system` 제외 전 ns |
-| `deny-imds` | egress에서 `169.254.169.254/32` 제외(`ipBlock 0.0.0.0/0 except 169.254.169.254/32`) — `vault` ns만 `allow-imds`로 예외 | **전 ns(`kube-system` 포함)** |
+| `default-deny` | `policyTypes: [Ingress, Egress]`, `podSelector: {}`, 규칙 없음 | `kube-system` 제외 13 ns |
+| `allow-dns` | egress → `kube-system` `k8s-app=kube-dns` 53/UDP·53/TCP | `kube-system` 제외 13 ns |
+| `allow-same-namespace` | ingress·egress 모두 `podSelector: {}` ← / → 같은 ns(`namespaceSelector`로 자기 ns 라벨) | `argocd` · `data` · `cnpg-system` · `external-secrets` · `cert-manager` · `monitoring` · `identity` (7) |
+| `allow-kube-api` | egress → `ipBlock <노드 A private IP>/32` 6443 | `argocd` · `vault` · `external-secrets` · `cert-manager` · `cnpg-system` · `data` · `monitoring` · `system-upgrade` · `reloader` · `cloudflared` (10) |
+| `allow-apiserver-webhook` | ingress ← `ipBlock <노드 A private IP>/32`, ns마다 포트 지정 | `cert-manager` 10250 · `external-secrets` 10250 · `cnpg-system` 9443 · `vault` 8200 |
 
-`kube-system`은 `deny-imds`만 가진다(K3s 번들 컴포넌트에 default-deny를 걸지 않는다).
+조건부 2종:
 
-## 허용 매트릭스 (출발 → 도착:포트)
+| 정책 | 내용 | 적용 범위 |
+|---|---|---|
+| `deny-imds` | egress `ipBlock 0.0.0.0/0 except [169.254.169.254/32]` | **`kube-system` 전용** |
+| `allow-imds` | egress → `ipBlock 169.254.169.254/32` 80 | **`vault` 전용**(인스턴스 프린시펄) |
 
-각 행은 출발 ns의 egress 정책 + 도착 ns의 ingress 정책 한 쌍으로 구현한다(클러스터 안 목적지). 클러스터 밖 목적지(외부 443, IMDS, KMS, 노드 IP)는 출발 ns의 egress `ipBlock`으로만 표현한다 — 표준 NetworkPolicy는 FQDN을 지원하지 않으므로 "github·google·postmark 443"은 `ipBlock 0.0.0.0/0`(except RFC 1918 · `169.254.169.254/32`) 포트 443으로 쓴다.
+- `kube-system`에는 default-deny를 걸지 않는다(K3s 번들 컴포넌트). 그래서 IMDS 차단만 `deny-imds` 한 장으로 표현한다 — allow-only 모델에서 `except`가 있는 egress 규칙은 그 규칙 안에서만 의미가 있으므로, **default-deny가 있는 나머지 13 ns에서는 `deny-imds` 같은 별도 정책이 아무것도 막지 못한다**. 따라서 그 13 ns의 IMDS 차단은 아래 "외부 egress 규칙 형식"으로 규칙마다 표현한다.
+- `allow-same-namespace`가 필요한 이유: Strimzi operator ↔ broker ↔ entity-operator, CNPG operator ↔ instance, Argo server ↔ repo-server ↔ redis ↔ controller, Alloy 내부, Authentik server ↔ worker는 전부 같은 ns 안 통신인데 default-deny가 이를 끊는다.
+- `allow-apiserver-webhook`의 `vault` 8200 행은 admission webhook이 아니라 `kubectl port-forward svc/vault 8200`(운영자 seal 확인, `platform-backup.sh`의 Vault 스냅샷)의 도착 경로다 — port-forward는 API 서버·kubelet을 거치므로 출발 IP가 노드 A private IP다. `platform-backup.sh`는 **반드시 port-forward를 경유**하고 공개 호스트(`vault.joshuatech.dev`)나 pod IP를 직접 쓰지 않는다.
+
+## 외부 egress 규칙 형식 (default-deny가 있는 13 ns 공통)
+
+클러스터 밖 목적지는 출발 ns의 egress `ipBlock`으로만 표현한다(표준 NetworkPolicy는 FQDN을 지원하지 않는다). **모든 외부 egress 규칙은 다음 형식을 지킨다** — `except`로 IMDS와 사설 대역을 빼고, `ports`를 반드시 명시한다.
+
+```yaml
+egress:
+  - to:
+      - ipBlock:
+          cidr: 0.0.0.0/0
+          except:
+            - 169.254.169.254/32   # IMDS
+            - 10.0.0.0/8
+            - 172.16.0.0/12
+            - 192.168.0.0/16
+    ports:
+      - { protocol: TCP, port: 443 }
+```
+
+- `except`에 사설 대역을 넣으므로 "외부 443" 규칙이 클러스터 내부·노드로 새지 않는다. 클러스터 안 목적지와 노드 IP 목적지는 별도 규칙(`namespaceSelector` 또는 `<노드 IP>/32`)으로 명시한다.
+- `ports` 없는 `ipBlock` 규칙은 금지한다(전 포트 개방). T033 lint가 `platform/policies`의 모든 egress `ipBlock` 규칙에 `ports`와 위 `except` 4개가 있는지 검사한다.
+
+## 허용 매트릭스 — 클러스터 내부 (출발 ns → 도착 ns:포트)
+
+각 행은 출발 ns의 egress 규칙 + 도착 ns의 ingress 규칙 한 쌍으로 구현한다.
 
 | 출발 | 도착 | 포트 | 용도 |
 |---|---|---|---|
 | `kube-system`(traefik) | `argocd` | 8080 | Argo CD UI/API(Ingress `argo.`) |
 | `kube-system`(traefik) | `vault` | 8200 | Vault UI(Ingress `vault.`) |
-| `kube-system`(traefik) | `identity` | 9000(authentik) · 8080(openfga) | `auth.` Ingress, forward-auth outpost |
+| `kube-system`(traefik) | `identity` | 9000 | Authentik(`auth.` Ingress, forward-auth outpost) |
 | `kube-system`(traefik) | `jt-dev` · `jt-prod` | 8000 | pod m2m·admin Ingress |
+| `kube-system`(traefik) | `monitoring` | 4317 | Traefik OTLP 트레이스 → Alloy(T038) |
 | `jt-dev` · `jt-prod` | `data` | 5432 · 9093 · 6379 | pg-main · Kafka(SCRAM/TLS) · Dragonfly |
 | `jt-dev` · `jt-prod` | `identity` | 9000 · 8080 | Authentik(JWKS·revoke API, svc DNS) · OpenFGA |
 | `jt-dev` · `jt-prod` | `monitoring` | 4317 · 4318 | OTLP(gRPC·HTTP) → Alloy |
 | `identity` | `data` | 5432 | Authentik·OpenFGA DB |
-| `identity` | `jt-prod` | 8000 | Authentik → identity-admin 웹훅(`/webhooks/authentik`, svc DNS) |
-| `identity` | 외부 | 443 | 소셜 로그인(github·google) · 메일(postmark) |
+| `identity` | `jt-prod` | 8000 | Authentik → identity-admin prod 웹훅(`/webhooks/authentik`, svc DNS) |
+| `identity` | `jt-dev` | 8000 | Authentik → identity-admin **dev** 웹훅(dev NotificationTransport, svc DNS) |
 | `external-secrets` | `vault` | 8200 | kv 읽기 |
-| `external-secrets` | K8s API(노드 A private IP) | 6443 | Secret 쓰기·SA 토큰 |
-| `vault` | `169.254.169.254` | 80 | 인스턴스 프린시펄(IMDS) — 유일한 IMDS 예외 |
-| `vault` | OCI KMS 엔드포인트 | 443 | auto-unseal |
-| `data` | OCI Object Storage | 443 | barman-cloud 백업·WAL(`jt-backup`) |
-| `argocd` | K8s API(노드 A private IP) | 6443 | sync |
-| `argocd` | github.com · ghcr.io | 443 | gitops 저장소 · OCI 차트 |
-| `cert-manager` | `api.cloudflare.com` | 443 | DNS-01 |
-| `cert-manager` | `1.1.1.1` | 53 | DNS-01 전파 확인 |
-| `cloudflared` | Cloudflare edge | 7844 · 443 | 터널(QUIC/HTTP2) |
-| `cloudflared` | K8s API(노드 A private IP) | 6443 | `k8s.joshuatech.dev` 터널 |
-| `cloudflared` | 노드 A private IP | 22 | `ssh.joshuatech.dev` 터널 |
-| `monitoring` | Grafana Cloud | 443 | metrics·logs·traces 전송 |
-| `monitoring` | kubelet(노드 A·B) | 10250 | cAdvisor·kubelet 지표 |
-| `reloader` | K8s API(노드 A private IP) | 6443 | Deployment 롤아웃 |
+| `monitoring` | `argocd` | 8082 · 8083 · 8084 | metrics(application-controller · repo-server · server) |
+| `monitoring` | `vault` | 8200 | `vault_core_unsealed` 등(`telemetry` + `unauthenticated_metrics_access`) |
+| `monitoring` | `external-secrets` | 8080 | ESO metrics |
+| `monitoring` | `cert-manager` | 9402 | cert-manager metrics(`CertExpiringSoon`) |
+| `monitoring` | `cnpg-system` | 8080 | CNPG operator metrics |
+| `monitoring` | `data` | 9187 · 9404 | CNPG instance exporter · Strimzi kafka-exporter |
+| `monitoring` | `jt-dev` · `jt-prod` | 9100 · 9464 | pod web metrics · relay outbox metrics |
 | 전 ns | `kube-system` kube-dns | 53 | `allow-dns` |
 
-표에 없는 조합(예: `jt-dev` → `jt-prod`, `jt-*` → `vault`, `data` → `jt-*`, `identity` → `jt-dev`)은 차단된다.
+- **scrape 대상 ns의 ingress는 `namespaceSelector`가 `monitoring`인 것만 허용한다**(`podSelector: {}` + `from.namespaceSelector: kubernetes.io/metadata.name=monitoring`). `jt-dev` → `vault` 8200 처럼 다른 ns가 같은 포트로 들어오는 경로는 열리지 않는다.
+- `traefik → identity 8080`(OpenFGA) 행은 **삭제**했다. OpenFGA는 공개 호스트가 없고 클러스터 안(`jt-*` → `identity` 8080)에서만 호출한다.
+- 표에 없는 조합(예: `jt-dev` → `jt-prod`, `jt-*` → `vault`, `data` → `jt-*`, `argocd` → `data`)은 차단된다.
+
+## 허용 매트릭스 — 클러스터 밖 · 노드 IP
+
+| 출발 | 도착 | 포트 | 용도 |
+|---|---|---|---|
+| `identity` | 외부 | 443 | 소셜 로그인(github·google) · 메일(postmark) |
+| `jt-dev` · `jt-prod` | 외부 | 443 | Cloudflare Access certs(`joshua-tech.cloudflareaccess.com/cdn-cgi/access/certs`) · Sentry ingest |
+| `cert-manager` | 외부 | 443 | `api.cloudflare.com`(DNS-01) · Let's Encrypt ACME 디렉터리·주문 |
+| `cert-manager` | `1.1.1.1` | 53 | DNS-01 전파 확인(`ipBlock 1.1.1.1/32`, UDP·TCP) |
+| `vault` | 외부 | 443 | OCI KMS(auto-unseal) · `auth.joshuatech.dev` OIDC discovery(FR-046 예외 2) |
+| `vault` | `169.254.169.254` | 80 | 인스턴스 프린시펄(IMDS) — `allow-imds`, 유일한 IMDS 예외 |
+| `argocd` | 외부 | 443 | github.com(gitops 저장소) · ghcr.io/quay.io(OCI 차트) · `auth.joshuatech.dev` OIDC discovery(FR-046 예외 2) |
+| `data` | 외부 | 443 | OCI Object Storage — barman-cloud 백업·WAL(`jt-backup`) |
+| `monitoring` | 외부 | 443 | Grafana Cloud metrics·logs·traces 전송 |
+| `monitoring` | 노드 A·B private IP | 10250 | kubelet(cAdvisor·kubelet 지표) |
+| `system-upgrade` | 외부 | 443 | `update.k3s.io` 채널 조회(**컨트롤러만**; Plan Job은 hostNetwork라 정책 밖 — 아래 예외표) |
+| `cloudflared` | 외부 | 7844 · 443 | Cloudflare edge 터널(QUIC/HTTP2) |
+| `cloudflared` | 노드 A private IP | 22 | `ssh-a.joshuatech.dev` 터널 |
+| `cloudflared` | 노드 B private IP | 22 | `ssh-b.joshuatech.dev` 터널 |
+| 노드 A private IP | `vault` | 8200 | `kubectl port-forward`(운영자 seal 확인 · `platform-backup.sh` Raft 스냅샷) — `allow-apiserver-webhook` |
+| 노드 A private IP | `cert-manager` · `external-secrets` · `cnpg-system` | 10250 · 10250 · 9443 | API 서버 → admission webhook — `allow-apiserver-webhook` |
+| 위 10 ns | 노드 A private IP | 6443 | K8s API — `allow-kube-api` |
+
+### 공개 호스트 예외(FR-046 예외 2)의 범위
+
+- 클러스터 안에서 공개 호스트(`https://auth.joshuatech.dev/…`)로 나가는 것은 **Argo CD와 Vault의 OIDC discovery 둘뿐**이다(둘 다 `.well-known` + JWKS를 issuer URL로만 다루는 라이브러리라 svc DNS로 바꿀 수 없다).
+- pod(identity-admin 등)의 **JWKS는 svc DNS**를 쓴다: `http://authentik-server.identity.svc:9000/application/o/<pod>/jwks/`. 토큰의 `iss`만 공개 URL(`https://auth.joshuatech.dev/application/o/<pod>/`)로 검증한다. 그래서 `jt-*` → 외부 443 규칙에 Authentik은 들어가지 않는다(contracts/identity-admin-api.md §호스트, T083).
 
 ## hostNetwork · 호스트 네임스페이스 예외
 
@@ -77,14 +133,19 @@ NetworkPolicy는 pod 네트워크에만 적용된다. 다음 워크로드는 그
 | 워크로드 | ns | 이유 | 보완 통제 |
 |---|---|---|---|
 | node-exporter(k8s-monitoring) | `monitoring` | hostNetwork(노드 지표) | PSA privileged ns 격리, 인스턴스 IMDS v1 비활성, 동적 그룹 `jt-node-a`는 노드 A OCID만 |
-| alloy-logs | `monitoring` | hostPath `/var/log` 읽기(pod 네트워크는 유지) | 같은 ns 정책 3종 적용 |
-| system-upgrade Plan Job | `system-upgrade` | hostPID · `chroot /host` | 업그레이드 창(일요일 03:00–05:00 KST)에만 생성, Plan은 gitops 정본 |
+| alloy-logs | `monitoring` | hostPath `/var/log` 읽기(pod 네트워크는 유지) | 같은 ns 공통 정책 적용 |
+| system-upgrade Plan Job | `system-upgrade` | **hostPID · hostIPC · hostNetwork · `chroot /host`가 SUC에 하드코딩**(비활성화 불가). DNS는 `ClusterFirstWithHostNet` | 업그레이드 창(일요일 03:00–05:00 KST)에만 생성, Plan은 gitops 정본, 이미지 digest 핀. 컨트롤러 pod는 정책 안(위 표) |
 | K3s svclb(traefik hostPort 443) | `kube-system` | 호스트 포트 바인딩 | OCI NSG 443 ← Cloudflare IPv4 대역만, AOP mTLS |
 
-hostNetwork pod에는 `deny-imds`가 미치지 않으므로 IMDS 보호는 인스턴스 측(IMDS v1 비활성 + 동적 그룹 노드 A 한정 + `use keys where target.key.id = <키>`)이 맡는다.
+hostNetwork pod에는 IMDS 차단이 미치지 않으므로 IMDS 보호는 인스턴스 측(IMDS v1 비활성 + 동적 그룹 노드 A 한정 + `use keys where target.key.id = <키>`)이 맡는다.
+
+## 포트 출처 각주
+
+매트릭스의 포트는 각 컴포넌트 **helm 차트 기본값** 기준이다: cert-manager webhook 10250 · ESO webhook 10250 · CNPG webhook 9443 · Argo CD metrics 8082/8083/8084 · ESO metrics 8080 · cert-manager metrics 9402 · CNPG operator metrics 8080 · CNPG instance exporter 9187 · Strimzi kafka-exporter 9404 · Vault 8200 · Authentik 9000 · OpenFGA 8080 · pod web 8000/9100 · relay 9464. 차트 values에서 포트를 바꾸면 이 표와 정책도 함께 바꾼다 — T033 lint가 `platform/**` helm values의 포트 설정과 `platform/policies`의 정책 포트가 일치하는지 검사한다.
 
 ## 검증 (tests-first)
 
-- T031: 모든 ns에 PSA 라벨 + `default-deny`·`allow-dns`·`deny-imds`(kube-system은 `deny-imds`만), `vault` ns만 IMDS 도달, `jt-dev` pod에서 `jt-prod` svc 도달 실패.
-- T033(validate.yml): `platform/policies` Namespace 목록 = 이 표; 정책 3종 × ns 존재.
-- T041: 이 계약을 그대로 매니페스트로 옮긴다(추가 허용 규칙 금지).
+- **T031(양방향 단언)**: ① 모든 ns에 PSA 라벨 + 해당 정책(`kube-system`은 라벨 + `deny-imds`만) ② 매트릭스 **행마다 도달 성공** ③ **표 밖 조합 차단**(`jt-dev` → `jt-prod` svc, `data` → `jt-dev`) ④ `monitoring` 아닌 ns에서 `vault` 8200 거부 ⑤ `jt-dev` pod에서 `1.1.1.1:443` 연결 실패(외부 443 규칙의 `except`·`ports` 확인) ⑥ `vault` ns만 IMDS 도달 ⑦ 전 ns PSA 위반 이벤트 0.
+- **T033(validate.yml)**: `platform/policies` Namespace 목록 = 이 표(14개); ns마다 공통 정책 세트 존재; 모든 egress `ipBlock` 규칙에 `ports` + `except` 4개; helm values 포트 ↔ 정책 포트 일치.
+- **T041**: 이 계약을 그대로 매니페스트로 옮긴다(추가 허용 규칙 금지). `kube-system`은 라벨만 SSA 패치.
+- **T034·T036·T037·T038·T044·T046·T080·T081·T082**: 각 컴포넌트 배포 시 securityContext 4항목 values·정책 포트를 이 계약과 대조한다.
