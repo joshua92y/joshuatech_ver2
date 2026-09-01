@@ -149,7 +149,7 @@ tasks.md는 다음 10단계로 나눈다(spec Design §6). 각 단계는 "검증
 
 | # | 사실 (출처) | 영향 | 처리 |
 |---|---|---|---|
-| A1 | OpenNext는 프리렌더 HTML을 정적 자산에 넣지 않고 Worker가 cache interception으로 응답한다 → 페이지 GET도 Worker 호출·CPU를 소비(cloudflare-docs #24616). "Worker 미호출"은 빌드 후 HTML을 assets에 복사하는 실험 옵션뿐이며 RSC 요청이 MPA로 강등되는 부작용이 있다 (R8) | spec SC-007·US5 AC1의 "Worker 호출 없이 정적 자산으로 응답" | **사용자 결정 필요**(아래 질문). 기본안: 페이지 GET이 Worker를 거치는 것을 수용(정적 파일 `_next/static`은 여전히 무료), SC-007을 "번들 예산 + 페이지 GET p95 CPU ≤ 10 ms·일 요청 수 기록"으로 바꾸고, HTML 복사 실험은 선택 task로 둔다 |
+| A1 | OpenNext는 프리렌더 HTML을 정적 자산에 넣지 않고 Worker가 cache interception으로 응답한다 → 페이지 GET도 Worker 호출·CPU를 소비(cloudflare-docs #24616). "Worker 미호출"은 빌드 후 HTML을 assets에 복사하는 실험 옵션뿐이며 RSC 요청이 MPA로 강등되는 부작용이 있다 (R8) | spec SC-007·US5 AC1의 "Worker 호출 없이 정적 자산으로 응답" | **사용자 결정(2026-09-01): 수용** — 페이지 GET이 Worker를 거치는 것을 인정(정적 파일 `_next/static`은 무료), SC-007·US5 AC1을 "번들 예산 + 페이지 GET CPU p95 ≤ 10 ms·Error 1102 0건·일 요청 수 기록"으로 수정(spec 반영). HTML 복사 실험은 선택 task |
 | A2 | Next 16.3 + cache interception에서 RSC prefetch 무한 루프 이슈(#1334 open, PR #1348) — 16.2.12에서는 없음 (R8) | 웹 hello 안정성 | 착수 시 릴리스 노트 확인, 미해결이면 `next` 16.2.x 핀(ADR 0004 부록에 기록) |
 | A3 | 와일드카드 인증서는 kube-system에 1장 + Traefik `TLSStore default`로 두는 것이 LE 레이트 리밋(동일 SAN 5/7일)과 Argo prune 재발급 위험을 피한다 (R3) | spec FR-011 "앱 네임스페이스마다 1장" | **spec 수정**: 1장 + TLSStore default, Ingress는 `router.tls: true`만. staging issuer로 리허설, prod 발급 1회 |
 | A4 | 80 포트는 열 필요가 없다(LE는 DNS-01, Cloudflare Always Use HTTPS가 edge에서 리다이렉트). 보안 리스트 대신 NSG(VNIC 단위, 규칙 120)를 권장 (R3·R11) | spec FR-005 "80/443" | **spec 수정**: 443만, NSG로 구현. 클러스터 내부 규칙(6443·8472/udp·10250)은 NSG 자기참조 |

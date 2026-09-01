@@ -116,11 +116,11 @@ SP-0(001·002)은 도구·관례만 만들었고 애플리케이션 스택은 �
 
 **Why this priority**: 웹 트랙(D4)의 성립 조건인 "서버 번들 예산"과 "프리렌더 페이지는 Worker를 거치지 않음"을 실측하는 유일한 방법이다. 콘텐츠 로더(D19)의 첫 실전 사용이기도 하다.
 
-**Independent Test**: `https://joshuatech.dev/ko`·`/en`·`/ja`가 200이고 `content/study`의 학습 노트 목록(001·002)을 보여준다. `/api/health`가 identity-admin `/health`를 Access 서비스 토큰으로 호출해 200을 중계한다. CI의 bundle-budget이 gzip ≤ 2.5 MiB를 보고한다.
+**Independent Test**: `https://joshuatech.dev/ko`·`/en`·`/ja`가 200이고 `content/study`의 학습 노트 목록(001·002)을 보여준다. `/api/health`가 identity-admin `/health`를 Access 서비스 토큰으로 호출해 200을 중계한다. CI의 bundle-budget이 gzip ≤ 2.5 MiB를 보고하고, Workers 대시보드에서 페이지 GET의 CPU p95 ≤ 10 ms를 확인한다.
 
 **Acceptance Scenarios**:
 
-1. **Given** `apps/web`(Next.js 16.3 + `@opennextjs/cloudflare`)이 `generateStaticParams`로 `[lang]` 페이지를 전부 프리렌더함, **When** main에 머지되어 `wrangler deploy`되면, **Then** `joshuatech.dev/{ko,en,ja}`가 200이고, Workers 대시보드에서 해당 GET이 정적 자산 요청으로 집계되며 Worker 호출 수에 포함되지 않는다.
+1. **Given** `apps/web`(Next.js 16.3 + `@opennextjs/cloudflare`)이 `generateStaticParams`로 `[lang]` 페이지를 전부 프리렌더함, **When** main에 머지되어 `wrangler deploy`되면, **Then** `joshuatech.dev/{ko,en,ja}`가 200이고, 페이지 GET은 Worker의 캐시 가로채기(정적 자산 `cdn-cgi/_next_cache`)로 응답하되 CPU p95 ≤ 10 ms·Error 1102 0건이며, `_next/static/*`는 정적 자산 요청(무료)으로 집계된다. (OpenNext는 프리렌더 HTML도 Worker를 거친다 — plan A1)
 2. **Given** `packages/content`가 `content/study/*.mdx`를 zod 스키마로 검증함, **When** hello 페이지를 빌드하면, **Then** 001·002 학습 노트의 제목·날짜·태그가 목록에 나오고, `draft: true`인 노트는 프로덕션 빌드에서 제외되며, 스키마에 맞지 않는 frontmatter(예: `pubDate` 누락)는 빌드를 실패시킨다.
 3. **Given** BFF Route Handler `/api/health`가 있음, **When** 호출하면, **Then** BFF는 Access 서비스 토큰 헤더로 `identity-admin-api.joshuatech.dev/health`를 호출해 200을 중계하고 응답에 `x-request-id`를 남기며, 왕복 p95를 report에 기록한다.
 4. **Given** PR이 열림, **When** `ci.yml`이 OpenNext 빌드를 하면, **Then** `scripts/bundle-budget.mjs`가 서버 번들 gzip 크기를 출력하고 2.5 MiB 초과 시 실패한다. 또한 `deploy-web.yml`이 `wrangler versions upload --preview-alias pr-<n>`으로 프리뷰 URL을 PR 코멘트에 남긴다.
@@ -317,7 +317,7 @@ pod 구현자(SP-2의 서브에이전트)는 copier 템플릿 한 번으로 테�
 - **SC-004**: 템플릿으로 생성한 pod의 내장 테스트 100% 통과, RLS 0행 테스트와 outbox → Kafka 발행(5초 내) 포함; tester가 재현.
 - **SC-005**: 부하 없는 정상 상태 10분 평균으로 노드 A ≤ 9 GB, 노드 B ≤ 8 GB 사용(3회 측정, report 표).
 - **SC-006**: 두 저장소 gitleaks 0건, gitops 매니페스트에 시크릿 값 0개(ExternalSecret 참조만).
-- **SC-007**: 웹 서버 번들 gzip ≤ 2.5 MiB, `joshuatech.dev/{ko,en,ja}` GET이 Workers 대시보드에서 정적 자산 요청으로 집계(Worker 호출 0), 학습 노트 2편이 목록에 표시.
+- **SC-007**: 웹 서버 번들 gzip ≤ 2.5 MiB; `joshuatech.dev/{ko,en,ja}` GET의 Worker CPU p95 ≤ 10 ms(Error 1102 0건)이고 일 Worker 요청 수를 report에 기록(Free 한도 100k/일 대비); `_next/static/*`는 정적 자산 요청(무료)으로 집계; 학습 노트 2편이 목록에 표시. 프리렌더 HTML을 정적 자산으로 복사해 Worker를 우회하는 실험은 선택 task(효과·RSC 강등 부작용을 E2E로 판정).
 - **SC-008**: ADR 9개가 run-all MADR 검사를 통과하고 `docs/README.md`·spec에서 링크됨; `.claude/rules` 5개가 경로 스코프로 로드됨; `/approval-review` 경계 6개.
 - **SC-009**: 8월 이후 첫 청구월의 OCI Compute 비용 ≤ 3 SGD, 예산 알림 2개 등록.
 - **SC-010**: dev 자동 digest bump → Argo sync ≤ 5분; `promote.yml` PR 머지 → prod sync ≤ 5분; `git revert` 롤백 ≤ 5분(각 1회 실연).

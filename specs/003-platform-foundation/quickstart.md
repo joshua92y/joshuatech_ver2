@@ -68,7 +68,7 @@ curl -s https://joshuatech.dev/ko | grep -c 'data-note-slug'   # ≥ 2 (001·002
 curl -s https://joshuatech.dev/api/health | jq                  # {status: ok, upstream: identity-admin, upstream_ms: n}
 pnpm --filter web build && node apps/web/scripts/bundle-budget.mjs   # server bundle gzip: x.xx MiB (≤ 2.5)
 ```
-Workers 대시보드 → Analytics: `/ko` GET이 "Static asset requests"로 집계되고 Worker 호출 수는 `/api/*`만 증가. PR을 열면 `deploy-web.yml`이 프리뷰 URL 코멘트(`pr-<n>` 별칭).
+Workers 대시보드 → Analytics: `_next/static/*`는 "Static asset requests"로 집계, 페이지 GET·`/api/*`는 Worker 호출로 집계되며 CPU p95 ≤ 10 ms·Error 1102 0건(일 요청 수를 report에 기록). PR을 열면 `deploy-web.yml`이 프리뷰 URL 코멘트(`pr-<n>` 별칭).
 
 ## US6 — pod 템플릿
 
