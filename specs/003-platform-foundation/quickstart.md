@@ -96,7 +96,8 @@ gh workflow list -R joshua92y/joshtech                            # 4개, 트리
 oci compute instance list --compartment-id $T --query 'data[*].{name:"display-name",id:id,state:"lifecycle-state"}'   # OCID 2개 불변, RUNNING
 ssh via cloudflared: lsb_release -a                               # Ubuntu 24.04
 dig +short joshuatech.dev                                         # Cloudflare 프록시 IP, curl → v2 hello
-dig +short api.joshuatech.dev admin.joshuatech.dev mainapi.joshuatech.dev   # 빈 출력
+dig +short api.joshuatech.dev mainapi.joshuatech.dev                       # 빈 출력
+dig +short admin.joshuatech.dev traefik.joshuatech.dev                     # Cloudflare 프록시 IP (v2 노드 A로 교체됨)
 ```
 Render·Fly 대시보드에 서비스 0개(스크린샷을 report에 첨부하지 않고 시각만 기록).
 

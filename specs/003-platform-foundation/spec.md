@@ -27,7 +27,7 @@ SP-0(001·002)은 도구·관례만 만들었고 애플리케이션 스택은 �
 | D9 | 이벤트 | Kafka KRaft(Strimzi 오퍼레이터), 앱 내 폴링 outbox 릴레이, CloudEvents JSON + 모노레포 JSON Schema | Postgres outbox + Dragonfly Streams · Redpanda · Debezium · Avro |
 | D10 | 캐시·큐 | Dragonfly 유지(dev·prod 인스턴스, 인증 필수) | Valkey · Postgres 큐 |
 | D11 | 검색(SP-3 구현) | Elasticsearch 1노드 + Kibana + Nori, ECK, FastAPI search pod | Postgres FTS · Pagefind · OpenSearch |
-| D12 | 인그레스 | egenauto 패턴: 번들 Traefik 공개 80/443 + cert-manager DNS-01 와일드카드 + Cloudflare proxied Full(strict), 보안 리스트 Cloudflare IP 한정 + Authenticated Origin Pulls | 터널 전용 · 제한 없는 공개 |
+| D12 | 인그레스 | egenauto 패턴: 번들 Traefik 공개 443 + cert-manager DNS-01 와일드카드 + Cloudflare proxied Full(strict), NSG로 Cloudflare IP 한정(80 미개방) + Authenticated Origin Pulls | 터널 전용 · 제한 없는 공개 |
 | D13 | 시크릿 | HashiCorp Vault(Raft) + OCI KMS auto-unseal + ESO, gitops에는 참조만 | Sealed Secrets · SOPS+age · OpenBao |
 | D14 | 관측 | Grafana Cloud Free + Alloy, Sentry SaaS Free | 자체 ES 로그 · GlitchTip |
 | D15 | 환경 | dev + prod 상시(앱 pod만 복제, 플랫폼 공유), ResourceQuota + LimitRange | prod + staging scale-0 |
@@ -51,7 +51,7 @@ SP-0(001·002)은 도구·관례만 만들었고 애플리케이션 스택은 �
 
 1. **Given** 이 spec의 D1–D20이 승인됨, **When** ADR 0002–0010을 작성하면, **Then** 각 ADR은 `status: accepted`, `date`, `decision-makers`, Context / Considered Options / Decision Outcome / Consequences 절을 갖고 기각 대안을 최소 2개 적으며, `docs/README.md`와 이 spec에서 링크된다.
 2. **Given** ADR이 존재함, **When** `.specify/memory/product.md`(제품 목표·도메인·pod 목록·로드맵)와 `architecture.md`(토폴로지·경계·계약·운영 원칙)를 작성하면, **Then** 두 문서는 이 spec의 Design 절과 모순이 없고, `/speckit-archive-run`이 덮어쓰지 않는 파일(agent context 블록 밖)로 남는다.
-3. **Given** `.claude/rules/{web,django-pod,fastapi-pod,infra,events}.md`와 `.claude/agents/{web,api,infra}-builder.md`, `.claude/skills/approval-review/boundaries/k8s-security.md`가 추가됨, **When** `apps/web/` 아래 파일을 편집하면, **Then** `rules/web.md`만 로드되고 `django-pod.md`는 로드되지 않으며, `/approval-review`는 경계 6개를 디스패치하고, `docs/kr/` 미러가 run-all 미러 검사를 통과한다.
+3. **Given** ADR·memory가 존재함, **When** spec §8 ADR 표와 `docs/README.md`를 대조하면, **Then** 링크가 전부 유효하고 각 ADR의 결정 문구가 D1–D20과 일치한다. (rules·agents·boundary의 동작 검증은 US9)
 
 ---
 
@@ -65,7 +65,7 @@ SP-0(001·002)은 도구·관례만 만들었고 애플리케이션 스택은 �
 
 **Acceptance Scenarios**:
 
-1. **Given** OpenTofu가 VCN·보안 리스트·인스턴스 재이미지·버킷·KMS 키를 적용함, **When** 노드 A에 K3s server(`--secrets-encryption`, `role=platform`)·노드 B에 agent(`role=data`)를 부트스트랩하면, **Then** `kubectl get nodes`가 2 Ready를 보이고 노드 B는 인바운드 공개 포트가 없으며 노드 A의 80/443은 Cloudflare IP 대역에서만 열린다.
+1. **Given** OpenTofu가 VCN·보안 리스트·인스턴스 재이미지·버킷·KMS 키를 적용함, **When** 노드 A에 K3s server(`--secrets-encryption`, `role=platform`)·노드 B에 agent(`role=data`)를 부트스트랩하면, **Then** `kubectl get nodes`가 2 Ready를 보이고 노드 B는 인바운드 공개 포트가 없으며 노드 A는 NSG로 443만 Cloudflare IP 대역에 연다(80·22 닫힘).
 2. **Given** 클러스터가 준비됨, **When** `bootstrap/root-app.yaml` 하나를 수동 apply하면, **Then** Argo CD가 AppProject 3개(platform·dev·prod)와 sync-wave 순서(CRD → cert-manager·ESO → Vault → CNPG → data → identity → observability)로 플랫폼 Application 전부를 Healthy로 만들고 `default` 프로젝트는 소스·대상이 비어 있다.
 3. **Given** cert-manager ClusterIssuer(LE, Cloudflare DNS-01)와 Traefik이 동작함, **When** `argo.joshuatech.dev`를 브라우저로 열면, **Then** Cloudflare Access(GitHub IdP) 로그인 → Authentik OIDC 로그인 순으로 통과해야 UI가 보이고, 오리진 공인 IP로 직접 `curl`하면 Authenticated Origin Pulls 때문에 TLS 핸드셰이크가 거부된다.
 4. **Given** Vault가 Raft 스토리지로 노드 A에서 실행되고 OCI KMS로 자동 unseal됨, **When** 노드 A를 재부팅하면, **Then** Vault가 사람 개입 없이 unsealed 상태로 돌아오고, ESO의 `ClusterSecretStore`가 Ready이며 `ExternalSecret` → `Secret` 동기화가 1분 내 재개된다.
@@ -176,7 +176,7 @@ pod 구현자(SP-2의 서브에이전트)는 copier 템플릿 한 번으로 테�
 
 1. **Given** v1 저장소 `joshua92y/joshtech`의 워크플로 4개가 브랜치 필터 없이 prod에 push함, **When** 재이미지 전에 각 워크플로를 `on: workflow_dispatch`만 남기도록 바꾸면, **Then** 이후 어떤 push도 v1 VM에 배포하지 않는다.
 2. **Given** 인스턴스 `joshtech_api_1st`·`joshtech_cache`(각 2 OCPU/13 GB), **When** OpenTofu가 부트 볼륨 교체(재이미지)를 적용하면, **Then** 두 인스턴스의 OCID·shape·메모리가 그대로이고 Ubuntu 24.04로 부팅하며, terminate는 일어나지 않는다.
-3. **Given** Cloudflare Pages 프로젝트 `joshtech-frontend`가 apex를 소유함, **When** 커스텀 도메인을 해제하고 Workers 커스텀 도메인을 만들면, **Then** `joshuatech.dev`가 5분 내 v2 hello를 서빙하고 `api.`·`admin.`·`mainapi.`·`traefik.` 레코드는 제거되며 `cdn.`은 R2 공개 버킷으로 유지된다.
+3. **Given** Cloudflare Pages 프로젝트 `joshtech-frontend`가 apex를 소유함, **When** 커스텀 도메인을 해제하고 Workers 커스텀 도메인을 만들면, **Then** `joshuatech.dev`가 5분 내 v2 hello를 서빙하고, v1 전용 레코드 `api.`·`mainapi.`는 제거되며, `admin.`·`traefik.`은 v1 오리진에서 v2 노드 A(reserved IP)로 교체되고, `cdn.`은 R2 공개 버킷으로 유지된다.
 4. **Given** Render(Django Admin·Postgres)·Fly 잔재, **When** 삭제하면, **Then** 사용자 결정대로 백업·임포트 없이 종료되고 report에 삭제 시각과 대상이 기록된다.
 
 ---
@@ -286,7 +286,7 @@ pod 구현자(SP-2의 서브에이전트)는 copier 템플릿 한 번으로 테�
 - **FR-039**: 네임스페이스 `jt-dev`·`jt-prod`는 ResourceQuota(dev requests 2 Gi/limits 4 Gi/pods 20, prod 3 Gi/6 Gi/30)와 LimitRange(default 500m/512 Mi)를 가지며, dev는 auto-sync + selfHeal, prod는 PR 머지로만 변경된다.
 - **FR-040**: Alloy(+kube-state-metrics)가 노드·pod 메트릭·컨테이너 로그·OTLP 트레이스를 Grafana Cloud로 보내고, 대시보드 3개(노드 RAM 예산·pod 오류율·Kafka lag)와 알림 2개(노드 RAM > 9.5 GB, Argo OutOfSync 30분)를 선언해야 한다. Sentry 프로젝트는 identity-admin·web(클라이언트만).
 - **FR-041**: `docs/runbooks/`에 bootstrap(클러스터·root app·Vault init)·vault-unseal·rollback(gitops revert·wrangler rollback)·restore-drill(CNPG)·ram-budget·access-token-rotation을 작성해야 한다.
-- **FR-042**: v1 정리: v1 저장소 워크플로 4개를 `workflow_dispatch` 전용으로 바꾸고, Pages 프로젝트에서 apex를 해제해 Workers 커스텀 도메인으로 옮기며, Render·Fly 잔재를 삭제하고, `api.`·`admin.`·`mainapi.`·`traefik.` DNS 레코드를 제거한다. 백업·데이터 임포트는 하지 않는다(사용자 결정).
+- **FR-042**: v1 정리: v1 저장소 워크플로 4개를 `workflow_dispatch` 전용으로 바꾸고, Pages 프로젝트에서 apex를 해제해 Workers 커스텀 도메인으로 옮기며, Render·Fly 잔재를 삭제하고, v1 전용 DNS 레코드 `api.`·`mainapi.`를 제거하며, v2가 재사용하는 `admin.`·`traefik.` 레코드는 OpenTofu import 후 노드 A로 교체한다. 백업·데이터 임포트는 하지 않는다(사용자 결정).
 - **FR-043**: OCI Budgets에 월 예산 35 SGD(테넌시 루트)와 알림 규칙 4개(ACTUAL 10%·50%·100%, FORECAST 100%, 운영자 이메일)를 만들고, report에 월 Compute 비용(usage-api)과 노드별 RAM 실측 표를 기록해야 한다. 첫 청구서에서 A1 무료분이 1,500/9,000으로 판명되면(월 ≈ $30) D17을 재결정한다.
 - **FR-044**: 모든 User Story는 tester 에이전트가 실행하는 E2E 시나리오 task를 가지며(헌법 II), 클러스터 검증은 cloudflared 터널을 통한 kubectl·argocd CLI로, 브라우저 검증은 Playwright로 수행한다.
 
@@ -354,7 +354,7 @@ pod 구현자(SP-2의 서브에이전트)는 copier 템플릿 한 번으로 테�
 ```
 브라우저 ─HTTPS─▶ Cloudflare(DNS·proxied·Access·WAF)
                     ├─ 정적 자산(무료) ─▶ Workers: Next.js OpenNext lean(프리렌더 + BFF Route Handlers)
-                    └─ 80/443(Cloudflare IP만, AOP mTLS) ─▶ 노드 A Traefik ─▶ Ingress(host) ─▶ pod / Authentik / Argo UI
+                    └─ 443(NSG: Cloudflare IP만, AOP mTLS) ─▶ 노드 A Traefik ─▶ Ingress(host) ─▶ pod / Authentik / Argo UI
 BFF ─(토큰 교환 후, Access 서비스 토큰)─▶ <alias>-m2m-<env>.joshuatech.dev
 
 노드 A role=platform (2 OCPU/13 GB): K3s server·Traefik·cert-manager·Argo CD·Vault+ESO·Strimzi Kafka·Authentik·OpenFGA·Alloy·cloudflared  ≈ 8.3 GB

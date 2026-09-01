@@ -64,4 +64,4 @@ traceparent: 00-<trace>-<span>-01
 | `cdn` | R2 커스텀 도메인 | — | ✓ |
 | `ssh`, `k8s` | CNAME | `<tunnel-id>.cfargotunnel.com` | ✓ |
 
-v1 레코드 `api`, `admin`, `mainapi`, `traefik`(v1)은 US8에서 제거.
+v1 전용 레코드 `api`·`mainapi`는 US8에서 제거. `admin`·`traefik`은 v2가 재사용하므로 OpenTofu `import` 블록으로 가져온 뒤 값을 노드 A reserved IP로 교체한다(T010) — Cloudflare에 같은 이름을 새로 만들면 충돌.
