@@ -231,7 +231,7 @@ pod 구현자(SP-2의 서브에이전트)는 copier 템플릿 한 번으로 테�
 **인프라·클러스터**
 
 - **FR-004**: OpenTofu로 OCI(VCN·퍼블릭 서브넷·보안 리스트·인스턴스 2대 재이미지·Object Storage `jt-backup`/`jt-tfstate`·KMS 키)와 Cloudflare(DNS 레코드·Access 앱/정책·Authenticated Origin Pulls·R2·Workers 커스텀 도메인)를 선언해야 하며, 상태는 `jt-tfstate` S3 호환 백엔드에 두고 저장소에는 커밋하지 않는다.
-- **FR-005**: 보안 리스트는 노드 A 80/443을 Cloudflare IPv4/IPv6 대역에만 열고 22를 닫으며, 노드 B는 인바운드 공개 규칙이 없어야 한다. VCN 내부 규칙은 K3s(6443·10250·8472)·Postgres·Kafka에 한정한다.
+- **FR-005**: 네트워크 보안 그룹(NSG)은 노드 A 443만 Cloudflare IPv4/IPv6 대역에 열고(80은 열지 않음 — Always Use HTTPS는 edge에서, LE는 DNS-01) 22를 닫으며, 노드 B는 인바운드 공개 규칙이 없어야 한다. 클러스터 내부 규칙(K3s 6443·10250·8472/udp·Postgres·Kafka)은 NSG 자기참조로만 연다.
 - **FR-006**: 인스턴스 `joshtech_api_1st`·`joshtech_cache`는 재이미지(부트 볼륨 교체)로 재사용해야 하며 terminate해서는 안 된다. OpenTofu에 `prevent_destroy`를 둔다.
 - **FR-007**: K3s v1.36.x를 노드 A server(`--secrets-encryption`, SQLite, 라벨 `role=platform`)·노드 B agent(`role=data`)로 설치하고, 번들 Traefik ServiceLB를 노드 A에만 바인드하며, local-path-provisioner를 사용해야 한다. kubectl 접근은 cloudflared 터널 + Access를 통해서만 한다.
 - **FR-008**: StatefulSet(Kafka → A, CNPG·Dragonfly → B)은 `nodeSelector`로 고정하고, 앱 Deployment는 노드 A 선호 affinity를 가지며, CPU limit은 두지 않는다.
@@ -240,7 +240,7 @@ pod 구현자(SP-2의 서브에이전트)는 copier 템플릿 한 번으로 테�
 
 - **FR-009**: public 저장소 `platform-gitops`를 만들고 `bootstrap/`(Argo CD·root-app)·`clusters/oci-k3s/`(projects·app-of-apps)·`platform/*`·`apps/<pod>/{base,overlays/dev,overlays/prod}`·`secrets/`(ExternalSecret만)·`.github/workflows/{validate,promote}.yml` 구조를 가져야 한다.
 - **FR-010**: Argo CD는 AppProject `platform`·`dev`·`prod`를 두고 `default`의 sourceRepos·destinations를 비우며, 플랫폼 Application은 sync-wave(CRD·namespaces → cert-manager·ESO → Vault → CNPG operator → pg-main·Dragonfly·Kafka → Authentik·OpenFGA → Alloy·cloudflared·Traefik 설정)를 지키고 `ServerSideApply=true`, platform은 `Prune=confirm`·`Delete=confirm`이어야 한다.
-- **FR-011**: cert-manager ClusterIssuer(LE, Cloudflare DNS-01, 토큰은 ESO 경유)로 `*.joshuatech.dev` 와일드카드를 앱 네임스페이스마다 1장 발급하고, Traefik은 표준 `Ingress`(ingressClassName traefik, base `PLACEHOLDER` 호스트 + overlay JSON6902 패치)로 라우팅하며 HelmChartConfig로 JSON 액세스 로그·OTLP 트레이싱을 켜야 한다.
+- **FR-011**: cert-manager ClusterIssuer(LE staging·prod, Cloudflare DNS-01, 토큰은 ESO 경유)로 `joshuatech.dev` + `*.joshuatech.dev` 와일드카드를 **kube-system에 1장만** 발급해 Traefik `TLSStore default`의 기본 인증서로 쓰고(리허설·CI는 staging 발급자만, LE 동일 SAN 5회/7일 한도 보호), Traefik은 표준 `Ingress`(ingressClassName traefik, `router.tls: true`, base `PLACEHOLDER` 호스트 + overlay JSON6902 패치, `spec.tls` 생략)로 라우팅하며 HelmChartConfig로 JSON 액세스 로그·OTLP 트레이싱을 켜야 한다.
 - **FR-012**: Cloudflare SSL은 Full(strict), Authenticated Origin Pulls를 존에 켜고 Traefik이 Cloudflare 오리진 CA를 클라이언트 인증서로 요구해야 한다. 오리진 IP 직접 호출은 실패해야 한다.
 - **FR-013**: HashiCorp Vault를 `vault` 네임스페이스에 Raft 1 replica(노드 A PVC)로 설치하고 OCI KMS 키로 자동 unseal하며, Kubernetes auth method로 ESO를 인증해야 한다. Vault UI는 `vault.joshuatech.dev`에서 Access + Authentik OIDC 뒤에 둔다.
 - **FR-014**: 모든 런타임 시크릿(DB·Kafka SCRAM·Authentik·OAuth client·Cloudflare 토큰·Access 서비스 토큰·R2·Sentry·Grafana Cloud)은 Vault `kv/{env}/{component}/…` 경로에서 ESO `ExternalSecret`으로만 주입되어야 한다. 두 저장소는 gitleaks를 required check로 두고 0건이어야 한다.
@@ -248,7 +248,7 @@ pod 구현자(SP-2의 서브에이전트)는 copier 템플릿 한 번으로 테�
 
 **데이터·이벤트**
 
-- **FR-016**: CNPG operator와 클러스터 `pg-main`(instances=1, PostgreSQL 18, 노드 B, PVC 40 Gi, `shared_buffers` 512 MB, 확장 pgvector·pg_bigm)을 선언하고, pod별 database(`identity_admin`·`portfolio_core`·`media`·`engagement`·`notification`·`insights`·`search`·`assistant`·`authentik`·`openfga`)와 owner role·app role을 gitops에서 선언해야 한다. app role은 테이블 비소유·`BYPASSRLS` 없음이며 다른 pod DB에 접근할 수 없어야 한다.
+- **FR-016**: CNPG operator와 클러스터 `pg-main`(instances=1, PostgreSQL 18 standard 이미지, 노드 B, PVC 40 Gi, `shared_buffers` 512 MB, 확장 pgvector — pg_bigm은 자체 확장 이미지가 필요해 SP-3 검색 feature로 이월)을 선언하고, pod별 database(`identity_admin`·`portfolio_core`·`media`·`engagement`·`notification`·`insights`·`search`·`assistant`·`authentik`·`openfga`)와 owner role·app role을 gitops에서 선언해야 한다. app role은 테이블 비소유·`BYPASSRLS` 없음이며 다른 pod DB에 접근할 수 없어야 한다.
 - **FR-017**: dev 환경은 `dev_` 접두 database를 쓰고, database 비밀번호는 Vault → ESO → CNPG `managed.roles.passwordSecret` 단방향으로 흐른다.
 - **FR-018**: barman-cloud 플러그인으로 `jt-backup`(S3 호환)에 주 1회 베이스 백업 + 연속 WAL 아카이브(보존 30일)를 선언하고 첫 백업이 성공해야 한다.
 - **FR-019**: Strimzi 오퍼레이터와 `KafkaNodePool`(KRaft combined 1노드, 노드 A, 브로커 `-Xmx1g`, local-path PV)을 선언하고, `KafkaTopic`(파티션 3, 보존 7일)·`KafkaUser`(SCRAM-SHA-512, pod별, 자기 토픽 write·구독 토픽 read ACL)를 gitops에서 관리해야 한다. 토픽 이름은 `<pod>.<entity>.<event>`(prod)·`dev.<pod>.<entity>.<event>`(dev)이다.

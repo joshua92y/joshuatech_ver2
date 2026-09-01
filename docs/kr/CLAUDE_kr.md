@@ -114,5 +114,5 @@ specs 인덱스 재생성: `pwsh -NoProfile -File scripts/update-specs-index.ps1
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at specs/002-smoke/plan.md
+at specs/003-platform-foundation/plan.md
 <!-- SPECKIT END -->
