@@ -265,7 +265,7 @@ pod 구현자(SP-2의 서브에이전트)는 copier 템플릿 한 번으로 테�
 
 **웹·콘텐츠**
 
-- **FR-027**: `apps/web`은 Next.js 16.3 App Router + `@opennextjs/cloudflare`로 빌드하며 모든 페이지를 `app/[lang]`(ko 기본·en·ja) 아래 `generateStaticParams`로 프리렌더하고, 서버 번들에는 BFF Route Handler(`/api/auth/{login,callback,logout,refresh}`, `/api/health`, `/api/session/check` 프록시)만 포함해야 한다. Sentry 서버 SDK·i18n 런타임·인증 라이브러리는 서버 번들에 넣지 않는다.
+- **FR-027**: `apps/web`은 Next.js 16.3 App Router + `@opennextjs/cloudflare`로 빌드하며 모든 페이지를 `app/[lang]`(ko 기본·en·ja, 모든 로케일이 접두 경로 `/ko`·`/en`·`/ja`를 가지며 `/`는 `Accept-Language`에 맞는 로케일로 302, 없으면 `/ko`) 아래 `generateStaticParams`로 프리렌더하고, 서버 번들에는 BFF Route Handler(`/api/auth/{login,callback,logout,refresh}`, `/api/health`, `/api/session/check` 프록시)만 포함해야 한다. Sentry 서버 SDK·i18n 런타임·인증 라이브러리는 서버 번들에 넣지 않는다.
 - **FR-028**: `scripts/bundle-budget.mjs`가 서버 번들 gzip 크기를 측정해 2.5 MiB 초과 시 CI를 실패시켜야 하며, ADR 0004는 초과 시 탈출구(Workers Paid)를 명시한다.
 - **FR-029**: `packages/content`는 `content/{study,blog,projects}`를 빌드 시 읽어 zod 스키마(`.claude/rules/content.md` 계약: title·description·pubDate·updatedDate·tags·series·seriesOrder·draft·change·sources)로 검증하고, 다국어 접미사(`<slug>.mdx`·`<slug>.en.mdx`·`<slug>.ja.mdx`)·draft 필터·1회 스캔 캐시·remark/rehype(헤딩 앵커·목차·읽기 시간·코드 하이라이트)를 제공해야 한다. 스키마 위반은 빌드 실패다.
 - **FR-030**: 이미지는 저장소 자산은 빌드 시 변형, 업로드 자산은 R2 원본 + `next/image` 커스텀 loader가 `cdn.joshuatech.dev/cdn-cgi/image/…`(Cloudflare Image Transformations)를 쓰며 변환 오류 시 원본으로 폴백해야 한다.
@@ -287,8 +287,16 @@ pod 구현자(SP-2의 서브에이전트)는 copier 템플릿 한 번으로 테�
 - **FR-040**: Alloy(+kube-state-metrics)가 노드·pod 메트릭·컨테이너 로그·OTLP 트레이스를 Grafana Cloud로 보내고, 대시보드 3개(노드 RAM 예산·pod 오류율·Kafka lag)와 알림 2개(노드 RAM > 9.5 GB, Argo OutOfSync 30분)를 선언해야 한다. Sentry 프로젝트는 identity-admin·web(클라이언트만).
 - **FR-041**: `docs/runbooks/`에 bootstrap(클러스터·root app·Vault init)·vault-unseal·rollback(gitops revert·wrangler rollback)·restore-drill(CNPG)·ram-budget·access-token-rotation을 작성해야 한다.
 - **FR-042**: v1 정리: v1 저장소 워크플로 4개를 `workflow_dispatch` 전용으로 바꾸고, Pages 프로젝트에서 apex를 해제해 Workers 커스텀 도메인으로 옮기며, Render·Fly 잔재를 삭제하고, `api.`·`admin.`·`mainapi.`·`traefik.` DNS 레코드를 제거한다. 백업·데이터 임포트는 하지 않는다(사용자 결정).
-- **FR-043**: OCI Budgets에 월 $1·$5 알림(Actual + Forecast)을 만들고 report에 월 Compute 비용과 노드별 RAM 실측 표를 기록해야 한다.
+- **FR-043**: OCI Budgets에 월 예산 35 SGD(테넌시 루트)와 알림 규칙 4개(ACTUAL 10%·50%·100%, FORECAST 100%, 운영자 이메일)를 만들고, report에 월 Compute 비용(usage-api)과 노드별 RAM 실측 표를 기록해야 한다. 첫 청구서에서 A1 무료분이 1,500/9,000으로 판명되면(월 ≈ $30) D17을 재결정한다.
 - **FR-044**: 모든 User Story는 tester 에이전트가 실행하는 E2E 시나리오 task를 가지며(헌법 II), 클러스터 검증은 cloudflared 터널을 통한 kubectl·argocd CLI로, 브라우저 검증은 Playwright로 수행한다.
+
+**Phase 0 조사로 추가된 요구사항 (2026-09-01, plan Research-Driven Adjustments)**
+
+- **FR-045**: 인스턴스 프린시펄 보호 — `vault` 네임스페이스 외의 모든 네임스페이스에서 IMDS(169.254.169.254/32) egress를 NetworkPolicy로 차단하고, 두 인스턴스의 IMDS v1을 비활성화해야 한다. KMS 동적 그룹은 인스턴스 OCID 2개로 한정하고 정책은 `use keys where target.key.id = <키>`만 허용한다.
+- **FR-046**: 클러스터 내부 구성요소는 공개 호스트명(`*.joshuatech.dev`)으로 자기 자신이나 다른 내부 서비스를 호출해서는 안 되며(mTLS 강제로 실패), Service DNS(`<svc>.<ns>.svc`)를 써야 한다. 외부 경유가 불가피한 경우(BFF → pod)만 Cloudflare를 지난다.
+- **FR-047**: K3s 데이터스토어 백업 — 노드 A의 systemd timer가 매일 SQLite 온라인 스냅샷(`.backup`) + `server/token` + `server/cred/`를 묶어 `jt-backup` 버킷에 올리고 7일 보존하며, 복원 절차는 런북 `bootstrap`에 포함한다.
+- **FR-048**: 업그레이드 창 — system-upgrade-controller Plan(server·agent, 일요일 03:00–05:00 KST, 채널 v1.36)으로 K3s 패치를 자동화하고, K3s 업그레이드로 번들 Traefik 차트가 바뀔 때 HelmChartConfig 값 스키마를 릴리스 노트로 확인하는 절차를 런북에 둔다. Argo CD·플랫폼 차트 업그레이드는 Renovate PR + 유지보수 창에서만 머지한다.
+- **FR-049**: Vault 접근 통제 — Kubernetes auth role마다 `audience`와 bound ServiceAccount/namespace를 지정하고, 소비자별 최소 정책(경로 read만)을 두며, 부트스트랩 후 root 토큰을 폐기하고 recovery key(3/2)는 오프라인 보관한다. Vault 내부 설정(auth·policy·role·OIDC)은 OpenTofu `hashicorp/vault` provider로 코드화한다.
 
 ### Key Entities
 
