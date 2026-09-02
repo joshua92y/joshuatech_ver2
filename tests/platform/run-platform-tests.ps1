@@ -2,10 +2,10 @@
 # Exit 0 = 전부 통과 또는 SKIP, 1 = 게이트 거부(fail closed) 또는 테스트 실패.
 #
 # 동작:
-#   0) infra 그룹(T006): infra/oci에 *.tf가 하나 이상 있으면 tests/infra/tofu.tests.ps1을 KUBECONFIG 게이트보다
-#      먼저 실행한다(tofu 단언은 클러스터가 아니라 tofu를 요구한다). 없으면 "SKIP infra tests" 후 계속(T007 전).
-#      인프라 테스트 실패·파일 부재는 즉시 exit 1(fail closed). flat-only 가드는 tests/platform/ 하위만 보므로
-#      형제 디렉터리 tests/infra/에는 걸리지 않는다.
+#   0) infra 그룹(T006): infra/oci 또는 infra/cloudflare에 *.tf가 하나 이상 있으면 tests/infra/tofu.tests.ps1을
+#      KUBECONFIG 게이트보다 먼저 실행한다(tofu 단언은 클러스터가 아니라 tofu를 요구한다). 둘 다 없으면
+#      "SKIP infra tests" 후 계속(T007 전). 인프라 테스트 실패·파일 부재는 즉시 exit 1(fail closed).
+#      flat-only 가드는 tests/platform/ 하위만 보므로 형제 디렉터리 tests/infra/에는 걸리지 않는다.
 #   1) KUBECONFIG가 없거나(미설정/빈 값) 그 파일이 없으면: SKIP 요약(실행했을 *.tests.ps1 목록) 출력 후 exit 0.
 #   2) KUBECONFIG가 있으면: 먼저 `kubectl auth whoami -o json`으로 현재 컨텍스트 사용자가
 #      system:serviceaccount:kube-system:agent-view인지 단언한다. admin kubeconfig(k3s.yaml 등)면 FAIL로 실행 거부.
@@ -44,17 +44,22 @@ if ($nested.Count -gt 0) {
 }
 
 # ---------- 0b. infra 그룹(T006): KUBECONFIG 게이트보다 먼저 — tofu 단언은 클러스터를 요구하지 않는다 ----------
-# 게이트: infra/oci에 *.tf가 하나 이상 있을 때만 tests/infra/tofu.tests.ps1을 실행한다(T007 전에는 SKIP — run-all 녹색 유지).
-# JT_INFRA_DIR·JT_INFRA_TESTS는 하네스(tests/scripts/run-platform-tests.tests.ps1) 전용 오버라이드다 — 운영에서는 설정하지 않는다.
+# 게이트: infra/oci 또는 infra/cloudflare에 *.tf가 하나 이상 있을 때만 tests/infra/tofu.tests.ps1을 실행한다
+# (둘 다 없으면 SKIP — T007 전에는 run-all 녹색 유지).
+# JT_INFRA_DIR·JT_INFRA_TESTS는 하네스(tests/scripts/run-platform-tests.tests.ps1) 전용 오버라이드다 — 운영에서는
+# 설정하지 않는다. JT_INFRA_DIR는 infra 루트(기본 <repo>/infra)를 가리키고, 그 아래 oci/·cloudflare/의 *.tf를 본다.
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
-$infraDir = if (-not [string]::IsNullOrWhiteSpace($env:JT_INFRA_DIR)) { $env:JT_INFRA_DIR } else { Join-Path $repoRoot 'infra/oci' }
+$infraDir = if (-not [string]::IsNullOrWhiteSpace($env:JT_INFRA_DIR)) { $env:JT_INFRA_DIR } else { Join-Path $repoRoot 'infra' }
 $infraTests = if (-not [string]::IsNullOrWhiteSpace($env:JT_INFRA_TESTS)) { $env:JT_INFRA_TESTS } else { Join-Path $repoRoot 'tests/infra/tofu.tests.ps1' }
 $infraTfCount = 0
-if (Test-Path -LiteralPath $infraDir -PathType Container) {
-    $infraTfCount = @(Get-ChildItem -LiteralPath $infraDir -File -Filter '*.tf').Count
+foreach ($sub in @('oci', 'cloudflare')) {
+    $p = Join-Path $infraDir $sub
+    if (Test-Path -LiteralPath $p -PathType Container) {
+        $infraTfCount += @(Get-ChildItem -LiteralPath $p -File -Filter '*.tf').Count
+    }
 }
 if ($infraTfCount -eq 0) {
-    Write-Host 'SKIP infra tests -- infra/oci not present yet (T007+)'
+    Write-Host 'SKIP infra tests -- infra/oci and infra/cloudflare not present yet (T007+)'
 } elseif (-not (Test-Path -LiteralPath $infraTests -PathType Leaf)) {
     # fail-closed: 구성은 있는데 인프라 테스트 파일이 없으면 조용히 지나가지 않는다
     Write-Host "FAIL infra tests -- infra config exists but test file is missing: $infraTests"

@@ -74,16 +74,22 @@ function Invoke-Runner([string]$runnerFile, [string]$kubeconfig, [string]$path) 
     if (-not $runnerFile -or -not (Test-Path -LiteralPath $runnerFile)) { return @{ out = "<missing runner: $runnerPath>"; err = ''; code = 127 } }
     $savedKc = $env:KUBECONFIG
     $savedPath = $env:PATH
+    $savedInfraDir = $env:JT_INFRA_DIR
+    $savedInfraTests = $env:JT_INFRA_TESTS
     $errFile = Join-Path ([IO.Path]::GetTempPath()) ('platformrun-stderr-' + [guid]::NewGuid().ToString('N') + '.txt')
     try {
         if ([string]::IsNullOrEmpty($kubeconfig)) { Remove-Item Env:KUBECONFIG -ErrorAction SilentlyContinue } else { $env:KUBECONFIG = $kubeconfig }
         if (-not [string]::IsNullOrEmpty($path)) { $env:PATH = $path }
+        # 결정성: K 그룹이 명시적으로 설정한 경우가 아니면 infra 게이트가 항상 SKIP되도록 존재하지 않는 루트를 준다
+        if ([string]::IsNullOrEmpty($env:JT_INFRA_DIR)) { $env:JT_INFRA_DIR = Join-Path ([IO.Path]::GetTempPath()) ('platformrun-noinfra-' + [guid]::NewGuid().ToString('N')) }
         $out = & ([Environment]::ProcessPath) -NoProfile -ExecutionPolicy Bypass -File $runnerFile 2> $errFile
         $code = $LASTEXITCODE
         $err = if (Test-Path -LiteralPath $errFile) { [IO.File]::ReadAllText($errFile) } else { '' }
     } finally {
         if ($null -eq $savedKc) { Remove-Item Env:KUBECONFIG -ErrorAction SilentlyContinue } else { $env:KUBECONFIG = $savedKc }
         $env:PATH = $savedPath
+        if ($null -eq $savedInfraDir) { Remove-Item Env:JT_INFRA_DIR -ErrorAction SilentlyContinue } else { $env:JT_INFRA_DIR = $savedInfraDir }
+        if ($null -eq $savedInfraTests) { Remove-Item Env:JT_INFRA_TESTS -ErrorAction SilentlyContinue } else { $env:JT_INFRA_TESTS = $savedInfraTests }
         Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
     }
     return @{
@@ -272,21 +278,22 @@ try {
             }
         }
 
-        # K-1: infra/oci 없음 → SKIP 줄, exit 0 (KUBECONFIG 미설정이라 platform도 SKIP)
+        # JT_INFRA_DIR는 infra 루트를 가리킨다 — 러너는 그 아래 oci/·cloudflare/의 *.tf를 본다.
+        # K-1: infra/oci·infra/cloudflare 둘 다 없음 → SKIP 줄, exit 0 (KUBECONFIG 미설정이라 platform도 SKIP)
         $d = New-Fixture @{}
         $runner = Copy-Runner $d
-        $r = Invoke-RunnerWithInfra $runner (Join-Path $d 'infra/oci') (Join-Path $d 'nope/tofu.tests.ps1')
-        Assert 'K-1: infra/oci absent -> "SKIP infra tests -- infra/oci not present yet (T007+)", exit 0' (
-            $r.code -eq 0 -and (Test-HasLine ($r.out -split "`n") 'SKIP infra tests -- infra/oci not present yet (T007+)')
+        $r = Invoke-RunnerWithInfra $runner (Join-Path $d 'infra') (Join-Path $d 'nope/tofu.tests.ps1')
+        Assert 'K-1: infra/oci and infra/cloudflare absent -> "SKIP infra tests -- infra/oci and infra/cloudflare not present yet (T007+)", exit 0' (
+            $r.code -eq 0 -and (Test-HasLine ($r.out -split "`n") 'SKIP infra tests -- infra/oci and infra/cloudflare not present yet (T007+)')
         ) (Format-Result $r)
 
-        # K-2: infra/oci에 *.tf + 인프라 테스트 통과 → 실행됨(PASS infra tests), platform은 여전히 KUBECONFIG SKIP, exit 0
+        # K-2: oci/에만 *.tf + 인프라 테스트 통과 → 실행됨(PASS infra tests), platform은 여전히 KUBECONFIG SKIP, exit 0
         $d = New-Fixture @{}
         $runner = Copy-Runner $d
         $di = New-Fixture @{ 'oci/main.tf' = "# dummy`n"; 'tofu.tests.ps1' = $fakeInfraPass }
-        $r = Invoke-RunnerWithInfra $runner (Join-Path $di 'oci') (Join-Path $di 'tofu.tests.ps1')
+        $r = Invoke-RunnerWithInfra $runner $di (Join-Path $di 'tofu.tests.ps1')
         $lines = $r.out -split "`n"
-        Assert 'K-2: infra config + passing infra tests -> executed, "PASS infra tests", platform still SKIPs on KUBECONFIG, exit 0' (
+        Assert 'K-2: oci-only infra config + passing infra tests -> executed, "PASS infra tests", platform still SKIPs on KUBECONFIG, exit 0' (
             $r.code -eq 0 -and $r.out.IndexOf('INFRA-MARKER-ran', [StringComparison]::Ordinal) -ge 0 -and (Test-HasLine $lines 'PASS infra tests') -and (Test-HasLine $lines 'SKIP platform tests -- KUBECONFIG is not set')
         ) (Format-Result $r)
 
@@ -294,7 +301,7 @@ try {
         $d = New-Fixture @{}
         $runner = Copy-Runner $d
         $di = New-Fixture @{ 'oci/main.tf' = "# dummy`n"; 'tofu.tests.ps1' = $fakeInfraFail }
-        $r = Invoke-RunnerWithInfra $runner (Join-Path $di 'oci') (Join-Path $di 'tofu.tests.ps1')
+        $r = Invoke-RunnerWithInfra $runner $di (Join-Path $di 'tofu.tests.ps1')
         Assert 'K-3: failing infra tests -> exit 1, "FAIL infra tests (exit=1)", platform gate never reached' (
             $r.code -eq 1 -and $r.out.IndexOf('INFRA-MARKER-ran', [StringComparison]::Ordinal) -ge 0 -and (Test-HasLine ($r.out -split "`n") 'FAIL infra tests (exit=1)') -and $r.out.IndexOf('SKIP platform tests', [StringComparison]::Ordinal) -lt 0
         ) (Format-Result $r)
@@ -303,9 +310,18 @@ try {
         $d = New-Fixture @{}
         $runner = Copy-Runner $d
         $di = New-Fixture @{ 'oci/main.tf' = "# dummy`n" }
-        $r = Invoke-RunnerWithInfra $runner (Join-Path $di 'oci') (Join-Path $di 'tofu.tests.ps1')
+        $r = Invoke-RunnerWithInfra $runner $di (Join-Path $di 'tofu.tests.ps1')
         Assert 'K-4: infra config exists but test file missing -> exit 1 (fail closed), FAIL names the missing file' (
             $r.code -eq 1 -and $r.out -match 'FAIL infra tests' -and $r.out -match 'missing'
+        ) (Format-Result $r)
+
+        # K-5: cloudflare/에만 *.tf 있어도 게이트가 열린다(어느 한쪽으로 충분)
+        $d = New-Fixture @{}
+        $runner = Copy-Runner $d
+        $di = New-Fixture @{ 'cloudflare/main.tf' = "# dummy`n"; 'tofu.tests.ps1' = $fakeInfraPass }
+        $r = Invoke-RunnerWithInfra $runner $di (Join-Path $di 'tofu.tests.ps1')
+        Assert 'K-5: cloudflare-only infra config also triggers the infra group, exit 0' (
+            $r.code -eq 0 -and $r.out.IndexOf('INFRA-MARKER-ran', [StringComparison]::Ordinal) -ge 0 -and (Test-HasLine ($r.out -split "`n") 'PASS infra tests')
         ) (Format-Result $r)
     }
 } finally {

@@ -8,8 +8,11 @@
 #   - validate 단언은 자격 증명이 필요 없다(`tofu init -backend=false` 후 실행; 네트워크로 provider를 받는다).
 #   - [plan] 표시 단언은 `tofu plan`이 성공해야 한다 — 유효한 OCI 자격 증명·변수(TF_VAR_*)가 필요하다.
 #     plan이 실패하면 해당 단언은 전부 "plan JSON unavailable"로 FAIL한다(fail closed).
+#     backend 블록이 생기면(T007의 jt-tfstate) plan 전에 완전한 `tofu init`이 선행되어야 한다 —
+#     이 스위트가 돌리는 `init -backend=false`는 backend 도입 전에만 충분하다.
 #   - [tf-text] 표시 단언은 .tf 원문만 읽는다(plan JSON이 lifecycle prevent_destroy 등 일부 선언을 노출하지
 #     않으므로 중괄호 균형 최소 파서로 리소스 블록을 추출해 검사한다). 자격 증명 불필요.
+#     주석은 전체 행 `#`/`//`만 지원한다 — 검사 대상 리소스 블록 안에 블록 주석(/* */)이나 행 끝 주석을 두지 않는다.
 #
 # 구성 계약(T007+ 구현자가 따라야 하는 형태 — 이 스위트가 곧 계약이다):
 #   - 리소스는 루트 모듈에 평면 선언(모듈 호출 없음; 이 스위트는 root_module만 순회한다).
@@ -18,6 +21,10 @@
 #   - NSG 규칙 source는 리터럴 Cloudflare IPv4 CIDR이거나 data.cloudflare_ip_ranges 참조다(둘 다 허용).
 #   - OBJECT_VERSION_DELETE 정책 단언은 선언 존재까지만이다 — 규칙이 실제로 이전 버전을 삭제하는지는
 #     VD-6(T010 apply 후 첫 만료 관찰)에서 확인한다.
+#   - Cloudflare Access(T008/T011): cloudflare_zero_trust_access_application 블록이 1개 이상 있어야 하고,
+#     application·policy 두 타입의 모든 블록이 각각 session_duration을 명시해야 한다(양측 무조건 검사).
+#
+# 단언 수: 32 (tool 1, dir 2, validate 4, plan 2, nsg 4, inst 3, bucket 4, iam 5, dg 2, kms 2, lc 2, access 1)
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -116,7 +123,14 @@ function Get-TfResourceBlocks([string]$dir, [string]$type) {
             $depth = 1; $inStr = $false; $j = $i
             while ($j -lt $text.Length -and $depth -gt 0) {
                 $ch = $text[$j]
-                if ($inStr) { if ($ch -eq '"' -and $text[$j - 1] -ne '\') { $inStr = $false } }
+                if ($inStr) {
+                    if ($ch -eq '"') {
+                        # 닫는 따옴표는 바로 앞 백슬래시 런이 짝수일 때만 유효하다("...\\" 같은 이스케이프 짝 처리)
+                        $bs = 0; $k = $j - 1
+                        while ($k -ge $i -and $text[$k] -eq '\') { $bs++; $k-- }
+                        if ($bs % 2 -eq 0) { $inStr = $false }
+                    }
+                }
                 elseif ($ch -eq '"') { $inStr = $true }
                 elseif ($ch -eq '{') { $depth++ }
                 elseif ($ch -eq '}') { $depth-- }
@@ -129,6 +143,7 @@ function Get-TfResourceBlocks([string]$dir, [string]$type) {
 }
 
 # Cloudflare 공표 IPv4 CIDR(리터럴 source 대조용 — data.cloudflare_ip_ranges 참조가 우선이며 항상 허용된다)
+# 출처: https://www.cloudflare.com/ips-v4 (2026-09-02 기준 — 목록이 바뀌면 이 배열을 갱신한다)
 $cloudflareCidrs = @(
     '173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22', '141.101.64.0/18',
     '108.162.192.0/18', '190.93.240.0/20', '188.114.96.0/20', '197.234.240.0/22', '198.41.128.0/17',
@@ -187,6 +202,10 @@ try {
 
     # plan-2 [plan]: destroy/replace 0 — resource_changes에 delete 액션이 하나도 없어야 한다
     PlanAssert 'plan-2: no destroy/replace actions in resource_changes' {
+        # 키 자체가 없으면 공허한 통과가 아니라 FAIL이다(fail closed)
+        if (-not (@($script:planJson.PSObject.Properties.Name) -contains 'resource_changes')) {
+            return , @($false, "plan JSON has no 'resource_changes' key (fail closed -- unexpected show -json shape)")
+        }
         $rc = @(); if ($script:planJson.resource_changes) { $rc = @($script:planJson.resource_changes) }
         $bad = @($rc | Where-Object { $_.change -and $_.change.actions -and (@($_.change.actions) -contains 'delete') } |
                 ForEach-Object { "$($_.address) [$(@($_.change.actions) -join ',')]" })
@@ -230,7 +249,7 @@ try {
                 $srcOk = ($src -and ($cloudflareCidrs -contains $src))
                 if (-not $srcOk) {
                     $refs = @(Get-Refs $rc.expressions.source) + @(Get-Refs $rc.for_each_expression)
-                    foreach ($r in $refs) { if ($r.IndexOf('cloudflare_ip_ranges', [StringComparison]::Ordinal) -ge 0) { $srcOk = $true } }
+                    foreach ($r in $refs) { if ($r -match '^data\.cloudflare_ip_ranges\.') { $srcOk = $true } }
                 }
                 if (-not $srcOk) { $why += "source='$src' is neither a published Cloudflare IPv4 CIDR nor a data.cloudflare_ip_ranges reference" }
                 if ($why.Count -gt 0) { $bad += "$($pi.address): $($why -join '; ')" }
@@ -252,6 +271,14 @@ try {
             }
         }
         , @(($bIngress.Count -eq 0), ($bIngress -join '; '))
+    }
+
+    # nsg-2·nsg-3의 분류 사각지대 차단: local./var. 간접 배선으로 A/B 어느 쪽에도 분류되지 않는 규칙이 있으면
+    # 위 두 단언이 그 규칙을 그냥 지나친다 — 미분류는 0이어야 한다(fail closed, 주소 나열).
+    PlanAssert 'nsg-4: every NSG security rule classifies as node A or node B (unclassified = 0)' {
+        $ruleCfg = Get-Config 'oci_core_network_security_group_security_rule'
+        $un = @($ruleCfg | Where-Object { $null -eq (Get-RuleNsg $_) } | ForEach-Object { "$($_.address)" })
+        , @(($un.Count -eq 0), "unclassified rules (network_security_group_id must reference the node A/B NSG directly, not via locals/vars): $($un -join ', ')")
     }
 
     # ---------- 4. 인스턴스 [plan + tf-text] ----------
@@ -319,9 +346,12 @@ try {
             if ($s -notmatch '(?i)\bjt-node-a\b') { $bad += "not jt-node-a: $s"; continue }
             if ($s -notmatch '(?i)jt-backup-platform') { $bad += "does not target jt-backup-platform: $s" }
             if (($s -replace '(?i)jt-backup-platform', '') -match '(?i)jt-backup|jt-tfstate') { $bad += "cross-bucket reference: $s" }
-            foreach ($m in [regex]::Matches($s, 'OBJECT_[A-Z_]+')) {
-                $perms += $m.Value
-                if ($m.Value -ne 'OBJECT_CREATE' -and $m.Value -ne 'OBJECT_INSPECT') { $bad += "permission $($m.Value) not allowed: $s" }
+            $toks = @([regex]::Matches($s, 'OBJECT_[A-Z_]+') | ForEach-Object { $_.Value })
+            # 무제한 manage 문장이 다른 문장의 허용 토큰 뒤에 숨지 못하게: 토큰 0개인 문장은 그 자체로 위반이다
+            if ($toks.Count -eq 0) { $bad += "no request.permission restriction: $s" }
+            foreach ($tok in $toks) {
+                $perms += $tok
+                if ($tok -ne 'OBJECT_CREATE' -and $tok -ne 'OBJECT_INSPECT') { $bad += "permission $tok not allowed: $s" }
             }
         }
         $ok = ($st.Count -ge 1 -and $bad.Count -eq 0 -and ($perms -contains 'OBJECT_CREATE') -and ($perms -contains 'OBJECT_INSPECT'))
@@ -415,10 +445,11 @@ try {
 
     # ---------- 10. Cloudflare Access [tf-text] — 정책 전부 session_duration 명시 ----------
     Test-Group 'access-1' {
-        $blocks = Get-TfResourceBlocks $cfDir 'cloudflare_zero_trust_access_policy'
-        if ($blocks.Count -eq 0) { $blocks = Get-TfResourceBlocks $cfDir 'cloudflare_zero_trust_access_application' }
-        $bad = @($blocks | Where-Object { $_.body -notmatch 'session_duration\s*=' } | ForEach-Object { "$($_.file):$($_.name)" })
-        Assert 'access-1: every Zero Trust Access policy (or app) sets session_duration [tf-text]' ($blocks.Count -ge 1 -and $bad.Count -eq 0) "blocks=$($blocks.Count); missing session_duration: $($bad -join ', ')"
+        # 양측 무조건 검사: application 블록 1개 이상 필수(fail closed), application·policy 모든 블록이 session_duration 명시
+        $apps = Get-TfResourceBlocks $cfDir 'cloudflare_zero_trust_access_application'
+        $pols = Get-TfResourceBlocks $cfDir 'cloudflare_zero_trust_access_policy'
+        $bad = @(@($apps) + @($pols) | Where-Object { $_.body -notmatch 'session_duration\s*=' } | ForEach-Object { "$($_.file):$($_.name)" })
+        Assert 'access-1: >=1 Access application block; every application AND policy block sets session_duration [tf-text]' ($apps.Count -ge 1 -and $bad.Count -eq 0) "app blocks=$($apps.Count), policy blocks=$($pols.Count); missing session_duration: $($bad -join ', ')"
     }
 } finally {
     Remove-Item -LiteralPath $planFile -Force -ErrorAction SilentlyContinue
