@@ -15,3 +15,29 @@ Thumbs.db
 
 # Spec Kit extension catalog cache (machine-local)
 .specify/extensions/.cache/
+
+# Node / pnpm workspace
+node_modules/
+
+# Python / uv
+.venv/
+__pycache__/
+*.py[cod]
+
+# OpenTofu / Terraform state (never commit state)
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Cloudflare build outputs (OpenNext, wrangler)
+.open-next/
+.wrangler/
+
+# Environment files (commit only *.example)
+.env
+.env.*
+!.env.example
+
+# Test artifacts
+e2e/.auth/
+tests/fixtures/generated/

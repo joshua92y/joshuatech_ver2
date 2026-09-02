@@ -1,0 +1,8 @@
+# uv 워크스페이스 루트(가상 루트 — 그 자체는 파이썬 패키지가 아님)
+# Python/uv 멤버만 여기 선언한다. Node 패키지는 pnpm-workspace.yaml 참조.
+[tool.uv.workspace]
+members = [
+    "packages/django-common",
+    "apps/identity-admin",
+    "templates/django-pod",
+]
