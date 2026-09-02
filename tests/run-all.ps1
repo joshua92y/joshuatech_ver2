@@ -32,18 +32,24 @@ Write-Host ($o.TrimEnd())
 if ($c -eq 0 -and $o -match '(?m)^(SKIP platform tests -- |0 test files \(SKIP\))') { Write-Host 'SKIP platform -- allowed (no KUBECONFIG or no platform test files)' }
 else { Check 'platform' ($c -eq 0 -and $o -match '(?m)^test files: \d+ passed, 0 failed\r?$') "exit=$c; see platform test output above" }
 
-# 1e. adr-madr (T004 자리) — 검사 본체는 US1에서 작성(T016 tests/decisions/madr.tests.ps1, T017 tests/memory/memory-docs.tests.ps1);
-#     파일이 생기면 실행하고, 아직 없으면 SKIP(FAIL 아님).
+# 1e. adr-madr (T004 자리, 본체 T016·T017) — tests/decisions/madr.tests.ps1 + tests/memory/memory-docs.tests.ps1.
+#     각 테스트 파일은 자기 대상 문서가 "전부" 없을 때만 첫 줄 'SKIP <name> tests -- ' + exit 0으로 끝난다
+#     (madr: docs/decisions/00{02..10}-*.md 0/9, T018–T026 전; memory-docs: memory 2 파일 모두 부재, T027–T028 전).
+#     부분 존재 = 전체 단언(fail closed). 실행된 파일이 모두 그 SKIP이면 슬롯도 SKIP(FAIL 아님); 아니면 Check로 판정.
 $adrTests = @(@('tests/decisions/madr.tests.ps1', 'tests/memory/memory-docs.tests.ps1') | Where-Object { Test-Path -LiteralPath (Join-Path $repo $_) })
 if ($adrTests.Count -eq 0) {
     Write-Host 'SKIP adr-madr -- test files not written yet (US1: tests/decisions/madr.tests.ps1, tests/memory/memory-docs.tests.ps1)'
 } else {
-    $adrFail = 0
+    $adrFail = 0; $adrSkip = 0
     foreach ($t in $adrTests) {
-        pwsh -NoProfile -ExecutionPolicy Bypass -File $t | Out-Host
-        if ($LASTEXITCODE -ne 0) { $adrFail++ }
+        $o = pwsh -NoProfile -ExecutionPolicy Bypass -File $t 2>&1 | Out-String
+        $c = $LASTEXITCODE
+        Write-Host ($o.TrimEnd())
+        if ($c -ne 0) { $adrFail++ }
+        elseif ($o -match '(?m)^SKIP (madr|memory-docs) tests -- ') { $adrSkip++ }
     }
-    Check 'adr-madr' ($adrFail -eq 0) "$adrFail of $($adrTests.Count) test file(s) failed"
+    if ($adrFail -eq 0 -and $adrSkip -eq $adrTests.Count) { Write-Host 'SKIP adr-madr -- allowed (subject docs not written yet; see SKIP lines above)' }
+    else { Check 'adr-madr' ($adrFail -eq 0) "$adrFail of $($adrTests.Count) test file(s) failed" }
 }
 
 # 2. CLAUDE.md <= 200 lines
