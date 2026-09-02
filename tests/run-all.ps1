@@ -16,9 +16,35 @@ Check 'hooks' ($LASTEXITCODE -eq 0) 'see hook test output'
 pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/update-specs-index.tests.ps1 | Out-Host
 Check 'scripts' ($LASTEXITCODE -eq 0) 'see scripts test output'
 
+# 1b2. platform runner harness tests (tests/platform/run-platform-tests.ps1 단위 테스트)
+pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/run-platform-tests.tests.ps1 | Out-Host
+Check 'platform-harness' ($LASTEXITCODE -eq 0) 'see platform runner harness output'
+
 # 1c. specs index freshness — 이 검사는 낡은 인덱스를 발견하면 specs/README.md를 갱신하는 부작용이 있다(FAIL이면 diff를 검토하고 커밋한다)
 $o = pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/update-specs-index.ps1 2>&1 | Out-String
 Check 'specs-index-fresh' ($LASTEXITCODE -eq 0 -and $o -match '\(unchanged\)') ("exit=$LASTEXITCODE; $($o.Trim()) -- if stale: README was regenerated now, review and commit specs/README.md; if error: fix the spec header and rerun")
+
+# 1d. platform tests (T004) — KUBECONFIG 없으면 러너가 SKIP 요약 후 0으로 끝난다(SKIP 허용).
+#     러너는 agent-view 신원 게이트를 통과해야만 tests/platform/*.tests.ps1을 실행한다(검사 본체는 US 단계에서 작성).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/platform/run-platform-tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+if ($c -eq 0 -and $o -match '(?m)^(SKIP platform tests -- |0 test files \(SKIP\))') { Write-Host 'SKIP platform -- allowed (no KUBECONFIG or no platform test files)' }
+else { Check 'platform' ($c -eq 0 -and $o -match '(?m)^test files: \d+ passed, 0 failed\r?$') "exit=$c; see platform test output above" }
+
+# 1e. adr-madr (T004 자리) — 검사 본체는 US1에서 작성(T016 tests/decisions/madr.tests.ps1, T017 tests/memory/memory-docs.tests.ps1);
+#     파일이 생기면 실행하고, 아직 없으면 SKIP(FAIL 아님).
+$adrTests = @(@('tests/decisions/madr.tests.ps1', 'tests/memory/memory-docs.tests.ps1') | Where-Object { Test-Path -LiteralPath (Join-Path $repo $_) })
+if ($adrTests.Count -eq 0) {
+    Write-Host 'SKIP adr-madr -- test files not written yet (US1: tests/decisions/madr.tests.ps1, tests/memory/memory-docs.tests.ps1)'
+} else {
+    $adrFail = 0
+    foreach ($t in $adrTests) {
+        pwsh -NoProfile -ExecutionPolicy Bypass -File $t | Out-Host
+        if ($LASTEXITCODE -ne 0) { $adrFail++ }
+    }
+    Check 'adr-madr' ($adrFail -eq 0) "$adrFail of $($adrTests.Count) test file(s) failed"
+}
 
 # 2. CLAUDE.md <= 200 lines
 $n = if (Test-Path CLAUDE.md) { (Get-Content CLAUDE.md).Count } else { -1 }
