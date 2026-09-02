@@ -224,6 +224,18 @@ try {
         ) (Format-Result $r)
     }
 
+    # ---------- J: 하위 디렉터리에 *.tests.ps1 존재 → flat-only 가드가 fail-closed로 거부, exit 1 ----------
+    # 발견은 tests/platform/ 한 단계(flat)뿐이므로, 중첩 파일은 조용히 건너뛰는 대신 FAIL이어야 한다.
+    # KUBECONFIG 게이트보다 먼저 걸려야 한다(없으면 SKIP 경로가 중첩 파일을 숨긴다) — KUBECONFIG 미설정으로 검증.
+    Test-Group 'J: nested test file' {
+        $d = New-Fixture @{ 'sub/nested-sample.tests.ps1' = $samplePassA }
+        $runner = Copy-Runner $d
+        $r = Invoke-Runner $runner '' ''
+        Assert 'J-1: *.tests.ps1 in a subdirectory -> exit 1 even without KUBECONFIG, FAIL says discovery is flat-only, nested file never executed' (
+            $r.code -eq 1 -and $r.out -match 'FAIL platform tests' -and $r.out -match 'flat-only' -and $r.out.IndexOf('nested-sample.tests.ps1', [StringComparison]::Ordinal) -ge 0 -and $r.out.IndexOf('RAN-MARKER', [StringComparison]::Ordinal) -lt 0
+        ) (Format-Result $r)
+    }
+
     # ---------- I: agent-view + 하나 실패 → 집계 "1 passed, 1 failed", exit 1 ----------
     Test-Group 'I: one failure' {
         $d = New-Fixture @{ 'kubeconfig.yaml' = $kubeconfigYaml; 'aa-sample.tests.ps1' = $samplePassA; 'bb-fail.tests.ps1' = $sampleFail }

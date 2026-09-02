@@ -7,6 +7,8 @@
 #      system:serviceaccount:kube-system:agent-view인지 단언한다. admin kubeconfig(k3s.yaml 등)면 FAIL로 실행 거부.
 #      게이트는 fail-closed: kubectl 부재·whoami 실패·출력 파싱 실패 모두 FAIL(exit 1).
 #   3) 이 디렉터리의 *.tests.ps1(자기 자신 제외)을 차례로 실행해 집계한다. 0개면 "0 test files (SKIP)" 후 exit 0.
+#      발견은 이 디렉터리 한 단계(flat)뿐이다 — 하위 디렉터리에 *.tests.ps1이 있으면 조용히 건너뛰지 않고
+#      KUBECONFIG 게이트보다 먼저 FAIL로 거부한다(fail closed; SKIP 경로가 중첩 파일을 숨기지 못하게).
 #
 # Argo CD 확인은 `kubectl -n argocd get applications`로 한다 — 에이전트·tester에게 Argo CD API 자격을 주지
 # 않으므로 이 러너는 Argo CD 서버 주소·자격을 전제하지 않는다(contracts/hostnames-and-access.md §에이전트 자격;
@@ -25,6 +27,16 @@ $testFiles = @(Get-ChildItem -LiteralPath $PSScriptRoot -File -Filter '*.tests.p
 function Write-WouldRun {
     if ($testFiles.Count -eq 0) { Write-Host 'would have run: (none)' }
     else { foreach ($f in $testFiles) { Write-Host "would have run: $($f.Name)" } }
+}
+
+# ---------- 0. flat-only 가드(fail-closed): 하위 디렉터리의 *.tests.ps1은 발견되지 않으므로 존재 자체가 FAIL ----------
+# KUBECONFIG 게이트보다 먼저 검사한다 — SKIP 경로가 중첩 파일을 조용히 숨기면 안 된다.
+$nested = @(Get-ChildItem -LiteralPath $PSScriptRoot -Directory |
+        ForEach-Object { Get-ChildItem -LiteralPath $_.FullName -File -Filter '*.tests.ps1' -Recurse })
+if ($nested.Count -gt 0) {
+    Write-Host 'FAIL platform tests -- discovery is flat-only (tests/platform/*.tests.ps1); these nested test files would be silently skipped, move them directly under tests/platform/:'
+    foreach ($n in $nested) { Write-Host "  $($n.FullName)" }
+    exit 1
 }
 
 # ---------- 1. KUBECONFIG 게이트: 없으면 SKIP ----------
