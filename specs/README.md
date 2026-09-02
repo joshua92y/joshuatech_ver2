@@ -6,4 +6,4 @@
 |---|---|---|---|---|
 | 001 | Claude Code 기반 셋팅 (SP-0) | Done (2026-08-27) | — | [spec](001-claude-setup/spec.md) · [plan](001-claude-setup/plan.md) |
 | 002 | specs 인덱스 재생성 스크립트 (smoke) | Done (2026-08-27) | — | [spec](002-smoke/spec.md) · [plan](002-smoke/plan.md) |
-| 003 | 플랫폼 기반 (SP-1) | Draft | — | [spec](003-platform-foundation/spec.md) · [plan](003-platform-foundation/plan.md) |
+| 003 | 플랫폼 기반 (SP-1) | Approved (2026-09-02) | — | [spec](003-platform-foundation/spec.md) · [plan](003-platform-foundation/plan.md) |

@@ -4,7 +4,7 @@
 
 **Created**: 2026-08-31
 
-**Status**: Draft
+**Status**: Approved (2026-09-02)
 
 **Input**: User description: "SP-1 platform foundation: architecture ADRs, OCI K3s two-node platform skeleton (GitOps, ingress, secrets, data, events, identity), Workers web hello, Django pod template"
 
