@@ -40,16 +40,22 @@ $adrTests = @(@('tests/decisions/madr.tests.ps1', 'tests/memory/memory-docs.test
 if ($adrTests.Count -eq 0) {
     Write-Host 'SKIP adr-madr -- test files not written yet (US1: tests/decisions/madr.tests.ps1, tests/memory/memory-docs.tests.ps1)'
 } else {
-    $adrFail = 0; $adrSkip = 0
+    $adrFail = 0; $adrSkip = 0; $adrNoEvidence = 0
     foreach ($t in $adrTests) {
         $o = pwsh -NoProfile -ExecutionPolicy Bypass -File $t 2>&1 | Out-String
         $c = $LASTEXITCODE
         Write-Host ($o.TrimEnd())
         if ($c -ne 0) { $adrFail++ }
         elseif ($o -match '(?m)^SKIP (madr|memory-docs) tests -- ') { $adrSkip++ }
+        elseif ($o -notmatch '(?m)^\d+ passed, 0 failed\r?$') { $adrFail++; $adrNoEvidence++ }   # exit 0인데 요약도 SKIP 마커도 없음(크래시/마커 표류) — 양성 증거 요구, fail closed (1d와 같은 규율)
     }
     if ($adrFail -eq 0 -and $adrSkip -eq $adrTests.Count) { Write-Host 'SKIP adr-madr -- allowed (subject docs not written yet; see SKIP lines above)' }
-    else { Check 'adr-madr' ($adrFail -eq 0) "$adrFail of $($adrTests.Count) test file(s) failed" }
+    else {
+        $adrName = if ($adrSkip -gt 0) { "adr-madr ($adrSkip skipped)" } else { 'adr-madr' }
+        $adrDetail = "$adrFail of $($adrTests.Count) test file(s) failed"
+        if ($adrNoEvidence -gt 0) { $adrDetail += " ($adrNoEvidence exited 0 with no summary/SKIP marker)" }
+        Check $adrName ($adrFail -eq 0) $adrDetail
+    }
 }
 
 # 2. CLAUDE.md <= 200 lines

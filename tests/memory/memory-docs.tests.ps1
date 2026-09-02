@@ -2,7 +2,7 @@
 # Run: pwsh -NoProfile -File tests/memory/memory-docs.tests.ps1
 # Exit 0 = all pass 또는 아래 SKIP, 1 = failures. 외부 프레임워크 없음(tests/hooks·tests/scripts 하네스와 같은 구조).
 #
-# SKIP 의미론(tests/run-all.ps1 1e 'adr-madr' 슬롯과의 계약 — T006 infra 게이트와 같은 방식):
+# SKIP 의미론(tests/run-all.ps1 1e 'adr-madr' 슬롯과의 계약 — T004 platform 러너의 첫 줄 SKIP 마커 패턴과 같은 방식):
 #   - 두 파일이 "모두" 없을 때만 첫 줄 'SKIP memory-docs tests -- ' + exit 0 (T027–T028 작성 전).
 #   - 하나라도 있으면 두 파일 전부에 대해 전체 단언을 실행한다(부분 존재 = fail closed FAIL).
 #

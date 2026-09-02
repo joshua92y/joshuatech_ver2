@@ -2,7 +2,7 @@
 # Run: pwsh -NoProfile -File tests/decisions/madr.tests.ps1
 # Exit 0 = all pass 또는 아래 SKIP, 1 = failures. 외부 프레임워크 없음(tests/hooks·tests/scripts 하네스와 같은 구조).
 #
-# SKIP 의미론(tests/run-all.ps1 1e 'adr-madr' 슬롯과의 계약 — T006 infra 게이트와 같은 방식):
+# SKIP 의미론(tests/run-all.ps1 1e 'adr-madr' 슬롯과의 계약 — T004 platform 러너의 첫 줄 SKIP 마커 패턴과 같은 방식):
 #   - 대상 집합 docs/decisions/00{02..10}-*.md(9개 ID)가 "전부" 없을 때만
 #     첫 줄 'SKIP madr tests -- ' + exit 0 으로 끝난다(T018–T026 작성 전).
 #   - ID가 하나라도 있으면 9개 전부에 대해 전체 단언을 실행한다(부분 존재 = fail closed FAIL).
@@ -14,9 +14,10 @@
 #   -2 frontmatter status: accepted        -3 frontmatter date: YYYY-MM-DD
 #   -4 frontmatter decision-makers 비어 있지 않음(인라인 값 또는 바로 아래 '- ' 목록 항목)
 #   -5 절 4개: 'Context and Problem Statement' / 'Considered Options' / 'Decision Outcome' /
-#      'Consequences' — 제목 줄 레벨 2–3 허용(rules/docs.md는 Consequences를 ###로 둔다)
+#      'Consequences' — 제목 줄 레벨 2–3 허용(rules/docs.md는 Consequences를 ###로 둔다);
+#      제목은 ATX(`#`)만 인정 — setext(밑줄 제목) 금지
 #   -6 Considered Options 제목 아래(다음 제목 전까지) 열 0의 목록 항목('- '/'* ') >= 3
-#   -7 docs/README.md가 해당 파일명을 마크다운 링크 대상으로 1회 이상 포함
+#   -7 docs/README.md가 '](decisions/<name>.md)' 링크를 1회 이상 포함('./' 접두·'#앵커' 허용)
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $decDir = Join-Path $repo 'docs/decisions'
@@ -24,9 +25,10 @@ $readmePath = Join-Path $repo 'docs/README.md'
 $ids = @(2..10 | ForEach-Object { $_.ToString('0000') })   # 0002..0010
 
 # ---------- SKIP 게이트: 대상 ID가 전부 없을 때만(그 외 어떤 경우에도 SKIP하지 않는다) ----------
+$idRx = '^(' + (@($ids | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')-'   # $ids가 단일 원천
 $present = @()
 if (Test-Path -LiteralPath $decDir -PathType Container) {
-    $present = @(Get-ChildItem -LiteralPath $decDir -File -Filter '*.md' | Where-Object { $_.Name -cmatch '^00(0[2-9]|10)-' })
+    $present = @(Get-ChildItem -LiteralPath $decDir -File -Filter '*.md' | Where-Object { $_.Name -cmatch $idRx })
 }
 if ($present.Count -eq 0) {
     Write-Host 'SKIP madr tests -- no docs/decisions/00{02..10}-*.md yet (written in T018-T026)'
@@ -130,8 +132,8 @@ foreach ($id in $ids) {
         if ($null -eq $readme) {
             Assert $names[7] $false 'docs/README.md missing'
         } else {
-            $rx = '\]\([^)]*' + [regex]::Escape($f.Name) + '(#[^)]*)?\)'
-            Assert $names[7] ($readme -cmatch $rx) "no markdown link to $($f.Name) in docs/README.md"
+            $rx = '\]\((\./)?decisions/' + [regex]::Escape($f.Name) + '(#[^)]*)?\)'
+            Assert $names[7] ($readme -cmatch $rx) "no markdown link to decisions/$($f.Name) in docs/README.md"
         }
     }
 }
