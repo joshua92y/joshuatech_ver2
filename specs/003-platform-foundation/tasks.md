@@ -70,8 +70,8 @@ description: "Task list for 003-platform-foundation (joshuatech override: tests 
 
 ### Tests for User Story 1 (MANDATORY — write first, verify they FAIL) ⚠️
 
-- [ ] T016 [P] [US1] `tests/decisions/madr.tests.ps1`: `docs/decisions/00{02..10}-*.md` 9개 존재, frontmatter `status: accepted`·`date`·`decision-makers`, 절 4개(Context and Problem Statement / Considered Options / Decision Outcome / Consequences), Considered Options ≥ 3, `docs/README.md` 링크 9 — `run-all` 체크 `adr-madr`로 연결, 지금은 FAIL 확인
-- [ ] T017 [P] [US1] `tests/memory/memory-docs.tests.ps1`: `.specify/memory/product.md`(절: 목표·도메인·pod 목록·로드맵)·`architecture.md`(절: 토폴로지·경계·계약·운영 원칙) 존재·비어 있지 않음·`<!-- SPECKIT` 블록 밖 — FAIL 확인
+- [X] T016 [P] [US1] `tests/decisions/madr.tests.ps1`: `docs/decisions/00{02..10}-*.md` 9개 존재, frontmatter `status: accepted`·`date`·`decision-makers`, 절 4개(Context and Problem Statement / Considered Options / Decision Outcome / Consequences), Considered Options ≥ 3, `docs/README.md` 링크 9 — `run-all` 체크 `adr-madr`로 연결, 지금은 FAIL 확인
+- [X] T017 [P] [US1] `tests/memory/memory-docs.tests.ps1`: `.specify/memory/product.md`(절: 목표·도메인·pod 목록·로드맵)·`architecture.md`(절: 토폴로지·경계·계약·운영 원칙) 존재·비어 있지 않음·`<!-- SPECKIT` 블록 밖 — FAIL 확인
 
 ### Implementation for User Story 1
 
