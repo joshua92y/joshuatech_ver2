@@ -10,6 +10,7 @@
 | [decisions/0003](decisions/0003-runtime-track.md) | ADR 0003 런타임 트랙 — 웹 Workers + API OCI K3s 2노드(A platform/B data) + Argo CD·부록 D14 관측 |
 | [decisions/0004](decisions/0004-web-framework.md) | ADR 0004 웹 프레임워크 — Next.js 16.3 + OpenNext lean(프리렌더 + BFF·번들 예산)·부록 D19 콘텐츠 정본 |
 | [decisions/0005](decisions/0005-backend-framework-policy.md) | ADR 0005 백엔드 프레임워크 정책 — Django+Ninja 기본·FastAPI 수치 트리거 예외·부록 D18 pod 목록 |
+| [decisions/0006](decisions/0006-identity-and-authz.md) | ADR 0006 신원·인가 — Authentik 단일 IdP·impersonation 교환 기본(VD-1)·거부 목록·OpenFGA |
 | [runbooks/bootstrap.md](runbooks/bootstrap.md) | 플랫폼 부트스트랩 런북 — §0 사용자 수동 준비·토큰 표(§1–§7은 후속 task가 작성) |
 | [runbooks/spec-kit-upgrade.md](runbooks/spec-kit-upgrade.md) | Spec Kit 커스터마이즈 레지스터·업그레이드 절차 |
 | [specs/README.md](../specs/README.md) | feature 인덱스(불변 이력) |
