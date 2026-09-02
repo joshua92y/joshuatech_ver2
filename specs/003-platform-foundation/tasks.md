@@ -90,7 +90,7 @@ description: "Task list for 003-platform-foundation (joshuatech override: tests 
 
 ### E2E for User Story 1 (MANDATORY — executed by the tester agent)
 
-- [ ] T030 [US1] E2E: US1 AC1–AC2 — `tests/run-all.ps1` ALL PASS, ADR 9개가 대안 ≥ 2·결과 절을 갖고 `docs/README.md`·spec에서 링크되며 memory 2 파일이 spec Design과 모순 없음(표본 3항목 대조) — evidence recorded in the tester report
+- [X] T030 [US1] E2E: US1 AC1–AC2 — `tests/run-all.ps1` ALL PASS, ADR 9개가 대안 ≥ 2·결과 절을 갖고 `docs/README.md`·spec에서 링크되며 memory 2 파일이 spec Design과 모순 없음(표본 3항목 대조) — evidence recorded in the tester report
 
 **Checkpoint**: 결정이 문서로 고정됨 — 이후 스토리는 ADR을 참조만 한다
 

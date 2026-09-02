@@ -22,7 +22,7 @@ US별로 "이 명령을 치면 이 결과가 나와야 한다"를 적는다. 구
 ```bash
 pwsh -NoProfile -File tests/run-all.ps1            # ADR MADR 검사·미러·CLAUDE.md 줄 수 포함, ALL PASS
 ls docs/decisions/00{02..10}-*.md                   # 9개
-grep -l '^paths:' .claude/rules/{web,django-pod,fastapi-pod,infra,events}.md | wc -l   # 5
+grep -l '^paths:' .claude/rules/{web,django-pod,fastapi-pod,infra,events}.md | wc -l   # 5 (US9 T109 산출물 — US1 시점에는 0이 정상, US9 E2E(T113)에서 재검)
 ```
 기대: run-all ALL PASS, `docs/README.md`에 0002–0010 링크, `.specify/memory/{product,architecture}.md` 존재.
 
