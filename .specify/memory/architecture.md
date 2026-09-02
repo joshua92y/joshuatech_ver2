@@ -32,7 +32,7 @@ BFF ─(RFC 8693 교환 + Access 서비스 토큰)─▶ <alias>-m2m-<env>.joshu
 | `privileged` | `kube-system`(K3s 번들 traefik·coredns·metrics-server) · `monitoring`(alloy hostPath `/var/log`·node-exporter hostNetwork) · `system-upgrade`(hostPID·hostIPC·hostNetwork·`chroot /host`) | 표에 사유 기재 필수 |
 
 - `observability`라는 이름은 쓰지 않는다(→ `monitoring`). AppProject: `platform`·`dev`·`prod`(gitops에는 `tests` 포함 4개 선언).
-- NetworkPolicy: `kube-system` 제외 13 ns에 default-deny + 공통 5종, 조건부 2종(`deny-imds`는 `kube-system` 전용, `allow-imds`는 `vault` 전용). 허용 매트릭스에 없는 트래픽은 차단이 정상 — 정본과 외부 egress 규칙 형식은 위 계약 문서.
+- NetworkPolicy: `kube-system` 제외 13 ns에 공통 5종(default-deny 포함), 조건부 2종(`deny-imds`는 `kube-system` 전용, `allow-imds`는 `vault` 전용). 허용 매트릭스에 없는 트래픽은 차단이 정상 — 정본과 외부 egress 규칙 형식은 위 계약 문서.
 
 ## 경계
 
@@ -61,7 +61,7 @@ BFF ─(RFC 8693 교환 + Access 서비스 토큰)─▶ <alias>-m2m-<env>.joshu
 - **관측**: 모든 pod가 structlog JSON(`request_id`·`tenant_id`·`trace_id`, 민감 헤더 제거) + OTLP 트레이스(샘플링 0.1)를 Alloy(`monitoring`) → Grafana Cloud(메트릭·Loki·Tempo)로 보낸다. Sentry는 Django·web 클라이언트(PII 마스킹), BFF는 Workers observability JSON 로그 + `x-request-id`·`traceparent` 전파. 대시보드 3 · 알림 규칙 13(전부 `runbook_url`) — 규칙 이름·조건의 정의 정본은 `specs/003-platform-foundation/plan.md` §Observability & Rollback. 업그레이드 창(일요일 03:00–05:00 KST)은 Grafana mute timing.
 - **롤백**: 앱·플랫폼 = gitops `git revert` → sync · 웹 = `wrangler rollback` · DB = CNPG PITR(클러스터 전체, 재해 복구 전용; 단일 DB는 side Cluster PITR → `pg_dump` → 복원) · K3s = 버전 핀 재설치 + 백업 번들 복원(SQLite 데이터스토어 — `--cluster-reset` 실행 금지) · Vault = Raft 스냅샷 restore(같은 KMS 키 필수) · 인프라 = `tofu plan` destroy 0(`prevent_destroy`). 요약 표는 `specs/003-platform-foundation/quickstart.md`, 비가역 변경 표·절차는 런북 8종(`docs/runbooks/`).
 - **시크릿**: Vault(Raft, 노드 A) + OCI KMS auto-unseal + ESO(ClusterSecretStore 5) — gitops에는 ExternalSecret 참조만, 값 0개(SC-006). Workers 시크릿은 `wrangler secret put`으로 Workers Secrets에만. CI(GitHub Actions)에는 클러스터·OCI 자격이 없다. — `docs/decisions/0010-secrets.md`
-- **보존**:
+- **보존**: 정본은 `specs/003-platform-foundation/spec.md` FR-018·FR-019·§Assumptions(보존값) — 변경 시 이 표 갱신.
 
 | 대상 | 보존 |
 |---|---|

@@ -35,7 +35,7 @@ pod 간 경계(DB 독점·이벤트 소유·BFF 게이트웨이)는 `.specify/me
 
 | 단계 | 상태 | 내용 |
 |---|---|---|
-| SP-1 플랫폼 기반 | 진행 중 — `specs/003-platform-foundation/` | ADR 0002–0010, OCI K3s 2노드 플랫폼(GitOps·인그레스·시크릿·데이터·이벤트·신원·관측), 웹 hello + BFF, Django pod 템플릿, v1 종료·도메인 전환 |
+| SP-1 플랫폼 기반 | 진행 중(003 merge 후 `/speckit-archive-run`에서 완료로 갱신) — `specs/003-platform-foundation/` | ADR 0002–0010, OCI K3s 2노드 플랫폼(GitOps·인그레스·시크릿·데이터·이벤트·신원·관측), 웹 hello + BFF, Django pod 템플릿, v1 종료·도메인 전환 |
 | SP-2 사이트 코어 | 예정 | identity-admin(테넌트 오케스트레이션·사용자 삭제/내보내기)·portfolio-core·media·engagement, notes-sync |
 | SP-3 | 예정 | notification·insights·search + Elasticsearch/ECK/Kibana(노드 B 예산 자리), 복원 실연(SC-011 이월) |
 | SP-4 | 예정 | assistant, 테넌트별 Authentik Brand |
