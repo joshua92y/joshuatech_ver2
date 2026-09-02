@@ -5,7 +5,7 @@
 이 문서는 003-platform-foundation의 플랫폼 부트스트랩 전 과정을 기록하는 **살아 있는 런북**이다. §0(사용자 수동 준비)만 T005에서 완성되고, §1–§6은 각 절에 표기된 후속 task가 실제 실행 결과(순서·시각·기록값)를 채운다. §번호는 다른 task들이 참조하므로 바꾸지 않는다.
 
 - 전제: OCI 인스턴스 2대(노드 A `joshtech_api_1st`, 노드 B `joshtech_cache`)가 존재하고, 도메인 `joshuatech.dev`가 Cloudflare 존으로 관리된다.
-- 런북 규약(FR-041): 각 절은 목적·전제·절차·검증·되돌리기를 갖춘다.
+- 런북 규약: 런북 8종의 목록은 FR-041이 정하고, 각 절의 구성(목적·전제·절차·검증·되돌리기)은 T114가 정한다.
 
 ## §0 사용자 수동 준비 (T005)
 
@@ -22,12 +22,21 @@
 - [x] **Grafana Cloud Free 스택(ap 리전)** — org `joshuatech`, 스택 `https://joshuatech.grafana.net/`.
 - [ ] **Grafana Cloud Alloy 전송용 Access policy 토큰** — Grafana Cloud 포털(grafana.com) → Security → Access Policies → Create access policy(realm: 스택 `joshuatech`, scopes: `metrics:write`·`logs:write`·`traces:write`) → Add token. 값은 비밀번호 관리자에만 기록(토큰 표 참고).
 - [x] **Sentry Developer org** — org `joshtech`, 팀 `joshtech`.
-- [ ] **Sentry 프로젝트 2** — sentry.io org `joshtech` → Projects → Create Project로 `identity-admin`·`web` 생성.
+- [ ] **Sentry 프로젝트 2** — sentry.io org `joshtech` → Projects → Create Project로 생성: `identity-admin`(플랫폼 django) · `web`(플랫폼 javascript-nextjs).
 - [ ] **OCI 서비스 사용자 `svc-tfstate`·`svc-s3-backup` + Customer Secret Key 각 1** — OCI 콘솔 → Identity & Security → Domains → (기본 도메인) → Users에서 두 사용자 생성 → 각 사용자 상세 → Customer secret keys → Generate secret key 1개(Secret은 생성 시 1회만 표시 — 즉시 비밀번호 관리자에 기록). 접근은 버킷 1개씩만: `svc-tfstate` → `jt-tfstate`, `svc-s3-backup` → `jt-backup`(IAM 정책 선언·적용은 T010, 교차 버킷 정책 0).
-- [ ] **운영자 `age` 키쌍** — `age-keygen`으로 생성. 공개키만 노드 A에 둔다(T036 `platform-backup.sh`가 암호화에 사용). 개인키는 Vault recovery key와 같은 오프라인 보관 — 노드·저장소·클라우드에 두지 않는다.
+- [ ] **OCI 읽기 사용자 `svc-verify` 생성 + 그룹 `jt-verify` 가입** — 위 서비스 사용자 항목과 같은 콘솔(Identity & Security → Domains → (기본 도메인) → Users)에서 사용자 생성, Groups에서 `jt-verify` 생성 후 가입. 그룹에 붙는 정책 선언은 T010 OpenTofu 몫(스코프는 표 ③).
+- [ ] **운영자 `age` 키쌍** — §0에서는 키쌍 생성만: `age-keygen -o <오프라인 보관 파일>`. 공개키의 노드 배치는 T036 시점에 한다(노드 A는 T014 재이미지로 초기화되므로 §0에서 미리 두지 않는다). 개인키는 Vault recovery key와 같은 오프라인 보관 — 노드·저장소·클라우드에 두지 않는다.
 - [ ] **SSH 키 `jt-ops`** — FIDO2 `ssh-keygen -t ed25519-sk -f ~/.ssh/jt-ops` 또는 passphrase 키 + `ssh-add -c`(사용마다 확인). T014에서 두 노드 `~ubuntu/.ssh/authorized_keys`를 이 키로 교체한다(구 v1 키 제거 — 개인키 파기 순서는 토큰 표 ⑦).
 - [ ] **GitHub secret scanning + push protection 활성** — `joshua92y/joshuatech_ver2`(모노레포)와 `joshua92y/platform-gitops`(T003 생성 후) 각각 Settings → Code security and analysis → Secret scanning **Enable** + Push protection **Enable**(T116이 재확인).
-- [ ] **토큰 표 ①–⑤ 발급** — 아래 표의 스코프 그대로 발급(⑥·⑦은 발급 항목이 아니라 운영 규칙이다).
+- [ ] **토큰 ① Cloudflare 배포 토큰(OpenTofu용) 발급** — Cloudflare 대시보드 → My Profile → API Tokens → Create Token(스코프는 표 ① 그대로).
+- [ ] **토큰 ② Cloudflare `Account Analytics:Read` 발급** — 같은 경로(My Profile → API Tokens → Create Token, 스코프는 표 ②).
+- [ ] **③ `svc-verify` 세션 인증 확인** — 상주 토큰 없음: `oci session authenticate --profile-name svc-verify`(1 h) 동작 확인(사용자·그룹 생성은 위 항목, 스코프는 표 ③).
+- [ ] **토큰 ④ Grafana Cloud Viewer 서비스 계정 토큰 발급** — Grafana Cloud → Administration → Service accounts → Viewer 계정 → Add service account token.
+- [ ] **토큰 ⑤ Sentry 읽기 전용 auth token 발급** — Sentry → Settings → Auth Tokens(read-only 스코프만).
+
+⑥·⑦은 발급 항목이 아니라 운영 규칙이다(아래 표).
+
+> ⚠️ v1 SSH 개인키는 T105 잔여 확인 전 삭제 금지 — 앞당기면 두 노드에서 잠긴다.
 
 ### 토큰 표
 
@@ -39,7 +48,7 @@
 | ④ Grafana Cloud **Viewer 서비스 계정 토큰** | Viewer(읽기 전용) | 비밀번호 관리자 | secret-rotation 매트릭스·캘린더 대조* |
 | ⑤ Sentry **읽기 전용 auth token** | 읽기 전용 | 비밀번호 관리자 | secret-rotation 매트릭스·캘린더 대조* |
 | ⑥ Vault 토큰 | 상시 토큰을 만들지 않는다 — 사람은 Authentik OIDC 로그인으로 받는 **단기 토큰**(기본 TTL 1 h)만 쓴다. `vault operator init`의 root 토큰은 부트스트랩 직후 `vault token revoke` | 보관하지 않음. recovery key는 오프라인(`generate-root`·rekey 전용, unseal 수단 아님) | 단기 토큰 자동 만료; root 토큰은 즉시 폐기 |
-| ⑦ **v1 SSH 개인키 파기 순서** | T014에서 `authorized_keys`를 `jt-ops`로 교체 → T103에서 두 노드 `authorized_keys`에 구 키 0 확인 → T105 잔여 확인 후에야 워크스테이션·비밀번호 관리자에서 v1 개인키 삭제. **순서를 앞당기면 잠긴다** | 파기 전까지 현 위치 유지(워크스테이션·비밀번호 관리자) | N/A(회전이 아니라 파기 절차) |
+| ⑦ **v1 SSH 개인키 파기 순서** | T014에서 `authorized_keys`를 `jt-ops`로 교체 → T103에서 두 노드 `authorized_keys`에 구 키 0 확인 → T105 잔여 확인 후에야 워크스테이션·비밀번호 관리자에서 v1 개인키 삭제(경고는 표 위 blockquote) | 파기 전까지 현 위치 유지(워크스테이션·비밀번호 관리자) | N/A(회전이 아니라 파기 절차) |
 
 \* 회전 열의 정본은 `docs/runbooks/secret-rotation.md`(T084 작성, T114 완성)의 매트릭스·캘린더이며, 이 표의 회전 주기는 그 문서와 대조한다.
 
@@ -61,7 +70,7 @@
 
 ## §4 Vault init·시크릿 시드
 
-(T043–T045에서 작성)
+(T044–T045에서 작성 + T043의 kv 플레이스홀더 투입 절차 — AOP 전환 본체는 §3 범위)
 
 ## §5 v1 삭제 기록
 
@@ -70,3 +79,7 @@
 ## §6 업그레이드 창
 
 (T037에서 작성)
+
+## §7 K3s 번들 복원
+
+(T114에서 작성 — FR-047 복호화 포함)
