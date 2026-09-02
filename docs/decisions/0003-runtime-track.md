@@ -26,7 +26,7 @@ decision-makers:
 
 - **노드 배치**: 노드 A `role=platform`(K3s server·Traefik·Argo CD·Vault+ESO·Kafka·Authentik·OpenFGA·Alloy·앱 pod 선호) ≈ 8.6 GiB / **예산 9 GiB**. 노드 B `role=data`(K3s agent·CNPG·Dragonfly·cert-manager·CNPG 오퍼레이터) ≈ 3.6 GiB / **예산 8 GiB** — SP-3 Elasticsearch·Kibana 자리(≈ 3 GiB)는 전부 노드 B에 남긴다. Kafka는 A 고정(Postgres fsync/WAL과 디스크 I/O 분리).
 - **인그레스(D12)**: 번들 Traefik 공개 443 + cert-manager DNS-01 와일드카드 + Cloudflare proxied Full(strict), NSG로 Cloudflare IP 한정(80 미개방) + Authenticated Origin Pulls.
-- **전환 트리거**: ① RAM — US7(운영·비용 시나리오) 실측이 예산 초과 또는 OOMKill이면 Argo core 전환 → Alloy 축소 → dev quota 축소 순으로 완화하고, 그래도 부족하면 Redpanda 검토(ADR 0008 트리거 — 작성 예정, T024). ② 비용 — 월 Compute > 3 SGD면 예산 알림·13 → 12 GB 축소·유료 자원 생성 금지; 첫 청구서가 $30 수준(새 무료 한도 적용 확인)이면 D17(인스턴스 사양)을 재결정한다.
+- **전환 트리거**: ① RAM — US7(운영·비용 시나리오) 실측이 예산 초과 또는 OOMKill이면 Argo core 전환 → Alloy 축소 → dev quota 축소 순으로 완화하고, 그래도 부족하면 Redpanda 검토(ADR 0008 트리거). ② 비용 — 월 Compute > 3 SGD면 예산 알림·13 → 12 GB 축소·유료 자원 생성 금지; 첫 청구서가 $30 수준(새 무료 한도 적용 확인)이면 D17(인스턴스 사양)을 재결정한다.
 
 ### Consequences
 

@@ -13,7 +13,7 @@ decision-makers:
 
 pod 8개(ADR 0005 부록 D18)는 서로의 DB를 읽지 않는다(헌법 III, ADR 0007) — 상태 전파는 이벤트로만 한다. SP-1부터 세션 폐기 전파(`identity-admin.session.revoked`)가 실사용이고, SP-2~SP-3의 색인·알림·투영 소비자를 위해 SP-1이 토픽 6개의 스키마를 미리 정의한다(contracts/events.md).
 
-제약: 노드 A 13 GB 예산 안에서 브로커가 상주해야 하고(plan A14 — Kafka 스택 ≈ 2.6 GiB), 단일 브로커라 HA가 없으므로 "발행 유실 없음"은 브로커가 아니라 발행 경로에서 보장해야 하며, dev·prod가 클러스터 하나를 공유하고(D15), 스키마는 public 모노레포에서 pod 간 유일한 결합 계약이 된다.
+제약: 노드 A 상주 예산 9 GiB(인스턴스 13 GB — plan A14) 안에서 브로커가 상주해야 하고(Kafka 스택 ≈ 2.6 GiB), 단일 브로커라 HA가 없으므로 "발행 유실 없음"은 브로커가 아니라 발행 경로에서 보장해야 하며, dev·prod가 클러스터 하나를 공유하고(D15), 스키마는 public 모노레포에서 pod 간 유일한 결합 계약이 된다.
 
 ## Considered Options
 
@@ -30,8 +30,8 @@ pod 8개(ADR 0005 부록 D18)는 서로의 DB를 읽지 않는다(헌법 III, AD
 3. **발행 = transactional outbox**: `django_common.outbox.publish`는 도메인 쓰기와 같은 `transaction.atomic()` 안의 outbox INSERT만 허용한다(`OutboxUsageError` — `tenantid`를 확정할 수 없어도 같은 예외). outbox는 등급 B 테이블(pod 전역, RLS 미적용 — ADR 0007)이고, 릴레이는 web과 같은 pod의 `relay` 컨테이너 1개가 app role로 500 ms 폴링한다.
 4. **릴레이·DLQ**: `WHERE dead_at IS NULL ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 100` → idempotent producer(SASL_SSL, `delivery.timeout.ms` 30000, confluent-kafka) → 성공 시 행 삭제. 실패는 지수 백오프(최대 5분), `attempts ≥ 10`이면 원본 봉투를 `<pod>.dlq`로 발행하고 `dead_at`을 기록(행 유지, 재처리는 수동 command), dead 행은 30일 뒤 일 1회 purge — outbox가 무한히 자라지 않는 유일한 경로다. 지표 `outbox_pending`·`outbox_oldest_pending_seconds`(알림 > 60 s)·`outbox_dead_total`.
 5. **봉투 = CloudEvents 1.0 structured JSON**: `id` = outbox ULID(소비자는 `(consumer_group, id)`로 멱등 처리), 확장 속성 `tenantid`. 스키마 정본은 모노레포 `packages/events/schemas/`의 JSON Schema 2020-12 하나뿐이고, CI가 main↔PR 필드 비교로 호환을 강제한다(필드 삭제·타입 변경·`required` 추가 금지 — 위반은 새 토픽 `…v2`).
-6. **소비자 규칙**: group `<pod>-<purpose>`, 오프셋 커밋은 처리 트랜잭션 커밋 뒤, 처리·스키마 검증 3회 실패 → DLQ. 브로커 유실·7일 초과 지연은 원천(각 pod DB)에서 재색인·재투영으로 복구한다 — 브로커는 전달 버스이지 정본이 아니다.
-7. **전환 트리거 2건**: (a) US7 RAM 실측에서 완화 순서(Argo core → Alloy 축소 → dev quota 축소) 뒤에도 노드 A가 초과하면 Redpanda 전환 검토를 새 ADR로 연다(spec §7). (b) 릴레이 폴링 지연(`outbox_oldest_pending_seconds`)이 요구를 계속 넘으면 Debezium CDC를 같은 절차로 검토한다.
+6. **소비자 규칙**: group `<pod>-<purpose>`, 오프셋 커밋은 처리 트랜잭션 커밋 뒤, 처리 실패 3회 → DLQ, 스키마 검증 실패는 즉시 DLQ(contracts/events.md). 브로커 유실·7일 초과 지연은 원천(각 pod DB)에서 재색인·재투영으로 복구한다 — 브로커는 전달 버스이지 정본이 아니다.
+7. **전환 트리거 2건**: (a) US7 RAM 실측에서 완화 순서(Argo core → Alloy 축소 → dev quota 축소) 뒤에도 노드 A가 초과하면 Redpanda 전환 검토를 새 ADR로 연다(spec §7). (b) `OutboxOldestPending`(> 60 s) 알림이 정상 부하에서 반복 발화하면(예: 7일 내 3회) Debezium CDC를 같은 절차로 검토한다.
 
 ### Consequences
 

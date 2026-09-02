@@ -34,7 +34,7 @@ L1 원칙 7개를 채택한다. 이후 모든 CI/CD·gitops 설계(FR-032~FR-039
 
 ### Consequences
 
-- 좋음: public 저장소 2개에 시크릿·자격 0건(시크릿은 Vault+ESO, ADR 0010 — 작성 예정, T026), 모든 변경이 PR 이력으로 남음, 롤백이 단일 절차, 재현 가능한 배포.
+- 좋음: public 저장소 2개에 시크릿·자격 0건(시크릿은 Vault+ESO, ADR 0010), 모든 변경이 PR 이력으로 남음, 롤백이 단일 절차, 재현 가능한 배포.
 - 나쁨: Argo CD 상주 RAM(≈ 0.6 GiB)과 gitops 저장소 관리가 추가되고, dev digest bump PR이 노이즈를 만들며, expand→contract는 마이그레이션을 두 단계로 쪼개는 부담이 있다(approval 리뷰 지적 F-7 — expand→contract linter는 후속 task로 수용).
 - 위험 수용: `gh pr merge --auto` 동작 여부는 VD-5(실측)로 남긴다 — 실패 시 dev bump도 수동 머지.
 
