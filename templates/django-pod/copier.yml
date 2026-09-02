@@ -1,0 +1,43 @@
+# Copier template for a Django pod (skeleton, T015 — template/ tree is empty until later tasks).
+# Contract of record: specs/003-platform-foundation/contracts/pod-template.md
+# Usage: copier copy templates/django-pod apps/<pod>
+# NOTE: this directory is intentionally NOT a uv workspace member — the generated
+# pyproject under template/ will be jinja-templated and must never be resolved by uv.
+
+_subdirectory: template
+
+pod_name:
+  type: str
+  help: "Pod name in kebab-case (e.g. identity-admin) — used as topic prefix, image name, host prefix, Dragonfly user, and key prefix"
+  placeholder: identity-admin
+
+pod_snake:
+  type: str
+  help: "snake_case form of pod_name — Django project and database name (auto-derived, not prompted)"
+  default: "{{ pod_name | replace('-', '_') }}"
+  when: false
+
+description:
+  type: str
+  help: "One-line description of the pod — used in README and as the OpenAPI title"
+  default: ""
+
+owns_events:
+  type: yaml
+  help: "Published topics as an entity.event list (e.g. [session.revoked]) — generates events/ stubs and KafkaTopic examples"
+  default: []
+
+consumes_events:
+  type: yaml
+  help: "Consumed topics as a list — generates consumer stubs"
+  default: []
+
+has_celery:
+  type: bool
+  help: "Generate Celery worker and beat manifests (broker = Dragonfly, user = <pod>)"
+  default: true
+
+has_admin:
+  type: bool
+  help: "Enable Django admin plus the prod admin Ingress (dev keeps ADMIN_HOST empty — no admin surface in dev)"
+  default: true

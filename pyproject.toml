@@ -4,5 +4,6 @@
 members = [
     "packages/django-common",
     "apps/identity-admin",
-    "templates/django-pod",
 ]
+# templates/** 는 의도적으로 멤버가 아니다 — copier 템플릿의 pyproject는 jinja 템플릿이라
+# uv가 절대 해석하면 안 된다(T001 리뷰 gotcha; T015에서 스텁 제거).

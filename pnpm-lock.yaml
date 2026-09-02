@@ -7,3 +7,7 @@ settings:
 importers:
 
   .: {}
+
+  packages/content: {}
+
+  packages/events: {}

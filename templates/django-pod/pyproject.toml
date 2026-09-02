@@ -1,5 +1,0 @@
-# 최소 스텁 — T001에서 uv.lock 생성을 위해서만 존재. copier 템플릿 본체는 T015 이후.
-[project]
-name = "django-pod"
-version = "0.0.0"
-requires-python = ">=3.13"

@@ -5,19 +5,13 @@ requires-python = ">=3.13"
 [manifest]
 members = [
     "django-common",
-    "django-pod",
     "identity-admin",
 ]
 
 [[package]]
 name = "django-common"
 version = "0.0.0"
-source = { virtual = "packages/django-common" }
-
-[[package]]
-name = "django-pod"
-version = "0.0.0"
-source = { virtual = "templates/django-pod" }
+source = { editable = "packages/django-common" }
 
 [[package]]
 name = "identity-admin"
