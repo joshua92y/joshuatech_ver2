@@ -15,6 +15,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   gitleaks:
     runs-on: ubuntu-24.04-arm
@@ -26,6 +30,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # GITLEAKS_LICENSE는 조직(org) 저장소에만 필요 — 개인 저장소이므로 불필요
+          # PR 코멘트는 pull-requests: write 권한이 필요 — permissions를 contents: read로
+          # 유지하기 위해 코멘트 기능을 끈다(결과는 job 로그·실패 상태로 확인).
+          GITLEAKS_ENABLE_COMMENTS: "false"
 
   lint:
     runs-on: ubuntu-24.04-arm
@@ -34,9 +41,13 @@ jobs:
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: 24
+          node-version-file: '.node-version'
           cache: pnpm
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          # uv 버전 핀(plan Technical Context: uv 0.12.8) — Renovate는 이 입력을
+          # 추적하지 않으므로 갱신은 plan 핀과 함께 수동으로 한다.
+          version: "0.12.8"
       - name: 의존성 설치(잠금파일 고정 · 스크립트 실행 금지)
         run: |
           pnpm install --frozen-lockfile --ignore-scripts
@@ -51,9 +62,13 @@ jobs:
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: 24
+          node-version-file: '.node-version'
           cache: pnpm
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          # uv 버전 핀(plan Technical Context: uv 0.12.8) — Renovate는 이 입력을
+          # 추적하지 않으므로 갱신은 plan 핀과 함께 수동으로 한다.
+          version: "0.12.8"
       - name: 의존성 설치(잠금파일 고정 · 스크립트 실행 금지)
         run: |
           pnpm install --frozen-lockfile --ignore-scripts
