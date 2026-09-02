@@ -14,6 +14,7 @@
 | [decisions/0007](decisions/0007-data-ownership-and-tenancy.md) | ADR 0007 데이터 소유·테넌시 — CNPG DB per pod·테이블 등급 A/B·FORCE RLS·멤버십 정본 TenantMembership |
 | [decisions/0008](decisions/0008-event-backbone.md) | ADR 0008 이벤트 백본 — Kafka KRaft(Strimzi)·폴링 outbox 릴레이·CloudEvents JSON + JSON Schema·DLQ·purge |
 | [decisions/0009](decisions/0009-search.md) | ADR 0009 검색 — ES 1노드 + Kibana + Nori·ECK·FastAPI search pod(SP-3 구현, 노드 B ≈ 3 GiB 자리)·pg_bigm 이월 |
+| [decisions/0010](decisions/0010-secrets.md) | ADR 0010 시크릿 — Vault Raft + OCI KMS auto-unseal + ESO store 5·recovery 3/2(unseal 불가)·일 1회 Raft 스냅샷 |
 | [runbooks/bootstrap.md](runbooks/bootstrap.md) | 플랫폼 부트스트랩 런북 — §0 사용자 수동 준비·토큰 표(§1–§7은 후속 task가 작성) |
 | [runbooks/spec-kit-upgrade.md](runbooks/spec-kit-upgrade.md) | Spec Kit 커스터마이즈 레지스터·업그레이드 절차 |
 | [specs/README.md](../specs/README.md) | feature 인덱스(불변 이력) |
