@@ -124,6 +124,10 @@ $sampleFail = "Write-Host 'RAN-MARKER-gamma'`nexit 1`n"
 $sep = [IO.Path]::PathSeparator
 
 try {
+    # 주변 환경의 하네스 전용 오버라이드가 픽스처로 새지 않게 한다(K 그룹에서만 명시적으로 설정한다)
+    Remove-Item Env:JT_INFRA_DIR -ErrorAction SilentlyContinue
+    Remove-Item Env:JT_INFRA_TESTS -ErrorAction SilentlyContinue
+
     # ---------- 정적: 러너 존재·ARGOCD_SERVER 미참조·기대 사용자 문자열 ----------
     Test-Group 'static' {
         $src = if (Test-Path -LiteralPath $runnerPath -PathType Leaf) { [IO.File]::ReadAllText($runnerPath) } else { $null }
@@ -138,8 +142,9 @@ try {
         $runner = Copy-Runner $d
         $r = Invoke-Runner $runner '' ''
         $lines = $r.out -split "`n"
-        Assert 'A-1: KUBECONFIG unset -> exit 0, first line "SKIP platform tests -- KUBECONFIG is not set"' (
-            $r.code -eq 0 -and $lines.Count -ge 1 -and (Test-Same $lines[0] 'SKIP platform tests -- KUBECONFIG is not set')
+        # T006부터 infra 그룹의 SKIP 줄이 앞에 올 수 있으므로 첫 줄 고정 대신 줄 존재로 단언한다
+        Assert 'A-1: KUBECONFIG unset -> exit 0, line "SKIP platform tests -- KUBECONFIG is not set"' (
+            $r.code -eq 0 -and (Test-HasLine $lines 'SKIP platform tests -- KUBECONFIG is not set')
         ) (Format-Result $r)
         Assert 'A-2: SKIP summary lists each would-be test file and none is executed' (
             $r.code -eq 0 -and (Test-HasLine $lines 'would have run: aa-sample.tests.ps1') -and (Test-HasLine $lines 'would have run: bb-sample.tests.ps1') -and $r.out.IndexOf('RAN-MARKER', [StringComparison]::Ordinal) -lt 0
@@ -151,8 +156,10 @@ try {
         $d = New-Fixture @{}
         $runner = Copy-Runner $d
         $r = Invoke-Runner $runner (Join-Path $d 'nope/kubeconfig.yaml') ''
+        # T006부터 infra 그룹의 SKIP 줄이 앞에 올 수 있으므로 출력 시작 고정 대신 해당 줄로 시작하는 줄 존재로 단언한다
+        $skipLine = @(($r.out -split "`n") | Where-Object { $_.StartsWith('SKIP platform tests -- KUBECONFIG file not found:', [StringComparison]::Ordinal) })
         Assert 'B-1: KUBECONFIG points to a nonexistent file -> exit 0, "SKIP platform tests -- KUBECONFIG file not found: ...", "would have run: (none)"' (
-            $r.code -eq 0 -and $r.out.StartsWith('SKIP platform tests -- KUBECONFIG file not found:', [StringComparison]::Ordinal) -and (Test-HasLine ($r.out -split "`n") 'would have run: (none)')
+            $r.code -eq 0 -and $skipLine.Count -ge 1 -and (Test-HasLine ($r.out -split "`n") 'would have run: (none)')
         ) (Format-Result $r)
     }
 
@@ -245,6 +252,60 @@ try {
         $lines = $r.out -split "`n"
         Assert 'I-1: one failing test file -> exit 1, failing file still executed, summary "test files: 1 passed, 1 failed"' (
             $r.code -eq 1 -and $r.out.IndexOf('RAN-MARKER-gamma', [StringComparison]::Ordinal) -ge 0 -and (Test-HasLine $lines 'test files: 1 passed, 1 failed')
+        ) (Format-Result $r)
+    }
+
+    # ---------- K: infra 그룹 게이트(T006) — JT_INFRA_DIR/JT_INFRA_TESTS 오버라이드로 검증 ----------
+    # 가짜 인프라 테스트 파일은 러너 픽스처와 다른 픽스처 디렉터리에 둔다: 러너 디렉터리 하위에 *.tests.ps1을
+    # 두면 flat-only 가드(J)가 infra 그룹보다 먼저 FAIL하기 때문(실제 레포에서도 tests/infra/는 형제 디렉터리다).
+    Test-Group 'K: infra group gating' {
+        $fakeInfraPass = "Write-Host 'INFRA-MARKER-ran'`nexit 0`n"
+        $fakeInfraFail = "Write-Host 'INFRA-MARKER-ran'`nexit 1`n"
+        function Invoke-RunnerWithInfra([string]$runnerFile, [string]$infraDir, [string]$infraTests) {
+            try {
+                $env:JT_INFRA_DIR = $infraDir
+                $env:JT_INFRA_TESTS = $infraTests
+                return Invoke-Runner $runnerFile '' ''
+            } finally {
+                Remove-Item Env:JT_INFRA_DIR -ErrorAction SilentlyContinue
+                Remove-Item Env:JT_INFRA_TESTS -ErrorAction SilentlyContinue
+            }
+        }
+
+        # K-1: infra/oci 없음 → SKIP 줄, exit 0 (KUBECONFIG 미설정이라 platform도 SKIP)
+        $d = New-Fixture @{}
+        $runner = Copy-Runner $d
+        $r = Invoke-RunnerWithInfra $runner (Join-Path $d 'infra/oci') (Join-Path $d 'nope/tofu.tests.ps1')
+        Assert 'K-1: infra/oci absent -> "SKIP infra tests -- infra/oci not present yet (T007+)", exit 0' (
+            $r.code -eq 0 -and (Test-HasLine ($r.out -split "`n") 'SKIP infra tests -- infra/oci not present yet (T007+)')
+        ) (Format-Result $r)
+
+        # K-2: infra/oci에 *.tf + 인프라 테스트 통과 → 실행됨(PASS infra tests), platform은 여전히 KUBECONFIG SKIP, exit 0
+        $d = New-Fixture @{}
+        $runner = Copy-Runner $d
+        $di = New-Fixture @{ 'oci/main.tf' = "# dummy`n"; 'tofu.tests.ps1' = $fakeInfraPass }
+        $r = Invoke-RunnerWithInfra $runner (Join-Path $di 'oci') (Join-Path $di 'tofu.tests.ps1')
+        $lines = $r.out -split "`n"
+        Assert 'K-2: infra config + passing infra tests -> executed, "PASS infra tests", platform still SKIPs on KUBECONFIG, exit 0' (
+            $r.code -eq 0 -and $r.out.IndexOf('INFRA-MARKER-ran', [StringComparison]::Ordinal) -ge 0 -and (Test-HasLine $lines 'PASS infra tests') -and (Test-HasLine $lines 'SKIP platform tests -- KUBECONFIG is not set')
+        ) (Format-Result $r)
+
+        # K-3: 인프라 테스트 실패 → 즉시 exit 1, FAIL 줄, KUBECONFIG 게이트(platform SKIP)에 도달하지 않음
+        $d = New-Fixture @{}
+        $runner = Copy-Runner $d
+        $di = New-Fixture @{ 'oci/main.tf' = "# dummy`n"; 'tofu.tests.ps1' = $fakeInfraFail }
+        $r = Invoke-RunnerWithInfra $runner (Join-Path $di 'oci') (Join-Path $di 'tofu.tests.ps1')
+        Assert 'K-3: failing infra tests -> exit 1, "FAIL infra tests (exit=1)", platform gate never reached' (
+            $r.code -eq 1 -and $r.out.IndexOf('INFRA-MARKER-ran', [StringComparison]::Ordinal) -ge 0 -and (Test-HasLine ($r.out -split "`n") 'FAIL infra tests (exit=1)') -and $r.out.IndexOf('SKIP platform tests', [StringComparison]::Ordinal) -lt 0
+        ) (Format-Result $r)
+
+        # K-4: 구성은 있는데 인프라 테스트 파일이 없음 → fail closed, exit 1
+        $d = New-Fixture @{}
+        $runner = Copy-Runner $d
+        $di = New-Fixture @{ 'oci/main.tf' = "# dummy`n" }
+        $r = Invoke-RunnerWithInfra $runner (Join-Path $di 'oci') (Join-Path $di 'tofu.tests.ps1')
+        Assert 'K-4: infra config exists but test file missing -> exit 1 (fail closed), FAIL names the missing file' (
+            $r.code -eq 1 -and $r.out -match 'FAIL infra tests' -and $r.out -match 'missing'
         ) (Format-Result $r)
     }
 } finally {
