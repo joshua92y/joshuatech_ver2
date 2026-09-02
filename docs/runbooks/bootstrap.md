@@ -18,6 +18,9 @@
 
 ### 완료 확인 체크리스트
 
+> **이름 예외(사용자 결정 2026-09-02)**: GitHub App은 `jt-ci`가 아니라 **`joshuatech-gitapp-1`**(App ID 4800793)이고, 변수·시크릿 이름은 **`JOSHUATECH_CI_APP_CLIENT_ID`**(repo 변수)·**`JOSHUATECH_CI_APP_PRIVATE_KEY`**(Environment `production` 시크릿)다. tasks.md·contracts의 `jt-ci`·`jt-ci[bot]`·`JT_CI_APP_*` 표기는 전부 이 실제 이름으로 읽는다 — 봇 로그인은 `joshuatech-gitapp-1[bot]`(T033 validate lint·T074 워크플로·T115 증거가 이 로그인을 사용). App 권한: Contents RW · Pull requests RW · Metadata R(확인 2026-09-02). Environment `production` 배포 브랜치 = `main`(확인).
+
+- [x] **GitHub App `joshuatech-gitapp-1`** — 생성·권한 3종·`JOSHUATECH_CI_APP_CLIENT_ID` repo 변수·`JOSHUATECH_CI_APP_PRIVATE_KEY` production 환경 시크릿 등록(2026-09-02). 모노레포 설치 및 platform-gitops 설치(T003 저장소 생성 후)는 별도 확인. **2026-09-01 발급 private key는 세션 노출 간주 — 새 키 재발급·재등록 후 구 키 삭제(진행 대기)**.
 - [x] **Cloudflare Zero Trust 온보딩** — 팀 이름 `joshua-tech`, 팀 도메인 `joshua-tech.cloudflareaccess.com`(이 도메인이 Access JWT의 `iss`이자 JWKS 원천이다), Free 플랜 — 결제수단 등록·청구 없음.
 - [x] **Grafana Cloud Free 스택(ap 리전)** — org `joshuatech`, 스택 `https://joshuatech.grafana.net/`.
 - [ ] **Grafana Cloud Alloy 전송용 Access policy 토큰** — Grafana Cloud 포털(grafana.com) → Security → Access Policies → Create access policy(realm: 스택 `joshuatech`, scopes: `metrics:write`·`logs:write`·`traces:write`) → Add token. 값은 비밀번호 관리자에만 기록(토큰 표 참고).
