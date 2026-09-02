@@ -325,7 +325,7 @@ description: "Task list for 003-platform-foundation (joshuatech override: tests 
 
 ### E2E for User Story 9 (MANDATORY — executed by the tester agent)
 
-- [ ] T113 [US9] E2E: US9 AC1–AC3 — `tests/run-all.ps1` ALL PASS(agent-layer·미러), `apps/web` 파일 편집 세션에서 `rules/web.md`만 로드됨을 훅 로그로 확인, `/approval-review` SKILL.md 경계 6 — evidence recorded in the tester report
+- [X] T113 [US9] E2E: US9 AC1–AC3 — `tests/run-all.ps1` ALL PASS(agent-layer·미러), `apps/web` 파일 편집 세션에서 `rules/web.md`만 로드됨을 훅 로그로 확인, `/approval-review` SKILL.md 경계 6 — evidence recorded in the tester report
 
 **Checkpoint**: SP-2 서브에이전트 작업 준비 완료
 
