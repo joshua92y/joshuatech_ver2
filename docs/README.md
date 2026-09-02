@@ -6,6 +6,7 @@
 | [AGENTS.md](../AGENTS.md) · [kr](kr/AGENTS_kr.md) | 도구 중립 프로젝트 브리프 |
 | [constitution](../.specify/memory/constitution.md) · [kr](kr/constitution_kr.md) | 개발 헌법 1.0.0(6원칙·게이트·거버넌스) |
 | [decisions/](decisions/) | ADR(MADR 4.0 minimal) |
+| [runbooks/bootstrap.md](runbooks/bootstrap.md) | 플랫폼 부트스트랩 런북 — §0 사용자 수동 준비·토큰 표(§1–§6은 후속 task가 작성) |
 | [runbooks/spec-kit-upgrade.md](runbooks/spec-kit-upgrade.md) | Spec Kit 커스터마이즈 레지스터·업그레이드 절차 |
 | [specs/README.md](../specs/README.md) | feature 인덱스(불변 이력) |
 | [content/study/](../content/study/) | 학습 노트(learning in public) |
