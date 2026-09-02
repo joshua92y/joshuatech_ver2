@@ -314,7 +314,7 @@ description: "Task list for 003-platform-foundation (joshuatech override: tests 
 
 ### Tests for User Story 9 (MANDATORY — write first, verify they FAIL) ⚠️
 
-- [ ] T108 [P] [US9] `tests/agents/agent-layer.tests.ps1`: `.claude/rules/{web,django-pod,fastapi-pod,infra,events}.md` frontmatter `paths:` 존재·경로 패턴 유효, `.claude/agents/{web,api,infra}-builder.md` frontmatter(name·description·tools·skills), `boundaries/k8s-security.md` 존재 + `approval-review/SKILL.md`가 6개 경계 나열, `docs/kr/` 미러 존재·헤더 — `run-all` 체크 `agent-layer` 연결, FAIL 확인
+- [X] T108 [P] [US9] `tests/agents/agent-layer.tests.ps1`: `.claude/rules/{web,django-pod,fastapi-pod,infra,events}.md` frontmatter `paths:` 존재·경로 패턴 유효, `.claude/agents/{web,api,infra}-builder.md` frontmatter(name·description·tools·skills), `boundaries/k8s-security.md` 존재 + `approval-review/SKILL.md`가 6개 경계 나열, `docs/kr/` 미러 존재·헤더 — `run-all` 체크 `agent-layer` 연결, FAIL 확인
 
 ### Implementation for User Story 9
 
