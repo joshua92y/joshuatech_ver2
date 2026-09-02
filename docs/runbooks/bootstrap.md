@@ -20,7 +20,7 @@
 
 > **이름 예외(사용자 결정 2026-09-02)**: GitHub App은 `jt-ci`가 아니라 **`joshuatech-gitapp-1`**(App ID 4800793)이고, 변수·시크릿 이름은 **`JOSHUATECH_CI_APP_CLIENT_ID`**(repo 변수)·**`JOSHUATECH_CI_APP_PRIVATE_KEY`**(Environment `production` 시크릿)다. tasks.md·contracts의 `jt-ci`·`jt-ci[bot]`·`JT_CI_APP_*` 표기는 전부 이 실제 이름으로 읽는다 — 봇 로그인은 `joshuatech-gitapp-1[bot]`(T033 validate lint·T074 워크플로·T115 증거가 이 로그인을 사용). App 권한: Contents RW · Pull requests RW · Metadata R(확인 2026-09-02). Environment `production` 배포 브랜치 = `main`(확인).
 
-- [x] **GitHub App `joshuatech-gitapp-1`** — 생성·권한 3종·`JOSHUATECH_CI_APP_CLIENT_ID` repo 변수·`JOSHUATECH_CI_APP_PRIVATE_KEY` production 환경 시크릿 등록(2026-09-02). 모노레포 설치 및 platform-gitops 설치(T003 저장소 생성 후)는 별도 확인. **2026-09-01 발급 private key는 세션 노출 간주 — 새 키 재발급·재등록 후 구 키 삭제(진행 대기)**.
+- [x] **GitHub App `joshuatech-gitapp-1`** — 생성·권한 3종·`JOSHUATECH_CI_APP_CLIENT_ID` repo 변수·`JOSHUATECH_CI_APP_PRIVATE_KEY` production 환경 시크릿 등록(2026-09-02). 모노레포·platform-gitops **두 저장소 설치 완료**(사용자 확인 2026-09-02). 2026-09-01 노출 키는 **재발급·재등록 완료**(2026-09-02) — App 설정에서 **구 키 삭제** + 워크스테이션(바탕화면)의 구 `.pem` 파일 삭제 여부는 운영자 최종 확인.
 - [x] **Cloudflare Zero Trust 온보딩** — 팀 이름 `joshua-tech`, 팀 도메인 `joshua-tech.cloudflareaccess.com`(이 도메인이 Access JWT의 `iss`이자 JWKS 원천이다), Free 플랜 — 결제수단 등록·청구 없음.
 - [x] **Grafana Cloud Free 스택(ap 리전)** — org `joshuatech`, 스택 `https://joshuatech.grafana.net/`.
 - [ ] **Grafana Cloud Alloy 전송용 Access policy 토큰** — Grafana Cloud 포털(grafana.com) → Security → Access Policies → Create access policy(realm: 스택 `joshuatech`, scopes: `metrics:write`·`logs:write`·`traces:write`) → Add token. 값은 비밀번호 관리자에만 기록(토큰 표 참고).
@@ -30,7 +30,7 @@
 - [ ] **OCI 읽기 사용자 `svc-verify` 생성 + 그룹 `jt-verify` 가입** — 위 서비스 사용자 항목과 같은 콘솔(Identity & Security → Domains → (기본 도메인) → Users)에서 사용자 생성, Groups에서 `jt-verify` 생성 후 가입. 그룹에 붙는 정책 선언은 T010 OpenTofu 몫(스코프는 표 ③).
 - [ ] **운영자 `age` 키쌍** — §0에서는 키쌍 생성만: `age-keygen -o <오프라인 보관 파일>`. 공개키의 노드 배치는 T036 시점에 한다(노드 A는 T014 재이미지로 초기화되므로 §0에서 미리 두지 않는다). 개인키는 Vault recovery key와 같은 오프라인 보관 — 노드·저장소·클라우드에 두지 않는다.
 - [ ] **SSH 키 `jt-ops`** — FIDO2 `ssh-keygen -t ed25519-sk -f ~/.ssh/jt-ops` 또는 passphrase 키 + `ssh-add -c`(사용마다 확인). T014에서 두 노드 `~ubuntu/.ssh/authorized_keys`를 이 키로 교체한다(구 v1 키 제거 — 개인키 파기 순서는 토큰 표 ⑦).
-- [ ] **GitHub secret scanning + push protection 활성** — `joshua92y/joshuatech_ver2`(모노레포)와 `joshua92y/platform-gitops`(T003 생성 후) 각각 Settings → Code security and analysis → Secret scanning **Enable** + Push protection **Enable**(T116이 재확인).
+- [ ] **GitHub secret scanning + push protection 활성** — `joshua92y/joshuatech_ver2`(모노레포)와 `joshua92y/platform-gitops` 각각 Settings → Code security and analysis → Secret scanning **Enable** + Push protection **Enable**(T116이 재확인). 현황(API 확인 2026-09-02): platform-gitops **둘 다 enabled** ✅ / 모노레포는 public 전환 완료(2026-09-02)됐으나 **둘 다 disabled — 활성 필요**.
 - [ ] **토큰 ① Cloudflare 배포 토큰(OpenTofu용) 발급** — Cloudflare 대시보드 → My Profile → API Tokens → Create Token(스코프는 표 ① 그대로).
 - [ ] **토큰 ② Cloudflare `Account Analytics:Read` 발급** — 같은 경로(My Profile → API Tokens → Create Token, 스코프는 표 ②).
 - [ ] **③ `svc-verify` 세션 인증 확인** — 상주 토큰 없음: `oci session authenticate --profile-name svc-verify`(1 h) 동작 확인(사용자·그룹 생성은 위 항목, 스코프는 표 ③).
