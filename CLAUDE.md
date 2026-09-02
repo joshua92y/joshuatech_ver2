@@ -61,11 +61,13 @@ Agent files (this file, `AGENTS.md`, the constitution, rules, agents, project sk
 - OpenTofu (oci, cloudflare, vault, grafana) · K3s v1.36.4 + Argo CD 3.5.2 GitOps (platform-gitops repo)
 
 ## Project Structure
-Layout table: `AGENTS.md` (imported above). Added since: `scripts/` (`update-specs-index.ps1`), `tests/scripts/` (its tests and fixtures), `specs/002-smoke/`.
+Layout table: `AGENTS.md` (imported above). Added since: `scripts/` (`update-specs-index.ps1`), `tests/scripts/` (its tests and fixtures), `specs/002-smoke/`; SP-1 (003): `apps/ packages/ templates/ infra/ e2e/` (see the AGENTS.md Layout rows), path-scoped rules `.claude/rules/{web,django-pod,fastapi-pod,infra,events}.md`, builder agents `.claude/agents/{web,api,infra}-builder.md`.
 
 ## Commands
 Commands table: `AGENTS.md`. Archive a merged feature: `/speckit-archive-run specs/<NNN-slug>`.
 Regenerate the specs index: `pwsh -NoProfile -File scripts/update-specs-index.ps1` (fail-closed, idempotent; `tests/run-all.ps1` check `specs-index-fresh` runs it for real, so a stale `specs/README.md` FAILs and is regenerated as a side effect — commit the result).
+Platform tests (agent-view gated; SKIP summary without `KUBECONFIG`): `pwsh -NoProfile -File tests/platform/run-platform-tests.ps1`.
+SP-1 toolchain entry points: pnpm (`pnpm install`, `pnpm -r test`), uv (`uv sync`), OpenTofu (`tofu -chdir=infra/<stack> plan`); `AGENTS.md` remains the canonical command table.
 
 ## Recent Changes
 - specs/002-smoke: specs index regeneration script (`scripts/update-specs-index.ps1`, fail-closed, atomic, idempotent) + 40-assertion harness + run-all checks `scripts`/`specs-index-fresh`; first full lifecycle run (approval-review → SDD → converge → tester → finish)

@@ -22,6 +22,11 @@ Spec Kit 통합 대상은 `claude`뿐이다(`.claude/skills/speckit-*` 아래의
 ```
 .specify/        Spec Kit 런타임: memory/constitution.md, templates/ (+overrides/), scripts/powershell/, extensions/, feature.json (로컬 전용)
 .claude/         Claude 레이어: settings.json, skills/, agents/tester.md, rules/, hooks/
+apps/            애플리케이션 코드: web(Next.js) + Django pod별 디렉터리 하나씩
+packages/        공유 JS/Py 패키지: events(스키마), django-common, content
+templates/       copier pod 템플릿(django-pod)
+infra/           OpenTofu 모듈(oci·cloudflare·vault·grafana) + 부트스트랩 스크립트
+e2e/             앱 경계를 가로지르는 엔드투엔드 테스트
 specs/           기능(NNN-slug)마다 하나씩 존재하는 불변 디렉터리 + README.md 색인
 docs/            README.md 색인, decisions/ (MADR), runbooks/, kr/ (한국어 미러)
 content/study/   사이트가 사용하는 학습 노트(.mdx)

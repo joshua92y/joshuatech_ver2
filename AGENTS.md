@@ -22,6 +22,11 @@ Spec Kit integration: `claude` only (skills under `.claude/skills/speckit-*`). O
 ```
 .specify/        Spec Kit runtime: memory/constitution.md, templates/ (+overrides/), scripts/powershell/, extensions/, feature.json (local only)
 .claude/         Claude layer: settings.json, skills/, agents/tester.md, rules/, hooks/
+apps/            application code: web (Next.js) + one directory per Django pod
+packages/        shared JS/Py packages: events (schemas), django-common, content
+templates/       copier pod templates (django-pod)
+infra/           OpenTofu modules (oci, cloudflare, vault, grafana) + bootstrap scripts
+e2e/             cross-app end-to-end tests
 specs/           one immutable directory per feature (NNN-slug) + README.md index
 docs/            README.md index, decisions/ (MADR), runbooks/, kr/ (Korean mirrors)
 content/study/   learning notes (.mdx) consumed by the site

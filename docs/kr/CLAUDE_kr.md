@@ -61,11 +61,13 @@
 - OpenTofu(oci·cloudflare·vault·grafana) · K3s v1.36.4 + Argo CD 3.5.2 GitOps(platform-gitops 저장소)
 
 ## Project Structure
-레이아웃 표는 `AGENTS.md`(위에서 import). 그 이후 추가된 것: `scripts/`(`update-specs-index.ps1`), `tests/scripts/`(그 테스트와 픽스처), `specs/002-smoke/`.
+레이아웃 표는 `AGENTS.md`(위에서 import). 그 이후 추가된 것: `scripts/`(`update-specs-index.ps1`), `tests/scripts/`(그 테스트와 픽스처), `specs/002-smoke/`; SP-1(003): `apps/ packages/ templates/ infra/ e2e/`(AGENTS.md Layout 행 참고), 경로 기반 규칙 `.claude/rules/{web,django-pod,fastapi-pod,infra,events}.md`, 빌더 에이전트 `.claude/agents/{web,api,infra}-builder.md`.
 
 ## Commands
 명령 표는 `AGENTS.md`. 머지된 feature 아카이브: `/speckit-archive-run specs/<NNN-slug>`.
 specs 인덱스 재생성: `pwsh -NoProfile -File scripts/update-specs-index.ps1`(fail-closed, 멱등; `tests/run-all.ps1`의 `specs-index-fresh` 검사가 실제로 실행하므로 낡은 `specs/README.md`는 FAIL이 나면서 부작용으로 재생성된다 — 결과를 커밋한다).
+플랫폼 테스트(agent-view 게이트; `KUBECONFIG` 없으면 SKIP 요약): `pwsh -NoProfile -File tests/platform/run-platform-tests.ps1`.
+SP-1 툴체인 진입점: pnpm(`pnpm install`, `pnpm -r test`), uv(`uv sync`), OpenTofu(`tofu -chdir=infra/<stack> plan`); 정본 명령 표는 `AGENTS.md`다.
 
 ## Recent Changes
 - specs/002-smoke: specs 인덱스 재생성 스크립트(`scripts/update-specs-index.ps1`, fail-closed·원자적·멱등) + 40 단언 하네스 + run-all 검사 `scripts`/`specs-index-fresh`; 첫 전체 lifecycle 실주행(approval-review → SDD → converge → tester → finish)

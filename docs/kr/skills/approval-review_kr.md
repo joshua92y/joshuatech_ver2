@@ -34,7 +34,7 @@ Inputs (excerpts only, pasted below):
 
 Return ONLY the output format defined in the boundary file.
 ```
-`trends` 리뷰어는 WebSearch를 사용할 수 있고 반드시 URL을 인용해야 한다; 나머지 네 명은 아무것도 가져오면(fetch) 안 된다.
+`trends` 리뷰어는 WebSearch를 사용할 수 있고 반드시 URL을 인용해야 한다; 나머지 다섯 명은 아무것도 가져오면(fetch) 안 된다.
 
 ## 4. Write the review file
 `specs/<feature>/reviews/YYYY-MM-DD-approval.md`:
@@ -58,6 +58,9 @@ Inputs: spec.md (Status: Draft), plan.md, tasks.md, checklists: <n> unchecked, /
 ### Findings
 
 ## Spec consistency
+…
+
+## K8s security
 …
 
 ## 종합 의견
@@ -124,3 +127,10 @@ Inputs: spec.md (Status: Draft), plan.md, tasks.md, checklists: <n> unchecked, /
 - 모든 user story phase에 먼저 작성되는 테스트 태스크와 tester를 위한 E2E 태스크 하나가 있다(헌법 II).
 - `/speckit-analyze` 결과가 분류(triage)된다: CRITICAL은 승인 전 반드시 수정하고, HIGH는 목록화한다.
 - 미체크 체크리스트 항목 수를 세고 차단(blocking) 여부인지 판단한다.
+
+### K8s security — K8s 보안
+목적: 무엇이든 적용(apply)되기 전에 Kubernetes/GitOps 설계의 클러스터·플랫폼 수준 보안 공백 — 범용 security 경계가 다루지 않는 부분 — 을 찾는다. Kubernetes/GitOps/인프라 리소스를 선언하는 feature에만 적용하고, 그 외에는 건너뛴다.
+- 네트워크 경계(Cloudflare 프록시 443만, 공개 SSH/API 포트 없음)와 admin 표면의 Access 정책(애플리케이션별 AUD).
+- 네임스페이스 정책: PSA 라벨, default-deny NetworkPolicy, ResourceQuota/LimitRange; 정책 매니페스트 ↔ 문서화된 트래픽 매트릭스의 정확한 일치; IMDS 차단(`vault` 예외).
+- 시크릿 흐름(ExternalSecret 경로 규약·선언된 store 5개)과 Vault 최소 권한 정책·auth role(TTL·aud·네임스페이스 바인딩).
+- GitOps 폭발 반경(AppProject 제한, Prune/Delete=confirm), digest 이미지 참조, 워크로드 하드닝, 에이전트 자격 증명 범위(`agent-view`·`svc-verify`), 클러스터 내부 공개 호스트명 금지, 데이터 평면(BYPASSRLS 없는 앱 역할)과 공급망 핀.
