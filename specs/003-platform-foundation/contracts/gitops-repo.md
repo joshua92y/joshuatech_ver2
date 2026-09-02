@@ -12,7 +12,7 @@ platform-gitops/
 ├── clusters/oci-k3s/
 │   ├── projects/{platform,dev,prod,tests}.yaml   # AppProject
 │   └── apps/                       # Application 1개/컴포넌트 (app-of-apps)
-├── platform/<component>/           # 18개: argocd policies cert-manager cert-manager-issuers traefik vault external-secrets
+├── platform/<component>/           # 19개: argocd policies cert-manager cert-manager-issuers traefik vault external-secrets
 │   │                               #        cnpg cnpg-cluster cnpg-databases kafka kafka-topics dragonfly
 │   │                               #        authentik openfga monitoring cloudflared reloader system-upgrade
 │   ├── kustomization.yaml          # helmCharts(values 인라인) 또는 순수 매니페스트
