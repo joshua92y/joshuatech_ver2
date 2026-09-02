@@ -8,7 +8,7 @@ paths:
 
 # Rules for FastAPI pods (`templates/fastapi-pod/`, `packages/fastapi-common/`)
 
-SP-3 대비: 이 경로들은 아직 존재하지 않는다. 위 glob은 미래의 FastAPI pod 템플릿과 그 공유 패키지(Django 배치 `templates/django-pod/` + `packages/django-common/`를 미러링)를 위해 예약된 것이다. 첫 FastAPI pod가 `apps/<pod>` 아래에 스캐폴딩되면 그 경로를 여기에 추가하고 `django-pod.md`에 예외(carve-out)를 기록한다 — 그때까지는 `django-pod.md`가 모든 `apps/<pod>`를 관장한다.
+SP-3 대비: 이 경로들은 아직 존재하지 않는다. 위 glob은 미래의 FastAPI pod 템플릿과 그 공유 패키지(Django 배치 `templates/django-pod/` + `packages/django-common/`를 미러링)를 위해 예약된 것이다. 첫 FastAPI pod가 `apps/<pod>` 아래에 스캐폴딩되면 그 pod의 py 형상 glob(예: `apps/<pod>/**/*.py`, `apps/<pod>/pyproject.toml`)을 여기에 추가한다 — 그때까지는 `django-pod.md`가 모든 `apps/*` 아래의 Django 파일 형상(`*.py`, `pyproject.toml`, `Dockerfile`)을 관장하며, glob을 pod별로 좁히기 전까지 그 형상들은 두 규칙 모두에 매치된다.
 
 ## Same contracts as Django pods
 

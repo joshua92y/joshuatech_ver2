@@ -2,14 +2,17 @@
 
 ```yaml
 paths:
-  - "apps/*/**"
+  - "apps/*/pyproject.toml"
+  - "apps/*/*.py"
+  - "apps/*/**/*.py"
+  - "apps/*/Dockerfile"
   - "packages/django-common/**"
   - "templates/django-pod/**"
 ```
 
 # Rules for Django pods (`apps/<pod>/`, `packages/django-common/`, `templates/django-pod/`)
 
-범위: `apps/web`을 제외한(그쪽은 `web.md`가 관장) 모든 `apps/<pod>` 디렉터리. 기록 계약: `specs/003-platform-foundation/contracts/pod-template.md`(+ outbox는 `contracts/events.md`). 충돌 시 계약이 우선한다; 계약을 먼저 개정한다.
+범위: `apps/*` 아래의 Django pod 파일 형상(`*.py`, `pyproject.toml`, `Dockerfile`)과 `packages/django-common/`, `templates/django-pod/`. `apps/web`은 JS 트리라 이 glob들 중 어느 것에도 매치되지 않으므로 이 규칙은 그곳에서 절대 로드되지 않는다(`web.md`가 관장). 기록 계약: `specs/003-platform-foundation/contracts/pod-template.md`(+ outbox는 `contracts/events.md`). 충돌 시 계약이 우선한다; 계약을 먼저 개정한다.
 
 ## Template and structure
 

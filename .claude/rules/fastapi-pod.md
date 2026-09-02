@@ -7,7 +7,7 @@ paths:
 
 # Rules for FastAPI pods (`templates/fastapi-pod/`, `packages/fastapi-common/`)
 
-SP-3 preparation: these paths do not exist yet. The globs above are reserved for the future FastAPI pod template and its shared package (mirroring the Django layout `templates/django-pod/` + `packages/django-common/`). When the first FastAPI pod is scaffolded under `apps/<pod>`, add its path here and note the carve-out in `django-pod.md` — until then, `django-pod.md` governs every `apps/<pod>`.
+SP-3 preparation: these paths do not exist yet. The globs above are reserved for the future FastAPI pod template and its shared package (mirroring the Django layout `templates/django-pod/` + `packages/django-common/`). When the first FastAPI pod is scaffolded under `apps/<pod>`, add its py-shaped globs here (e.g. `apps/<pod>/**/*.py`, `apps/<pod>/pyproject.toml`) — until then, `django-pod.md` governs the Django file shapes (`*.py`, `pyproject.toml`, `Dockerfile`) under every `apps/*`, and those shapes will match both rules until its globs are narrowed per pod.
 
 ## Same contracts as Django pods
 

@@ -1,6 +1,9 @@
 ---
 paths:
-  - "apps/*/**"
+  - "apps/*/pyproject.toml"
+  - "apps/*/*.py"
+  - "apps/*/**/*.py"
+  - "apps/*/Dockerfile"
   - "packages/django-common/**"
   - "templates/django-pod/**"
 ---
@@ -8,7 +11,7 @@ paths:
 
 # Rules for Django pods (`apps/<pod>/`, `packages/django-common/`, `templates/django-pod/`)
 
-Scope: every `apps/<pod>` directory EXCEPT `apps/web` (governed by `web.md`). Contract of record: `specs/003-platform-foundation/contracts/pod-template.md` (+ `contracts/events.md` for outbox). On conflict, the contracts prevail; amend them first.
+Scope: Django pod file shapes (`*.py`, `pyproject.toml`, `Dockerfile`) under `apps/*`, plus `packages/django-common/` and `templates/django-pod/`. `apps/web` is a JS tree and matches none of these globs, so this rule never loads there (`web.md` governs it). Contract of record: `specs/003-platform-foundation/contracts/pod-template.md` (+ `contracts/events.md` for outbox). On conflict, the contracts prevail; amend them first.
 
 ## Template and structure
 
