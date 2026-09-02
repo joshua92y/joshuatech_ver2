@@ -31,7 +31,7 @@ Inputs (excerpts only, pasted below):
 
 Return ONLY the output format defined in the boundary file.
 ```
-The `trends` reviewer may use WebSearch and must cite URLs; the other four must not fetch anything.
+The `trends` reviewer may use WebSearch and must cite URLs; the other five must not fetch anything.
 
 ## 4. Write the review file
 `specs/<feature>/reviews/YYYY-MM-DD-approval.md`:
