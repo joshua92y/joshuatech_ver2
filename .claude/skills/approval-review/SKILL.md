@@ -57,6 +57,9 @@ Inputs: spec.md (Status: Draft), plan.md, tasks.md, checklists: <n> unchecked, /
 ## Spec consistency
 …
 
+## K8s security
+…
+
 ## 종합 의견
 **판정**: 승인 권고 | 수정 후 승인 권고 | 재설계 권고
 - 근거 (1–3 lines)
