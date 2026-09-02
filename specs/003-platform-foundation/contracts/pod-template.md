@@ -76,7 +76,7 @@ apps/<pod>/
 | 설정 | 12-factor, `ENV` ∈ dev·prod·test. 비밀은 env(ESO `<pod>-env`)에서만, 비밀 아닌 값(`ACCESS_AUD_*`·`ACCESS_EXPECTED_CN`·`AUTH_ACTOR_SUB`·`ADMIN_HOST`·`ALLOWED_HOSTS`·`IDENTITY_M2M_URL`)은 ConfigMap. `ALLOWED_HOSTS` = svc DNS(`<pod>.<ns>.svc`)·m2m 호스트·(prod만) admin 호스트. `AUTH_ACTOR_SUB`와 dev의 `ADMIN_HOST`는 **빈 값이 유효한 값**이다(각각 검사 생략·admin 비활성) — 필수값 검사에서 "존재"만 보고 "비어 있지 않음"을 요구하지 않는다 |
 | 이미지 | `ghcr.io/joshua92y/<pod>@sha256:…`, 라벨 `org.opencontainers.image.revision` = git sha |
 | 마이그레이션 | Argo PreSync hook Job(owner role, `<pod>-migrate`만 참조). 앱은 마이그레이션을 실행하지 않는다. **Job의 첫 단계는 CONNECT 경계 SQL**(멱등, `manage.py migrate` 앞): `REVOKE CONNECT ON DATABASE <db> FROM PUBLIC; GRANT CONNECT ON DATABASE <db> TO <db>_app, <db>_owner;` — CNPG `Database` CRD로는 표현할 수 없어 실행 주체를 여기로 고정한다(role은 클러스터 전역이므로 이 SQL이 없으면 어떤 role이든 붙을 수 있다). 그다음 `manage.py migrate`. 2단계 규칙(`rules/django-pod.md`): 컬럼 삭제·NOT NULL 추가·타입 변경은 expand → contract 두 릴리스로 나눈다. CI: `makemigrations --check` + `django-migration-linter` |
-| Celery(`has_celery`) | 워커·beat Deployment(requests 192Mi), 브로커 = 위 Dragonfly 사용자. pod 고유 beat 작업(identity-admin: 30 s 거부 목록 대조·`reconcile_authentik_sessions`·purge)은 해당 pod 계약에 적는다 |
+| Celery(`has_celery`) | 워커·beat Deployment(requests 192Mi), 브로커 = 위 Dragonfly 사용자. **템플릿 기본 beat 작업은 outbox dead purge 하나뿐**(일 1회, `dead_at + 30 d < now()` 행 삭제 — contracts/events.md; `session_revocation_log` purge는 identity-admin 소유 테이블이라 템플릿에 두지 않는다). pod 고유 beat 작업(identity-admin: 30 s 거부 목록 무조건 재적용·`reconcile_authentik_sessions`·`session_revocation_log` purge)은 해당 pod 계약에 적는다(T073) |
 
 ## 타임아웃 · 재시도
 

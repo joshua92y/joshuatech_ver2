@@ -29,7 +29,7 @@ pod DB 테이블은 두 등급이다(contracts/pod-template.md §테이블 등�
 | `id` | UUID v7 | PK |
 | `tenant_id` | UUID | NOT NULL, `Tenant.id` 값 참조 |
 | `sub` | text | Authentik `sub`(불변 식별자, 참조만). **`(sub, tenant_id)` unique** |
-| `role` | enum `owner` · `admin` · `member` | **SP-1은 2건**: `owner`(운영자 계정) + `member`(E2E 로컬 사용자 `e2e@joshuatech.dev`). E2E 사용자에게 멤버십이 없으면 `/tenants/me`가 404가 되어 T085가 성립하지 않는다 |
+| `role` | enum `owner` · `member`(`admin` 값은 **SP-2 예약** — SP-1 enum에 넣지 않는다) | **SP-1은 2건**: `owner`(운영자 계정) + `member`(E2E 로컬 사용자 `e2e@joshuatech.dev`). E2E 사용자에게 멤버십이 없으면 `/tenants/me`가 404가 되어 T085가 성립하지 않는다 |
 | `created_at` | timestamptz | |
 
 - 이 테이블이 **정본**이다. Authentik 그룹 `tenant:<uuid>`·`user.attributes.tenant_id`(ScopeMapping `tenant_id`의 원천)·OpenFGA 튜플 `user:<sub> member tenant:<uuid>`는 identity-admin이 이 테이블을 기준으로 갱신하는 파생(요청 안에서 DB와 외부 시스템을 동시에 쓰지 않는다 — SP-1 `seed_tenant`, SP-2 outbox 소비자).
@@ -72,7 +72,7 @@ Dragonfly 키(파생 캐시, contracts/denylist.md가 정본):
 |---|---|---|
 | `id` | ULID(text 26) | PK = CloudEvents `id` |
 | `topic` | text | `<pod>.<entity>.<event>` (env 접두는 릴레이가 붙임) |
-| `partition_key` | text | = `tenant_id`(UUID) |
+| `partition_key` | text | = 봉투 `tenantid` 값(테넌트 UUID) |
 | `payload` | jsonb | CloudEvents 1.0 envelope 전체 |
 | `created_at` | timestamptz | |
 | `attempts` | int | 기본 0 |
@@ -96,7 +96,7 @@ Dragonfly 키(파생 캐시, contracts/denylist.md가 정본):
 | 항목 | 규칙 |
 |---|---|
 | 토픽 이름 | prod `<pod>.<entity>.<event>`, dev `dev.<pod>.<entity>.<event>`, DLQ `<pod>.dlq` / `dev.<pod>.dlq` |
-| 파티션 | 3 (파티션 키 `tenant_id`) |
+| 파티션 | 3 (파티션 키 = 봉투 `tenantid`, DB 필드 `partition_key`) |
 | 보존 | `retention.ms` 7일, `cleanup.policy` delete |
 | 복제 | 1 (단일 노드), `min.insync.replicas` 1 |
 | 사용자 | `<pod>`(prod) · `dev-<pod>`(dev), SCRAM-SHA-512. 비밀번호 원천은 Vault `kv/{env}/kafka/<pod>` → ESO → `KafkaUser.spec.authentication.password.valueFrom.secretKeyRef`(kafka ns) + 앱 ns에도 같은 경로의 ExternalSecret; 클러스터 CA(`jt-kafka-cluster-ca-cert`)는 ESO kubernetes provider로 앱 ns에 미러 |
@@ -151,12 +151,13 @@ CREATE POLICY tenant_isolation ON <t>
 | `kv/{env}/db/<role 접두>/app` | `username`, `password`, `url`(`sslmode=verify-full&sslrootcert=/etc/pg/ca.crt` 포함) | `vault-data` · `vault-{env}`(**`<pod>-env`**) | 같음 |
 | `kv/{env}/kafka/<pod>` | `password` | `vault-data`(KafkaUser, `data` ns) · `vault-{env}`(`<pod>-env`) | |
 | `kv/{env}/authentik/<pod>` | `client_id`, `client_secret`, `jwks_url`(**svc DNS**), `issuer`(공개 URL) | `vault-{env}` | `<pod>-env` |
-| `kv/{env}/authentik/identity-admin` | 위 4개 + `api_token`(Authentik 서비스 계정 `identity-admin`: 사용자 read · `authentik_core.delete_authenticatedsession` · 토큰 revoke) | `vault-{env}` | identity-admin `-env`. **`webhook_secret`은 여기 두지 않는다**(아래 행) |
+| `kv/{env}/authentik/identity-admin` | 위 4개 + `api_token`(주체: prod = 서비스 계정 `identity-admin`(사용자 read · `authentik_core.delete_authenticatedsession` · 토큰 revoke), **dev = `identity-admin-ro`(사용자 read만)** — §9) | `vault-{env}` | identity-admin `-env`. **`webhook_secret`은 여기 두지 않는다**(아래 행) |
 | `kv/{env}/authentik/webhooks/<pod>` | `secret`(HMAC 공유 비밀) | `vault-data`(Authentik NotificationTransport) · `vault-{env}`(`<pod>-env`) | pod·env마다 분리해 하나가 새도 나머지가 안전하다 |
 | `kv/{env}/authentik/web-bff` | `client_id`, `client_secret`(prod = `web-bff`, dev = `web-bff-dev` provider) | ESO 밖 | BFF — Workers Secrets에만(`wrangler secret put`) |
 | `kv/{env}/access/web-bff` | `client_id`, `client_secret`(Access 서비스 토큰 `web-bff-<env>`) | ESO 밖 | BFF — **Workers Secrets에만**. pod에는 배포하지 않는다. `kv/{env}/access/<pod>` 경로는 없다 — pod가 필요한 값은 ConfigMap `ACCESS_AUD_M2M`·`ACCESS_AUD_ADMIN`·`ACCESS_EXPECTED_CN`(비밀 아님) |
+| `kv/platform/access/tester-m2m` · `kv/platform/access/tester-k8s` | `client_id`, `client_secret`(tester Access 서비스 토큰 — dev·prod m2m 앱 / `k8s` 앱 include) | ESO 밖 | tester — 실행 시 env로만 받고 파일에 저장하지 않는다(회전 매트릭스 T084, contracts/hostnames-and-access.md §에이전트 자격) |
 | `kv/{env}/dragonfly/acl` | `users.acl`(파일 전문) | `vault-data` | Dragonfly Deployment(`data` ns, `--aclfile /etc/dragonfly/users.acl`) |
-| `kv/{env}/dragonfly/<user>` — `admin` · `identity-admin` · `<pod>` | `password`, `url` | `vault-data`(`admin`) · `vault-{env}`(`<pod>-env`) | `DRAGONFLY_URL`; `admin`은 운영자 런북 전용 |
+| `kv/{env}/dragonfly/<user>` — `admin` · `identity-admin` · `<pod>` | `password`, `url` | `admin` = **—(운영자 직접, ESO 소비자 없음)** · `vault-{env}`(`<pod>-env`) | `DRAGONFLY_URL`; `admin`은 운영자 런북 전용 |
 | `kv/{env}/sentry/<pod>` | `dsn` | `vault-{env}` | `<pod>-env` |
 | `kv/{env}/web/session` | `encryption_key` | ESO 밖 | BFF `SESSION_ENCRYPTION_KEY`(Worker마다 별도: prod Worker = prod, preview Worker = dev) |
 | `kv/{env}/openfga/store_id` · `kv/{env}/openfga/preshared` | `store_id` / `key` | `vault-{env}` | identity-admin `-env`. `preshared` 값은 `kv/platform/openfga/preshared`와 **같아야 하며** 회전 시 둘을 함께 바꾼다 |
@@ -172,7 +173,7 @@ CREATE POLICY tenant_isolation ON <t>
 | Source | `github`, `google` | OAuth 소셜 로그인(비밀은 `kv/platform/authentik/sources/<name>`). 이메일/비밀번호는 내장 |
 | Stage/Flow | authentication(identification → password → MFA validation), recovery. **enrollment 흐름 없음(SP-2)** | MFA: TOTP·WebAuthn(passkey). identification `show_matched_user false`, password `failed_attempts_before_cancel 5`, Reputation 정책(-5) |
 | Group | `tenant:<uuid>`(SP-1: 고정 테넌트 UUID), `platform-admin`(WebAuthn 필수) | 정책 바인딩·RBAC 매핑. 그룹 이름에 slug를 쓰지 않는다. **blueprint는 그룹 껍데기만 만들고**, 사용자 소속과 `user.attributes.tenant_id`는 `seed_tenant`만 쓴다(§1) |
-| User | `e2e@joshuatech.dev`(로컬 사용자, TOTP; 비밀은 **`kv/platform/authentik/e2e`**), 서비스 계정 `identity-admin`(권한: 사용자 read · `authentik_core.delete_authenticatedsession` · 토큰 revoke; 토큰 → `kv/{env}/authentik/identity-admin.api_token`). **dev용 서비스 계정 토큰은 읽기 전용**(dev에서 prod 세션을 건드릴 수 없게) | 운영자 개인 계정은 blueprint에 없다 |
+| User | `e2e@joshuatech.dev`(로컬 사용자, TOTP; 비밀은 **`kv/platform/authentik/e2e`**), 서비스 계정 `identity-admin`(prod; 권한: 사용자 read · `authentik_core.delete_authenticatedsession` · 토큰 revoke) + **dev 전용 서비스 계정 `identity-admin-ro`**(사용자 **read만** — Authentik API 토큰은 계정 권한을 그대로 가지므로 토큰 단위 축소가 아니라 별도 계정으로 분리한다). 토큰 → `kv/{env}/authentik/identity-admin.api_token`(prod 주체 = `identity-admin`, **dev 주체 = `identity-admin-ro`**). dev의 Authentik revoke·reconcile **쓰기 호출은 설정 플래그로 비활성**(시도하지 않고 로그만 — contracts/identity-admin-api.md §주기 작업) | 운영자 개인 계정은 blueprint에 없다 |
 | Application + Provider(OAuth2) | `web-bff`(confidential, PKCE, **token exchange grant — SP-1은 impersonation**, redirect **`https://joshuatech.dev/api/auth/callback`만**, access 300 s, refresh 30 d 회전), `web-bff-dev`(같은 설정, redirect `http://localhost:3000/api/auth/callback` · `https://preview.joshuatech.dev/api/auth/callback`), `identity-admin`(자기 signing key·JWKS, Federated Providers = [`web-bff`, `web-bff-dev`]; **`act` 클레임은 VD-1이 옵션 A로 확정될 때만** 발급된다 — OSS에는 `Actor` 생성 경로가 없어 기본은 impersonation), `argocd`·`vault`(OIDC, 그룹 클레임). `grafana` provider는 SP-2 | 각 provider의 `issuer` = `https://auth.joshuatech.dev/application/o/<slug>/`(공개 호스트). **JWKS는 pod가 svc DNS로 읽는다**(`http://authentik-server.identity.svc:9000/application/o/<slug>/jwks/`); FR-046 예외 2(공개 호스트 사용)는 Argo CD·Vault OIDC discovery로 한정 |
 | ScopeMapping | `tenant_id`(UUID) — **원천은 `user.attributes.tenant_id`**(identity-admin이 갱신하는 파생). 그룹 `tenant:<uuid>`는 RBAC·정책 바인딩 용도이고 클레임 원천이 아니다 | 모든 access/ID 토큰에 포함 |
 | NotificationTransport + Rule | webhook(generic) **2개**: prod → `http://identity-admin.jt-prod.svc/webhooks/authentik`, dev → `http://identity-admin.jt-dev.svc/webhooks/authentik`(둘 다 svc DNS, 공개 호스트 금지). 이벤트 `logout`·`login`·`model_deleted(session)`; 매핑 본문에 `pk`·`created` 포함 | 공유 비밀 헤더 `X-Authentik-Signature`, 값은 **`kv/{env}/authentik/webhooks/identity-admin`**. NetworkPolicy에 `identity → jt-dev:8000` 행이 있어야 dev 웹훅이 도달한다 |
@@ -191,11 +192,11 @@ type user
 type tenant
   relations
     define owner: [user]
-    define admin: [user] or owner
-    define member: [user] or admin
+    define member: [user] or owner
 ```
 
-- 관계는 **포함 관계**다: `owner ⊂ admin ⊂ member` — `owner`인 사용자는 `member` check도 true다. `/tenants/me`·FGA `check`가 이 정의에 기댄다.
+- **정본은 spec FR-025의 2관계**(`owner`·`member`)다. `admin` 관계는 **SP-2 예약** — SP-1의 `model.fga`에 넣지 않는다(도입 시 `define admin: [user] or owner` / `define member: [user] or admin`으로 확장).
+- 관계는 **포함 관계**다: `owner ⊂ member` — `owner`인 사용자는 `member` check도 true다. `/tenants/me`·FGA `check`가 이 정의에 기댄다.
 - store `jt-dev`, `jt-prod`(ID는 Vault `kv/{env}/openfga/store_id`, 서버 인증은 `kv/{env}/openfga/preshared`; 둘 다 identity-admin `<pod>-env`). object id는 `tenant:<uuid>`. 튜플 `user:<sub> member tenant:<uuid>`는 §2 `TenantMembership`의 파생이며 identity-admin만 쓴다(SP-1 `seed_tenant`). SP-2 이후 `room#member`·`media#viewer` 같은 교차 관계가 추가되면 모델 파일 PR + CODEOWNERS.
 - 검증: **T078**(`tests/platform/identity.tests.ps1`) — 다른 테넌트 object에 대한 `check` → false. 자격이 필요한 `fga` 호출은 `platform/policies/tests/`의 Job `authz-assert`가 실행하고 tester는 로그만 읽는다(contracts/hostnames-and-access.md).
 

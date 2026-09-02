@@ -10,7 +10,7 @@ platform-gitops/
 │   ├── argocd/                     # kustomization: remote base(install.yaml, `?ref=<commit sha>`로 핀 — 태그 금지) + patches(dex·applicationset 비활성, requests, ServerSideApply)
 │   └── root-app.yaml               # Application "root" → clusters/oci-k3s/apps (유일한 수동 apply)
 ├── clusters/oci-k3s/
-│   ├── projects/{platform,dev,prod}.yaml   # AppProject
+│   ├── projects/{platform,dev,prod,tests}.yaml   # AppProject
 │   └── apps/                       # Application 1개/컴포넌트 (app-of-apps)
 ├── platform/<component>/           # 18개: argocd policies cert-manager cert-manager-issuers traefik vault external-secrets
 │   │                               #        cnpg cnpg-cluster cnpg-databases kafka kafka-topics dragonfly
@@ -37,10 +37,10 @@ platform-gitops/
 | 항목 | 규칙 |
 |---|---|
 | 이름 | `platform-<component>` · `<pod>-<env>` |
-| project | 플랫폼 → `platform`, 앱 → `dev`·`prod` |
+| project | 플랫폼 → `platform`, 앱 → `dev`·`prod`, 검증 Job(`platform/policies/tests/`) → `tests` |
 | sync-wave | 아래 **§sync-wave 단일 표**가 정본(`-20` … `60`, 앱 `100`). 다른 곳에 wave 번호를 중복 기재하지 않는다 |
 | syncPolicy | 플랫폼: `automated: { prune: false, selfHeal: true }`, syncOptions `ServerSideApply=true`, `CreateNamespace=true`, `Prune=confirm`, `Delete=confirm`, `SkipDryRunOnMissingResource=true`. dev 앱: prune·selfHeal true. prod 앱: automated이되 변경은 PR로만 |
-| AppProject | `platform`: sourceRepos [gitops, 차트 저장소], destinations = 플랫폼 네임스페이스(network-policy.md 표), clusterResourceWhitelist(CRD·Namespace·ClusterRole…). `dev`/`prod`: 자기 네임스페이스만, cluster 리소스 금지, **`namespaceResourceBlacklist`: NetworkPolicy · ResourceQuota · LimitRange · Role · RoleBinding · ServiceAccount**(정책 객체는 `platform/policies/`만 쓴다). `default`: sourceRepos·destinations 비움 |
+| AppProject | `platform`: sourceRepos [gitops, 차트 저장소], destinations = 플랫폼 네임스페이스(network-policy.md 표), clusterResourceWhitelist(CRD·Namespace·ClusterRole…). `dev`/`prod`: 자기 네임스페이스만, cluster 리소스 금지, **`namespaceResourceBlacklist`: NetworkPolicy · ResourceQuota · LimitRange · Role · RoleBinding · ServiceAccount**(정책 객체는 `platform/policies/`만 쓴다). **`tests`**: sourceRepos = [gitops]만, destination = `jt-dev`만, cluster 리소스 금지 — `platform/policies/tests/`의 검증 Job 3종 전용(destination을 Application 한정으로 좁힐 수 없어 `platform`에 `jt-dev`를 넣지 않는다). `default`: sourceRepos·destinations 비움 |
 | 삭제 보호 | `Cluster pg-main` · `Kafka jt-kafka` · `KafkaNodePool` · Vault/Dragonfly PVC · 모든 오퍼레이터 CRD(CNPG·Strimzi·cert-manager·ESO)에 `argocd.argoproj.io/sync-options: Delete=false,Prune=false` |
 | 워크로드 강화 | 템플릿 pod·cloudflared·dragonfly Deployment: `automountServiceAccountToken: false` + securityContext(`runAsNonRoot`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `seccompProfile: RuntimeDefault`, `readOnlyRootFilesystem: true` + `/tmp` emptyDir). helm 차트 컴포넌트(Vault·Authentik·OpenFGA·Reloader)는 values에 securityContext 4항목(`runAsNonRoot`·`allowPrivilegeEscalation`·`capabilities.drop`·`seccompProfile`)을 명시한다 |
 
@@ -138,12 +138,13 @@ Authentik·OpenFGA는 pod가 아니라 환경 공유 컴포넌트이므로 env �
 4. **`k8s-data-ca`** 를 참조하는 ExternalSecret은 `remoteRef.key ∈ {pg-main-ca, jt-kafka-cluster-ca-cert}` + `remoteRef.property: ca.crt` 뿐이다(`dataFrom` 금지).
 5. Deployment·CronJob `envFrom`에 `-migrate` Secret 참조 금지.
 6. `automountServiceAccountToken: false` lint 범위 = `apps/**` · `platform/cloudflared` · `platform/dragonfly`(그 밖의 helm 차트 컴포넌트는 자체 SA가 필요하므로 제외).
+7. **Workers 전용 경로 금지**: `apps/**`의 ExternalSecret `remoteRef.key`가 `(dev|prod)/(access|web)/` 접두로 시작하면 실패 — `SESSION_ENCRYPTION_KEY`·Access 서비스 토큰 secret은 Workers Secrets 전용이라 pod에 배포하지 않는다(FR-014; `vault-{env}` 정책이 `kv/data/{env}/*` 전체를 읽으므로 scope 검사 ②만으로는 못 막는다).
 
 ## validate.yml (required check `validate`)
 
 1. `kustomize build`(모든 overlay·platform) → `kubeconform -strict -ignore-missing-schemas`(CRD 스키마는 datreeio 카탈로그).
 2. `helm template`(helmCharts 사용 컴포넌트).
-3. 시크릿·경계 검사: `gitleaks`, 위 **§validate.yml ExternalSecret 검사** 6항목, `images[].newTag` 금지, `platform/**` `image:` digest 부재 경고.
+3. 시크릿·경계 검사: `gitleaks`, 위 **§validate.yml ExternalSecret 검사** 7항목, `images[].newTag` 금지, `platform/**` `image:` digest 부재 경고.
 4. 정책 검사: `platform/policies` Namespace 목록 = contracts/network-policy.md 표(14개); ns마다 해당 공통 정책 세트 존재; 모든 egress `ipBlock` 규칙에 `ports` + `except` 4개(IMDS·RFC 1918 3종); helm values의 포트 ↔ 정책 포트 일치; LimitRange에 `default.cpu`·`max.cpu` 없음.
 5. 작성자 검사: PR 작성자가 `jt-ci[bot]`이면 변경 파일 = `apps/*/overlays/dev/kustomization.yaml`, 변경 줄 = `images[].digest`뿐.
 6. sync-wave 검사: 모든 Application의 `argocd.argoproj.io/sync-wave` 값이 **§sync-wave 단일 표**와 일치하고, 표에 없는 `platform/<component>/` 디렉터리가 없다.

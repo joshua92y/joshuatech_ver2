@@ -67,7 +67,7 @@ access 토큰은 쿠키에 넣지 않는다. BFF isolate 메모리 캐시 `Map<s
 - **기본 가정(문서 기본값)**: Workers는 캐시보다 **먼저** 실행되고 커스텀 도메인 Worker는 그 존의 오리진이 아니므로, 존 Cache Rule("Cache Everything, edge TTL 600")은 페이지 HTML에 효과가 없다 → **Cache Rule을 두지 않는다**.
 - **옵션 A**: 실측에서 `cf-cache-status: HIT`가 나오고 대시보드의 Workers 요청 수가 늘지 않으면 Cache Rule을 유지한다.
 - **옵션 B**: 효과가 없으면 삭제하고, 대신 **프리렌더 HTML을 `.open-next/assets`의 정적 자산(`/ko`·`/en`·`/ja`)으로 내보내는 방식**을 시험한다(자산 요청은 무제한). RSC 프리페치 부작용은 `e2e/hello.spec.ts`의 prefetch 가드로 판정한다.
-- **실측(사용자 동석)**: T093 배포 직후 `curl -I https://joshuatech.dev/ko` 10회 → `cf-cache-status` 분포 + 대시보드 Workers 요청 수 비교. 자산화 시험도 같은 task에서.
+- **실측(사용자 동석)**: 기본이 미생성이므로 T093 배포 직후 **임시 Cache Rule을 1회 apply**한 뒤 `curl -I https://joshuatech.dev/ko` 10회 → `cf-cache-status` 분포 + 대시보드 Workers 요청 수 비교 — HIT면 규칙 유지(옵션 A), 아니면 제거해 기본(미생성)으로 되돌린다(옵션 B). 자산화 시험도 같은 task에서.
 
 ### VD-3 (검증 후 결정) — Free Rate Limiting 표현식에 host 조건을 쓸 수 있는가
 

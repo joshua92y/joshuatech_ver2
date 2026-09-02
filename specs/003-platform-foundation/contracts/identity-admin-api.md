@@ -10,7 +10,7 @@ Django 6.1 + Ninja 1.7(`ninja==1.7.0` 정확 핀, 회귀 시 1.6.2 폴백). 오�
 | `admin.joshuatech.dev`(PathPrefix `/identity-admin`, prod만) | `/identity-admin/admin/…`(`FORCE_SCRIPT_NAME=/identity-admin`) | GitHub IdP 앱 `admin` + Authentik forward-auth → `ACCESS_AUD_ADMIN` | Django admin |
 | `identity-admin.jt-prod.svc` · `identity-admin.jt-dev.svc`(클러스터 내부) | `/webhooks/authentik` · `/healthz` · `/ready` | Access 없음(svc DNS, FR-046) | Authentik 웹훅, kubelet 프로브 |
 
-- **m2m Ingress에 `/webhooks`·`/healthz`·`/ready`는 넣지 않는다.** 웹훅은 Authentik이 클러스터 안에서 svc DNS로만 부르고, `/healthz`·`/ready`는 kubelet 프로브 전용이다. 공개 호스트로 이 셋을 부르면 **404**여야 한다(T066 단언). BFF가 중계하는 상세 헬스는 `/health`(Ingress에 있음)뿐이다.
+- **m2m Ingress에 `/webhooks`·`/healthz`·`/ready`는 넣지 않는다.** 웹훅은 Authentik이 클러스터 안에서 svc DNS로만 부르고, `/healthz`·`/ready`는 kubelet 프로브 전용이다. 공개 호스트로 이 셋을 부르면 **404**여야 한다(Ingress 층위이므로 앱 pytest가 아니라 **T076 E2E**가 단언한다). BFF가 중계하는 상세 헬스는 `/health`(Ingress에 있음)뿐이다.
 - `ADMIN_HOST`(settings 필수값): admin urlconf는 `request.get_host() == ADMIN_HOST`일 때만 장착한다. m2m 호스트로 `/admin/` 요청 → 404(T066). **dev는 `ADMIN_HOST`가 빈 값**이라 admin urlconf가 아예 없다(dev에 admin Ingress도 없다).
 - `ALLOWED_HOSTS`(필수값): svc DNS(`identity-admin.<ns>.svc`) · m2m 호스트 · (prod만) admin 호스트.
 - `ACCESS_AUD_M2M`·`ACCESS_AUD_ADMIN`·`ACCESS_EXPECTED_CN`은 ConfigMap 값(비밀 아님). Access 서비스 토큰 secret(`kv/{env}/access/web-bff`)은 Workers Secrets에만 있고 이 pod에는 없다.
@@ -54,7 +54,7 @@ Django 6.1 + Ninja 1.7(`ninja==1.7.0` 정확 핀, 회귀 시 1.6.2 폴백). 오�
 | `GET /ready` | 없음 | readiness: **DB만**(`SELECT 1`, app role). Dragonfly·Kafka는 보지 않는다(outbox·fail-closed가 그 장애를 흡수하므로 pod를 내리지 않음) | 200 / 503 `not_ready` |
 | `GET /health` | 없음(Access 뒤; svc DNS는 면제) | 상세: `{ status, checks: { db, dragonfly, kafka_producer } }` 항목마다 `ok`·`fail` + 지연 ms. **항상 200** | 200 |
 | `GET /session/check?sub&iat&sid` | Access 서비스 토큰(BFF, `ACCESS_AUD_M2M`) | 거부 목록 조회만. DB 접근 없음. Dragonfly 실패 → 503 `denylist_unavailable` | 200 `{ active: boolean, nbf?: number }` / 503 |
-| `POST /sessions/revoke` | Bearer(사용자 본인, `aud=identity-admin`) 또는 관리자(`platform-admin` 그룹) + §호출자 식별 | body `{ sub?: string, sid?: string, all_devices: boolean, reason: "logout"\|"logout_all"\|"admin" }`. 본인은 `sub` 생략(토큰의 sub). **`tenant_id` 결정**: 본인 호출은 토큰 클레임, **관리자 호출(다른 `sub` 지정)은 `TenantMembership`에서 그 `sub`로 조회**한다 — 없으면 400 `validation_error`. 트랜잭션(app role, 등급 B 테이블): `session_revocation_log` INSERT(`expires_at = nbf + 330 s`) + `publish(..., tenant_id=<조회값>)` → 커밋 후 Dragonfly `SET revoked:sub:{sub} <nbf> EX 330`(또는 `revoked:sid`) → Authentik revoke API(서비스 계정 `identity-admin` 토큰, svc DNS; 실패해도 거부 목록은 유효, Celery 5 s × 3회 지수 백오프 최대 5분) | 202 `{ id, nbf, expires_at }` |
+| `POST /sessions/revoke` | Bearer(사용자 본인, `aud=identity-admin`) 또는 관리자(`platform-admin` 그룹) + §호출자 식별 | body `{ sub?: string, sid?: string, all_devices: boolean, reason: "logout"\|"logout_all"\|"admin" }`. 본인은 `sub` 생략(토큰의 sub). **`tenant_id` 결정**: 본인 호출은 토큰 클레임, **관리자 호출(다른 `sub` 지정)은 `TenantMembership`에서 그 `sub`로 조회**한다 — 없으면 400 `validation_error`. 트랜잭션(app role, 등급 B 테이블): `session_revocation_log` INSERT(`expires_at = nbf + 330 s`) + `publish(..., tenant_id=<조회값>)` → 커밋 후 Dragonfly `SET revoked:sub:{sub} <nbf> EX 330`(또는 `revoked:sid`) → Authentik revoke API(서비스 계정 `identity-admin` 토큰, svc DNS; 실패해도 거부 목록은 유효, Celery 5 s × 3회 지수 백오프 최대 5분). **dev는 Authentik revoke 호출을 설정 플래그로 비활성**(시도하지 않고 로그만 — dev 서비스 계정 `identity-admin-ro`는 read만, data-model §9; 거부 목록·로그 기록은 dev도 동일). 폐기 3경로 E2E·SC-003 측정은 **prod 체인에서만**(T085; dev 로그아웃 검증은 denylist 401·로컬 세션 삭제까지) | 202 `{ id, nbf, expires_at }` |
 | `POST /webhooks/authentik` | `X-Authentik-Signature`(HMAC, 비밀 `kv/{env}/authentik/webhooks/identity-admin`) + 본문 `created` 시각이 서버 시각 ±5분 | Bearer·Access **면제 목록**에 명시된 유일한 업무 경로(svc DNS로만 도달, m2m Ingress에 없음). Authentik notification webhook — `logout`·세션 삭제 이벤트를 `/sessions/revoke`와 같은 트랜잭션으로 처리(reason `authentik_webhook`). **테넌트 컨텍스트가 없으므로 `tenant_id`는 본문의 `sub`로 `TenantMembership`을 조회해 얻고**(없으면 400), `publish(..., tenant_id=…)`에 명시적으로 넘긴다. 멱등: 이벤트 `pk` 저장, 재전송은 200 no-op. 서명 없음/틀림/시각 밖 → 401 `webhook_signature_invalid` | 202 / 200 / 401 / 400 |
 | `GET /tenants/me` | Bearer | app role로 **등급 B 테이블**(`tenant`, `tenant_membership`)만 읽는다 — RLS가 없으므로 토큰의 `sub`·`tenant_id`로 명시 필터. SP-1 가정: 사용자당 테넌트 1 | 200 `{ tenant: { id, slug, display_name, status }, role }` |
 
@@ -71,7 +71,7 @@ Django 6.1 + Ninja 1.7(`ninja==1.7.0` 정확 핀, 회귀 시 1.6.2 폴백). 오�
 | 작업 | 주기 | 내용 |
 |---|---|---|
 | 거부 목록 **무조건 재적용** | 30 s | `session_revocation_log`에서 `expires_at > now()`인 행을 **조건 없이 전부** Dragonfly에 다시 SET(남은 TTL, 멱등). 센티널 키(`denylist:epoch`)는 쓰지 않는다 — contracts/denylist.md. 기동 시에도 1회 |
-| `reconcile_authentik_sessions` | 일 1회 | Authentik 활성 세션 API(서비스 계정 토큰, svc DNS)와 대조해 유실 웹훅을 보정. dev는 웹훅 transport가 있어도 이 보정이 안전망이다 |
+| `reconcile_authentik_sessions` | 일 1회 | Authentik 활성 세션 API(서비스 계정 토큰, svc DNS)와 대조해 유실 웹훅을 보정. dev는 웹훅 transport가 있어도 이 보정이 안전망이다. **dev 각주**: 대조(read)는 dev도 수행하되(`identity-admin-ro` 토큰), 보정 **쓰기 호출은 설정 플래그로 비활성**(로그만 — data-model §9) |
 | `session_revocation_log` purge | 일 1회 | `expires_at + 30 d < now()` 행 삭제 |
 | `outbox` dead purge | 일 1회 | `dead_at + 30 d < now()` 행 삭제(contracts/events.md) |
 | Authentik revoke 재시도 | 이벤트 | 5 s × 3회 지수 백오프(최대 5분) |

@@ -40,7 +40,7 @@ ACL 파일은 Secret으로 마운트하며 값의 원천은 Vault `kv/{env}/drag
 | `admin` | `+@all` (전 키) | 운영자·런북 전용. pod에 배포하지 않는다 |
 | `identity-admin` | `~revoked:* ~identity-admin:* +@all` | 거부 목록 쓰기 + 자기 Celery 큐·캐시 |
 | `<pod>`(템플릿 기본) | `%R~revoked:* ~<pod>:* +@all` | 거부 목록 **읽기 전용**(`%R~`) + 자기 접두(`<pod>:*`) 전권 |
-| `sample-pod`(검사용) | `%R~revoked:* ~sample-pod:* +@all` | T051이 템플릿 규칙을 실제로 검증할 때 쓰는 고정 사용자 |
+| `sample-pod`(검사용) | `%R~revoked:* ~sample-pod:* +@all` | T051이 템플릿 규칙을 실제로 검증할 때 쓰는 고정 사용자. **dev 전용 — prod aclfile(`kv/prod/dragonfly/acl`)에는 넣지 않는다**(T057) |
 
 - **키 패턴과 명령 카테고리는 짝지어지지 않는다.** `~revoked:* +@read ~<pod>:* +@all` 같은 표기는 "`revoked:*`에는 읽기만"을 뜻하지 않는다(패턴 목록과 명령 목록이 독립적으로 합쳐져 `DEL revoked:*`가 허용된다). 읽기 전용은 반드시 **읽기 전용 키 패턴 `%R~`** 로 표현한다.
 - 그래서 `<pod>` 사용자는 `GET revoked:sub:x` 성공, `DEL revoked:sub:x`·`SET revoked:sub:x` → NOPERM, `SET identity-admin:x` → NOPERM이다.
@@ -61,7 +61,7 @@ ACL 파일은 Secret으로 마운트하며 값의 원천은 Vault `kv/{env}/drag
 | 경로 | 키 | store | 소비자 |
 |---|---|---|---|
 | `kv/{env}/dragonfly/acl` | `users.acl`(파일 전문) | `vault-data` | Dragonfly Deployment(Secret 마운트, `data` ns) |
-| `kv/{env}/dragonfly/admin` | `password` | `vault-data` | 운영자(런북) |
+| `kv/{env}/dragonfly/admin` | `password` | —(운영자 직접, ESO 소비자 없음) | 운영자(런북) |
 | `kv/{env}/dragonfly/identity-admin` · `kv/{env}/dragonfly/<pod>` | `password`, `url` | `vault-{env}` | 해당 pod의 `<pod>-env` ExternalSecret(`DRAGONFLY_URL`) |
 
 ## 타임아웃 (공통 표에서 발췌)

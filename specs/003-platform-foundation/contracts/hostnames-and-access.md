@@ -19,7 +19,7 @@
 
 | 호스트 | 대상 | Access 정책 | 비고 |
 |---|---|---|---|
-| `joshuatech.dev`, `www.` | prod Worker(웹 + BFF) | 없음(공개) | Workers 커스텀 도메인. `www` → apex 301. main `deploy`만 배포(GitHub Environment `production`) |
+| `joshuatech.dev`, `www.` | prod Worker(웹 + BFF) | 없음(공개) | Workers 커스텀 도메인은 **apex만**(`www`는 존 redirect rule **301 → apex** — Workers 도메인 아님). main `deploy`만 배포(GitHub Environment `production`) |
 | `preview.joshuatech.dev` | Worker `joshuatech-web-preview`(wrangler env `preview`) | **GitHub IdP**(Access 앱 `preview`) | PR마다 `wrangler deploy --env preview`(같은 repo PR만, fork PR 미생성). dev 시크릿만: Access 서비스 토큰 `web-bff-dev` → `identity-m2m-dev`, 자체 `SESSION_ENCRYPTION_KEY`, Authentik provider `web-bff-dev` |
 | `auth.joshuatech.dev` — 공개 경로 `/application/o/*` · `/if/flow/*` · `/if/user/*` · `/.well-known/*` · **`/api/v3/*`** | Authentik(identity ns, Ingress) | 없음(공개 로그인·OIDC issuer/JWKS) | Authentik 자체 보호(Reputation 정책·MFA). FR-046 예외 2(클러스터 안에서 이 공개 호스트 사용)는 **Argo CD·Vault의 OIDC discovery로 한정** — pod의 JWKS는 svc DNS를 쓴다(contracts/network-policy.md) |
 | `auth.joshuatech.dev/if/admin/*` | Authentik 관리 UI(SPA) | **GitHub IdP**(Access 앱 `auth-admin`, 경로 스코프 `/if/admin/*`만) | 관리자 그룹 `platform-admin`은 WebAuthn 필수. identity-admin의 Authentik API 호출은 svc DNS(`identity` ns 9000)로만 — 이 Access 앱을 지나지 않는다 |
@@ -39,7 +39,7 @@
 ## Access 정책 규칙
 
 - 앱마다 별도 Access Application(AUD 태그). pod는 `Cf-Access-Jwt-Assertion`을 두 AUD(`ACCESS_AUD_M2M` = m2m 앱, `ACCESS_AUD_ADMIN` = admin 앱)로 검증한다(팀 도메인 `joshua-tech.cloudflareaccess.com`의 `/cdn-cgi/access/certs`). AUD는 비밀이 아니며 ConfigMap으로 준다.
-- Service Auth 앱: 정책 action `Service Auth`, include = 서비스 토큰 `web-bff-<env>`. 토큰 secret은 Vault `kv/{env}/access/web-bff` → **Workers Secrets에만**(prod Worker = `web-bff-prod`, preview Worker·로컬 = `web-bff-dev`); pod에는 배포하지 않는다. 1년 만료, 만료 60일 전 회전(런북 `secret-rotation.md`).
+- Service Auth 앱: 정책 action `Service Auth`, include = 서비스 토큰 `web-bff-<env>`(m2m 앱에는 tester의 `tester-m2m`도 include — §에이전트 자격). 토큰 secret은 Vault `kv/{env}/access/web-bff` → **Workers Secrets에만**(prod Worker = `web-bff-prod`, preview Worker·로컬 = `web-bff-dev`); pod에는 배포하지 않는다. 1년 만료, 만료 60일 전 회전(런북 `secret-rotation.md`). 예외: tester 토큰 `tester-m2m`·`tester-k8s`의 secret은 Workers Secrets가 아니라 **`kv/platform/access/*`** 에 보관하고 tester가 실행 시 env로만 받는다(§에이전트 자격).
 - GitHub IdP 앱(`admin`·`argo`·`vault`·`traefik`·`auth-admin`·`preview`·`ssh`(`ssh-a`·`ssh-b`)·`k8s`): include = 이메일 `egenauto.dev@gmail.com`(운영자), `session_duration` 명시(cloudflare provider 5.24.0에서 필수) — 기본 24h, **`ssh` 앱만 1h**. MFA는 GitHub 측. `kibana` 앱은 SP-3에서 만든다.
 - `auth-admin` 앱은 `/if/admin/*`만 감싼다. **`/api/v3`는 공개**로 둔다 — Authentik 로그인 SPA(`/if/flow/*`)와 사용자 UI(`/if/user/*`)가 브라우저에서 `/api/v3/flows/executor/…`·`/api/v3/root/config/`를 직접 호출하므로 Access를 걸면 로그인 자체가 깨진다. 보상 통제: 관리자 그룹 `platform-admin` WebAuthn 필수 · Authentik 서비스 계정 권한을 최소로 한정 · Reputation 정책 · Cloudflare Rate Limiting(`/if/flow/*`). 관리 API 접두(`/api/v3/core/*` 등)만 골라 보호하는 방안은 **SP-2에서 검토**한다.
 - Zero Trust Free: 50석. 서비스 토큰은 석을 소비하지 않는다.
@@ -68,7 +68,7 @@
 | `kafka-assert` | `jt-dev` | 토픽·KafkaUser·produce/consume 왕복·교차 env 거부 | 같음 |
 | `authz-assert` | `jt-dev` | OpenFGA `check` 결과(다른 테넌트 false) | 같음 |
 
-세 Job 모두 ns는 **`jt-dev`**다 — dev scope 자격은 `ClusterSecretStore vault-dev`에서만 나오고 그 store의 `conditions.namespaces`가 `jt-dev` 하나이므로, `data`·`identity`에 두면 dev 전용 자격을 받을 수 없다(그 ns의 `vault-data`는 prod 경로까지 읽을 수 있어 최소 권한에 어긋난다). 도달 경로는 매트릭스의 `jt-dev → data(5432·9093·6379)`·`jt-dev → identity(9000·8080)` 행으로 이미 열려 있다. 매니페스트는 `platform/policies/tests/`가 소유하므로 `platform` AppProject의 destination에 `jt-dev`를 이 Application 한정으로 추가한다(T041).
+세 Job 모두 ns는 **`jt-dev`**다 — dev scope 자격은 `ClusterSecretStore vault-dev`에서만 나오고 그 store의 `conditions.namespaces`가 `jt-dev` 하나이므로, `data`·`identity`에 두면 dev 전용 자격을 받을 수 없다(그 ns의 `vault-data`는 prod 경로까지 읽을 수 있어 최소 권한에 어긋난다). 도달 경로는 매트릭스의 `jt-dev → data(5432·9093·6379)`·`jt-dev → identity(9000·8080)` 행으로 이미 열려 있다. 매니페스트는 `platform/policies/tests/`가 소유하며 **전용 AppProject `tests`**(source = gitops 저장소만, destination = `jt-dev`만, cluster 리소스 금지)로 배포한다(T041) — Argo CD의 AppProject destination은 Application 한정으로 좁힐 수 없으므로 `platform` 프로젝트에 `jt-dev`를 추가하면 프로젝트 전체가 그 권한을 얻는다(contracts/gitops-repo.md §Application 규약).
 
 Job은 prod 자격을 절대 받지 않는다. tester가 얻는 것은 로그 텍스트뿐이다.
 
@@ -78,7 +78,9 @@ Job은 prod 자격을 절대 받지 않는다. tester가 얻는 것은 로그 �
 - **Grafana Cloud**: Viewer 서비스 계정 토큰. **Sentry**: 읽기 전용 토큰. **Cloudflare**: `Analytics:Read` 토큰. 셋 다 quickstart 사전 조건으로 운영자가 준비한다.
 - **Vault**: role `e2e-reader`(bound `kube-system/agent-view`, 정책 = `kv/data/platform/authentik/e2e` read, `token_ttl` 1h) — Playwright가 E2E 사용자 비밀번호·TOTP 시드를 읽는 유일한 경로.
 - `argocd --sso` 로그인 확인과 Authentik 관리 API 확인은 **운영자 수동 + 스크린샷**이다(비대화형 자동화 없음).
-- `k8s` Access 앱에 tester 서비스 토큰 정책을 두고, cloudflared 클라이언트는 **2026.5.1로 핀**한다(plan A12: 이후 버전에서 서비스 토큰 회귀).
+- **tester Access 서비스 토큰 2개**(둘 다 T011 `access.tf`가 생성, 회전 매트릭스 T084 등재; secret은 `kv/platform/access/*` 보관 — tester는 실행 시 env로만 받고 파일에 저장하지 않는다):
+  - `tester-m2m` — **dev·prod m2m 앱** include(Service Auth): tester의 m2m E2E 호출이 Service Auth를 지나는 경로. 보관 `kv/platform/access/tester-m2m`.
+  - `tester-k8s` — **`k8s` 앱** include: `cloudflared access tcp`로 6443 접속. 보관 `kv/platform/access/tester-k8s`. cloudflared 클라이언트는 **2026.5.1로 핀**한다(plan A12: 이후 버전에서 서비스 토큰 회귀).
 - **SP-1의 CI(GitHub Actions)에는 클러스터·OCI 자격이 없다.** 클러스터 검사는 운영자·tester 세션에서만 돈다.
 
 ### 운영자 자격 취급
@@ -106,7 +108,8 @@ traceparent: 00-<trace>-<span>-01
 
 | 이름 | 타입 | 값 | proxied |
 |---|---|---|---|
-| `@`, `www` | Workers 커스텀 도메인(리소스가 레코드 생성) | prod Worker | ✓ |
+| `@` | Workers 커스텀 도메인(리소스가 레코드 생성) | prod Worker | ✓ |
+| `www` | A(더미) + 존 redirect rule — **Workers 커스텀 도메인 아님** | **301 → apex**(`https://joshuatech.dev`) | ✓ |
 | `preview` | Workers 커스텀 도메인 | Worker `joshuatech-web-preview` | ✓ |
 | `auth`, `*-m2m-prod`, `*-m2m-dev`, `admin`, `argo`, `vault`, `traefik` | A (IPv6 미사용) | 노드 A reserved 공인 IP | ✓ |
 | `cdn` | R2 커스텀 도메인 | — | ✓ |

@@ -103,7 +103,7 @@ egress:
 
 | 출발 | 도착 | 포트 | 용도 |
 |---|---|---|---|
-| `identity` | 외부 | 443 | 소셜 로그인(github·google) · 메일(postmark) |
+| `identity` | 외부 | 443 | 소셜 로그인(github·google) |
 | `jt-dev` · `jt-prod` | 외부 | 443 | Cloudflare Access certs(`joshua-tech.cloudflareaccess.com/cdn-cgi/access/certs`) · Sentry ingest |
 | `cert-manager` | 외부 | 443 | `api.cloudflare.com`(DNS-01) · Let's Encrypt ACME 디렉터리·주문 |
 | `cert-manager` | `1.1.1.1` | 53 | DNS-01 전파 확인(`ipBlock 1.1.1.1/32`, UDP·TCP) |
@@ -120,6 +120,8 @@ egress:
 | 노드 A private IP | `vault` | 8200 | `kubectl port-forward`(운영자 seal 확인 · `platform-backup.sh` Raft 스냅샷) — `allow-apiserver-webhook` |
 | 노드 A private IP | `cert-manager` · `external-secrets` · `cnpg-system` | 10250 · 10250 · 9443 | API 서버 → admission webhook — `allow-apiserver-webhook` |
 | 위 10 ns | 노드 A private IP | 6443 | K8s API — `allow-kube-api` |
+
+- **`identity`의 메일(SMTP 587/465) egress는 없다** — SP-1은 recovery 이메일을 쓰지 않고 enrollment 흐름도 없어 Authentik이 이메일을 발송하지 않는다(T081). 메일 발송이 생기는 SP에서 이 매트릭스에 행을 먼저 추가한다.
 
 ### 공개 호스트 예외(FR-046 예외 2)의 범위
 
