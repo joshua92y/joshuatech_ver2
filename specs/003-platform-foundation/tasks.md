@@ -86,7 +86,7 @@ description: "Task list for 003-platform-foundation (joshuatech override: tests 
 - [X] T026 [P] [US1] `docs/decisions/0010-secrets.md` — HashiCorp Vault Raft + OCI KMS(SOFTWARE 키) auto-unseal + ESO·경로 규약·부트스트랩 순서·recovery key 3/2(용도 `generate-root`·rekey, unseal 불가 — KMS 장애 = sealed 대기)·Raft 스냅샷 일 1회(age 암호화 → `jt-backup-platform/vault/`); 대안 Sealed Secrets·SOPS+age·OpenBao·클러스터 내 unseal
 - [X] T027 [P] [US1] `.specify/memory/product.md` — 제품 목표·도메인(포트폴리오·블로그·학습 노트·문의·미디어·사용자)·pod 8개와 단계·로드맵 SP-1~4·비기능 목표(무료 티어·SaaS 규율)
 - [X] T028 [P] [US1] `.specify/memory/architecture.md` — 토폴로지·노드 배치·네임스페이스(contracts/network-policy.md 표·PSA 레벨)·경계(pod/DB/이벤트)·계약(BFF·identity-admin·events·gitops·pod 템플릿·호스트)·운영 원칙(관측·롤백·시크릿·보존: Authentik events 90일·Grafana 14일·Sentry 30일) — spec Design + contracts 요약, 실측치는 US7 뒤 갱신
-- [ ] T029 [US1] `docs/README.md` 색인에 ADR 0002–0010·런북 자리 추가 + `specs/README.md` 갱신(`scripts/update-specs-index.ps1`); **spec은 편집하지 않는다** — spec §8 ADR 표의 링크는 확정 경로(`docs/decisions/000N-<slug>.md`, T018–T026의 고정 슬러그)로 이미 채워져 있으므로 **링크 유효 확인만** 한다; `CLAUDE.md` Active Technologies 절 갱신(+`docs/kr/CLAUDE_kr.md` 미러), `tests/run-all.ps1` `adr-madr` 체크 활성 → T016·T017 PASS
+- [X] T029 [US1] `docs/README.md` 색인에 ADR 0002–0010·런북 자리 추가 + `specs/README.md` 갱신(`scripts/update-specs-index.ps1`); **spec은 편집하지 않는다** — spec §8 ADR 표의 링크는 확정 경로(`docs/decisions/000N-<slug>.md`, T018–T026의 고정 슬러그)로 이미 채워져 있으므로 **링크 유효 확인만** 한다; `CLAUDE.md` Active Technologies 절 갱신(+`docs/kr/CLAUDE_kr.md` 미러), `tests/run-all.ps1` `adr-madr` 체크 활성 → T016·T017 PASS
 
 ### E2E for User Story 1 (MANDATORY — executed by the tester agent)
 
