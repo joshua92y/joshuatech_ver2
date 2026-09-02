@@ -5,7 +5,7 @@ decision-makers:
   - joshua92y
   - Claude (analysis)
 ---
-# ADR 0004: 웹 프레임워크 — Next.js 16.3 + OpenNext lean
+# ADR 0004: 웹 프레임워크 — Next.js 16.3 + OpenNext lean (현재 핀 16.3.4)
 
 <!-- 근거: spec D4·D19·§3(웹·BFF 흐름)·§7(리스크 표)·§8 ADR 표, plan A1(Worker 경유 수용, VD-2/VD-8)·A2(prefetch 이슈·핀 규칙), research R8(OPENNEXT-D1~D8·D11, 함정 #1334) -->
 
@@ -27,7 +27,7 @@ Next.js 16.3(≥ 16.3.3 — 보안 수정 라인) + OpenNext lean 구성을 채�
 
 - **lean 구성**: 페이지는 전부 프리렌더(`app/[lang]` + `generateStaticParams([ko,en,ja])` + `dynamicParams: false`), 동적인 것은 BFF Route Handler(`app/api`, `force-dynamic`)만. 바인딩 0(KV·R2·D1·DO·IMAGES 미선언, `images.unoptimized`), 캐시는 static-assets incremental cache + `enableCacheInterception: true`만.
 - **번들 예산 2.5 MiB**(gzip, Free 한도 3 MiB의 안전 마진): CI가 `wrangler versions upload --dry-run` 산출물 gzip 합산으로 게이트(`scripts/bundle-budget.mjs`), 초과 시 빌드 실패.
-- **페이지 GET Worker 경유 수용**(사용자 결정 2026-09-01): OpenNext는 프리렌더 HTML을 정적 자산으로 서빙하지 않으므로 페이지 GET도 Worker 1회를 소비한다. "Worker 미호출" 대신 CPU p95 ≤ 10 ms·Error 1102 0건·일 요청 수 기록으로 관리하고, 존 Cache Rule·HTML 자산화 실험은 VD-2/VD-8 실측으로만 결정한다.
+- **페이지 GET Worker 경유 수용**(사용자 결정 2026-09-01): OpenNext는 프리렌더 HTML을 정적 자산으로 서빙하지 않으므로 페이지 GET도 Worker 1회를 소비한다. "Worker 미호출" 대신 CPU p95 ≤ 10 ms·Error 1102 0건·일 요청 수 기록으로 관리하고, 존 Cache Rule·HTML 자산화 실험은 VD-2/VD-8(VD = 검증 후 결정) 실측으로만 결정한다.
 - **$5 탈출구**: 번들·CPU·요청 한도를 실측이 넘으면 의존성 제거를 먼저 하고, 그래도 초과면 Workers Paid($5/월) 전환 — 사용자 승인 필요(spec §7).
 - **RSC prefetch 이슈 핀 규칙**: Next 16.3 + cache interception 조합의 무한 RSC prefetch 루프(opennextjs-cloudflare #1334 open, 수정 PR #1348 미머지). 16.2.12에는 버그가 없으나 Critical RCE 2건(GHSA-p293-qw3h-jr36 CVSS 9.0·GHSA-2xp9-vwfh-vxw4 CVSS 9.5)이 15.5.24·16.3.3에만 패치되어 있으므로 **보안 패치 라인 밖 다운그레이드 금지 — 16.2.x 폴백 금지**. 이슈 미해결 시 폴백은 16.3.4 유지 + `enableCacheInterception: false` 임시(수정 포함 패치 출시 후 재활성)이며, `e2e/hello.spec.ts`가 "로드 후 30초 내 `Next-Router-Prefetch: 1` 요청 ≤ 10"을 가드한다.
 

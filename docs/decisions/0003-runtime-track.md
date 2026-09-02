@@ -26,12 +26,12 @@ decision-makers:
 
 - **노드 배치**: 노드 A `role=platform`(K3s server·Traefik·Argo CD·Vault+ESO·Kafka·Authentik·OpenFGA·Alloy·앱 pod 선호) ≈ 8.6 GiB / **예산 9 GiB**. 노드 B `role=data`(K3s agent·CNPG·Dragonfly·cert-manager·CNPG 오퍼레이터) ≈ 3.6 GiB / **예산 8 GiB** — SP-3 Elasticsearch·Kibana 자리(≈ 3 GiB)는 전부 노드 B에 남긴다. Kafka는 A 고정(Postgres fsync/WAL과 디스크 I/O 분리).
 - **인그레스(D12)**: 번들 Traefik 공개 443 + cert-manager DNS-01 와일드카드 + Cloudflare proxied Full(strict), NSG로 Cloudflare IP 한정(80 미개방) + Authenticated Origin Pulls.
-- **전환 트리거**: ① RAM — US7 실측이 예산 초과 또는 OOMKill이면 Argo core 전환 → Alloy 축소 → dev quota 축소 순으로 완화하고, 그래도 부족하면 Redpanda 검토(ADR 0008 트리거). ② 비용 — 월 Compute > 3 SGD면 예산 알림·13 → 12 GB 축소·유료 자원 생성 금지; 첫 청구서가 $30 수준(새 무료 한도 적용 확인)이면 D17(인스턴스 사양)을 재결정한다.
+- **전환 트리거**: ① RAM — US7(운영·비용 시나리오) 실측이 예산 초과 또는 OOMKill이면 Argo core 전환 → Alloy 축소 → dev quota 축소 순으로 완화하고, 그래도 부족하면 Redpanda 검토(ADR 0008 트리거 — 작성 예정, T024). ② 비용 — 월 Compute > 3 SGD면 예산 알림·13 → 12 GB 축소·유료 자원 생성 금지; 첫 청구서가 $30 수준(새 무료 한도 적용 확인)이면 D17(인스턴스 사양)을 재결정한다.
 
 ### Consequences
 
 - 좋음: 웹 트래픽이 클러스터 자원과 완전히 분리되고 정적 자산은 무료·무제한. 선언적 상태·drift 복원·네임스페이스 격리(dev+prod 상시)로 pod가 8개로 늘어도 운영 절차가 같다. K8s·GitOps·Vault 운영 이력이 남는다.
-- 나쁨: 2노드 26 GiB 안에서 플랫폼 스택이 RAM 대부분을 차지해 여유가 ≈ 0.4 GiB(노드 A)뿐이고, K3s·Argo·Traefik·cert-manager의 업그레이드가 전부 1인 몫이다(Renovate·system-upgrade-controller·런북으로 완화).
+- 나쁨: 2노드 26 GB(≈ 24.2 GiB) 안에서 플랫폼 스택이 RAM 대부분을 차지해 여유가 ≈ 0.4 GiB(노드 A)뿐이고, K3s·Argo·Traefik·cert-manager의 업그레이드가 전부 1인 몫이다(Renovate·system-upgrade-controller·런북으로 완화).
 - 위험 수용: PAYG 무료 한도의 실제 적용(구 3,000/18,000 vs 새 1,500/9,000)은 문서로 확정 불가 — 첫 청구서로 확정하고 Budgets 35 SGD + 알림 규칙 4개로 감시한다.
 
 ### 부록: D14 관측 (Grafana Cloud·Alloy·Sentry)

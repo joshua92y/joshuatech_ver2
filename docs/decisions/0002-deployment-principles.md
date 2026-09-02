@@ -28,14 +28,14 @@ L1 원칙 7개를 채택한다. 이후 모든 CI/CD·gitops 설계(FR-032~FR-039
 2. **Git 정본** — 클러스터·Worker의 원하는 상태 정본은 git(platform-gitops·모노레포)이다. 수동 변경은 drift로 감지·복원된다.
 3. **pull CD** — 클러스터 배포는 클러스터 안의 Argo CD가 git을 pull한다. CI는 클러스터에 접근하지 않는다.
 4. **CI 무자격증명** — CI에는 클러스터·OCI 자격증명이 없고 PAT도 없다(GitHub App 최소 스코프 토큰). 예외는 push 배포가 불가피한 Cloudflare Workers뿐이며, 스코프 토큰('Edit Cloudflare Workers')을 Environment `production` 시크릿으로 한정한다.
-5. **PR 검증 / main 발행** — 모든 변경은 PR에서 검증(required check, ruleset `bypass_actors: []`)하고, 발행(이미지 빌드·digest bump·deploy)은 main에서만 한다. dev는 자동 digest bump PR(auto-merge 시도 — VD-5), prod 승격 PR은 사람이 머지한다(D16).
+5. **PR 검증 / main 발행** — 모든 변경은 PR에서 검증(required check, ruleset `bypass_actors: []`)하고, 발행(이미지 빌드·digest bump·deploy)은 main에서만 한다. dev는 자동 digest bump PR(auto-merge 시도 — VD-5, VD = 검증 후 결정), prod 승격 PR은 사람이 머지한다(D16).
 6. **rollback = revert** — 롤백은 gitops revert 커밋(웹은 `wrangler rollback`)이다. 클러스터 직접 조작으로 되돌리지 않는다.
 7. **expand→contract** — 스키마·계약 변경은 확장(호환 추가) → 이행 → 수축(제거) 순서로 나눠, 배포 순서와 마이그레이션이 서로를 막지 않게 한다.
 
 ### Consequences
 
-- 좋음: public 저장소 2개에 시크릿·자격 0건(시크릿은 Vault+ESO, ADR 0010), 모든 변경이 PR 이력으로 남음, 롤백이 단일 절차, 재현 가능한 배포.
-- 나쁨: Argo CD 상주 RAM(≈ 0.6 GiB)과 gitops 저장소 관리가 추가되고, dev digest bump PR이 노이즈를 만들며, expand→contract는 마이그레이션을 두 단계로 쪼개는 부담이 있다(현재 원칙 문구만 있고 linter 강제는 후속 — approval 리뷰 F-7 수용).
+- 좋음: public 저장소 2개에 시크릿·자격 0건(시크릿은 Vault+ESO, ADR 0010 — 작성 예정, T026), 모든 변경이 PR 이력으로 남음, 롤백이 단일 절차, 재현 가능한 배포.
+- 나쁨: Argo CD 상주 RAM(≈ 0.6 GiB)과 gitops 저장소 관리가 추가되고, dev digest bump PR이 노이즈를 만들며, expand→contract는 마이그레이션을 두 단계로 쪼개는 부담이 있다(approval 리뷰 지적 F-7 — expand→contract linter는 후속 task로 수용).
 - 위험 수용: `gh pr merge --auto` 동작 여부는 VD-5(실측)로 남긴다 — 실패 시 dev bump도 수동 머지.
 
 ### 부록: D10 Dragonfly (v1 계승)
