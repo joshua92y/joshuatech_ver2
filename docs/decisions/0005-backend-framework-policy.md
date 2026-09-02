@@ -23,7 +23,7 @@ SP-2~SP-4에 걸쳐 API pod 8개(부록 D18)를 1인이 만들고 운영한다. 
 ## Decision Outcome
 
 1. **기본 = Django 6.1 + Django Ninja 1.7**(`ninja==1.7.0` 정확 핀, 회귀 시 1.6.2 폴백). 모든 pod는 `templates/django-pod`(copier)로 생성하고 `packages/django-common`(tenancy·outbox·auth·observability)에 의존한다(contracts/pod-template.md).
-2. **FastAPI 예외는 수치 트리거로만 연다.** 트리거는 세 가지 워크로드 특성이다 — ① 동시 **연결 수**(장기 SSE/WS 연결이 워커를 점유), ② **fan-out**(한 이벤트가 다수 수신자 호출로 퍼짐), ③ 외부 **I/O 대기**가 응답 시간을 지배(업스트림 검색·외부 API 프록시). 예외 채택은 해당 pod feature에서 측정치·예상 수치를 적은 ADR로 기록한다(이 ADR 참조).
+2. **FastAPI 예외는 수치 트리거로만 연다.** 트리거는 세 가지 워크로드 특성이다 — ① 동시 **연결 수**(장기 SSE/WS 연결이 워커를 점유), ② **fan-out**(한 이벤트가 다수 수신자 호출로 퍼짐), ③ 외부 **I/O 대기**가 응답 시간을 지배(업스트림 검색·외부 API 프록시) — 고정 역치는 두지 않는다, 예외 ADR의 수치 제시로 판정한다. 예외 채택은 해당 pod feature에서 측정치·예상 수치를 적은 ADR로 기록한다(이 ADR 참조).
 3. **예정 예외 3개**(D5): search(ES 질의 프록시 — I/O 대기), notification(구독 fan-out), assistant(SSE/WS — 연결 수). 셋 다 SP-3·SP-4 feature에서 수치와 함께 확정한다.
 4. **all-async 약속**: FastAPI를 채택한 pod는 전 경로를 async로 쓴다. 동기 핸들러·동기 DB 드라이버 혼용은 금지 — 혼용하면 스레드풀 병목이 생겨 예외를 연 이유(연결 수·I/O 대기)가 사라진다.
 5. **백그라운드 작업 규칙**: Django pod = **Celery**(+beat, Dragonfly 브로커 — contracts/pod-template.md) / FastAPI pod = **taskiq**(async 네이티브, notification이 첫 사례). 한 pod 안에서 두 체계를 섞지 않는다.
