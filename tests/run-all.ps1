@@ -58,6 +58,14 @@ if ($adrTests.Count -eq 0) {
     }
 }
 
+# 1f. agent-layer (T108 자리, 본체 T109·T110·T112) — tests/agents/agent-layer.tests.ps1.
+#     이 스위트는 SKIP 없이 fail closed(대상 rules 5·builder 3·kr 미러가 없으면 FAIL이 정상 — RED 창구간).
+#     1d·1e와 같은 양성 증거 규율: exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 = FAIL).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/agents/agent-layer.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'agent-layer' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see agent-layer test output above"
+
 # 2. CLAUDE.md <= 200 lines
 $n = if (Test-Path CLAUDE.md) { (Get-Content CLAUDE.md).Count } else { -1 }
 Check "CLAUDE.md lines ($n) <= 200" ($n -ge 0 -and $n -le 200) 'missing or too long'
