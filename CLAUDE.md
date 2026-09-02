@@ -57,7 +57,8 @@ Agent files (this file, `AGENTS.md`, the constitution, rules, agents, project sk
 - PowerShell 7.6.5 (`pwsh`) — hooks, tests, and repository scripts (`.claude/hooks/*.ps1`, `tests/**/*.ps1`, `scripts/*.ps1`)
 - Spec Kit `specify` 1.0.2.dev0 (integration `claude`, script `ps`) with extensions git, agent-context, archive
 - superpowers 5.1.0 (`superpowers@superpowers-dev`, the only enabled superpowers plugin)
-- No application stack yet — decided in SP-1
+- SP-1 stack (recorded in ADR 0002–0010): Node 24 + pnpm 10 workspace (apps/web, packages) · Python 3.13 + uv (Django 6.1 / Ninja 1.7 pods)
+- OpenTofu (oci, cloudflare, vault, grafana) · K3s v1.36.4 + Argo CD 3.5.2 GitOps (platform-gitops repo)
 
 ## Project Structure
 Layout table: `AGENTS.md` (imported above). Added since: `scripts/` (`update-specs-index.ps1`), `tests/scripts/` (its tests and fixtures), `specs/002-smoke/`.

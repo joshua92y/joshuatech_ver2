@@ -57,7 +57,8 @@
 - PowerShell 7.6.5(`pwsh`) — 훅·테스트·저장소 스크립트(`.claude/hooks/*.ps1`, `tests/**/*.ps1`, `scripts/*.ps1`)
 - Spec Kit `specify` 1.0.2.dev0(통합 `claude`, 스크립트 `ps`) + 확장 git·agent-context·archive
 - superpowers 5.1.0(`superpowers@superpowers-dev`, 유일하게 활성화된 superpowers 플러그인)
-- 애플리케이션 스택은 아직 없음 — SP-1에서 결정
+- SP-1 스택(결정 기록 = ADR 0002–0010): Node 24 + pnpm 10 workspace(apps/web·packages) · Python 3.13 + uv(Django 6.1/Ninja 1.7 pod)
+- OpenTofu(oci·cloudflare·vault·grafana) · K3s v1.36.4 + Argo CD 3.5.2 GitOps(platform-gitops 저장소)
 
 ## Project Structure
 레이아웃 표는 `AGENTS.md`(위에서 import). 그 이후 추가된 것: `scripts/`(`update-specs-index.ps1`), `tests/scripts/`(그 테스트와 픽스처), `specs/002-smoke/`.
