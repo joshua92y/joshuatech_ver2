@@ -101,7 +101,19 @@
 - **provider 인증 기본값 결정(T008 이월)**: `auth = var.oci_auth` 기본 `APIKey` **유지** — 운영자 워크스테이션 한정이며 에이전트는 하네스의 읽기 전용 plan 외 접근 없음(하네스 헤더에 전제 명시). 세션 방식은 `-var oci_auth=SecurityToken`.
 - **하네스**: `b020add` — T010 단언을 실명·`access_type`·그룹 기반 IAM·`use keys` 허용·`usage-budgets`·iam-5 `= OBJECT_VERSION_DELETE` 형식으로 정합 + iam-6 접근 행렬·kms-3·lc 접두사 강화 → **36/0**(변이 49건), 리뷰 Approved(Minor 4 이월).
 
-(T011 기록은 이하에 추가)
+### T011 — Cloudflare 스택 `infra/cloudflare` (2026-09-03)
+
+- **코드**: 15파일(`versions·backend(키 cloudflare/terraform.tfstate)·providers·variables·data·zone_settings·access·security·workers·r2·tunnel·dns·import·outputs.tf` + lock) — 커밋 `7f0f560`, 사전 리뷰 Approved(계약 `hostnames-and-access.md` 앱 10·정책 5·토큰 4 매핑 일치, 공개 경로 누출 0). 이름(사용자 확인): R2 `joshuatech-public`, 터널 `joshuatech-tunnel`, 룰셋 `joshuatech-ratelimit`·`joshuatech-waf-managed`, 추가 정책 `admin-github-ssh`(1h)·`svc-auth-k8s`. 게이트(기본 false): Workers 도메인 2(T093/T094), R2 커스텀 도메인(US8 — `cdn`은 v1 버킷 `joshtech` 소유).
+- **편차(수용)**: task가 가정한 `admin` 레코드 부재 → 신규 생성; `traefik`만 import(id `246302c21bbe46054243aeaf06b2dabd`); WAF entrypoint 없음 → 신규 생성(Free Managed Ruleset `77454fe2…` execute).
+- **운영자 입력**: GitHub OAuth App `joshuatech-cf-access`(Client ID `Iv23liWmKm2wgQxshEQo`, 콜백 `https://joshua-tech.cloudflareaccess.com/cdn-cgi/access/callback`), `operator_email = joshua92y@gmail.com`(GitHub 기본 이메일), `CLOUDFLARE_API_TOKEN`(`joshuatech-tofu-deploy`).
+- **토큰 스코프 실측(표 ① 갱신)**: 룰셋 조회 인증 오류 → Zone WAF:Edit + Tunnel:Edit + Access IdP/Groups:Edit + Access Service Tokens:Edit + R2:Edit 추가; 1차 apply에서 재사용 정책 5개 **403 auth.forbidden** → **Account 단위** Access: Apps and Policies:Edit 추가 후 재apply.
+- **실행**: plan `1 import / 38 add / 1 change / 0 destroy` → apply(1차: 정책 403으로 23 add) → 토큰 편집 → 재apply **15 added**(정책 5 + 앱 10) → 총 import 1·add 38·change 1(traefik in-place)·destroy 0.
+- **VD-3 실측 → 옵션 A 확정**: `-var=ratelimit_use_host_condition=true` plan(1 change in-place) → apply 성공 — Free 플랜 Rate Limiting 표현식에 `http.host eq "joshuatech.dev" and starts_with(http.request.uri.path, "/api/")` 수락. 코드 기본값을 true로 고정(후속 커밋). 호스트 조건 없는 부분(`/api/auth/*`·`/if/flow/*`)은 US8 전까지 v1 `api.`·`mainapi.`에도 적용됨을 report.md에 기록.
+- **Outputs(비밀 아님)**: zone `69559544da12932b3c73e745f3946d0e`, account `91738ffff95834c5972f1a92aac416a6`, tunnel `d0cf3291-f55a-415d-b305-5548c0ebd5bf`, ratelimit 룰셋 `5026b8498eca4013a8b9a93c2b1533a5`, WAF entrypoint `ccbe2a0b69a84ba99c7e3c1b307448af`, IdP `097c94b9-1236-415f-9875-db9618c852d7`, Access AUD: admin `bb921cd6…`, argo `b3ba3e78…`, auth-admin `6f28a967…`, identity-m2m-dev `e808dc6e…`, identity-m2m-prod `4b80c1ea…`, k8s `89363369…`, preview `3e2dcf18…`, ssh `5e939d3c…`, traefik `9bdcf6b1…`, vault `5a667983…`(전체 값은 `tofu -chdir=infra/cloudflare output access_app_aud`).
+- **sensitive 출력 보관(운영자 확인 2026-09-03)**: `service_tokens`(web-bff-dev·web-bff-prod·tester-m2m·tester-k8s client_id/secret) + `tunnel_token` → 비밀번호 관리자. Vault 투입은 T043(`kv/platform/access/*`), 터널 토큰은 T014/T035 cloudflared 설치 시 사용.
+- **효과**: `argo`·`vault`·`traefik`·`admin`·`preview`·`k8s`·`ssh-a/b`·`auth./if/admin`은 Access(GitHub `joshua92y@gmail.com`) 뒤. SSL strict·HTTPS 강제·TLS 1.2·AOP 존 설정 코드 고정. 터널 CNAME `ssh-a`·`ssh-b`·`k8s` 준비(cloudflared는 T014에서 기동).
+
+(T012–T014 기록은 §1 이후 §2·§5 절에 추가)
 
 ## §2 재이미지·host-prep
 
