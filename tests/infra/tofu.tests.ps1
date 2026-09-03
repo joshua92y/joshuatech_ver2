@@ -12,8 +12,9 @@
 #     UTF-8을 내보내는데 CP949 콘솔에서 "Ampere® Altra™" 같은 비ASCII가 깨져 JSON 닫는 따옴표를 삼키던 결함의
 #     수정이며, enc-1이 픽스처 왕복으로 회귀를 막는다(호출 전후로 콘솔을 Latin1로 강제·복원하므로 UTF-8 콘솔에서도
 #     공허하지 않다).
-#     backend 블록이 생기면(T007의 jt-tfstate) plan 전에 완전한 `tofu init`이 선행되어야 한다 —
+#     backend 블록이 생기면(T007의 joshuatech-tfstate) plan 전에 완전한 `tofu init`이 선행되어야 한다 —
 #     이 스위트가 돌리는 `init -backend=false`는 backend 도입 전에만 충분하다.
+#     T010부터 plan은 변수 budget_alert_email(기본값 없음)을 요구한다 — 운영자 tfvars(.gitignore) 또는 TF_VAR_budget_alert_email.
 #   - [tf-text] 표시 단언은 .tf 원문만 읽는다(plan JSON이 lifecycle prevent_destroy 등 일부 선언을 노출하지
 #     않으므로 중괄호 균형 최소 파서로 리소스 블록을 추출해 검사한다). 자격 증명 불필요.
 #     주석은 전체 행 `#`/`//`만 지원한다 — 검사 대상 리소스 블록 안에 블록 주석(/* */)이나 행 끝 주석을 두지 않는다.
@@ -35,13 +36,36 @@
 #     평가하므로 SL에 ingress가 남으면 NSG 경계가 무의미하다). 리소스 0개면 FAIL.
 #   - 인스턴스 planned create_vnic_details[0].nsg_ids가 알려져 있으면(apply 후) 원소 수 = NSG 참조 라벨 수여야 한다
 #     (리터럴 OCID 등 참조 없는 NSG가 섞이면 FAIL).
-#   - 버킷 이름은 정확히 jt-tfstate·jt-backup·jt-backup-platform (3개 전부, 그 외 없음).
-#   - OBJECT_VERSION_DELETE 정책 단언은 선언 존재까지만이다 — 규칙이 실제로 이전 버전을 삭제하는지는
+#   - 이름 예외(사용자 결정 2026-09-03, docs/runbooks/bootstrap.md §0 — 구속력): 설계 문서의 jt-* 표기는 실명 joshuatech-* 로 읽는다.
+#     버킷은 정확히 joshuatech-tfstate·joshuatech-backup·joshuatech-backup-platform(3개 전부, 그 외 없음; provider 속성은
+#     access_type = NoPublicAccess — public_access_type이 아니다), 그룹 joshuatech-tfstate·joshuatech-s3-backup·joshuatech-verify,
+#     동적 그룹 joshuatech-node-a, KMS 볼트 joshuatech-vault·키 joshuatech-key.
+#   - IAM(T010): OCI 정책은 사용자(svc-*)가 아니라 그룹·동적 그룹·서비스 주체에 권한을 준다(사용자→그룹 가입은 tofu 밖 콘솔 단계).
+#     문장은 `allow <kind> <name> to <verb> <resource> in <scope> [where …]`로 파싱하고 주체별로 분류한다. 버킷 접근 행렬은 소진적이다:
+#       joshuatech-tfstate         ← group joshuatech-tfstate 만
+#       joshuatech-backup          ← group joshuatech-s3-backup · group joshuatech-verify · service objectstorage[-region]
+#       joshuatech-backup-platform ← dynamic-group joshuatech-node-a · group joshuatech-verify · service objectstorage[-region]
+#     그 외 주체·버킷·any-user, 그리고 target.* '=' 조건 없는 manage/use 문장은 iam-6 위반이다. where 절은 리프(`key = 'v'`|`key != 'v'`)·
+#     `all {…}`·`any {…}`(all 안의 any 한 단계까지)만 받고, any 안에 target.bucket.name '=' 이외의 리프(any {bucket, permission}은 OR라
+#     권한이 넓어진다)·bucket '!='·더 깊은 중첩·파싱 불가는 전부 FAIL이다. 동적 그룹은 `use keys … where target.key.id`(이 스택의 KMS 키;
+#     T010 문면) + joshuatech-backup-platform `manage objects` where all {bucket, request.permission = OBJECT_CREATE|OBJECT_INSPECT}만이다.
+#     plan 시점 unknown 문장(키 OCID가 (known after apply)면 provider가 statements 전체를 unknown으로 낸다)은 같은 정책 블록의 .tf 원문
+#     `statements = [ … ]` 문자열 리터럴(같은 인덱스; 순수 리터럴 목록일 때만 — concat/for 식·비문자열 원소가 섞이면 해석 불가 = FAIL)로
+#     대체해 검사한다. `${…}` 치환: `<oci_type>.<label>.<attr>`는 그 리소스의 planned 값, 그 밖의 참조(local.* 등)는 같은 참조를 단독으로
+#     쓰는 다른 리소스 속성의 planned 값(후보가 전부 같을 때만; 예 local.bucket_names.backup_platform ← 버킷 name), 해석 실패는 <expr>
+#     마커(unknown 키 OCID는 <oci_kms_key.<label>.id> 마커로 이 스택의 키 라벨과 대조; 그 밖의 마커는 검사에서 걸린다 — fail closed).
+#   - OBJECT_VERSION_DELETE(VD-6): Object Storage 서비스 주체 문장이 두 백업 버킷 각각에 `request.permission = 'OBJECT_VERSION_DELETE'`
+#     (= 형, != 아님; 버킷은 그 문장의 bucket 리프 또는 all 안의 any {bucket…})을 담아야 한다 — T010은 정책을 `!=` 반쪽과 `=` 반쪽으로
+#     나누므로 `=` 반쪽(VD-6 관찰 단계에서 떼는 쪽)을 빼면 FAIL. 단언은 선언 존재까지만이다 — 규칙이 실제로 이전 버전을 삭제하는지는
 #     VD-6(T010 apply 후 첫 만료 관찰)에서 확인한다.
+#   - lifecycle: 두 백업 버킷에 enabled previous-object-versions DELETE 60 DAYS 규칙이 있어야 하고, 현재 버전(target = objects) 규칙은
+#     전부 inclusion prefix ≥ 1을 가져야 한다(접두사 없는 objects DELETE = 버킷 전체 만료). joshuatech-tfstate에는 규칙이 없다.
+#   - KMS: 키는 protection_mode SOFTWARE + key_shape AES/32 + is_auto_rotation_enabled = false 명시 + display_name joshuatech-key(정확히 1);
+#     볼트는 정확히 1, vault_type DEFAULT, display_name joshuatech-vault; 키·볼트 블록 모두 prevent_destroy [tf-text].
 #   - Cloudflare Access(T008/T011): cloudflare_zero_trust_access_application 블록이 1개 이상 있어야 하고,
 #     application·policy 두 타입의 모든 블록이 각각 session_duration을 명시해야 한다(양측 무조건 검사).
 #
-# 단언 수: 34 (tool 1, enc 1, dir 2, validate 4, plan 2, nsg 4, sl 1, inst 3, bucket 4, iam 5, dg 2, kms 2, lc 2, access 1)
+# 단언 수: 36 (tool 1, enc 1, dir 2, validate 4, plan 2, nsg 4, sl 1, inst 3, bucket 4, iam 6, dg 2, kms 3, lc 2, access 1)
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -510,15 +534,19 @@ try {
         Assert 'inst-3: every oci_core_instance block declares lifecycle prevent_destroy = true [tf-text]' ($blocks.Count -ge 1 -and $bad.Count -eq 0) "blocks=$($blocks.Count); missing: $($bad -join ', ')"
     }
 
-    # ---------- 5. 버킷 [plan] ----------
-    $bucketNames = @('jt-tfstate', 'jt-backup', 'jt-backup-platform')
+    # ---------- 5. 버킷 [plan] — 이름 예외(joshuatech-*), versioning Enabled, access_type NoPublicAccess ----------
+    $bucketTfstate = 'joshuatech-tfstate'; $bucketBackup = 'joshuatech-backup'; $bucketBackupPlatform = 'joshuatech-backup-platform'
+    $bucketNames = @($bucketTfstate, $bucketBackup, $bucketBackupPlatform)
+    $lcBuckets = @($bucketBackup, $bucketBackupPlatform)   # lifecycle 규칙·서비스 주체 정책·svc-verify 읽기의 대상(두 백업 버킷)
+    # ordinal 집합 포함 여부(-contains는 대소문자 무시)
+    function Test-InSet($set, [string]$v) { foreach ($x in @($set)) { if ([string]::Equals("$x", $v, [StringComparison]::Ordinal)) { return $true } }; return $false }
     for ($bi = 0; $bi -lt $bucketNames.Count; $bi++) {
         $bn = $bucketNames[$bi]
-        PlanAssert "bucket-$($bi + 1): bucket '$bn' exists with versioning Enabled + NoPublicAccess" {
+        PlanAssert "bucket-$($bi + 1): bucket '$bn' exists with versioning Enabled + access_type NoPublicAccess" {
             $bs = Get-Planned 'oci_objectstorage_bucket'
             $hit = @($bs | Where-Object { [string]::Equals("$($_.values.name)", $bn, [StringComparison]::Ordinal) })
-            $ok = ($hit.Count -eq 1 -and "$($hit[0].values.versioning)" -eq 'Enabled' -and "$($hit[0].values.public_access_type)" -eq 'NoPublicAccess')
-            $d = if ($hit.Count -ne 1) { "matching buckets=$($hit.Count)" } else { "versioning=$($hit[0].values.versioning), public_access_type=$($hit[0].values.public_access_type)" }
+            $ok = ($hit.Count -eq 1 -and [string]::Equals("$($hit[0].values.versioning)", 'Enabled', [StringComparison]::Ordinal) -and [string]::Equals("$($hit[0].values.access_type)", 'NoPublicAccess', [StringComparison]::Ordinal))
+            $d = if ($hit.Count -ne 1) { "matching buckets=$($hit.Count)" } else { "versioning=$($hit[0].values.versioning), access_type=$($hit[0].values.access_type)" }
             , @($ok, $d)
         }
     }
@@ -527,62 +555,307 @@ try {
         , @(($bs.Count -eq 3), "bucket count=$($bs.Count): $((@($bs | ForEach-Object { $_.values.name })) -join ', ')")
     }
 
-    # ---------- 6. IAM 정책 [plan] — 교차 버킷 접근 0 ----------
-    $allStatements = @()
-    if ($script:planJson) {
-        foreach ($p in (Get-Planned 'oci_identity_policy')) {
-            if ($p.values -and $p.values.statements) { $allStatements += @($p.values.statements | ForEach-Object { "$_" }) }
-        }
-    }
-    PlanAssert 'iam-1: svc-tfstate statements target only jt-tfstate (no jt-backup*)' {
-        $st = @($allStatements | Where-Object { $_ -match '(?i)\bsvc-tfstate\b' })
-        $bad = @($st | Where-Object { $_ -notmatch '(?i)jt-tfstate' -or $_ -match '(?i)jt-backup' })
-        , @(($st.Count -ge 1 -and $bad.Count -eq 0), "statements=$($st.Count); bad: $($bad -join ' | ')")
-    }
-    PlanAssert 'iam-2: svc-s3-backup statements target only jt-backup (not -platform, not jt-tfstate)' {
-        $st = @($allStatements | Where-Object { $_ -match '(?i)\bsvc-s3-backup\b' })
-        $bad = @($st | Where-Object { $_ -match '(?i)jt-backup-platform' -or $_ -match '(?i)jt-tfstate' -or $_ -notmatch '(?i)jt-backup' })
-        , @(($st.Count -ge 1 -and $bad.Count -eq 0), "statements=$($st.Count); bad: $($bad -join ' | ')")
-    }
-    PlanAssert 'iam-3: dynamic-group statements: jt-node-a -> jt-backup-platform with only OBJECT_CREATE + OBJECT_INSPECT' {
-        $st = @($allStatements | Where-Object { $_ -match '(?i)\bdynamic-group\b' })
-        $bad = @(); $perms = @()
-        foreach ($s in $st) {
-            if ($s -notmatch '(?i)\bjt-node-a\b') { $bad += "not jt-node-a: $s"; continue }
-            if ($s -notmatch '(?i)jt-backup-platform') { $bad += "does not target jt-backup-platform: $s" }
-            if (($s -replace '(?i)jt-backup-platform', '') -match '(?i)jt-backup|jt-tfstate') { $bad += "cross-bucket reference: $s" }
-            $toks = @([regex]::Matches($s, 'OBJECT_[A-Z_]+') | ForEach-Object { $_.Value })
-            # 무제한 manage 문장이 다른 문장의 허용 토큰 뒤에 숨지 못하게: 토큰 0개인 문장은 그 자체로 위반이다
-            if ($toks.Count -eq 0) { $bad += "no request.permission restriction: $s" }
-            foreach ($tok in $toks) {
-                $perms += $tok
-                if ($tok -ne 'OBJECT_CREATE' -and $tok -ne 'OBJECT_INSPECT') { $bad += "permission $tok not allowed: $s" }
-            }
-        }
-        $ok = ($st.Count -ge 1 -and $bad.Count -eq 0 -and ($perms -contains 'OBJECT_CREATE') -and ($perms -contains 'OBJECT_INSPECT'))
-        , @($ok, "statements=$($st.Count); perms=[$($perms -join ',')]; bad: $($bad -join ' | ')")
-    }
-    PlanAssert 'iam-4: svc-verify statements have zero manage verbs, only inspect/read of objects|usage-reports|budgets|instance-family' {
-        $st = @($allStatements | Where-Object { $_ -match '(?i)\bsvc-verify\b' })
-        $bad = @()
-        foreach ($s in $st) {
-            if ($s -match '(?i)\bmanage\b') { $bad += "manage verb: $s"; continue }
-            if ($s -notmatch '(?i)\bto\s+(inspect|read)\s+(objects|usage-reports|budgets|instance-family)\b') { $bad += "verb/target outside allowed set: $s" }
-        }
-        , @(($st.Count -ge 1 -and $bad.Count -eq 0), "statements=$($st.Count); bad: $($bad -join ' | ')")
-    }
-    PlanAssert 'iam-5: a policy grants the Object Storage service principal OBJECT_VERSION_DELETE (declaration only; actual expiry = VD-6 after T010 apply)' {
-        $hit = @($allStatements | Where-Object { $_ -match '(?i)\ballow\s+service\s+objectstorage' -and $_ -match 'OBJECT_VERSION_DELETE' })
-        , @(($hit.Count -ge 1), "no statement matched 'allow service objectstorage...' + OBJECT_VERSION_DELETE among $($allStatements.Count) statements")
+    # ---------- 6. IAM 정책 [plan + tf-text 대체] — 그룹·동적 그룹·서비스 주체 문장, 교차 버킷 접근 0 ----------
+    # 문장 파싱·where 절 사실 추출·unknown 문장의 tf-text 대체 규칙은 머리 주석 "IAM(T010)" 항목이 계약이다. 주체 키는 "<kind> <name>"
+    # (서비스 주체는 리전 접미를 뗀 'service objectstorage').
+    $iamSubjectTfstate = 'group joshuatech-tfstate'; $iamSubjectS3Backup = 'group joshuatech-s3-backup'; $iamSubjectVerify = 'group joshuatech-verify'
+    $iamSubjectNodeA = 'dynamic-group joshuatech-node-a'; $iamSubjectObjectStorage = 'service objectstorage'
+    $knownSubjects = @($iamSubjectTfstate, $iamSubjectS3Backup, $iamSubjectVerify, $iamSubjectNodeA, $iamSubjectObjectStorage)
+    # 버킷 접근 행렬(소진적) — 여기 없는 (버킷, 주체) 쌍은 iam-6 위반이다
+    $bucketSubjects = @{
+        $bucketTfstate        = @($iamSubjectTfstate)
+        $bucketBackup         = @($iamSubjectS3Backup, $iamSubjectVerify, $iamSubjectObjectStorage)
+        $bucketBackupPlatform = @($iamSubjectNodeA, $iamSubjectVerify, $iamSubjectObjectStorage)
     }
 
-    # ---------- 7. 동적 그룹 [plan] ----------
-    PlanAssert 'dg-1: dynamic group jt-node-a exists' {
-        $dg = @((Get-Planned 'oci_identity_dynamic_group') | Where-Object { [string]::Equals("$($_.values.name)", 'jt-node-a', [StringComparison]::Ordinal) })
+    # HCL 문자열 리터럴 스팬(선언 순서; start = 여는 따옴표 인덱스, end = 닫는 따옴표 다음 인덱스, value = 원문 그대로, 이스케이프 미해석) —
+    # "${…}"/"%{…}" 템플릿 안의 따옴표·중괄호를 스택으로 추적한다(`${local.x["k"]}` 안전). Get-TfResourceBlocks가 전체 행 주석을 이미
+    # 지운 블록 본문에 쓴다.
+    function Get-HclStringSpans([string]$text) {
+        $out = @(); $i = 0; $n = $text.Length
+        while ($i -lt $n) {
+            if ($text[$i] -ne '"') { $i++; continue }
+            $start = $i + 1; $j = $start
+            $stack = [System.Collections.Generic.List[string]]::new(); $stack.Add('str')
+            while ($j -lt $n -and $stack.Count -gt 0) {
+                $ch = $text[$j]; $top = $stack[$stack.Count - 1]
+                if ($top -eq 'str') {
+                    if ($ch -eq '\') { $j += 2; continue }
+                    if (($ch -eq '$' -or $ch -eq '%') -and ($j + 1) -lt $n -and $text[$j + 1] -eq '{') { $stack.Add('tpl'); $j += 2; continue }
+                    if ($ch -eq '"') { $stack.RemoveAt($stack.Count - 1); $j++; continue }
+                }
+                elseif ($ch -eq '"') { $stack.Add('str') }
+                elseif ($ch -eq '{') { $stack.Add('tpl') }
+                elseif ($ch -eq '}') { $stack.RemoveAt($stack.Count - 1) }
+                $j++
+            }
+            $out += , @{ start = $i; end = [Math]::Min($j, $n); value = $text.Substring($start, [Math]::Max(0, $j - 1 - $start)) }
+            $i = [Math]::Max($j, $i + 1)
+        }
+        return , $out
+    }
+    # 정책 블록의 `statements = [ … ]`가 순수 문자열 리터럴 목록일 때만 그 리터럴들(선언 순서)을 돌려준다 — 목록이 없거나(concat/for 식)
+    # 문자열 외 원소·중첩 목록이 섞이면 $null(unknown 문장을 원문으로 해석할 수 없다 → 위반; 숨은 비리터럴 문장이 검사를 비껴가지 못한다).
+    function Get-PolicyStatementLiterals([string]$body) {
+        $m = [regex]::Match($body, 'statements\s*=\s*\[')
+        if (-not $m.Success) { return $null }
+        $byStart = @{}
+        foreach ($sp in (Get-HclStringSpans $body)) { $byStart[[int]$sp.start] = $sp }
+        $i = $m.Index + $m.Length; $depth = 1; $j = $i; $n = $body.Length; $inRegion = @()
+        while ($j -lt $n -and $depth -gt 0) {
+            if ($byStart.ContainsKey($j)) { $sp = $byStart[$j]; $inRegion += , $sp; $j = [int]$sp.end; continue }
+            $ch = $body[$j]
+            if ($ch -eq '[') { $depth++ } elseif ($ch -eq ']') { $depth-- }
+            $j++
+        }
+        if ($depth -ne 0) { return $null }
+        $residue = $body.Substring($i, $j - 1 - $i)
+        foreach ($sp in @($inRegion | Sort-Object { [int]$_.start } -Descending)) { $residue = $residue.Remove([int]$sp.start - $i, [int]$sp.end - [int]$sp.start) }
+        if ($residue -notmatch '^[\s,]*$') { return $null }
+        return , @($inRegion | ForEach-Object { "$($_.value)" })
+    }
+    # `${expr}` 해석(unknown 문장의 tf-text 템플릿 전용):
+    #   (1) <oci_type>.<label>.<attr> → 그 리소스의 planned 스칼라 값(알려진 경우; 예 oci_identity_dynamic_group.node_a.name)
+    #   (2) 그 밖의 참조(local.* 등) → 같은 참조를 단독으로 쓰는(references가 그 참조와 조상뿐인) 다른 리소스 속성의 planned 스칼라 값 —
+    #       후보 값이 전부 같을 때만(예 local.bucket_names.backup_platform ← oci_objectstorage_bucket.backup_platform.name)
+    #   (3) 실패(unknown 포함) → <expr> 마커. iam-3의 target.key.id는 <oci_kms_key.<label>.id> 마커를 이 스택의 키 라벨로 대조한다.
+    function Resolve-Expr([string]$e) {
+        $m = [regex]::Match($e, '^([a-z][a-z0-9_]*\.[A-Za-z0-9_-]+)\.([a-z_]+)$')
+        if ($m.Success -and -not ($e.StartsWith('local.') -or $e.StartsWith('var.') -or $e.StartsWith('data.') -or $e.StartsWith('each.'))) {
+            $pl = Get-PlannedFor $m.Groups[1].Value; $pl = @($pl)
+            if ($pl.Count -eq 1 -and $null -ne $pl[0].values) {
+                $v = $pl[0].values.($m.Groups[2].Value)
+                if ($v -is [string] -and $v -ne '') { return $v }
+            }
+            return "<$e>"
+        }
+        $cands = @{}
+        $cfgAll = @(); $j = $script:planJson
+        if ($j -and $j.configuration -and $j.configuration.root_module -and $j.configuration.root_module.resources) { $cfgAll = @($j.configuration.root_module.resources) }
+        foreach ($c in $cfgAll) {
+            if ($null -eq $c.expressions) { continue }
+            foreach ($prop in @($c.expressions.PSObject.Properties)) {
+                $refs = Get-Refs $prop.Value; $refs = @($refs)
+                if ($refs.Count -eq 0 -or -not (Test-InSet $refs $e)) { continue }
+                $exact = $true
+                foreach ($r in $refs) { if (-not ([string]::Equals($r, $e, [StringComparison]::Ordinal) -or $e.StartsWith($r + '.', [StringComparison]::Ordinal) -or $e.StartsWith($r + '[', [StringComparison]::Ordinal))) { $exact = $false } }
+                if (-not $exact) { continue }
+                $pls = Get-PlannedFor "$($c.address)"; $pls = @($pls)
+                foreach ($pi in $pls) {
+                    if ($null -eq $pi.values) { continue }
+                    $v = $pi.values.($prop.Name)
+                    if ($v -is [string] -and $v -ne '') { $cands["$v"] = $true }
+                }
+            }
+        }
+        if ($cands.Count -eq 1) { return "$(@($cands.Keys)[0])" }
+        return "<$e>"
+    }
+    function Resolve-StatementTemplate([string]$tpl) {
+        return [regex]::Replace($tpl, '\$\{([^{}]*)\}', { param($m) Resolve-Expr $m.Groups[1].Value.Trim() })
+    }
+    # where 절 노드 파서: depth 0 = all|any {…} 또는 리프, depth 1(all 안) = any {…} 또는 리프, 그 밖의 중첩·형태는 err(fail closed).
+    # 리프는 `key = 'v'` | `key != 'v'`(값은 작은따옴표)만.
+    function Parse-WhereNode([string]$w, [int]$depth) {
+        $w = $w.Trim()
+        $g = [regex]::Match($w, '(?is)^(all|any)\s*\{(.*)\}$')
+        if ($g.Success) {
+            $op = $g.Groups[1].Value.ToLowerInvariant()
+            if ($depth -ge 2 -or ($depth -eq 1 -and $op -ne 'any')) { return @{ op = 'err'; err = "'$op {...}' nested at depth $depth (only all {..., any {...}} is accepted)" } }
+            $parts = @(); $cur = ''; $d = 0; $q = $false
+            foreach ($ch in $g.Groups[2].Value.ToCharArray()) {
+                if ($ch -eq "'") { $q = -not $q }
+                elseif (-not $q -and $ch -eq '{') { $d++ }
+                elseif (-not $q -and $ch -eq '}') { $d-- }
+                if ($ch -eq ',' -and $d -eq 0 -and -not $q) { $parts += $cur; $cur = '' } else { $cur += $ch }
+            }
+            $parts += $cur
+            $kids = @()
+            foreach ($p in $parts) {
+                if ($p.Trim() -eq '') { return @{ op = 'err'; err = "empty condition inside $op {}" } }
+                $k = Parse-WhereNode $p ($depth + 1)
+                if ($k.op -eq 'err') { return $k }
+                $kids += , $k
+            }
+            return @{ op = $op; kids = $kids }
+        }
+        $l = [regex]::Match($w, "^([A-Za-z][A-Za-z0-9_.]*)\s*(=|!=)\s*'([^']*)'$")
+        if ($l.Success) { return @{ op = 'leaf'; key = $l.Groups[1].Value.ToLowerInvariant(); cmp = $l.Groups[2].Value; val = $l.Groups[3].Value } }
+        return @{ op = 'err'; err = "unparseable condition '$w'" }
+    }
+    # 리프 평면화 — 각 리프에 직접 감싼 결합자(under: all|any|single)를 붙인다
+    function Get-WhereLeaves($node, [string]$under) {
+        $out = @()
+        if ($node.op -eq 'leaf') { $out += , @{ key = $node.key; cmp = $node.cmp; val = $node.val; under = $under } }
+        else { foreach ($k in $node.kids) { $sub = Get-WhereLeaves $k $node.op; $out += @($sub) } }
+        return , $out
+    }
+    # 문장 파서 → 해시(kind, name, verb, resource, scope, buckets/permEq/permNe/keyIds/targetEq, unsound, err). 파싱 불가면 err(fail closed).
+    function Parse-Statement([string]$s) {
+        $r = @{ text = $s; kind = ''; name = ''; verb = ''; resource = ''; scope = ''; buckets = @(); permEq = @(); permNe = @(); keyIds = @(); targetEq = 0; unsound = @(); err = '' }
+        if ($s -match '(?i)^\s*allow\s+any-(user|group)\b') { $r.kind = 'any-' + $Matches[1].ToLowerInvariant(); $r.err = "subject $($r.kind) is forbidden"; return $r }
+        $m = [regex]::Match($s, "(?i)^\s*allow\s+(group|dynamic-group|service)\s+(\S+)\s+to\s+(inspect|read|use|manage)\s+(\S+)\s+in\s+(tenancy|compartment\s+(?:id\s+)?\S+)(?:\s+where\s+(.+?))?\s*$")
+        if (-not $m.Success) { $r.err = 'does not parse as allow <group|dynamic-group|service> <name> to <inspect|read|use|manage> <resource> in <tenancy|compartment ...> [where ...]'; return $r }
+        $r.kind = $m.Groups[1].Value.ToLowerInvariant(); $r.name = $m.Groups[2].Value; $r.verb = $m.Groups[3].Value.ToLowerInvariant()
+        $r.resource = $m.Groups[4].Value.ToLowerInvariant(); $r.scope = $m.Groups[5].Value
+        if ($m.Groups[6].Success) {
+            $node = Parse-WhereNode $m.Groups[6].Value 0
+            if ($node.op -eq 'err') { $r.err = "where clause: $($node.err)"; return $r }
+            foreach ($leaf in (Get-WhereLeaves $node 'single')) {
+                if ($leaf.under -eq 'any' -and -not ($leaf.key -eq 'target.bucket.name' -and $leaf.cmp -eq '=')) { $r.unsound += "any {} contains '$($leaf.key) $($leaf.cmp)' (OR widens the grant)" }
+                switch ($leaf.key) {
+                    'target.bucket.name' { if ($leaf.cmp -eq '=') { $r.buckets += $leaf.val } else { $r.unsound += "target.bucket.name != '$($leaf.val)' (negated bucket = every other bucket)" } }
+                    'request.permission' { if ($leaf.cmp -eq '=') { $r.permEq += $leaf.val } else { $r.permNe += $leaf.val } }
+                    'target.key.id' { if ($leaf.cmp -eq '=') { $r.keyIds += $leaf.val } else { $r.unsound += 'target.key.id != (negated key = every other key)' } }
+                }
+                if ($leaf.key -like 'target.*' -and $leaf.cmp -eq '=') { $r.targetEq++ }
+            }
+        }
+        return $r
+    }
+    function Get-SubjectKey($st) {
+        if ($st.kind -eq 'service' -and $st.name -match '^objectstorage(-[a-z0-9-]+)?$') { return $iamSubjectObjectStorage }
+        return "$($st.kind) $($st.name)"
+    }
+
+    # 모든 정책의 문장 해석 — planned 값이 알려진 문장은 그대로, unknown(null/키 없음)이면 같은 정책 블록의 tf-text statements 리터럴 목록
+    # (같은 인덱스; 순수 문자열 리터럴 목록일 때만)을 Resolve-StatementTemplate로 해석한다. 해석 불가는 $stmtErrors(iam-6 위반).
+    $stmts = @(); $stmtErrors = @()
+    if ($script:planJson) {
+        $policyBlocks = Get-TfResourceBlocks $ociDir 'oci_identity_policy'
+        foreach ($p in (Get-Planned 'oci_identity_policy')) {
+            $label = "$($p.name)"
+            $known = @()
+            if ($p.values -and (@($p.values.PSObject.Properties.Name) -contains 'statements') -and $null -ne $p.values.statements) { $known = @($p.values.statements) }
+            $tpls = $null   # $null = 원문에 순수 리터럴 목록이 없다(블록 없음·중복·concat/for 식·비문자열 원소)
+            $blocksFor = @($policyBlocks | Where-Object { [string]::Equals("$($_.name)", $label, [StringComparison]::Ordinal) })
+            if ($blocksFor.Count -eq 1) { $tpls = Get-PolicyStatementLiterals "$($blocksFor[0].body)"; if ($null -ne $tpls) { $tpls = @($tpls) } }
+            $count = $known.Count
+            if ($count -eq 0) {
+                if ($null -eq $tpls -or $tpls.Count -eq 0) { $stmtErrors += "$($p.address): statements unknown at plan time and its .tf block has no pure string-literal statements list (blocks=$($blocksFor.Count); concat/for or non-literal element?) -- cannot verify"; continue }
+                $count = $tpls.Count
+            }
+            for ($si = 0; $si -lt $count; $si++) {
+                $text = $null; $src = 'plan'
+                if ($si -lt $known.Count -and $null -ne $known[$si] -and "$($known[$si])" -ne '') { $text = "$($known[$si])" }
+                elseif ($null -ne $tpls -and $si -lt $tpls.Count) { $text = Resolve-StatementTemplate $tpls[$si]; $src = 'tf-text' }
+                if ($null -eq $text) { $stmtErrors += "$($p.address)[$si]: statement unknown at plan time and no literal at that index in its .tf block (pure literal list required)"; continue }
+                $st = Parse-Statement $text
+                $st.policy = "$($p.address)"; $st.index = $si; $st.src = $src
+                $stmts += , $st
+            }
+        }
+    }
+
+    # 서비스 사용자 그룹 문장 공통 검사 — 자원은 objects(manage|use|read|inspect)·buckets(read|inspect)만, 버킷 집합 == {$bucket} 정확히
+    function Test-SvcGroupStatements([string]$subject, [string]$bucket) {
+        $st = @($stmts | Where-Object { [string]::Equals((Get-SubjectKey $_), $subject, [StringComparison]::Ordinal) })
+        $bad = @()
+        foreach ($s in $st) {
+            if ($s.err) { $bad += "$($s.err): $($s.text)"; continue }
+            $vr = "$($s.verb) $($s.resource)"
+            if ($vr -notmatch '^(manage|use|read|inspect) objects$' -and $vr -notmatch '^(read|inspect) buckets$') { $bad += "'$vr' outside {manage|use|read|inspect objects, read|inspect buckets}: $($s.text)" }
+            if ($s.unsound.Count -gt 0) { $bad += "unsound where ($($s.unsound -join '; ')): $($s.text)" }
+            $bs = @($s.buckets | Sort-Object -Unique)
+            if ($bs.Count -ne 1 -or -not [string]::Equals("$($bs[0])", $bucket, [StringComparison]::Ordinal)) { $bad += "target.bucket.name set [$($bs -join ', ')] != {$bucket}: $($s.text)" }
+        }
+        return @{ n = $st.Count; bad = $bad }
+    }
+    PlanAssert 'iam-1: group joshuatech-tfstate (svc-tfstate) statements: >= 1, objects/buckets verbs only, target.bucket.name = joshuatech-tfstate exactly (no backup bucket, no unconditioned grant)' {
+        $r = Test-SvcGroupStatements $iamSubjectTfstate $bucketTfstate
+        , @(($r.n -ge 1 -and $r.bad.Count -eq 0), "statements=$($r.n); bad: $($r.bad -join ' | ')")
+    }
+    PlanAssert 'iam-2: group joshuatech-s3-backup (svc-s3-backup) statements: >= 1, objects/buckets verbs only, target.bucket.name = joshuatech-backup exactly (not -platform, not tfstate, no unconditioned grant)' {
+        $r = Test-SvcGroupStatements $iamSubjectS3Backup $bucketBackup
+        , @(($r.n -ge 1 -and $r.bad.Count -eq 0), "statements=$($r.n); bad: $($r.bad -join ' | ')")
+    }
+    PlanAssert 'iam-3: dynamic-group statements: subject joshuatech-node-a only; forms = use keys where target.key.id = <this stack KMS key> (>= 1) + manage objects where all {target.bucket.name = joshuatech-backup-platform, request.permission = OBJECT_CREATE|OBJECT_INSPECT} (both perms present, nothing else, no !=)' {
+        $st = @($stmts | Where-Object { $_.kind -eq 'dynamic-group' })
+        $kmsIds = @((Get-Planned 'oci_kms_key') | ForEach-Object { "$($_.values.id)" } | Where-Object { $_ -ne '' })
+        $kmsLabels = @((Get-Config 'oci_kms_key') | ForEach-Object { "$($_.name)" })
+        $bad = @(); $perms = @(); $keyStmts = 0
+        foreach ($s in $st) {
+            if ($s.err) { $bad += "$($s.err): $($s.text)"; continue }
+            if (-not [string]::Equals("$($s.name)", 'joshuatech-node-a', [StringComparison]::Ordinal)) { $bad += "dynamic-group '$($s.name)' is not joshuatech-node-a: $($s.text)"; continue }
+            if ($s.unsound.Count -gt 0) { $bad += "unsound where ($($s.unsound -join '; ')): $($s.text)" }
+            if ($s.permNe.Count -gt 0) { $bad += "request.permission != (negation widens the grant): $($s.text)" }
+            $vr = "$($s.verb) $($s.resource)"
+            if ($vr -eq 'use keys') {
+                $keyStmts++
+                if ($s.buckets.Count -gt 0 -or $s.keyIds.Count -ne 1) { $bad += "use keys must carry exactly one target.key.id = condition and no bucket condition: $($s.text)"; continue }
+                $kid = "$($s.keyIds[0])"
+                $mk = [regex]::Match($kid, '^<oci_kms_key\.([A-Za-z0-9_-]+)\.id>$')
+                $okKey = if ($mk.Success) { Test-InSet $kmsLabels $mk.Groups[1].Value } else { Test-InSet $kmsIds $kid }
+                if (-not $okKey) { $bad += "target.key.id '$kid' is not a KMS key of this stack (planned ids [$($kmsIds -join ',')], config labels [$($kmsLabels -join ',')]): $($s.text)" }
+            }
+            elseif ($vr -eq 'manage objects') {
+                $bs = @($s.buckets | Sort-Object -Unique)
+                if ($bs.Count -ne 1 -or -not [string]::Equals("$($bs[0])", $bucketBackupPlatform, [StringComparison]::Ordinal)) { $bad += "target.bucket.name set [$($bs -join ', ')] != {$bucketBackupPlatform}: $($s.text)" }
+                if ($s.permEq.Count -eq 0) { $bad += "no request.permission = restriction (unrestricted manage objects): $($s.text)" }
+                foreach ($pm in $s.permEq) { $perms += $pm; if (-not (Test-InSet @('OBJECT_CREATE', 'OBJECT_INSPECT') $pm)) { $bad += "permission '$pm' not allowed (only OBJECT_CREATE, OBJECT_INSPECT): $($s.text)" } }
+            }
+            else { $bad += "'$vr' is not an allowed dynamic-group form (use keys | manage objects): $($s.text)" }
+        }
+        $ok = ($st.Count -ge 1 -and $bad.Count -eq 0 -and $keyStmts -ge 1 -and (Test-InSet $perms 'OBJECT_CREATE') -and (Test-InSet $perms 'OBJECT_INSPECT'))
+        , @($ok, "statements=$($st.Count) (use keys=$keyStmts; sources=[$(@($st | ForEach-Object { "$($_.src)" } | Sort-Object -Unique) -join ',')]); perms=[$($perms -join ',')]; bad: $($bad -join ' | ')")
+    }
+    PlanAssert 'iam-4: group joshuatech-verify (svc-verify) statements: verbs inspect|read only (manage/use = 0), resources objects|usage-reports|usage-budgets|instance-family only, objects scoped to exactly the two backup buckets (no tfstate)' {
+        $st = @($stmts | Where-Object { [string]::Equals((Get-SubjectKey $_), $iamSubjectVerify, [StringComparison]::Ordinal) })
+        $bad = @(); $seenBuckets = @()
+        foreach ($s in $st) {
+            if ($s.err) { $bad += "$($s.err): $($s.text)"; continue }
+            if ($s.verb -ne 'inspect' -and $s.verb -ne 'read') { $bad += "verb '$($s.verb)' (want inspect|read; manage/use = 0): $($s.text)"; continue }
+            if (-not (Test-InSet @('objects', 'usage-reports', 'usage-budgets', 'instance-family') $s.resource)) { $bad += "resource '$($s.resource)' outside {objects, usage-reports, usage-budgets, instance-family}: $($s.text)" }
+            if ($s.unsound.Count -gt 0) { $bad += "unsound where ($($s.unsound -join '; ')): $($s.text)" }
+            if ($s.resource -eq 'objects') {
+                if ($s.buckets.Count -eq 0) { $bad += "objects grant without target.bucket.name (every bucket): $($s.text)" }
+                foreach ($b in $s.buckets) { $seenBuckets += $b; if (-not (Test-InSet $lcBuckets $b)) { $bad += "bucket '$b' outside {$($lcBuckets -join ', ')}: $($s.text)" } }
+            }
+        }
+        $cover = @($lcBuckets | Where-Object { Test-InSet $seenBuckets $_ })
+        , @(($st.Count -ge 1 -and $bad.Count -eq 0 -and $cover.Count -eq $lcBuckets.Count), "statements=$($st.Count); objects buckets=[$(@($seenBuckets | Sort-Object -Unique) -join ', ')] (want both $($lcBuckets -join ' + ')); bad: $($bad -join ' | ')")
+    }
+    PlanAssert "iam-5: Object Storage service principal statements (service objectstorage[-region]): objects|object-family on the two backup buckets only, and each of joshuatech-backup + joshuatech-backup-platform has a statement carrying request.permission = 'OBJECT_VERSION_DELETE' (= form, not !=; the VD-6 half) -- declaration only, actual expiry = VD-6 after apply" {
+        $st = @($stmts | Where-Object { $_.kind -eq 'service' })
+        $bad = @(); $ovd = @{}
+        foreach ($s in $st) {
+            if ($s.err) { $bad += "$($s.err): $($s.text)"; continue }
+            if ($s.name -notmatch '^objectstorage(-[a-z0-9-]+)?$') { $bad += "service subject '$($s.name)' is not objectstorage[-region]: $($s.text)"; continue }
+            if ($s.resource -ne 'objects' -and $s.resource -ne 'object-family') { $bad += "resource '$($s.resource)' (want objects|object-family): $($s.text)" }
+            if ($s.unsound.Count -gt 0) { $bad += "unsound where ($($s.unsound -join '; ')): $($s.text)" }
+            if ($s.buckets.Count -eq 0) { $bad += "no target.bucket.name condition (every bucket incl. tfstate): $($s.text)" }
+            foreach ($b in $s.buckets) {
+                if (-not (Test-InSet $lcBuckets $b)) { $bad += "bucket '$b' outside {$($lcBuckets -join ', ')}: $($s.text)" }
+                elseif (Test-InSet $s.permEq 'OBJECT_VERSION_DELETE') { $ovd[$b] = $true }
+            }
+        }
+        $missing = @($lcBuckets | Where-Object { -not $ovd.ContainsKey($_) })
+        , @(($st.Count -ge 1 -and $bad.Count -eq 0 -and $missing.Count -eq 0), "statements=$($st.Count); request.permission = 'OBJECT_VERSION_DELETE' statement missing for: [$($missing -join ', ')]; bad: $($bad -join ' | ')")
+    }
+    PlanAssert 'iam-6: bucket access matrix is exhaustive -- every statement parses (no any-user), subject in the 5 known subjects, every manage/use carries a target.* = condition, every bucket named is one of the 3 buckets and its subject is on that bucket allowlist' {
+        $bad = @($stmtErrors)
+        foreach ($s in $stmts) {
+            if ($s.err) { $bad += "$($s.err): $($s.text)"; continue }
+            $subj = Get-SubjectKey $s
+            if (-not (Test-InSet $knownSubjects $subj)) { $bad += "subject '$subj' is not a known subject [$($knownSubjects -join ', ')]: $($s.text)"; continue }
+            if (($s.verb -eq 'manage' -or $s.verb -eq 'use') -and $s.targetEq -eq 0) { $bad += "unconditioned $($s.verb) in $($s.scope) (no target.* = condition): $($s.text)" }
+            if ($s.unsound.Count -gt 0) { $bad += "unsound where ($($s.unsound -join '; ')): $($s.text)" }
+            foreach ($b in $s.buckets) {
+                if (-not (Test-InSet $bucketNames $b)) { $bad += "unknown bucket '$b': $($s.text)" }
+                elseif (-not (Test-InSet $bucketSubjects[$b] $subj)) { $bad += "cross-bucket: '$subj' is not on the allowlist of '$b' [$($bucketSubjects[$b] -join ', ')]: $($s.text)" }
+            }
+        }
+        $pols = Get-Planned 'oci_identity_policy'; $pols = @($pols)
+        , @(($stmts.Count -ge 1 -and $bad.Count -eq 0), "statements=$($stmts.Count) across $($pols.Count) policies; bad: $($bad -join ' | ')")
+    }
+
+    # ---------- 7. 동적 그룹 [plan] — 이름 예외: joshuatech-node-a ----------
+    PlanAssert 'dg-1: dynamic group joshuatech-node-a exists (exactly 1)' {
+        $dg = @((Get-Planned 'oci_identity_dynamic_group') | Where-Object { [string]::Equals("$($_.values.name)", 'joshuatech-node-a', [StringComparison]::Ordinal) })
         , @(($dg.Count -eq 1), "matching dynamic groups=$($dg.Count)")
     }
-    PlanAssert 'dg-2: jt-node-a matching rule contains only the node A instance (no node B)' {
-        $dg = @((Get-Planned 'oci_identity_dynamic_group') | Where-Object { [string]::Equals("$($_.values.name)", 'jt-node-a', [StringComparison]::Ordinal) })
+    PlanAssert 'dg-2: joshuatech-node-a matching rule contains only the node A instance (no node B)' {
+        $dg = @((Get-Planned 'oci_identity_dynamic_group') | Where-Object { [string]::Equals("$($_.values.name)", 'joshuatech-node-a', [StringComparison]::Ordinal) })
         if ($dg.Count -ne 1) { return , @($false, "matching dynamic groups=$($dg.Count)") }
         $rule = "$($dg[0].values.matching_rule)"
         if ($rule -match 'ocid1\.instance\.') {
@@ -603,19 +876,35 @@ try {
         , @($ok, "instance references in matching_rule: [$($ls -join ', ')]")
     }
 
-    # ---------- 8. KMS [plan + tf-text] ----------
-    PlanAssert 'kms-1: every oci_kms_key uses protection_mode SOFTWARE' {
+    # ---------- 8. KMS [plan + tf-text] — SOFTWARE + AES-256, 회전 off, DEFAULT 볼트, 이름 예외 joshuatech-key·joshuatech-vault ----------
+    PlanAssert 'kms-1: every oci_kms_key is protection_mode SOFTWARE + key_shape AES/32 (AES-256) + is_auto_rotation_enabled = false (explicit); exactly one key is display_name joshuatech-key' {
         $ks = Get-Planned 'oci_kms_key'
-        $bad = @($ks | Where-Object { -not [string]::Equals("$($_.values.protection_mode)", 'SOFTWARE', [StringComparison]::Ordinal) } | ForEach-Object { "$($_.address)=$($_.values.protection_mode)" })
-        , @(($ks.Count -ge 1 -and $bad.Count -eq 0), "keys=$($ks.Count); bad: $($bad -join ', ')")
+        $bad = @(); $named = 0
+        foreach ($k in $ks) {
+            $v = $k.values
+            if ([string]::Equals("$($v.display_name)", 'joshuatech-key', [StringComparison]::Ordinal)) { $named++ }
+            if (-not [string]::Equals("$($v.protection_mode)", 'SOFTWARE', [StringComparison]::Ordinal)) { $bad += "$($k.address): protection_mode=$($v.protection_mode) (want SOFTWARE)" }
+            $shape = $null; try { $shape = $v.key_shape[0] } catch { $shape = $null }
+            $shapeTxt = if ($null -eq $shape) { 'n/a' } else { "$($shape.algorithm)/$($shape.length)" }
+            if ($null -eq $shape -or -not [string]::Equals("$($shape.algorithm)", 'AES', [StringComparison]::Ordinal) -or "$($shape.length)" -ne '32') { $bad += "$($k.address): key_shape=$shapeTxt (want AES/32)" }
+            if ($v.is_auto_rotation_enabled -ne $false) { $bad += "$($k.address): is_auto_rotation_enabled=$($v.is_auto_rotation_enabled) (want explicit false)" }
+        }
+        , @(($ks.Count -ge 1 -and $bad.Count -eq 0 -and $named -eq 1), "keys=$($ks.Count); display_name joshuatech-key=$named (want 1); bad: $($bad -join ' | ')")
     }
     Test-Group 'kms-2' {
-        $blocks = Get-TfResourceBlocks $ociDir 'oci_kms_key'
-        $bad = @($blocks | Where-Object { $_.body -notmatch 'prevent_destroy\s*=\s*true' } | ForEach-Object { "$($_.file):$($_.name)" })
-        Assert 'kms-2: every oci_kms_key block declares lifecycle prevent_destroy = true [tf-text]' ($blocks.Count -ge 1 -and $bad.Count -eq 0) "blocks=$($blocks.Count); missing: $($bad -join ', ')"
+        $blocks = @()
+        foreach ($t in @('oci_kms_key', 'oci_kms_vault')) { $bl = Get-TfResourceBlocks $ociDir $t; $blocks += @($bl | ForEach-Object { $_.type = $t; $_ }) }
+        $bad = @($blocks | Where-Object { $_.body -notmatch 'prevent_destroy\s*=\s*true' } | ForEach-Object { "$($_.file):$($_.type).$($_.name)" })
+        $nKey = @($blocks | Where-Object { $_.type -eq 'oci_kms_key' }).Count
+        Assert 'kms-2: every oci_kms_key AND oci_kms_vault block declares lifecycle prevent_destroy = true [tf-text] (>= 1 key block)' ($nKey -ge 1 -and $bad.Count -eq 0) "key blocks=$nKey, all blocks=$($blocks.Count); missing: $($bad -join ', ')"
+    }
+    PlanAssert 'kms-3: exactly one oci_kms_vault, vault_type DEFAULT, display_name joshuatech-vault' {
+        $vs = Get-Planned 'oci_kms_vault'
+        $ok = ($vs.Count -eq 1 -and [string]::Equals("$($vs[0].values.vault_type)", 'DEFAULT', [StringComparison]::Ordinal) -and [string]::Equals("$($vs[0].values.display_name)", 'joshuatech-vault', [StringComparison]::Ordinal))
+        , @($ok, "vaults=$($vs.Count): $(@($vs | ForEach-Object { "$($_.address) type=$($_.values.vault_type) name=$($_.values.display_name)" }) -join ', ')")
     }
 
-    # ---------- 9. Object Storage lifecycle [plan] — previous-object-versions DELETE 60일 ----------
+    # ---------- 9. Object Storage lifecycle [plan] — previous-object-versions DELETE 60일 + 현재 버전 규칙은 접두사 필수 ----------
     function Resolve-LcBucket($p) {
         $b = $null; try { $b = $p.values.bucket } catch { $b = $null }
         if ($b) { return "$b" }
@@ -631,20 +920,24 @@ try {
         }
         return $null
     }
-    $lcTargets = @('jt-backup', 'jt-backup-platform')
-    for ($li = 0; $li -lt $lcTargets.Count; $li++) {
-        $lb = $lcTargets[$li]
-        PlanAssert "lc-$($li + 1): bucket '$lb' has a previous-object-versions DELETE 60 DAYS lifecycle rule (declaration only; actual deletion = VD-6)" {
-            $found = $false; $seen = @()
+    for ($li = 0; $li -lt $lcBuckets.Count; $li++) {
+        $lb = $lcBuckets[$li]
+        PlanAssert "lc-$($li + 1): bucket '$lb' has an enabled previous-object-versions DELETE 60 DAYS rule, and every current-version rule (target = objects) on it carries >= 1 inclusion prefix (declaration only; actual deletion = VD-6)" {
+            $found = $false; $seen = @(); $bad = @()
             foreach ($p in (Get-Planned 'oci_objectstorage_object_lifecycle_policy')) {
-                if ((Resolve-LcBucket $p) -ne $lb) { continue }
+                if (-not [string]::Equals("$(Resolve-LcBucket $p)", $lb, [StringComparison]::Ordinal)) { continue }
                 $rules = @(); if ($p.values -and $p.values.rules) { $rules = @($p.values.rules) }
                 foreach ($r in $rules) {
-                    $seen += "target=$($r.target) action=$($r.action) $($r.time_amount) $($r.time_unit)"
+                    $seen += "target=$($r.target) action=$($r.action) $($r.time_amount) $($r.time_unit) enabled=$($r.is_enabled)"
                     if ("$($r.target)" -eq 'previous-object-versions' -and "$($r.action)" -match '(?i)^DELETE$' -and "$($r.time_amount)" -eq '60' -and "$($r.time_unit)" -match '(?i)^DAYS$' -and $r.is_enabled -ne $false) { $found = $true }
+                    if ("$($r.target)" -eq 'objects') {
+                        # 현재 버전 규칙은 접두사 필수 — 접두사 없는 objects DELETE는 버킷의 모든 현재 객체를 만료시킨다(백업 전멸 경로)
+                        $prefixes = @(); try { $prefixes = @($r.object_name_filter[0].inclusion_prefixes | Where-Object { "$_" -ne '' }) } catch { $prefixes = @() }
+                        if ($prefixes.Count -eq 0) { $bad += "rule '$($r.name)' targets current objects ($($r.action) $($r.time_amount) $($r.time_unit)) with no inclusion prefix" }
+                    }
                 }
             }
-            , @($found, "no matching rule for bucket '$lb'; rules seen: $($seen -join ' | ')")
+            , @(($found -and $bad.Count -eq 0), "previous-object-versions DELETE 60 DAYS enabled found=$found; rules seen: $($seen -join ' | '); bad: $($bad -join ' | ')")
         }
     }
 
