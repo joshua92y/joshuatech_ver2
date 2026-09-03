@@ -20,7 +20,10 @@
 #     (자리표시자 값이면 alert rule 4건이 update로 뜬다 — destroy가 아니므로 plan-2에는 무해).
 #   - [tf-text] 표시 단언은 .tf 원문만 읽는다(plan JSON이 lifecycle prevent_destroy 등 일부 선언을 노출하지
 #     않으므로 중괄호 균형 최소 파서로 리소스 블록을 추출해 검사한다). 자격 증명 불필요.
-#     주석은 전체 행 `#`/`//`만 지원한다 — 검사 대상 리소스 블록 안에 블록 주석(/* */)이나 행 끝 주석을 두지 않는다.
+#     주석은 전체 행 `#`/`//`만 지원한다 — 검사 대상 리소스 블록 안에 heredoc·블록 주석(/* */)·행 끝 주석을 두지 않는다.
+#     heredoc(`<<EOT`/`<<-EOT`)과 블록 주석(`/*`)은 infra/oci 디렉터리 전체에서 금지다(주석 안이라도): 하나라도 있으면 local.* 전부
+#     해석 불가(마커)가 되어 plan 시점 unknown 문장의 tf-text 검사가 FAIL한다 — 이 파서는 둘을 모르므로 그 본문의 `}`·`"`가 locals
+#     블록을 조기 종료해 뒤 항목을 숨기거나 그 안의 가짜 `locals { … }`가 진짜로 수집될 수 있어 fail closed로 막는다.
 #
 # 구성 계약(T007+ 구현자가 따라야 하는 형태 — 이 스위트가 곧 계약이다):
 #   - 리소스는 루트 모듈에 평면 선언(모듈 호출 없음; 이 스위트는 root_module만 순회한다 — iam-7이 planned child_modules·configuration
@@ -61,9 +64,10 @@
 #       (1) `<resource_type>.<label>.<attr>` → 그 리소스의 planned 스칼라 값(local/var/data/each/count/path/terraform/module/self 접두 제외);
 #       (2) `local.<name>` | `local.<name>.<key>` | `local.<name>["<key>"]` → 같은 디렉터리 .tf 원문 `locals { … }`의 평문 문자열 리터럴
 #           (${…}/%{…}·백슬래시 없는 큰따옴표 문자열 하나가 값의 전부인 것; 맵이면 평문 리터럴만의 한 단계 맵의 그 키 — 예
-#           local.bucket_names.backup_platform). 식·참조·함수·목록·중첩 맵·미선언·중복 선언·locals 블록 파싱 실패(행 끝 주석·heredoc)는
-#           해석 불가. plan 값을 역추적하는 휴리스틱(같은 참조를 쓰는 다른 리소스 속성)은 쓰지 않는다 — "${local.x}-platform" 같은 소비자가
-#           plan-config 괴리를 가리던 결함의 수정.
+#           local.bucket_names.backup_platform). 식·참조·함수·목록·중첩 맵·미선언·중복 선언·값 뒤 행 끝 주석·locals 블록 파싱 실패는
+#           해석 불가이고, infra/oci 원문 어디든(주석 안이라도) heredoc 표식(`<<EOT`)이나 블록 주석(`/*`)이 하나라도 있으면 local.* 전부
+#           해석 불가다(디렉터리 전체 금지 — 위 게이트 항목). plan 값을 역추적하는 휴리스틱(같은 참조를 쓰는 다른 리소스 속성)은 쓰지
+#           않는다 — "${local.x}-platform" 같은 소비자가 plan-config 괴리를 가리던 결함의 수정.
 #       `each.*`·`count.*`·`var.*`·`data.*`는 언제나 해석 불가. 해석 실패는 <expr> 마커(unknown 키 OCID는 <oci_kms_key.<label>.id> 마커로
 #       이 스택의 키 라벨과 대조; 그 밖의 마커는 검사에서 걸린다 — fail closed). apply 뒤 재실행하면 planned 문장이 알려져 tf-text 대체 없이
 #       검사된다(두 상태 모두 통과해야 한다).
@@ -229,21 +233,29 @@ function Get-TfResourceBlocks([string]$dir, [string]$type) {
 # ---------- [tf-text] locals { … } 리터럴 수집 — `${local.*}` 해석의 유일한 출처 ----------
 # 반환: 이름 → [string](평문 문자열 리터럴) | [hashtable](평문 문자열 리터럴만의 한 단계 맵; 키 ordinal) | $null(선언됐지만 리터럴 아님).
 # 평문 리터럴 = 큰따옴표 문자열 하나가 값의 전부이고 ${…}/%{…} 템플릿·백슬래시 이스케이프가 없는 것. 그 밖의 값(식·참조·함수·목록·
-# 중첩 맵·숫자·불리언)은 $null이다. 같은 이름이 두 번 선언되면 $null(fail closed). 어느 locals 블록이든 본문을 파싱할 수 없으면
-# (예 heredoc) 키 '*'를 넣어 전체를 오염시킨다(그 디렉터리의 local.*는 전부 해석 불가 = 마커). 값 뒤에 행 끝 주석이 붙으면 문자열이
-# 값의 전부가 아니므로 그 항목(맵이면 그 맵 전체)은 $null이다 — 어느 쪽이든 fail closed.
+# 중첩 맵·숫자·불리언)은 $null이다. 같은 이름이 두 번 선언되면 $null(fail closed). 키 '*'는 오염 = 그 디렉터리의 local.*는 전부
+# 해석 불가(마커; 값은 사유 문자열): (a) 어느 *.tf 원문이든(주석 안이라도) heredoc 여는 표식(`<<EOT`/`<<-EOT`) 또는 블록 주석 시작(`/*`)이
+# 있을 때 — 이 파서는 둘을 모르므로 그 본문의 `}`·`"`가 블록을 조기 종료해 뒤 항목을 숨기거나 그 안의 가짜 `locals { … }`가 진짜로
+# 수집될 수 있다(리뷰 H1–H5); (b) 어느 locals 블록이든 본문을 파싱할 수 없을 때. 값 뒤에 행 끝 주석이 붙으면 문자열이 값의 전부가
+# 아니므로 그 항목(맵이면 그 맵 전체)은 $null이다 — 어느 쪽이든 fail closed.
 function Get-TfLocals([string]$dir) {
     $acc = [hashtable]::new([StringComparer]::Ordinal)
     if (-not (Test-Path -LiteralPath $dir -PathType Container)) { return $acc }
+    $files = @(Get-ChildItem -LiteralPath $dir -File -Filter '*.tf')
+    $poisonRx = [regex]'<<-?[A-Za-z_]|/\*'
+    foreach ($f in $files) {
+        $pm = $poisonRx.Match([IO.File]::ReadAllText($f.FullName))
+        if ($pm.Success) { $acc['*'] = "$($f.Name) contains '$($pm.Value)' (heredoc opener or block comment) -- forbidden anywhere in this directory; every local.* is unresolvable"; return $acc }
+    }
     $rx = [regex]'(?m)^\s*locals\s*\{'
-    foreach ($f in @(Get-ChildItem -LiteralPath $dir -File -Filter '*.tf')) {
+    foreach ($f in $files) {
         $text = Get-TfText $f.FullName
         foreach ($m in $rx.Matches($text)) {
             $i = $m.Index + $m.Length
             $j = Find-TfBlockEnd $text $i
             $body = $text.Substring($i, [Math]::Max(0, $j - $i - 1))
             $entries = [hashtable]::new([StringComparer]::Ordinal)
-            if (-not (Parse-TfAttrBody $body $entries $true)) { $acc['*'] = $null; continue }
+            if (-not (Parse-TfAttrBody $body $entries $true)) { $acc['*'] = "$($f.Name): a locals block body did not parse (name = value form expected); every local.* is unresolvable"; continue }
             foreach ($k in @($entries.Keys)) { if ($acc.ContainsKey($k)) { $acc[$k] = $null } else { $acc[$k] = $entries[$k] } }
         }
     }
@@ -361,6 +373,7 @@ try {
     function New-TfValidateCopy([string]$srcDir) {
         $dst = Join-Path ([IO.Path]::GetTempPath()) ('tofu-validate-' + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $dst | Out-Null
+        $script:validateCopies += $dst   # 생성 즉시 등록 — 아래 복사가 예외로 끊겨도 finally가 지운다
         foreach ($f in @(Get-ChildItem -LiteralPath $srcDir -File -Filter '*.tf')) {
             if ([string]::Equals($f.Name, 'backend.tf', [StringComparison]::OrdinalIgnoreCase)) { continue }
             Copy-Item -LiteralPath $f.FullName -Destination (Join-Path $dst $f.Name)
@@ -383,7 +396,7 @@ try {
             continue
         }
         Test-Group $initName {
-            $copy = New-TfValidateCopy $t.path; $script:validateCopies += $copy
+            $copy = New-TfValidateCopy $t.path
             $r = Invoke-Tofu $copy @('init', '-backend=false', '-input=false', '-no-color')
             Assert $initName ($r.code -eq 0) (Clip "copy=$copy exit=$($r.code) err=$($r.err)")
             $v = Invoke-Tofu $copy @('validate', '-json', '-no-color')
@@ -847,6 +860,7 @@ try {
     # (같은 인덱스; 순수 문자열 리터럴 목록일 때만)을 Resolve-StatementTemplate로 해석한다. 해석 불가는 $stmtErrors(iam-6 위반).
     $stmts = @(); $stmtErrors = @()
     $tfLocals = Get-TfLocals $ociDir   # Resolve-Expr 경로 (2)의 유일한 출처
+    $usedTfText = $false
     if ($script:planJson) {
         $policyBlocks = Get-TfResourceBlocks $ociDir 'oci_identity_policy'
         foreach ($p in (Get-Planned 'oci_identity_policy')) {
@@ -864,13 +878,15 @@ try {
             for ($si = 0; $si -lt $count; $si++) {
                 $text = $null; $src = 'plan'
                 if ($si -lt $known.Count -and $null -ne $known[$si] -and "$($known[$si])" -ne '') { $text = "$($known[$si])" }
-                elseif ($null -ne $tpls -and $si -lt $tpls.Count) { $text = Resolve-StatementTemplate $tpls[$si]; $src = 'tf-text' }
+                elseif ($null -ne $tpls -and $si -lt $tpls.Count) { $text = Resolve-StatementTemplate $tpls[$si]; $src = 'tf-text'; $usedTfText = $true }
                 if ($null -eq $text) { $stmtErrors += "$($p.address)[$si]: statement unknown at plan time and no literal at that index in its .tf block (pure literal list required)"; continue }
                 $st = Parse-Statement $text
                 $st.policy = "$($p.address)"; $st.index = $si; $st.src = $src
                 $stmts += , $st
             }
         }
+        # tf-text 대체를 썼는데 local.*가 오염(heredoc/블록 주석/파싱 실패)돼 있으면 사유를 iam-6에 드러낸다(마커 FAIL의 원인 설명).
+        if ($usedTfText -and $tfLocals.ContainsKey('*')) { $stmtErrors += "tf-text statements cannot resolve local.*: $($tfLocals['*'])" }
     }
 
     # 서비스 사용자 그룹 문장 공통 검사 — 자원은 objects(manage|use|read|inspect)·buckets(read|inspect)만, 버킷 집합 == {$bucket} 정확히
