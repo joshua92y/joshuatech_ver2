@@ -3,14 +3,33 @@
 
 provider "oci" {
   region              = "ap-chuncheon-1"
-  auth                = "SecurityToken"
+  auth                = var.oci_auth
   config_file_profile = var.oci_config_profile
 }
 
-# 운영자 본인의 OCI CLI 세션 프로파일 이름(`oci session authenticate` 결과).
+# 운영자 기본 = API 키 DEFAULT 프로파일(세션 1시간 만료 없이 부트스트랩 진행).
+# 세션 토큰 방식이 필요하면 -var 'oci_auth=SecurityToken'으로 선택한다.
+variable "oci_auth" {
+  type    = string
+  default = "APIKey"
+
+  validation {
+    condition     = contains(["APIKey", "SecurityToken"], var.oci_auth)
+    error_message = "oci_auth must be \"APIKey\" or \"SecurityToken\"."
+  }
+}
+
+# 운영자 OCI CLI 설정 프로파일 이름 — APIKey 기본값은 DEFAULT(API 키 프로파일),
+# SecurityToken 사용 시 `oci session authenticate` 결과 프로파일을 -var로 지정한다.
 variable "oci_config_profile" {
   type    = string
   default = "DEFAULT"
+}
+
+# 루트 컴파트먼트(= 테넌시 OCID). OCID는 비밀이 아님 — 공개 저장소 수용, 사용자 제공 값(2026-09-03).
+variable "compartment_ocid" {
+  type    = string
+  default = "ocid1.tenancy.oc1..aaaaaaaat7iglpjj2kugdmf7an2v4uimrxr3ggtwo4txkbwptfjh5apddzpa"
 }
 
 # Cloudflare API 토큰은 환경 변수 CLOUDFLARE_API_TOKEN으로만 전달한다
