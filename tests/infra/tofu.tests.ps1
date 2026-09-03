@@ -8,6 +8,9 @@
 #   - validate 단언은 자격 증명이 필요 없다(`tofu init -backend=false` 후 실행; 네트워크로 provider를 받는다).
 #   - [plan] 표시 단언은 `tofu plan`이 성공해야 한다 — 유효한 OCI 자격 증명·변수(TF_VAR_*)가 필요하다.
 #     plan이 실패하면 해당 단언은 전부 "plan JSON unavailable"로 FAIL한다(fail closed).
+#     `tofu show -json` stdout은 콘솔 코드 페이지와 무관하게 UTF-8로 디코드한다(Invoke-NativeUtf8) — tofu는 항상
+#     UTF-8을 내보내는데 CP949 콘솔에서 "Ampere® Altra™" 같은 비ASCII가 깨져 JSON 닫는 따옴표를 삼키던 결함의
+#     수정이며, enc-1이 픽스처 왕복으로 회귀를 막는다.
 #     backend 블록이 생기면(T007의 jt-tfstate) plan 전에 완전한 `tofu init`이 선행되어야 한다 —
 #     이 스위트가 돌리는 `init -backend=false`는 backend 도입 전에만 충분하다.
 #   - [tf-text] 표시 단언은 .tf 원문만 읽는다(plan JSON이 lifecycle prevent_destroy 등 일부 선언을 노출하지
@@ -16,15 +19,21 @@
 #
 # 구성 계약(T007+ 구현자가 따라야 하는 형태 — 이 스위트가 곧 계약이다):
 #   - 리소스는 루트 모듈에 평면 선언(모듈 호출 없음; 이 스위트는 root_module만 순회한다).
-#   - 노드 리소스 이름 라벨은 (?i)node[-_]?a / (?i)node[-_]?b 패턴을 포함한다(NSG·인스턴스 공통).
+#   - 인스턴스 리소스 이름 라벨은 (?i)node[-_]?a / (?i)node[-_]?b 패턴을 포함한다.
+#   - NSG는 정확히 2개(T009 문면): platform NSG(라벨에 (?i)node[-_]?a 포함; nsg-node-a-platform) + cluster NSG(라벨에
+#     (?i)cluster 포함; nsg-cluster, 두 노드 공유). 인스턴스 create_vnic_details.nsg_ids는 NSG 리소스를 직접 참조한다 —
+#     노드 A = {platform, cluster}, 노드 B = {cluster}만(노드 B 전용 NSG 없음).
+#   - NSG ingress 규칙은 두 부류뿐이다: platform NSG의 443/tcp ← Cloudflare IPv4 CIDR(source_type CIDR_BLOCK; 리터럴
+#     CIDR이거나 data.cloudflare_ip_ranges 참조, 둘 다 허용) / cluster NSG의 자기참조(source_type NETWORK_SECURITY_GROUP,
+#     source = 그 NSG 자신). 그 외 ingress(0.0.0.0/0·다른 포트·local/var 간접 배선)는 미분류 = FAIL. EGRESS 규칙은
+#     분류 대상이 아니다(ingress 구멍을 만들 수 없음; 개수만 보고).
 #   - 버킷 이름은 정확히 jt-tfstate·jt-backup·jt-backup-platform (3개 전부, 그 외 없음).
-#   - NSG 규칙 source는 리터럴 Cloudflare IPv4 CIDR이거나 data.cloudflare_ip_ranges 참조다(둘 다 허용).
 #   - OBJECT_VERSION_DELETE 정책 단언은 선언 존재까지만이다 — 규칙이 실제로 이전 버전을 삭제하는지는
 #     VD-6(T010 apply 후 첫 만료 관찰)에서 확인한다.
 #   - Cloudflare Access(T008/T011): cloudflare_zero_trust_access_application 블록이 1개 이상 있어야 하고,
 #     application·policy 두 타입의 모든 블록이 각각 session_duration을 명시해야 한다(양측 무조건 검사).
 #
-# 단언 수: 32 (tool 1, dir 2, validate 4, plan 2, nsg 4, inst 3, bucket 4, iam 5, dg 2, kms 2, lc 2, access 1)
+# 단언 수: 33 (tool 1, enc 1, dir 2, validate 4, plan 2, nsg 4, inst 3, bucket 4, iam 5, dg 2, kms 2, lc 2, access 1)
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -64,15 +73,28 @@ function PlanAssert([string]$name, [scriptblock]$body) {
     else { $script:fail++; Write-Host "FAIL $name -- $(Clip $detail)" }
 }
 
-# tofu 실행(-chdir 방식). stderr는 임시 파일로 받아 문자열로 돌려준다.
-function Invoke-Tofu([string]$dir, [string[]]$tofuArgs) {
-    $errFile = Join-Path ([IO.Path]::GetTempPath()) ('tofu-stderr-' + [guid]::NewGuid().ToString('N') + '.txt')
+# 네이티브 실행 — stdout을 콘솔 코드 페이지와 무관하게 UTF-8로 디코드한다. PowerShell은 네이티브 stdout을
+# [Console]::OutputEncoding으로 디코드하므로 호출 동안만 UTF-8(BOM 없음)로 바꾸고 finally에서 복원한다
+# (CP949 콘솔에서 tofu의 UTF-8 출력 "Ampere® Altra™"가 깨져 JSON 파싱이 실패하던 결함의 수정; enc-1이 회귀 가드).
+# stderr는 임시 파일로 받아 UTF-8로 읽어 문자열로 돌려준다.
+function Invoke-NativeUtf8([string]$exe, [string[]]$nativeArgs) {
+    $errFile = Join-Path ([IO.Path]::GetTempPath()) ('native-stderr-' + [guid]::NewGuid().ToString('N') + '.txt')
+    $out = @(); $code = -1; $err = ''
+    $prevEncoding = [Console]::OutputEncoding
     try {
-        $out = & tofu "-chdir=$dir" @tofuArgs 2> $errFile
-        $code = $LASTEXITCODE
-        $err = if (Test-Path -LiteralPath $errFile) { [IO.File]::ReadAllText($errFile) } else { '' }
+        try {
+            [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+            $out = & $exe @nativeArgs 2> $errFile
+            $code = $LASTEXITCODE
+        } finally { [Console]::OutputEncoding = $prevEncoding }
+        $err = if (Test-Path -LiteralPath $errFile) { [IO.File]::ReadAllText($errFile, [Text.Encoding]::UTF8) } else { '' }
     } finally { Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue }
     return @{ out = (@($out | ForEach-Object { "$_" }) -join "`n"); err = $err.Trim(); code = $code }
+}
+
+# tofu 실행(-chdir 방식) — Invoke-NativeUtf8 경유.
+function Invoke-Tofu([string]$dir, [string[]]$tofuArgs) {
+    return Invoke-NativeUtf8 'tofu' (@("-chdir=$dir") + @($tofuArgs))
 }
 
 # ---------- plan JSON 순회 헬퍼(전부 방어적 — 키가 없으면 빈 배열/$null) ----------
@@ -156,6 +178,29 @@ try {
     $tofuOk = $null -ne (Get-Command tofu -ErrorAction SilentlyContinue)
     Assert 'tool-1: tofu on PATH' $tofuOk 'tofu not found on PATH -- install OpenTofu (fail closed; this suite never SKIPs)'
 
+    # ---------- 0b. stdout 디코드 회귀 가드(자격 증명·tofu 불필요) ----------
+    # 자식 pwsh가 UTF-8 픽스처의 바이트를 인코딩 변환 없이 stdout에 그대로 쓴다(tofu가 UTF-8 JSON을 내보내는 상황의 재현).
+    # 그 출력이 [plan] JSON과 같은 디코드 경로(Invoke-NativeUtf8)를 거쳐 파싱되고 "Ampere® Altra™"가 원문 그대로여야 한다.
+    # 픽스처에 비ASCII 바이트가 없거나 BOM이 있으면 가드가 공허해지므로 FAIL(fail closed).
+    Test-Group 'enc-1' {
+        $encName = 'enc-1: native stdout decodes as UTF-8 regardless of console code page (fixture JSON round-trip via Invoke-NativeUtf8)'
+        $fixture = Join-Path $PSScriptRoot 'fixtures/show-json-utf8.json'
+        $expected = "3.0 GHz Ampere`u{00AE} Altra`u{2122} processor"
+        if (-not (Test-Path -LiteralPath $fixture -PathType Leaf)) { Assert $encName $false "fixture missing: $fixture"; return }
+        $bytes = [IO.File]::ReadAllBytes($fixture)
+        $nonAscii = 0; foreach ($b in $bytes) { if ($b -ge 0x80) { $nonAscii++ } }
+        if ($nonAscii -eq 0) { Assert $encName $false "fixture $fixture has no non-ASCII bytes -- the guard would be vacuous (fail closed)"; return }
+        if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { Assert $encName $false "fixture $fixture must be UTF-8 without BOM"; return }
+        $fixtureLit = "'" + $fixture.Replace("'", "''") + "'"
+        $child = "`$s = [Console]::OpenStandardOutput(); `$b = [IO.File]::ReadAllBytes($fixtureLit); `$s.Write(`$b, 0, `$b.Length); `$s.Flush()"
+        $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($child))
+        $r = Invoke-NativeUtf8 'pwsh' @('-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded)
+        $got = $null; $parseErr = ''
+        try { $fj = $r.out | ConvertFrom-Json; $got = "$($fj.planned_values.root_module.resources[0].values.shape_config[0].processor_description)" } catch { $parseErr = $_.Exception.Message }
+        $ok = ($r.code -eq 0 -and $parseErr -eq '' -and [string]::Equals($got, $expected, [StringComparison]::Ordinal))
+        Assert $encName $ok (Clip "exit=$($r.code) non-ascii bytes=$nonAscii parse=[$parseErr] got=[$got] expected=[$expected] err=$($r.err)")
+    }
+
     $ociTf = if (Test-Path -LiteralPath $ociDir -PathType Container) { @(Get-ChildItem -LiteralPath $ociDir -File -Filter '*.tf').Count } else { 0 }
     $cfTf = if (Test-Path -LiteralPath $cfDir -PathType Container) { @(Get-ChildItem -LiteralPath $cfDir -File -Filter '*.tf').Count } else { 0 }
     Assert 'dir-1: infra/oci contains *.tf' ($ociTf -gt 0) "missing or empty: $ociDir (written in T007+)"
@@ -212,73 +257,155 @@ try {
         , @(($bad.Count -eq 0), ($bad -join '; '))
     }
 
-    # ---------- 3. NSG [plan] ----------
-    $nsgA = @(); $nsgB = @()
+    # ---------- 3. NSG [plan] — T009 문면: nsg-node-a-platform(443/tcp ← Cloudflare IPv4, for_each) + nsg-cluster(자기참조 all, 두 노드 공유) ----------
+    # plan 시점엔 NSG id가 unknown이라 planned 값의 nsg_ids·(자기참조) source가 비어 있다 — NSG 소속·자기참조·VNIC 배선은
+    # configuration의 참조(references)로 판정하고, direction·protocol·port·source_type·CIDR source는 planned 값으로 판정한다.
+    $nsgAll = @(); $nsgPlatform = @(); $nsgCluster = @()
     if ($script:planJson) {
-        $nsgCfg = Get-Config 'oci_core_network_security_group'
-        $nsgA = @($nsgCfg | Where-Object { "$($_.name)" -match '(?i)node[-_]?a' })
-        $nsgB = @($nsgCfg | Where-Object { "$($_.name)" -match '(?i)node[-_]?b' })
+        $nsgAll = Get-Config 'oci_core_network_security_group'
+        $nsgPlatform = @($nsgAll | Where-Object { "$($_.name)" -match '(?i)node[-_]?a' })
+        $nsgCluster = @($nsgAll | Where-Object { "$($_.name)" -match '(?i)cluster' -and "$($_.name)" -notmatch '(?i)node[-_]?[ab]' })
     }
-    PlanAssert 'nsg-1: NSG resources exist for node A and node B (name label node[-_]a / node[-_]b)' {
-        , @(($nsgA.Count -eq 1 -and $nsgB.Count -eq 1), "nodeA NSG count=$($nsgA.Count), nodeB NSG count=$($nsgB.Count)")
-    }
+    # NSG 집합 게이트: 정확히 2개(platform 1 + cluster 1). nsg-1..4 전부 이 게이트를 먼저 통과해야 한다 — NSG가 0개일 때
+    # "위반 규칙 0개"로 공허하게 PASS하는 일을 막는다(fail closed).
+    $nsgSetOk = ($nsgAll.Count -eq 2 -and $nsgPlatform.Count -eq 1 -and $nsgCluster.Count -eq 1)
+    $nsgSetDetail = "NSG resources=$($nsgAll.Count) [$(@($nsgAll | ForEach-Object { "$($_.name)" }) -join ', ')] (want exactly 2: platform label ~ node[-_]a, cluster label ~ cluster); platform=$($nsgPlatform.Count), cluster=$($nsgCluster.Count)"
 
-    # 규칙 리소스를 NSG A/B로 분류(구성의 network_security_group_id 참조로)
+    # 참조 문자열이 NSG 리소스 <label>을 가리키는가 — 정확히 그 주소이거나 그 속성('cluster'가 'cluster_x'에 걸리지 않게 ordinal)
+    function Test-NsgRef([string]$ref, [string]$label) {
+        $addr = "oci_core_network_security_group.$label"
+        return ([string]::Equals($ref, $addr, [StringComparison]::Ordinal) -or $ref.StartsWith($addr + '.', [StringComparison]::Ordinal))
+    }
+    # 인스턴스 구성의 create_vnic_details[*].nsg_ids가 직접 참조하는 NSG 라벨 집합(정렬; 간접 배선은 빈 집합 = 뒤에서 FAIL)
+    function Get-VnicNsgLabels($instCfg) {
+        $labels = @{}
+        $vnics = $null; try { $vnics = $instCfg.expressions.create_vnic_details } catch { $vnics = $null }
+        foreach ($v in @($vnics)) {
+            if ($null -eq $v) { continue }
+            foreach ($r in (Get-Refs $v.nsg_ids)) {
+                $m = [regex]::Match($r, '^oci_core_network_security_group\.([A-Za-z0-9_-]+)')
+                if ($m.Success) { $labels[$m.Groups[1].Value] = $true }
+            }
+        }
+        return , @($labels.Keys | Sort-Object)
+    }
+    # 규칙 리소스가 속한 NSG(구성의 network_security_group_id 직접 참조) → 'platform' | 'cluster' | $null
     function Get-RuleNsg($cfg) {
         $refs = Get-Refs $cfg.expressions.network_security_group_id
-        foreach ($n in $nsgA) { foreach ($r in $refs) { if ($r.StartsWith("oci_core_network_security_group.$($n.name)", [StringComparison]::Ordinal)) { return 'A' } } }
-        foreach ($n in $nsgB) { foreach ($r in $refs) { if ($r.StartsWith("oci_core_network_security_group.$($n.name)", [StringComparison]::Ordinal)) { return 'B' } } }
+        foreach ($n in $nsgPlatform) { foreach ($r in $refs) { if (Test-NsgRef $r "$($n.name)") { return 'platform' } } }
+        foreach ($n in $nsgCluster) { foreach ($r in $refs) { if (Test-NsgRef $r "$($n.name)") { return 'cluster' } } }
+        return $null
+    }
+    # ingress 규칙 planned 인스턴스 1개를 분류: 'platform-443-cf' | 'cluster-self' | $null(사유는 $why.Value에 나열)
+    function Get-RuleClass($cfg, $pi, [ref]$why) {
+        $why.Value = @()
+        $nsg = Get-RuleNsg $cfg
+        $w = @()
+        if ($nsg -eq 'platform') {
+            if ("$($pi.values.direction)" -ne 'INGRESS') { $w += "direction='$($pi.values.direction)' (want INGRESS)" }
+            if ("$($pi.values.protocol)" -ne '6') { $w += "protocol=$($pi.values.protocol) (want '6'/tcp)" }
+            $port = $null
+            try { $port = $pi.values.tcp_options[0].destination_port_range[0] } catch { $port = $null }
+            if ($null -eq $port -or "$($port.min)" -ne '443' -or "$($port.max)" -ne '443') { $w += 'destination port range != 443..443' }
+            if ("$($pi.values.source_type)" -ne 'CIDR_BLOCK') { $w += "source_type=$($pi.values.source_type) (want CIDR_BLOCK)" }
+            $src = "$($pi.values.source)"
+            $srcOk = ($src -and ($cloudflareCidrs -contains $src))
+            if (-not $srcOk) {
+                $refs = @(Get-Refs $cfg.expressions.source) + @(Get-Refs $cfg.for_each_expression)
+                foreach ($r in $refs) { if ($r -match '^data\.cloudflare_ip_ranges\.') { $srcOk = $true } }
+            }
+            if (-not $srcOk) { $w += "source='$src' is neither a published Cloudflare IPv4 CIDR nor a data.cloudflare_ip_ranges reference" }
+            if ($w.Count -eq 0) { return 'platform-443-cf' }
+        }
+        elseif ($nsg -eq 'cluster') {
+            if ("$($pi.values.direction)" -ne 'INGRESS') { $w += "direction='$($pi.values.direction)' (want INGRESS)" }
+            if ("$($pi.values.source_type)" -ne 'NETWORK_SECURITY_GROUP') { $w += "source_type=$($pi.values.source_type) (want NETWORK_SECURITY_GROUP self-reference)" }
+            $selfRef = $false
+            foreach ($r in (Get-Refs $cfg.expressions.source)) { foreach ($n in $nsgCluster) { if (Test-NsgRef $r "$($n.name)") { $selfRef = $true } } }
+            if (-not $selfRef) { $w += 'source does not reference the cluster NSG itself (not a self-reference)' }
+            if ($w.Count -eq 0) { return 'cluster-self' }
+        }
+        else { $w += 'network_security_group_id does not reference the platform or cluster NSG directly (locals/vars indirection or an unexpected NSG)' }
+        $why.Value = $w
         return $null
     }
 
-    PlanAssert 'nsg-2: node A ingress rules are only 443/tcp from Cloudflare CIDRs (literal set or data.cloudflare_ip_ranges ref)' {
+    PlanAssert 'nsg-1: exactly 2 NSGs (platform + cluster); node A VNIC nsg_ids = {platform, cluster}; node B VNIC nsg_ids = {cluster} only (no platform NSG, no node-B-only NSG)' {
+        if (-not $nsgSetOk) { return , @($false, $nsgSetDetail) }
+        $ic = Get-Config 'oci_core_instance'
+        $ia = @($ic | Where-Object { "$($_.name)" -match '(?i)node[-_]?a' })
+        $ib = @($ic | Where-Object { "$($_.name)" -match '(?i)node[-_]?b' })
+        if ($ia.Count -ne 1 -or $ib.Count -ne 1) { return , @($false, "instance configs: nodeA=$($ia.Count), nodeB=$($ib.Count) (want exactly 1 each)") }
+        $pl = "$($nsgPlatform[0].name)"; $cl = "$($nsgCluster[0].name)"
+        $wantA = @(@($pl, $cl) | Sort-Object)
+        $la = Get-VnicNsgLabels $ia[0]; $lb = Get-VnicNsgLabels $ib[0]
+        $aOk = [string]::Equals(($la -join ','), ($wantA -join ','), [StringComparison]::Ordinal)
+        $bOk = [string]::Equals(($lb -join ','), $cl, [StringComparison]::Ordinal)
+        , @(($aOk -and $bOk), "nodeA nsg_ids -> [$($la -join ', ')] (want [$($wantA -join ', ')]); nodeB nsg_ids -> [$($lb -join ', ')] (want [$cl])")
+    }
+
+    PlanAssert 'nsg-2: platform NSG ingress rules are only 443/tcp from Cloudflare IPv4 CIDRs (CIDR_BLOCK; literal set or data.cloudflare_ip_ranges ref), >= 1 rule' {
+        if (-not $nsgSetOk) { return , @($false, $nsgSetDetail) }
         $ruleCfg = Get-Config 'oci_core_network_security_group_security_rule'
-        $aIngress = @(); $bad = @()
-        foreach ($rc in @($ruleCfg | Where-Object { (Get-RuleNsg $_) -eq 'A' })) {
+        $n = 0; $egress = 0; $bad = @()
+        foreach ($rc in @($ruleCfg | Where-Object { (Get-RuleNsg $_) -eq 'platform' })) {
             $insts = Get-PlannedFor $rc.address
             if ($insts.Count -eq 0) { $bad += "$($rc.address): no planned instance (unknown count/for_each?) -- fail closed"; continue }
             foreach ($pi in $insts) {
-                if ("$($pi.values.direction)" -ne 'INGRESS') { continue }
-                $aIngress += $pi
+                if ("$($pi.values.direction)" -eq 'EGRESS') { $egress++; continue }
+                $n++
                 $why = @()
-                if ("$($pi.values.protocol)" -ne '6') { $why += "protocol=$($pi.values.protocol) (want '6'/tcp)" }
-                $port = $null
-                try { $port = $pi.values.tcp_options[0].destination_port_range[0] } catch { $port = $null }
-                if ($null -eq $port -or "$($port.min)" -ne '443' -or "$($port.max)" -ne '443') { $why += 'destination port range != 443..443' }
-                $src = "$($pi.values.source)"
-                $srcOk = ($src -and ($cloudflareCidrs -contains $src))
-                if (-not $srcOk) {
-                    $refs = @(Get-Refs $rc.expressions.source) + @(Get-Refs $rc.for_each_expression)
-                    foreach ($r in $refs) { if ($r -match '^data\.cloudflare_ip_ranges\.') { $srcOk = $true } }
-                }
-                if (-not $srcOk) { $why += "source='$src' is neither a published Cloudflare IPv4 CIDR nor a data.cloudflare_ip_ranges reference" }
-                if ($why.Count -gt 0) { $bad += "$($pi.address): $($why -join '; ')" }
+                if ((Get-RuleClass $rc $pi ([ref]$why)) -ne 'platform-443-cf') { $bad += "$($pi.address): $($why -join '; ')" }
             }
         }
-        , @(($aIngress.Count -ge 1 -and $bad.Count -eq 0), "ingress rules=$($aIngress.Count); $($bad -join ' | ')")
+        , @(($n -ge 1 -and $bad.Count -eq 0), "platform ingress rules=$n (egress skipped=$egress); $($bad -join ' | ')")
     }
 
-    PlanAssert 'nsg-3: node B NSG has zero ingress rules' {
+    # 노드 B에 붙은 NSG(nsg-1이 {cluster}만이라고 단언)의 모든 ingress 규칙이 cluster 자기참조여야 한다 — CIDR 출처 ingress 0.
+    PlanAssert 'nsg-3: node B has no CIDR-sourced ingress -- every ingress rule on every NSG attached to node B is the cluster NSG self-reference' {
+        if (-not $nsgSetOk) { return , @($false, $nsgSetDetail) }
+        $ib = @((Get-Config 'oci_core_instance') | Where-Object { "$($_.name)" -match '(?i)node[-_]?b' })
+        if ($ib.Count -ne 1) { return , @($false, "node B instance configs=$($ib.Count) (want exactly 1)") }
+        $lb = Get-VnicNsgLabels $ib[0]
+        if ($lb.Count -eq 0) { return , @($false, 'node B VNIC references no NSG resource directly (nsg_ids empty or indirect) -- fail closed') }
         $ruleCfg = Get-Config 'oci_core_network_security_group_security_rule'
-        $bIngress = @()
-        foreach ($rc in @($ruleCfg | Where-Object { (Get-RuleNsg $_) -eq 'B' })) {
+        $n = 0; $egress = 0; $bad = @()
+        foreach ($rc in $ruleCfg) {
+            $attached = $false
+            foreach ($r in (Get-Refs $rc.expressions.network_security_group_id)) { foreach ($l in $lb) { if (Test-NsgRef $r $l) { $attached = $true } } }
+            if (-not $attached) { continue }
             $insts = Get-PlannedFor $rc.address
-            if ($insts.Count -eq 0) {
-                $d = $null; try { $d = $rc.expressions.direction.constant_value } catch { $d = $null }
-                if ("$d" -ne 'EGRESS') { $bIngress += "$($rc.address) (direction unknown -- fail closed)" }   # 방향 불명은 INGRESS로 취급
-            } else {
-                foreach ($pi in $insts) { if ("$($pi.values.direction)" -eq 'INGRESS') { $bIngress += "$($pi.address)" } }
+            if ($insts.Count -eq 0) { $bad += "$($rc.address): no planned instance (unknown count/for_each?) -- fail closed"; continue }
+            foreach ($pi in $insts) {
+                if ("$($pi.values.direction)" -eq 'EGRESS') { $egress++; continue }
+                $n++
+                $why = @()
+                if ((Get-RuleClass $rc $pi ([ref]$why)) -ne 'cluster-self') { $bad += "$($pi.address): source_type=$($pi.values.source_type) source='$($pi.values.source)' -- $($why -join '; ')" }
             }
         }
-        , @(($bIngress.Count -eq 0), ($bIngress -join '; '))
+        , @(($bad.Count -eq 0), "node B NSGs=[$($lb -join ', ')]; ingress rules on them=$n (egress skipped=$egress); $($bad -join ' | ')")
     }
 
-    # nsg-2·nsg-3의 분류 사각지대 차단: local./var. 간접 배선으로 A/B 어느 쪽에도 분류되지 않는 규칙이 있으면
-    # 위 두 단언이 그 규칙을 그냥 지나친다 — 미분류는 0이어야 한다(fail closed, 주소 나열).
-    PlanAssert 'nsg-4: every NSG security rule classifies as node A or node B (unclassified = 0)' {
+    # 분류 사각지대 차단: 모든 NSG ingress 규칙은 두 부류 중 하나여야 하고(0.0.0.0/0·다른 포트·local/var 간접 배선 = 미분류)
+    # 두 부류 모두 1개 이상이어야 한다(규칙 0개로 공허하게 PASS 금지).
+    PlanAssert 'nsg-4: every NSG ingress rule classifies as platform-443-from-Cloudflare-CIDR or cluster-self-reference (>= 1 each; unclassified = 0: no 0.0.0.0/0, no other ports, no indirect NSG refs)' {
+        if (-not $nsgSetOk) { return , @($false, $nsgSetDetail) }
         $ruleCfg = Get-Config 'oci_core_network_security_group_security_rule'
-        $un = @($ruleCfg | Where-Object { $null -eq (Get-RuleNsg $_) } | ForEach-Object { "$($_.address)" })
-        , @(($un.Count -eq 0), "unclassified rules (network_security_group_id must reference the node A/B NSG directly, not via locals/vars): $($un -join ', ')")
+        $nPlatform = 0; $nCluster = 0; $egress = 0; $bad = @()
+        foreach ($rc in $ruleCfg) {
+            $insts = Get-PlannedFor $rc.address
+            if ($insts.Count -eq 0) { $bad += "$($rc.address): no planned instance (unknown count/for_each?) -- fail closed"; continue }
+            foreach ($pi in $insts) {
+                if ("$($pi.values.direction)" -eq 'EGRESS') { $egress++; continue }
+                $why = @()
+                $cls = Get-RuleClass $rc $pi ([ref]$why)
+                if ($cls -eq 'platform-443-cf') { $nPlatform++ }
+                elseif ($cls -eq 'cluster-self') { $nCluster++ }
+                else { $bad += "$($pi.address): $($why -join '; ')" }
+            }
+        }
+        $ok = ($bad.Count -eq 0 -and $nPlatform -ge 1 -and $nCluster -ge 1)
+        , @($ok, "platform-443-cf=$nPlatform, cluster-self=$nCluster, egress(skipped)=$egress; unclassified: $($bad -join ' | ')")
     }
 
     # ---------- 4. 인스턴스 [plan + tf-text] ----------
