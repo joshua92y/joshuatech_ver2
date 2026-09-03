@@ -10,7 +10,8 @@
 #     plan이 실패하면 해당 단언은 전부 "plan JSON unavailable"로 FAIL한다(fail closed).
 #     `tofu show -json` stdout은 콘솔 코드 페이지와 무관하게 UTF-8로 디코드한다(Invoke-NativeUtf8) — tofu는 항상
 #     UTF-8을 내보내는데 CP949 콘솔에서 "Ampere® Altra™" 같은 비ASCII가 깨져 JSON 닫는 따옴표를 삼키던 결함의
-#     수정이며, enc-1이 픽스처 왕복으로 회귀를 막는다.
+#     수정이며, enc-1이 픽스처 왕복으로 회귀를 막는다(호출 전후로 콘솔을 Latin1로 강제·복원하므로 UTF-8 콘솔에서도
+#     공허하지 않다).
 #     backend 블록이 생기면(T007의 jt-tfstate) plan 전에 완전한 `tofu init`이 선행되어야 한다 —
 #     이 스위트가 돌리는 `init -backend=false`는 backend 도입 전에만 충분하다.
 #   - [tf-text] 표시 단언은 .tf 원문만 읽는다(plan JSON이 lifecycle prevent_destroy 등 일부 선언을 노출하지
@@ -23,17 +24,24 @@
 #   - NSG는 정확히 2개(T009 문면): platform NSG(라벨에 (?i)node[-_]?a 포함; nsg-node-a-platform) + cluster NSG(라벨에
 #     (?i)cluster 포함; nsg-cluster, 두 노드 공유). 인스턴스 create_vnic_details.nsg_ids는 NSG 리소스를 직접 참조한다 —
 #     노드 A = {platform, cluster}, 노드 B = {cluster}만(노드 B 전용 NSG 없음).
-#   - NSG ingress 규칙은 두 부류뿐이다: platform NSG의 443/tcp ← Cloudflare IPv4 CIDR(source_type CIDR_BLOCK; 리터럴
-#     CIDR이거나 data.cloudflare_ip_ranges 참조, 둘 다 허용) / cluster NSG의 자기참조(source_type NETWORK_SECURITY_GROUP,
-#     source = 그 NSG 자신). 그 외 ingress(0.0.0.0/0·다른 포트·local/var 간접 배선)는 미분류 = FAIL. EGRESS 규칙은
-#     분류 대상이 아니다(ingress 구멍을 만들 수 없음; 개수만 보고).
+#   - NSG ingress 규칙은 두 부류뿐이다: platform NSG의 443/tcp ← Cloudflare IPv4 CIDR(source_type CIDR_BLOCK) / cluster NSG의
+#     자기참조(source_type NETWORK_SECURITY_GROUP, source = 그 NSG 자신). 그 외 ingress(0.0.0.0/0·다른 포트·local/var 간접
+#     배선)는 미분류 = FAIL. EGRESS 규칙은 분류 대상이 아니다(ingress 구멍을 만들 수 없음; 개수만 보고).
+#   - platform 규칙의 source는 값과 출처를 둘 다 검사한다: planned 값이 알려져 있으면 0.0.0.0/0은 무조건 거부하고 Cloudflare
+#     공표 CIDR 집합($cloudflareCidrs)에 있어야 한다; 표현식은 리터럴 CF CIDR / each.value·each.key(for_each가
+#     data.cloudflare_ip_ranges 참조) / data.cloudflare_ip_ranges 직접 참조만 허용한다(var·local 출처는 값이 맞아도 거부).
+#     Cloudflare 목록이 바뀌면 $cloudflareCidrs를 갱신해야 한다(그 전까지 새 CIDR 규칙은 FAIL — 의도된 fail closed).
+#   - 보안 리스트(oci_core_security_list·oci_core_default_security_list)는 전부 ingress 0이다(egress-only; OCI는 SL ∪ NSG로
+#     평가하므로 SL에 ingress가 남으면 NSG 경계가 무의미하다). 리소스 0개면 FAIL.
+#   - 인스턴스 planned create_vnic_details[0].nsg_ids가 알려져 있으면(apply 후) 원소 수 = NSG 참조 라벨 수여야 한다
+#     (리터럴 OCID 등 참조 없는 NSG가 섞이면 FAIL).
 #   - 버킷 이름은 정확히 jt-tfstate·jt-backup·jt-backup-platform (3개 전부, 그 외 없음).
 #   - OBJECT_VERSION_DELETE 정책 단언은 선언 존재까지만이다 — 규칙이 실제로 이전 버전을 삭제하는지는
 #     VD-6(T010 apply 후 첫 만료 관찰)에서 확인한다.
 #   - Cloudflare Access(T008/T011): cloudflare_zero_trust_access_application 블록이 1개 이상 있어야 하고,
 #     application·policy 두 타입의 모든 블록이 각각 session_duration을 명시해야 한다(양측 무조건 검사).
 #
-# 단언 수: 33 (tool 1, enc 1, dir 2, validate 4, plan 2, nsg 4, inst 3, bucket 4, iam 5, dg 2, kms 2, lc 2, access 1)
+# 단언 수: 34 (tool 1, enc 1, dir 2, validate 4, plan 2, nsg 4, sl 1, inst 3, bucket 4, iam 5, dg 2, kms 2, lc 2, access 1)
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -98,6 +106,9 @@ function Invoke-Tofu([string]$dir, [string[]]$tofuArgs) {
 }
 
 # ---------- plan JSON 순회 헬퍼(전부 방어적 — 키가 없으면 빈 배열/$null) ----------
+# 반환은 `, $rs`(comma 래퍼)라 호출 결과를 변수에 받으면 원소 수와 무관하게 평면 배열이다. 단, `@(Get-X ...)`처럼
+# 호출을 직접 @()로 감싸면 중첩 배열(Count 1, 원소 = 배열)이 되니 금지 — 변수에 받은 뒤 @($var)로 쓴다.
+# `(Get-X ...) | Where-Object`·`foreach ($x in (Get-X ...))`는 괄호가 배열 객체를 평가하므로 안전하다.
 function Get-Planned([string]$type) {
     $rs = @()
     $j = $script:planJson
@@ -182,6 +193,8 @@ try {
     # 자식 pwsh가 UTF-8 픽스처의 바이트를 인코딩 변환 없이 stdout에 그대로 쓴다(tofu가 UTF-8 JSON을 내보내는 상황의 재현).
     # 그 출력이 [plan] JSON과 같은 디코드 경로(Invoke-NativeUtf8)를 거쳐 파싱되고 "Ampere® Altra™"가 원문 그대로여야 한다.
     # 픽스처에 비ASCII 바이트가 없거나 BOM이 있으면 가드가 공허해지므로 FAIL(fail closed).
+    # 호출 전후로 콘솔 OutputEncoding을 Latin1(비UTF-8)로 강제·복원한다 — UTF-8(65001) 콘솔에서는 스왑이 빠져도 통과하는
+    # 공허함을 막는다. 호출 뒤 인코딩이 강제값 그대로인지도 검사한다(Invoke-NativeUtf8의 finally 복원 검증).
     Test-Group 'enc-1' {
         $encName = 'enc-1: native stdout decodes as UTF-8 regardless of console code page (fixture JSON round-trip via Invoke-NativeUtf8)'
         $fixture = Join-Path $PSScriptRoot 'fixtures/show-json-utf8.json'
@@ -194,11 +207,20 @@ try {
         $fixtureLit = "'" + $fixture.Replace("'", "''") + "'"
         $child = "`$s = [Console]::OpenStandardOutput(); `$b = [IO.File]::ReadAllBytes($fixtureLit); `$s.Write(`$b, 0, `$b.Length); `$s.Flush()"
         $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($child))
-        $r = Invoke-NativeUtf8 'pwsh' @('-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded)
+        $forced = [Text.Encoding]::Latin1
+        $before = [Console]::OutputEncoding
+        $r = $null; $afterCall = $null
+        try {
+            [Console]::OutputEncoding = $forced
+            $r = Invoke-NativeUtf8 'pwsh' @('-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded)
+            $afterCall = [Console]::OutputEncoding
+        } finally { [Console]::OutputEncoding = $before }
         $got = $null; $parseErr = ''
         try { $fj = $r.out | ConvertFrom-Json; $got = "$($fj.planned_values.root_module.resources[0].values.shape_config[0].processor_description)" } catch { $parseErr = $_.Exception.Message }
-        $ok = ($r.code -eq 0 -and $parseErr -eq '' -and [string]::Equals($got, $expected, [StringComparison]::Ordinal))
-        Assert $encName $ok (Clip "exit=$($r.code) non-ascii bytes=$nonAscii parse=[$parseErr] got=[$got] expected=[$expected] err=$($r.err)")
+        $restoreOk = ($null -ne $afterCall -and $afterCall.CodePage -eq $forced.CodePage)
+        $ok = ($r.code -eq 0 -and $parseErr -eq '' -and [string]::Equals($got, $expected, [StringComparison]::Ordinal) -and $restoreOk)
+        $afterTxt = if ($null -eq $afterCall) { 'n/a' } else { "$($afterCall.CodePage)" }
+        Assert $encName $ok (Clip "console before=$($before.CodePage) forced=$($forced.CodePage) after-call=$afterTxt (restore ok=$restoreOk); exit=$($r.code) non-ascii bytes=$nonAscii parse=[$parseErr] got=[$got] expected=[$expected] err=$($r.err)")
     }
 
     $ociTf = if (Test-Path -LiteralPath $ociDir -PathType Container) { @(Get-ChildItem -LiteralPath $ociDir -File -Filter '*.tf').Count } else { 0 }
@@ -276,6 +298,20 @@ try {
         $addr = "oci_core_network_security_group.$label"
         return ([string]::Equals($ref, $addr, [StringComparison]::Ordinal) -or $ref.StartsWith($addr + '.', [StringComparison]::Ordinal))
     }
+    # Cloudflare 공표 IPv4 CIDR 집합 포함 여부(ordinal)
+    function Test-CfCidr([string]$s) {
+        foreach ($c in $cloudflareCidrs) { if ([string]::Equals($s, $c, [StringComparison]::Ordinal)) { return $true } }
+        return $false
+    }
+    # 인스턴스 planned create_vnic_details[0].nsg_ids의 원소 수 — 키가 없으면(plan 시점 unknown) $null, null이면 0
+    function Get-PlannedVnicNsgCount([string]$address) {
+        $pl = Get-PlannedFor $address; $pl = @($pl)
+        if ($pl.Count -ne 1) { return $null }
+        $v = $null; try { $v = $pl[0].values.create_vnic_details[0] } catch { $v = $null }
+        if ($null -eq $v -or -not (@($v.PSObject.Properties.Name) -contains 'nsg_ids')) { return $null }
+        if ($null -eq $v.nsg_ids) { return 0 }
+        return @($v.nsg_ids).Count
+    }
     # 인스턴스 구성의 create_vnic_details[*].nsg_ids가 직접 참조하는 NSG 라벨 집합(정렬; 간접 배선은 빈 집합 = 뒤에서 FAIL)
     function Get-VnicNsgLabels($instCfg) {
         $labels = @{}
@@ -308,13 +344,33 @@ try {
             try { $port = $pi.values.tcp_options[0].destination_port_range[0] } catch { $port = $null }
             if ($null -eq $port -or "$($port.min)" -ne '443' -or "$($port.max)" -ne '443') { $w += 'destination port range != 443..443' }
             if ("$($pi.values.source_type)" -ne 'CIDR_BLOCK') { $w += "source_type=$($pi.values.source_type) (want CIDR_BLOCK)" }
+            # source — 값과 출처를 둘 다 검사한다(한쪽이 다른 쪽을 구제하지 않는다).
+            # (값) planned 값이 알려져 있으면 0.0.0.0/0은 무조건 거부, 그 외는 Cloudflare 공표 CIDR 집합 포함이어야 한다 —
+            #      for_each가 CF data를 참조해도 each.value 누락·concat 등으로 다른 값이 섞이면 여기서 잡힌다.
+            # (출처) 표현식은 리터럴 CF CIDR / 참조 없음(정적; 값 검사가 덮는다, 단 값 unknown이면 FAIL) /
+            #      data.cloudflare_ip_ranges 직접 참조 / each.value·each.key + for_each가 data.cloudflare_ip_ranges 참조 — 이 넷뿐이다.
             $src = "$($pi.values.source)"
-            $srcOk = ($src -and ($cloudflareCidrs -contains $src))
-            if (-not $srcOk) {
-                $refs = @(Get-Refs $cfg.expressions.source) + @(Get-Refs $cfg.for_each_expression)
-                foreach ($r in $refs) { if ($r -match '^data\.cloudflare_ip_ranges\.') { $srcOk = $true } }
+            $known = ($src -ne '')
+            if ($known) {
+                if ([string]::Equals($src, '0.0.0.0/0', [StringComparison]::Ordinal)) { $w += 'source=0.0.0.0/0 is never allowed' }
+                elseif (-not (Test-CfCidr $src)) { $w += "source='$src' (planned value) is not a published Cloudflare IPv4 CIDR" }
             }
-            if (-not $srcOk) { $w += "source='$src' is neither a published Cloudflare IPv4 CIDR nor a data.cloudflare_ip_ranges reference" }
+            $srcExpr = $null; try { $srcExpr = $cfg.expressions.source } catch { $srcExpr = $null }
+            $srcRefs = Get-Refs $srcExpr; $srcRefs = @($srcRefs)
+            $feRefs = Get-Refs $cfg.for_each_expression; $feRefs = @($feRefs)
+            $srcConst = $null
+            if ($null -ne $srcExpr -and (@($srcExpr.PSObject.Properties.Name) -contains 'constant_value')) { $srcConst = "$($srcExpr.constant_value)" }
+            $dataDirect = (@($srcRefs | Where-Object { $_ -match '^data\.cloudflare_ip_ranges\.' }).Count -gt 0)
+            $viaEach = ((@($srcRefs | Where-Object { $_ -match '^each\.(value|key)$' }).Count -gt 0) -and (@($feRefs | Where-Object { $_ -match '^data\.cloudflare_ip_ranges\.' }).Count -gt 0))
+            if ($null -ne $srcConst) {
+                if (-not (Test-CfCidr $srcConst)) { $w += "source literal '$srcConst' is not a published Cloudflare IPv4 CIDR" }
+            }
+            elseif ($srcRefs.Count -eq 0) {
+                if (-not $known) { $w += 'source has no references and no known planned value -- fail closed' }
+            }
+            elseif (-not ($dataDirect -or $viaEach)) {
+                $w += "source expression refs [$($srcRefs -join ',')] (for_each refs [$($feRefs -join ',')]) are not an allowed form: literal Cloudflare CIDR | each.value/each.key over a data.cloudflare_ip_ranges for_each | direct data.cloudflare_ip_ranges reference"
+            }
             if ($w.Count -eq 0) { return 'platform-443-cf' }
         }
         elseif ($nsg -eq 'cluster') {
@@ -341,7 +397,12 @@ try {
         $la = Get-VnicNsgLabels $ia[0]; $lb = Get-VnicNsgLabels $ib[0]
         $aOk = [string]::Equals(($la -join ','), ($wantA -join ','), [StringComparison]::Ordinal)
         $bOk = [string]::Equals(($lb -join ','), $cl, [StringComparison]::Ordinal)
-        , @(($aOk -and $bOk), "nodeA nsg_ids -> [$($la -join ', ')] (want [$($wantA -join ', ')]); nodeB nsg_ids -> [$($lb -join ', ')] (want [$cl])")
+        # planned nsg_ids가 알려져 있으면(apply 후) 원소 수 = 참조 라벨 수 — 리터럴 OCID 등 참조 없는 NSG가 섞이면 여기서 잡힌다.
+        # unknown(plan 시점, 키 없음)이면 구성 참조만으로 판정한다.
+        $xa = Get-PlannedVnicNsgCount "$($ia[0].address)"; $xb = Get-PlannedVnicNsgCount "$($ib[0].address)"
+        $xaOk = ($null -eq $xa -or $xa -eq $la.Count); $xbOk = ($null -eq $xb -or $xb -eq $lb.Count)
+        $xaTxt = if ($null -eq $xa) { 'unknown' } else { "$xa" }; $xbTxt = if ($null -eq $xb) { 'unknown' } else { "$xb" }
+        , @(($aOk -and $bOk -and $xaOk -and $xbOk), "nodeA nsg_ids -> [$($la -join ', ')] (want [$($wantA -join ', ')]), planned elements=$xaTxt (want $($la.Count) or unknown); nodeB nsg_ids -> [$($lb -join ', ')] (want [$cl]), planned elements=$xbTxt (want $($lb.Count) or unknown)")
     }
 
     PlanAssert 'nsg-2: platform NSG ingress rules are only 443/tcp from Cloudflare IPv4 CIDRs (CIDR_BLOCK; literal set or data.cloudflare_ip_ranges ref), >= 1 rule' {
@@ -406,6 +467,23 @@ try {
         }
         $ok = ($bad.Count -eq 0 -and $nPlatform -ge 1 -and $nCluster -ge 1)
         , @($ok, "platform-443-cf=$nPlatform, cluster-self=$nCluster, egress(skipped)=$egress; unclassified: $($bad -join ' | ')")
+    }
+
+    # ---------- 3b. 보안 리스트 [plan] — OCI는 SL ∪ NSG로 평가하므로 SL에 ingress가 남으면 NSG 경계가 무의미하다(T009 "SL egress-only") ----------
+    PlanAssert 'sl-1: every security list (oci_core_security_list + oci_core_default_security_list) has zero ingress rules (>= 1 list required; ingress belongs to NSGs only)' {
+        $slA = Get-Planned 'oci_core_security_list'; $slB = Get-Planned 'oci_core_default_security_list'
+        $sls = @($slA) + @($slB)
+        if ($sls.Count -eq 0) { return , @($false, 'no security list resources in planned_values (fail closed -- T008 imported 3: default + api + cache)') }
+        $bad = @(); $seen = @()
+        foreach ($sl in $sls) {
+            $keys = @(); if ($sl.values) { $keys = @($sl.values.PSObject.Properties.Name) }
+            if (-not ($keys -contains 'ingress_security_rules')) { $bad += "$($sl.address): ingress_security_rules unknown at plan time -- fail closed"; continue }
+            $ing = $sl.values.ingress_security_rules
+            $n = if ($null -eq $ing) { 0 } else { @($ing).Count }
+            $seen += "$($sl.address)=$n"
+            if ($n -gt 0) { $bad += "$($sl.address): $n ingress rule(s): " + (Clip (@($ing) | ConvertTo-Json -Compress -Depth 4) 200) }
+        }
+        , @(($bad.Count -eq 0), "security lists=$($sls.Count) [$($seen -join ', ')]; $($bad -join ' | ')")
     }
 
     # ---------- 4. 인스턴스 [plan + tf-text] ----------
