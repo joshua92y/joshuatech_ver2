@@ -71,7 +71,14 @@
 - **부트스트랩 공백과 임시 키**: `svc-tfstate`의 IAM 정책은 T010에서 선언되므로 init 시점에는 권한이 없다(첫 시도 404). 해법: 운영자 본인 계정의 임시 Customer Secret Key **`joshuatech-tfstate-bootstrap-temp`**를 `~/.aws/credentials` `[joshuatech-tfstate]` 프로파일에 사용. 직후 403 SignatureDoesNotMatch는 키 전파 지연 — 수 분 뒤 재시도로 해소.
 - **⚠️ T010 마감 시 교체 절차(예정)**: T010 apply로 svc-tfstate 정책이 생기면 ① 프로파일 값을 svc-tfstate Customer Secret Key로 교체 → ② init 재검(plan 동작 확인) → ③ 운영자 계정의 `joshuatech-tfstate-bootstrap-temp` 키 삭제. 이 3단계 완료를 T010 체크 조건에 포함한다.
 
-(T008–T011 기록은 이하에 추가)
+### T008 — 기존 리소스 import (2026-09-03)
+
+- **코드**: `import.tf`(12블록 유지)·`instances.tf`·`network.tf`·`providers.tf` — 커밋 `caeaea3`. 인스턴스 2에 `prevent_destroy` + `ignore_changes [metadata, defined_tags, create_vnic_details[0].hostname_label]`, VCN·서브넷 2에 `prevent_destroy`.
+- **실행**(운영자): `plan -generate-config-out` → 정리 → `plan` **12 to import / 0 / 0 / 0** → `apply` → **"Apply complete! Resources: 12 imported, 0 added, 0 changed, 0 destroyed."** → `state list` 12개 → 재plan **"No changes."**
+- **provider 인증 전환 기록**: `auth = var.oci_auth`(기본 `APIKey`, 운영자 DEFAULT 프로파일)로 전환 — 세션 1 h 만료 없이 부트스트랩 진행 목적. 부작용: 이 워크스테이션에서 하네스가 운영자 API 키로 읽기 plan을 수행할 수 있음(리뷰 지적) — **T010 키 교체 시점에 기본값 재결정**(SecurityToken 복귀 / 기본 제거 / 하네스 게이트).
+- **v1 유산 확인**(후속 task 몫): IMDS v1 활성→T010, ephemeral 공개 IP(A 152.69.233.183·B 158.180.87.55)·SL 0.0.0.0/0(22·80·443·8080·6379)·VCN IPv6→T009, boot 47GB·v1 SSH 키→T013/T014.
+
+(T009–T011 기록은 이하에 추가)
 
 ## §2 재이미지·host-prep
 
