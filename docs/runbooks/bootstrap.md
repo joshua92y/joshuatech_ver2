@@ -78,7 +78,17 @@
 - **provider 인증 전환 기록**: `auth = var.oci_auth`(기본 `APIKey`, 운영자 DEFAULT 프로파일)로 전환 — 세션 1 h 만료 없이 부트스트랩 진행 목적. 부작용: 이 워크스테이션에서 하네스가 운영자 API 키로 읽기 plan을 수행할 수 있음(리뷰 지적) — **T010 키 교체 시점에 기본값 재결정**(SecurityToken 복귀 / 기본 제거 / 하네스 게이트).
 - **v1 유산 확인**(후속 task 몫): IMDS v1 활성→T010, ephemeral 공개 IP(A 152.69.233.183·B 158.180.87.55)·SL 0.0.0.0/0(22·80·443·8080·6379)·VCN IPv6→T009, boot 47GB·v1 SSH 키→T013/T014.
 
-(T009–T011 기록은 이하에 추가)
+### T009 — NSG·보안 리스트·reserved IP 컷오버 (2026-09-03)
+
+- **코드**: `network.tf`·`instances.tf` 커밋 `a5a97a0`(리뷰 Approved) — NSG `nsg-node-a-platform`(443/tcp ← Cloudflare IPv4 CIDR 15개, for_each) + `nsg-cluster`(자기참조 all, 두 노드 가입), 보안 리스트 3개(api·cache·default) **ingress 0**(egress 유지), reserved IP 2개(`joshuatech-node-a`·`joshuatech-node-b`, prevent_destroy), IPv6는 `is_ipv6enabled` 무변경·주석으로 미사용 명시.
+- **사용자 결정(2026-09-03)**: v1 DNS 레코드 `api`·`mcp`·`traefik`(노드 A)·`cache`(노드 B)가 **DNS 전용(비프록시)** 직접 접속이라 NSG 적용 시 v1 API가 끊김 → **옵션 2 "v1 API 중단 수용"** 선택(US8 전환까지 불통; Pages 프론트·Render `mainapi`·R2 `cdn`은 OCI 밖이라 유지). 프록시 전환·Redis 임시 규칙 대안은 채택하지 않음.
+- **실행 순서(운영자)**: ① `apply -target`(NSG 2 + 규칙 16 + 인스턴스 nsg_ids + SL 3) → **18 added / 5 changed / 0 destroyed** → 외부 프로브로 노드 A 22·80·443·8080, 노드 B 22·6379 **전부 차단 확인**(이전엔 6개 모두 개방, Redis 6379 전세계 노출 상태였음) → ② ephemeral 공개 IP 2개 삭제(`oci network public-ip delete`, 노드 A 152.69.233.183·노드 B 158.180.87.55) → ③ `apply` → **2 added** → Outputs.
+- **주소 변경(기록 의무)**: 노드 A **152.69.233.183 → 144.24.85.118**, 노드 B **158.180.87.55 → 129.154.62.250** (둘 다 RESERVED). ②~③ 사이 창에서는 해당 노드의 **인터넷 egress 전체가 단절**(NAT GW 없음 — 공개 inbound만이 아님, 리뷰 지적) — 수 분.
+- **DNS 후속(운영자, Cloudflare)**: 옛 ephemeral IP는 다른 테넌트에 재할당될 수 있으므로 A 레코드를 옛 IP에 남겨두지 않는다 — `api`·`mcp`·`traefik` → 144.24.85.118, `cache` → 129.154.62.250로 재지정(v1은 불통이지만 호스트명 탈취 방지). T011 `dns.tf`가 `admin`·`traefik`을 import하며 정리.
+- **운영 규칙(신규)**: Cloudflare 공표 IPv4 대역이 바뀌면 정기 plan에 NSG 규칙 destroy가 나타난다 — "CF CIDR 제거로 인한 NSG rule destroy는 사용자 확인 후 apply". 하네스 `tests/infra/tofu.tests.ps1`의 `$cloudflareCidrs` 스냅샷도 함께 갱신(갱신 전까지 nsg-2/4 RED — 의도된 fail-closed).
+- **하네스 결함 수정(동반)**: `58f39da`(tofu JSON stdout UTF-8 디코드 — CP949에서 "Ampere® Altra™"로 JSON 파싱 실패; NSG 단언을 T009 문면으로 정합) + `b0b4cb2`(NSG source 분류 구멍 봉인, 보안 리스트 ingress 0 단언 `sl-1` 추가, enc-1 콘솔 무관화) — 34단언, 14 PASS / 20 FAIL(잔여 전부 T010·T011 몫).
+
+(T010–T011 기록은 이하에 추가)
 
 ## §2 재이미지·host-prep
 
