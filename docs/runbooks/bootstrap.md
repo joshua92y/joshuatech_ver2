@@ -47,7 +47,7 @@
 
 | 토큰 | 스코프 | 보관처 | 회전 |
 |---|---|---|---|
-| ① Cloudflare **배포 토큰**(OpenTofu용) | 존 `joshuatech.dev` 한정 — Zone:Read · DNS:Edit · Zone Settings:Edit · Access: Apps and Policies:Edit · Workers Scripts:Edit · Workers Routes:Edit. 계정 단위 권한은 필요한 것만 | 비밀번호 관리자(Vault 투입 전) | secret-rotation 매트릭스·캘린더 대조* |
+| ① Cloudflare **배포 토큰**(OpenTofu용) | 존 `joshuatech.dev` 한정 — Zone:Read · DNS:Edit · Zone Settings:Edit · Access: Apps and Policies:Edit · Workers Scripts:Edit · Workers Routes:Edit. 계정 단위 권한은 필요한 것만. **T011 실측 추가(2026-09-03)**: 룰셋 조회가 인증 오류 → Zone **Zone WAF:Edit**(Rate Limiting·Managed WAF 룰셋) + Account **Cloudflare Tunnel:Edit**·**Access: Organizations, Identity Providers, and Groups:Edit**(GitHub IdP)·**Access: Service Tokens:Edit**·**Workers R2 Storage:Edit** — 기존 토큰 편집으로 추가(값 유지) | 비밀번호 관리자(Vault 투입 전) | secret-rotation 매트릭스·캘린더 대조* |
 | ② Cloudflare **`Account Analytics:Read`** | Workers 사용량 검증 전용, 쓰기 0 | 비밀번호 관리자 | secret-rotation 매트릭스·캘린더 대조* |
 | ③ OCI 읽기 사용자 **`svc-verify`** | 그룹 `jt-verify`(실명 `joshuatech-verify` — 이름 예외 2026-09-03): `jt-backup`·`jt-backup-platform` inspect/read objects + read usage-reports·budgets·instance-family, **manage 0**. API 키를 상주시키지 않고 `oci session authenticate --profile-name svc-verify`(1 h) 세션 토큰으로만 사용 | 상주 자격 없음(세션 토큰 1 h 자동 만료). 사용자 로그인 자격은 비밀번호 관리자 | 세션 토큰은 1 h 만료로 회전 불요; 계정 자격은 secret-rotation 대조* |
 | ④ Grafana Cloud **Viewer 서비스 계정 토큰** | Viewer(읽기 전용) | 비밀번호 관리자 | secret-rotation 매트릭스·캘린더 대조* |
