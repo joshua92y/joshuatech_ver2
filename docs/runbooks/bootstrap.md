@@ -63,7 +63,15 @@
 
 ## §1 OpenTofu 부트스트랩
 
-(T007–T011에서 작성)
+### T007 — 상태 백엔드 (2026-09-03)
+
+- **버킷**: `joshuatech-tfstate`(이름 예외 — §0 blockquote), 콘솔 생성 2026-09-03 04:59 UTC, versioning Enabled·NoPublicAccess·루트 컴파트먼트, 네임스페이스 `axvjykgvo2m1`.
+- **코드**: `infra/oci/{versions.tf,backend.tf,providers.tf}` + `.terraform.lock.hcl`(oracle/oci 8.29.0·cloudflare 5.24.0 서명 검증) — 커밋 `fd7b60d` + 이름 예외 `5b21df5`.
+- **init**: `AWS_REQUEST_CHECKSUM_CALCULATION=when_required tofu -chdir=infra/oci init -migrate-state` → "Successfully configured the backend \"s3\"" / "successfully initialized" (운영자 실행, 2026-09-03).
+- **부트스트랩 공백과 임시 키**: `svc-tfstate`의 IAM 정책은 T010에서 선언되므로 init 시점에는 권한이 없다(첫 시도 404). 해법: 운영자 본인 계정의 임시 Customer Secret Key **`joshuatech-tfstate-bootstrap-temp`**를 `~/.aws/credentials` `[joshuatech-tfstate]` 프로파일에 사용. 직후 403 SignatureDoesNotMatch는 키 전파 지연 — 수 분 뒤 재시도로 해소.
+- **⚠️ T010 마감 시 교체 절차(예정)**: T010 apply로 svc-tfstate 정책이 생기면 ① 프로파일 값을 svc-tfstate Customer Secret Key로 교체 → ② init 재검(plan 동작 확인) → ③ 운영자 계정의 `joshuatech-tfstate-bootstrap-temp` 키 삭제. 이 3단계 완료를 T010 체크 조건에 포함한다.
+
+(T008–T011 기록은 이하에 추가)
 
 ## §2 재이미지·host-prep
 
