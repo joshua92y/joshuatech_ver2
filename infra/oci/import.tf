@@ -74,3 +74,11 @@ import {
   to = oci_core_default_security_list.default
   id = "ocid1.securitylist.oc1.ap-chuncheon-1.aaaaaaaagsb7msdfxi6luoifig6zmlqpfcvc2xe46fzo32uvbeidba6uwwha"
 }
+
+# ---- T010: Object Storage 버킷 joshuatech-tfstate (콘솔 생성 2026-09-03 — 생성이 아니라 import) ----
+# id 형식 n/{namespace}/b/{bucket}; 네임스페이스 axvjykgvo2m1(backend.tf와 동일). 리소스 선언은 storage.tf.
+
+import {
+  to = oci_objectstorage_bucket.tfstate
+  id = "n/axvjykgvo2m1/b/joshuatech-tfstate"
+}
