@@ -28,6 +28,8 @@ __pycache__/
 *.tfstate
 *.tfstate.*
 .terraform/
+*.tfvars
+!*.auto.tfvars.example
 
 # Cloudflare build outputs (OpenNext, wrangler)
 .open-next/
