@@ -5,22 +5,26 @@
 # 게이트/전제(전부 fail-closed — SKIP 없음):
 #   - `tofu`가 PATH에 있어야 한다(없으면 FAIL).
 #   - infra/oci·infra/cloudflare 디렉터리에 *.tf가 있어야 한다(T007–T011에서 작성; 그 전에는 이 파일이 빨갛다).
-#   - validate 단언은 자격 증명이 필요 없다(`tofu init -backend=false` 후 실행; 네트워크로 provider를 받는다).
-#   - [plan] 표시 단언은 `tofu plan`이 성공해야 한다 — 유효한 OCI 자격 증명·변수(TF_VAR_*)가 필요하다.
+#   - validate 단언은 자격 증명이 필요 없다 — *.tf(backend.tf 제외)·.terraform.lock.hcl(provider 고정)·.terraform/providers(있으면;
+#     없으면 네트워크로 받는다)만 담은 임시 사본(temp 디렉터리, 끝나면 삭제)에서 `tofu init -backend=false` + `validate -json`을 돌린다.
+#     실제 디렉터리에서는 init을 하지 않는다: S3 백엔드가 초기화된 디렉터리(.terraform/terraform.tfstate)는 `-backend=false`여도
+#     백엔드 프로파일(~/.aws)이 없으면 "failed to get shared config profile"로 실패하므로 사본이 "무자격" 계약을 지키는 유일한 길이다.
+#   - [plan] 표시 단언은 실제 infra/oci에서 `tofu plan -lock=false`(읽기 전용)가 성공해야 한다 — 유효한 OCI 자격 증명·변수(TF_VAR_*)에
+#     더해 운영자의 완전한 `tofu init`(백엔드 초기화 + provider 설치)이 선행돼 있어야 한다(이 스위트는 그것을 대신하지 않는다).
 #     plan이 실패하면 해당 단언은 전부 "plan JSON unavailable"로 FAIL한다(fail closed).
 #     `tofu show -json` stdout은 콘솔 코드 페이지와 무관하게 UTF-8로 디코드한다(Invoke-NativeUtf8) — tofu는 항상
 #     UTF-8을 내보내는데 CP949 콘솔에서 "Ampere® Altra™" 같은 비ASCII가 깨져 JSON 닫는 따옴표를 삼키던 결함의
 #     수정이며, enc-1이 픽스처 왕복으로 회귀를 막는다(호출 전후로 콘솔을 Latin1로 강제·복원하므로 UTF-8 콘솔에서도
 #     공허하지 않다).
-#     backend 블록이 생기면(T007의 joshuatech-tfstate) plan 전에 완전한 `tofu init`이 선행되어야 한다 —
-#     이 스위트가 돌리는 `init -backend=false`는 backend 도입 전에만 충분하다.
-#     T010부터 plan은 변수 budget_alert_email(기본값 없음)을 요구한다 — 운영자 tfvars(.gitignore) 또는 TF_VAR_budget_alert_email.
+#     T010부터 plan은 변수 budget_alert_email(기본값 없음)을 요구한다 — 운영자 tfvars(.gitignore) 또는 TF_VAR_budget_alert_email
+#     (자리표시자 값이면 alert rule 4건이 update로 뜬다 — destroy가 아니므로 plan-2에는 무해).
 #   - [tf-text] 표시 단언은 .tf 원문만 읽는다(plan JSON이 lifecycle prevent_destroy 등 일부 선언을 노출하지
 #     않으므로 중괄호 균형 최소 파서로 리소스 블록을 추출해 검사한다). 자격 증명 불필요.
 #     주석은 전체 행 `#`/`//`만 지원한다 — 검사 대상 리소스 블록 안에 블록 주석(/* */)이나 행 끝 주석을 두지 않는다.
 #
 # 구성 계약(T007+ 구현자가 따라야 하는 형태 — 이 스위트가 곧 계약이다):
-#   - 리소스는 루트 모듈에 평면 선언(모듈 호출 없음; 이 스위트는 root_module만 순회한다).
+#   - 리소스는 루트 모듈에 평면 선언(모듈 호출 없음; 이 스위트는 root_module만 순회한다 — iam-7이 planned child_modules·configuration
+#     module_calls 부재를 강제해 자식 모듈 속 리소스가 검사를 비껴가지 못하게 한다).
 #   - 인스턴스 리소스 이름 라벨은 (?i)node[-_]?a / (?i)node[-_]?b 패턴을 포함한다.
 #   - NSG는 정확히 2개(T009 문면): platform NSG(라벨에 (?i)node[-_]?a 포함; nsg-node-a-platform) + cluster NSG(라벨에
 #     (?i)cluster 포함; nsg-cluster, 두 노드 공유). 인스턴스 create_vnic_details.nsg_ids는 NSG 리소스를 직접 참조한다 —
@@ -47,13 +51,27 @@
 #       joshuatech-backup-platform ← dynamic-group joshuatech-node-a · group joshuatech-verify · service objectstorage[-region]
 #     그 외 주체·버킷·any-user, 그리고 target.* '=' 조건 없는 manage/use 문장은 iam-6 위반이다. where 절은 리프(`key = 'v'`|`key != 'v'`)·
 #     `all {…}`·`any {…}`(all 안의 any 한 단계까지)만 받고, any 안에 target.bucket.name '=' 이외의 리프(any {bucket, permission}은 OR라
-#     권한이 넓어진다)·bucket '!='·더 깊은 중첩·파싱 불가는 전부 FAIL이다. 동적 그룹은 `use keys … where target.key.id`(이 스택의 KMS 키;
-#     T010 문면) + joshuatech-backup-platform `manage objects` where all {bucket, request.permission = OBJECT_CREATE|OBJECT_INSPECT}만이다.
+#     권한이 넓어진다)·bucket '!='·더 깊은 중첩·파싱 불가는 전부 FAIL이다. 모순 all{}: all 바로 아래 '=' 리프가 고정한 키가 같은 all 안에
+#     다시 나오면(`perm = 'A', perm = 'B'` / `perm = 'A', perm != 'A'` / all {perm = 'A', any {perm = …}}) 어떤 요청도 만족 못 하는 빈 문장이
+#     검사 문장 행세를 하는 것이므로 unsound = 소비 단언(iam-3/iam-5/iam-6) FAIL. 동적 그룹은 `use keys … where target.key.id`(이 스택의
+#     KMS 키; T010 문면) + joshuatech-backup-platform `manage objects` where all {bucket, request.permission = OBJECT_CREATE|OBJECT_INSPECT}만이다.
 #     plan 시점 unknown 문장(키 OCID가 (known after apply)면 provider가 statements 전체를 unknown으로 낸다)은 같은 정책 블록의 .tf 원문
 #     `statements = [ … ]` 문자열 리터럴(같은 인덱스; 순수 리터럴 목록일 때만 — concat/for 식·비문자열 원소가 섞이면 해석 불가 = FAIL)로
-#     대체해 검사한다. `${…}` 치환: `<oci_type>.<label>.<attr>`는 그 리소스의 planned 값, 그 밖의 참조(local.* 등)는 같은 참조를 단독으로
-#     쓰는 다른 리소스 속성의 planned 값(후보가 전부 같을 때만; 예 local.bucket_names.backup_platform ← 버킷 name), 해석 실패는 <expr>
-#     마커(unknown 키 OCID는 <oci_kms_key.<label>.id> 마커로 이 스택의 키 라벨과 대조; 그 밖의 마커는 검사에서 걸린다 — fail closed).
+#     대체해 검사한다. `${…}` 치환 규칙(이 둘뿐, 그 밖은 전부 해석 불가):
+#       (1) `<resource_type>.<label>.<attr>` → 그 리소스의 planned 스칼라 값(local/var/data/each/count/path/terraform/module/self 접두 제외);
+#       (2) `local.<name>` | `local.<name>.<key>` | `local.<name>["<key>"]` → 같은 디렉터리 .tf 원문 `locals { … }`의 평문 문자열 리터럴
+#           (${…}/%{…}·백슬래시 없는 큰따옴표 문자열 하나가 값의 전부인 것; 맵이면 평문 리터럴만의 한 단계 맵의 그 키 — 예
+#           local.bucket_names.backup_platform). 식·참조·함수·목록·중첩 맵·미선언·중복 선언·locals 블록 파싱 실패(행 끝 주석·heredoc)는
+#           해석 불가. plan 값을 역추적하는 휴리스틱(같은 참조를 쓰는 다른 리소스 속성)은 쓰지 않는다 — "${local.x}-platform" 같은 소비자가
+#           plan-config 괴리를 가리던 결함의 수정.
+#       `each.*`·`count.*`·`var.*`·`data.*`는 언제나 해석 불가. 해석 실패는 <expr> 마커(unknown 키 OCID는 <oci_kms_key.<label>.id> 마커로
+#       이 스택의 키 라벨과 대조; 그 밖의 마커는 검사에서 걸린다 — fail closed). apply 뒤 재실행하면 planned 문장이 알려져 tf-text 대체 없이
+#       검사된다(두 상태 모두 통과해야 한다).
+#   - 사용자→그룹 가입(oci_identity_user_group_membership)은 콘솔 단계라 이 스택에 리소스가 0이어야 하고(iam-7), 같은 단언이 평면 루트 모듈
+#     (planned child_modules·configuration module_calls 부재)을 강제한다.
+#   - 예산(T010): oci_budget_budget 정확히 1(amount 35, reset_period MONTHLY) + oci_budget_alert_rule 정확히 4 — budget_id가 그 예산 리소스를
+#     직접 참조하고 (type, threshold) 다중집합이 정확히 {ACTUAL 10, ACTUAL 50, ACTUAL 100, FORECAST 100}, threshold_type 전부 PERCENTAGE
+#     (ordinal 비교; 값·키가 plan에 없으면 FAIL) — budget-1.
 #   - OBJECT_VERSION_DELETE(VD-6): Object Storage 서비스 주체 문장이 두 백업 버킷 각각에 `request.permission = 'OBJECT_VERSION_DELETE'`
 #     (= 형, != 아님; 버킷은 그 문장의 bucket 리프 또는 all 안의 any {bucket…})을 담아야 한다 — T010은 정책을 `!=` 반쪽과 `=` 반쪽으로
 #     나누므로 `=` 반쪽(VD-6 관찰 단계에서 떼는 쪽)을 빼면 FAIL. 단언은 선언 존재까지만이다 — 규칙이 실제로 이전 버전을 삭제하는지는
@@ -65,7 +83,7 @@
 #   - Cloudflare Access(T008/T011): cloudflare_zero_trust_access_application 블록이 1개 이상 있어야 하고,
 #     application·policy 두 타입의 모든 블록이 각각 session_duration을 명시해야 한다(양측 무조건 검사).
 #
-# 단언 수: 36 (tool 1, enc 1, dir 2, validate 4, plan 2, nsg 4, sl 1, inst 3, bucket 4, iam 6, dg 2, kms 3, lc 2, access 1)
+# 단언 수: 38 (tool 1, enc 1, dir 2, validate 4, plan 2, nsg 4, sl 1, inst 3, bucket 4, iam 7, dg 2, kms 3, lc 2, budget 1, access 1)
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -168,35 +186,117 @@ function Get-PlannedFor([string]$address) {
 
 # ---------- [tf-text] 최소 파서: resource "<type>" "<name>" { ... } 블록을 중괄호 균형으로 추출 ----------
 # 선언 존재 단언 전용(문자열 내부 중괄호는 따옴표 상태로 무시, 행 주석 제거). heredoc은 지원하지 않는다.
+# 전체 행 주석(`#`/`//`)을 지운 .tf 원문 — resource·locals 블록 추출이 공유한다.
+function Get-TfText([string]$path) {
+    $raw = [IO.File]::ReadAllText($path)
+    return ((($raw -split "`n") | ForEach-Object { $_ -replace '^\s*(#|//).*$', '' }) -join "`n")
+}
+# 여는 중괄호 바로 다음 인덱스 $i부터 균형이 맞는 닫는 중괄호를 찾아 그 다음 인덱스를 돌려준다(문자열 안 중괄호는 무시).
+function Find-TfBlockEnd([string]$text, [int]$i) {
+    $depth = 1; $inStr = $false; $j = $i
+    while ($j -lt $text.Length -and $depth -gt 0) {
+        $ch = $text[$j]
+        if ($inStr) {
+            if ($ch -eq '"') {
+                # 닫는 따옴표는 바로 앞 백슬래시 런이 짝수일 때만 유효하다("...\\" 같은 이스케이프 짝 처리)
+                $bs = 0; $k = $j - 1
+                while ($k -ge $i -and $text[$k] -eq '\') { $bs++; $k-- }
+                if ($bs % 2 -eq 0) { $inStr = $false }
+            }
+        }
+        elseif ($ch -eq '"') { $inStr = $true }
+        elseif ($ch -eq '{') { $depth++ }
+        elseif ($ch -eq '}') { $depth-- }
+        $j++
+    }
+    return $j
+}
 function Get-TfResourceBlocks([string]$dir, [string]$type) {
     $blocks = @()
     if (-not (Test-Path -LiteralPath $dir -PathType Container)) { return , $blocks }
     foreach ($f in @(Get-ChildItem -LiteralPath $dir -File -Filter '*.tf')) {
-        $raw = [IO.File]::ReadAllText($f.FullName)
-        $text = (($raw -split "`n") | ForEach-Object { $_ -replace '^\s*(#|//).*$', '' }) -join "`n"
+        $text = Get-TfText $f.FullName
         $rx = [regex]('resource\s+"' + [regex]::Escape($type) + '"\s+"([A-Za-z0-9_-]+)"\s*\{')
         foreach ($m in $rx.Matches($text)) {
             $i = $m.Index + $m.Length
-            $depth = 1; $inStr = $false; $j = $i
-            while ($j -lt $text.Length -and $depth -gt 0) {
-                $ch = $text[$j]
-                if ($inStr) {
-                    if ($ch -eq '"') {
-                        # 닫는 따옴표는 바로 앞 백슬래시 런이 짝수일 때만 유효하다("...\\" 같은 이스케이프 짝 처리)
-                        $bs = 0; $k = $j - 1
-                        while ($k -ge $i -and $text[$k] -eq '\') { $bs++; $k-- }
-                        if ($bs % 2 -eq 0) { $inStr = $false }
-                    }
-                }
-                elseif ($ch -eq '"') { $inStr = $true }
-                elseif ($ch -eq '{') { $depth++ }
-                elseif ($ch -eq '}') { $depth-- }
-                $j++
-            }
+            $j = Find-TfBlockEnd $text $i
             $blocks += @{ name = $m.Groups[1].Value; body = $text.Substring($i, [Math]::Max(0, $j - $i - 1)); file = $f.Name }
         }
     }
     return , $blocks
+}
+
+# ---------- [tf-text] locals { … } 리터럴 수집 — `${local.*}` 해석의 유일한 출처 ----------
+# 반환: 이름 → [string](평문 문자열 리터럴) | [hashtable](평문 문자열 리터럴만의 한 단계 맵; 키 ordinal) | $null(선언됐지만 리터럴 아님).
+# 평문 리터럴 = 큰따옴표 문자열 하나가 값의 전부이고 ${…}/%{…} 템플릿·백슬래시 이스케이프가 없는 것. 그 밖의 값(식·참조·함수·목록·
+# 중첩 맵·숫자·불리언)은 $null이다. 같은 이름이 두 번 선언되면 $null(fail closed). 어느 locals 블록이든 본문을 파싱할 수 없으면
+# (예 heredoc) 키 '*'를 넣어 전체를 오염시킨다(그 디렉터리의 local.*는 전부 해석 불가 = 마커). 값 뒤에 행 끝 주석이 붙으면 문자열이
+# 값의 전부가 아니므로 그 항목(맵이면 그 맵 전체)은 $null이다 — 어느 쪽이든 fail closed.
+function Get-TfLocals([string]$dir) {
+    $acc = [hashtable]::new([StringComparer]::Ordinal)
+    if (-not (Test-Path -LiteralPath $dir -PathType Container)) { return $acc }
+    $rx = [regex]'(?m)^\s*locals\s*\{'
+    foreach ($f in @(Get-ChildItem -LiteralPath $dir -File -Filter '*.tf')) {
+        $text = Get-TfText $f.FullName
+        foreach ($m in $rx.Matches($text)) {
+            $i = $m.Index + $m.Length
+            $j = Find-TfBlockEnd $text $i
+            $body = $text.Substring($i, [Math]::Max(0, $j - $i - 1))
+            $entries = [hashtable]::new([StringComparer]::Ordinal)
+            if (-not (Parse-TfAttrBody $body $entries $true)) { $acc['*'] = $null; continue }
+            foreach ($k in @($entries.Keys)) { if ($acc.ContainsKey($k)) { $acc[$k] = $null } else { $acc[$k] = $entries[$k] } }
+        }
+    }
+    return $acc
+}
+# 문자열 스팬을 건너뛰며 (·[·{ 균형이 0인 줄 끝(또는 EOF)까지 식 하나를 건너뛴 인덱스를 돌려준다(값 분류 불가 항목 건너뛰기용).
+function Skip-TfExpr([string]$body, [int]$i, [hashtable]$byStart) {
+    $n = $body.Length; $depth = 0
+    while ($i -lt $n) {
+        if ($byStart.ContainsKey($i)) { $i = [int]$byStart[$i].end; continue }
+        $ch = $body[$i]
+        if ($ch -eq '(' -or $ch -eq '[' -or $ch -eq '{') { $depth++ }
+        elseif ($ch -eq ')' -or $ch -eq ']' -or $ch -eq '}') { $depth-- }
+        elseif ($ch -eq "`n" -and $depth -le 0) { return $i }
+        $i++
+    }
+    return $n
+}
+# `name = value` 나열 본문을 파싱해 $out(name → 값 분류)에 넣는다. $allowMap가 참이면 `{ k = "lit", … }`를 한 단계 맵으로 받는다.
+# 파싱 불가(식별자·'=' 형태 이탈)는 $false — 호출자가 fail closed 처리한다.
+function Parse-TfAttrBody([string]$body, [hashtable]$out, [bool]$allowMap) {
+    $byStart = @{}
+    foreach ($sp in (Get-HclStringSpans $body)) { $byStart[[int]$sp.start] = $sp }
+    $n = $body.Length; $i = 0
+    $identRx = [regex]'\G[A-Za-z_][A-Za-z0-9_-]*'
+    while ($true) {
+        while ($i -lt $n -and ($body[$i] -eq ' ' -or $body[$i] -eq "`t" -or $body[$i] -eq "`r" -or $body[$i] -eq "`n" -or $body[$i] -eq ',')) { $i++ }
+        if ($i -ge $n) { return $true }
+        $m = $identRx.Match($body, $i)
+        if (-not $m.Success) { return $false }
+        $name = $m.Value; $i = $m.Index + $m.Length
+        while ($i -lt $n -and ($body[$i] -eq ' ' -or $body[$i] -eq "`t")) { $i++ }
+        if ($i -ge $n -or $body[$i] -ne '=') { return $false }
+        $i++
+        while ($i -lt $n -and ($body[$i] -eq ' ' -or $body[$i] -eq "`t")) { $i++ }
+        $value = $null
+        if ($byStart.ContainsKey($i)) {
+            $sp = $byStart[$i]; $raw = "$($sp.value)"; $k = [int]$sp.end
+            while ($k -lt $n -and ($body[$k] -eq ' ' -or $body[$k] -eq "`t" -or $body[$k] -eq "`r")) { $k++ }
+            $alone = ($k -ge $n -or $body[$k] -eq "`n" -or $body[$k] -eq ',')
+            if ($alone -and -not ($raw.Contains('${') -or $raw.Contains('%{') -or $raw.Contains('\'))) { $value = $raw; $i = $k }
+            else { $i = Skip-TfExpr $body $i $byStart }
+        }
+        elseif ($i -lt $n -and $body[$i] -eq '{' -and $allowMap) {
+            $close = Find-TfBlockEnd $body ($i + 1)
+            $inner = $body.Substring($i + 1, [Math]::Max(0, $close - $i - 2))
+            $map = [hashtable]::new([StringComparer]::Ordinal)
+            if ((Parse-TfAttrBody $inner $map $false) -and $map.Count -gt 0 -and @($map.Values | Where-Object { -not ($_ -is [string]) }).Count -eq 0) { $value = $map }
+            $i = $close
+        }
+        else { $i = Skip-TfExpr $body $i $byStart }
+        if ($out.ContainsKey($name)) { $out[$name] = $null } else { $out[$name] = $value }
+    }
 }
 
 # Cloudflare 공표 IPv4 CIDR(리터럴 source 대조용 — data.cloudflare_ip_ranges 참조가 우선이며 항상 허용된다)
@@ -208,6 +308,7 @@ $cloudflareCidrs = @(
 )
 
 $planFile = Join-Path ([IO.Path]::GetTempPath()) ('tofu-plan-' + [guid]::NewGuid().ToString('N') + '.tfplan')
+$script:validateCopies = @()   # validate용 임시 사본 디렉터리(finally에서 삭제)
 try {
     # ---------- 0. 도구·디렉터리 게이트 ----------
     $tofuOk = $null -ne (Get-Command tofu -ErrorAction SilentlyContinue)
@@ -252,22 +353,43 @@ try {
     Assert 'dir-1: infra/oci contains *.tf' ($ociTf -gt 0) "missing or empty: $ociDir (written in T007+)"
     Assert 'dir-2: infra/cloudflare contains *.tf' ($cfTf -gt 0) "missing or empty: $cfDir (written in T008+)"
 
-    # ---------- 1. validate (자격 증명 불필요; init -backend=false 선행) ----------
+    # ---------- 1. validate (자격 증명 불필요 — 임시 사본에서 init -backend=false + validate) ----------
+    # 실제 디렉터리는 S3 백엔드가 초기화된 뒤(.terraform/terraform.tfstate)라 `init -backend=false`조차 백엔드 프로파일(~/.aws)을 읽고
+    # 없으면 실패한다("failed to get shared config profile"). 그래서 *.tf(backend.tf 제외)·.terraform.lock.hcl(provider 고정)·
+    # .terraform/providers(있으면 — 네트워크 재다운로드 회피; 없으면 init이 받는다)만 임시 사본에 복사해 거기서 돌린다. 백엔드 상태·
+    # tfvars·tfplan·상태 파일은 복사하지 않는다. 사본은 스크립트 끝 finally에서 지운다.
+    function New-TfValidateCopy([string]$srcDir) {
+        $dst = Join-Path ([IO.Path]::GetTempPath()) ('tofu-validate-' + [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $dst | Out-Null
+        foreach ($f in @(Get-ChildItem -LiteralPath $srcDir -File -Filter '*.tf')) {
+            if ([string]::Equals($f.Name, 'backend.tf', [StringComparison]::OrdinalIgnoreCase)) { continue }
+            Copy-Item -LiteralPath $f.FullName -Destination (Join-Path $dst $f.Name)
+        }
+        $lock = Join-Path $srcDir '.terraform.lock.hcl'
+        if (Test-Path -LiteralPath $lock -PathType Leaf) { Copy-Item -LiteralPath $lock -Destination (Join-Path $dst '.terraform.lock.hcl') }
+        $prov = Join-Path $srcDir '.terraform/providers'
+        if (Test-Path -LiteralPath $prov -PathType Container) {
+            New-Item -ItemType Directory -Path (Join-Path $dst '.terraform') | Out-Null
+            Copy-Item -LiteralPath $prov -Destination (Join-Path $dst '.terraform/providers') -Recurse
+        }
+        return $dst
+    }
     foreach ($t in @(@{ n = 'oci'; path = $ociDir; ok = ($ociTf -gt 0) }, @{ n = 'cloudflare'; path = $cfDir; ok = ($cfTf -gt 0) })) {
-        $initName = "validate-$($t.n)-1: tofu init -backend=false succeeds"
-        $valName = "validate-$($t.n)-2: tofu validate -json reports valid"
+        $initName = "validate-$($t.n)-1: tofu init -backend=false succeeds in a credential-free temp copy (no backend.tf, no backend state)"
+        $valName = "validate-$($t.n)-2: tofu validate -json reports valid (same temp copy)"
         if (-not $tofuOk -or -not $t.ok) {
             Assert $initName $false 'precondition failed (needs tofu on PATH + *.tf present)'
             Assert $valName $false 'precondition failed (needs tofu on PATH + *.tf present)'
             continue
         }
         Test-Group $initName {
-            $r = Invoke-Tofu $t.path @('init', '-backend=false', '-input=false', '-no-color')
-            Assert $initName ($r.code -eq 0) (Clip "exit=$($r.code) err=$($r.err)")
-            $v = Invoke-Tofu $t.path @('validate', '-json', '-no-color')
+            $copy = New-TfValidateCopy $t.path; $script:validateCopies += $copy
+            $r = Invoke-Tofu $copy @('init', '-backend=false', '-input=false', '-no-color')
+            Assert $initName ($r.code -eq 0) (Clip "copy=$copy exit=$($r.code) err=$($r.err)")
+            $v = Invoke-Tofu $copy @('validate', '-json', '-no-color')
             $valid = $false
             try { $vj = $v.out | ConvertFrom-Json; $valid = ($v.code -eq 0 -and $vj.valid -eq $true) } catch { $valid = $false }
-            Assert $valName $valid (Clip "exit=$($v.code) out=$($v.out) err=$($v.err)")
+            Assert $valName $valid (Clip "copy=$copy exit=$($v.code) out=$($v.out) err=$($v.err)")
         }
     }
 
@@ -614,41 +736,34 @@ try {
         if ($residue -notmatch '^[\s,]*$') { return $null }
         return , @($inRegion | ForEach-Object { "$($_.value)" })
     }
-    # `${expr}` 해석(unknown 문장의 tf-text 템플릿 전용):
-    #   (1) <oci_type>.<label>.<attr> → 그 리소스의 planned 스칼라 값(알려진 경우; 예 oci_identity_dynamic_group.node_a.name)
-    #   (2) 그 밖의 참조(local.* 등) → 같은 참조를 단독으로 쓰는(references가 그 참조와 조상뿐인) 다른 리소스 속성의 planned 스칼라 값 —
-    #       후보 값이 전부 같을 때만(예 local.bucket_names.backup_platform ← oci_objectstorage_bucket.backup_platform.name)
-    #   (3) 실패(unknown 포함) → <expr> 마커. iam-3의 target.key.id는 <oci_kms_key.<label>.id> 마커를 이 스택의 키 라벨로 대조한다.
+    # `${expr}` 해석(unknown 문장의 tf-text 템플릿 전용) — 아래 두 경로뿐이고 그 밖은 전부 <expr> 마커다(fail closed):
+    #   (1) <resource_type>.<label>.<attr> (local/var/data/each/count/path/terraform/module/self 접두 제외) → 그 리소스의 planned 스칼라 값
+    #       (알려진 경우; 예 oci_identity_dynamic_group.node_a.name). unknown이면 마커 — iam-3의 target.key.id는 <oci_kms_key.<label>.id>
+    #       마커를 이 스택의 키 라벨로 대조한다.
+    #   (2) local.<name> | local.<name>.<key> | local.<name>["<key>"] → 이 디렉터리 .tf 원문 locals { … }의 평문 문자열 리터럴(맵이면 평문
+    #       리터럴만의 한 단계 맵의 그 키; $tfLocals = Get-TfLocals). 리터럴이 아닌 local(식·참조·함수·목록·중첩 맵)·미선언·중복 선언·
+    #       locals 블록 파싱 실패는 마커. plan 값을 역추적하는 휴리스틱("같은 참조를 단독으로 쓰는 다른 리소스 속성")은 쓰지 않는다 —
+    #       전용 local + 템플릿 소비자(예 "${local.x}-platform")가 plan-config 괴리를 가리던 결함의 수정.
+    #   (3) each.*·count.* 는 항상 마커(for_each/count 정책의 문장은 planned 값이 알려진 상태에서만 검사할 수 있다).
     function Resolve-Expr([string]$e) {
-        $m = [regex]::Match($e, '^([a-z][a-z0-9_]*\.[A-Za-z0-9_-]+)\.([a-z_]+)$')
-        if ($m.Success -and -not ($e.StartsWith('local.') -or $e.StartsWith('var.') -or $e.StartsWith('data.') -or $e.StartsWith('each.'))) {
-            $pl = Get-PlannedFor $m.Groups[1].Value; $pl = @($pl)
-            if ($pl.Count -eq 1 -and $null -ne $pl[0].values) {
-                $v = $pl[0].values.($m.Groups[2].Value)
-                if ($v -is [string] -and $v -ne '') { return $v }
+        $lm = [regex]::Match($e, '^local\.([A-Za-z_][A-Za-z0-9_-]*)(?:\.([A-Za-z_][A-Za-z0-9_-]*)|\["([^"\\]*)"\])?$')
+        if ($lm.Success) {
+            if ($null -ne $tfLocals -and -not $tfLocals.ContainsKey('*') -and $tfLocals.ContainsKey($lm.Groups[1].Value)) {
+                $v = $tfLocals[$lm.Groups[1].Value]
+                $key = if ($lm.Groups[2].Success) { $lm.Groups[2].Value } elseif ($lm.Groups[3].Success) { $lm.Groups[3].Value } else { $null }
+                if ($null -eq $key) { if ($v -is [string]) { return $v } }
+                elseif ($v -is [hashtable] -and $v.ContainsKey($key) -and $v[$key] -is [string]) { return $v[$key] }
             }
             return "<$e>"
         }
-        $cands = @{}
-        $cfgAll = @(); $j = $script:planJson
-        if ($j -and $j.configuration -and $j.configuration.root_module -and $j.configuration.root_module.resources) { $cfgAll = @($j.configuration.root_module.resources) }
-        foreach ($c in $cfgAll) {
-            if ($null -eq $c.expressions) { continue }
-            foreach ($prop in @($c.expressions.PSObject.Properties)) {
-                $refs = Get-Refs $prop.Value; $refs = @($refs)
-                if ($refs.Count -eq 0 -or -not (Test-InSet $refs $e)) { continue }
-                $exact = $true
-                foreach ($r in $refs) { if (-not ([string]::Equals($r, $e, [StringComparison]::Ordinal) -or $e.StartsWith($r + '.', [StringComparison]::Ordinal) -or $e.StartsWith($r + '[', [StringComparison]::Ordinal))) { $exact = $false } }
-                if (-not $exact) { continue }
-                $pls = Get-PlannedFor "$($c.address)"; $pls = @($pls)
-                foreach ($pi in $pls) {
-                    if ($null -eq $pi.values) { continue }
-                    $v = $pi.values.($prop.Name)
-                    if ($v -is [string] -and $v -ne '') { $cands["$v"] = $true }
-                }
+        $m = [regex]::Match($e, '^([a-z][a-z0-9_]*)\.([A-Za-z0-9_-]+)\.([a-z_]+)$')
+        if ($m.Success -and -not (Test-InSet @('local', 'var', 'data', 'each', 'count', 'path', 'terraform', 'module', 'self') $m.Groups[1].Value)) {
+            $pl = Get-PlannedFor ($m.Groups[1].Value + '.' + $m.Groups[2].Value); $pl = @($pl)
+            if ($pl.Count -eq 1 -and $null -ne $pl[0].values) {
+                $v = $pl[0].values.($m.Groups[3].Value)
+                if ($v -is [string] -and $v -ne '') { return $v }
             }
         }
-        if ($cands.Count -eq 1) { return "$(@($cands.Keys)[0])" }
         return "<$e>"
     }
     function Resolve-StatementTemplate([string]$tpl) {
@@ -701,7 +816,17 @@ try {
         if ($m.Groups[6].Success) {
             $node = Parse-WhereNode $m.Groups[6].Value 0
             if ($node.op -eq 'err') { $r.err = "where clause: $($node.err)"; return $r }
-            foreach ($leaf in (Get-WhereLeaves $node 'single')) {
+            $leaves = Get-WhereLeaves $node 'single'; $leaves = @($leaves)   # comma 래퍼 반환 — @(호출) 직접 감싸기 금지(헬퍼 주석)
+            # 모순 all{}: all 바로 아래 '=' 리프가 고정한 키(perm = A)가 같은 all 안(직속 리프든 안쪽 any{} 리프든)에 다시 나오면
+            # (perm = B / perm != A / any {perm = …}) 문장은 아무 요청도 만족시키지 못하거나 뜻이 흐려진다 — 겉으로는 검사 문장이
+            # 갖춰진 듯 보이므로 unsound(소비 단언 iam-3/iam-5/iam-6 FAIL). 중첩 깊이가 1이라 all{}은 루트 하나뿐이다.
+            $fixedKeys = @{}
+            foreach ($leaf in $leaves) { if ($leaf.under -eq 'all' -and $leaf.cmp -eq '=') { $fixedKeys[$leaf.key] = $true } }
+            foreach ($k in @($fixedKeys.Keys)) {
+                $hits = @($leaves | Where-Object { $_.key -eq $k })
+                if ($hits.Count -gt 1) { $r.unsound += "all {} fixes '$k' with '=' and tests it again ($(@($hits | ForEach-Object { "$($_.under):$($_.cmp) '$($_.val)'" }) -join ', ')) -- contradictory or redundant, grants nothing reliable" }
+            }
+            foreach ($leaf in $leaves) {
                 if ($leaf.under -eq 'any' -and -not ($leaf.key -eq 'target.bucket.name' -and $leaf.cmp -eq '=')) { $r.unsound += "any {} contains '$($leaf.key) $($leaf.cmp)' (OR widens the grant)" }
                 switch ($leaf.key) {
                     'target.bucket.name' { if ($leaf.cmp -eq '=') { $r.buckets += $leaf.val } else { $r.unsound += "target.bucket.name != '$($leaf.val)' (negated bucket = every other bucket)" } }
@@ -721,6 +846,7 @@ try {
     # 모든 정책의 문장 해석 — planned 값이 알려진 문장은 그대로, unknown(null/키 없음)이면 같은 정책 블록의 tf-text statements 리터럴 목록
     # (같은 인덱스; 순수 문자열 리터럴 목록일 때만)을 Resolve-StatementTemplate로 해석한다. 해석 불가는 $stmtErrors(iam-6 위반).
     $stmts = @(); $stmtErrors = @()
+    $tfLocals = Get-TfLocals $ociDir   # Resolve-Expr 경로 (2)의 유일한 출처
     if ($script:planJson) {
         $policyBlocks = Get-TfResourceBlocks $ociDir 'oci_identity_policy'
         foreach ($p in (Get-Planned 'oci_identity_policy')) {
@@ -848,6 +974,22 @@ try {
         $pols = Get-Planned 'oci_identity_policy'; $pols = @($pols)
         , @(($stmts.Count -ge 1 -and $bad.Count -eq 0), "statements=$($stmts.Count) across $($pols.Count) policies; bad: $($bad -join ' | ')")
     }
+    # 사용자→그룹 가입은 설계상 콘솔 단계다(iam.tf 머리 주석) — tofu가 membership을 선언하면 위반. 평면 루트 모듈 계약도 여기서 잠근다:
+    # 이 스위트는 root_module만 순회하므로 자식 모듈(planned child_modules)이나 모듈 호출(configuration module_calls)이 생기면 그 안의
+    # 리소스가 검사를 비껴간다 → 존재 자체를 FAIL로 본다.
+    PlanAssert 'iam-7: no oci_identity_user_group_membership resource (user -> group membership is a console step) and the plan is a flat root module (planned_values.root_module.child_modules and configuration.root_module.module_calls absent/empty)' {
+        $j = $script:planJson
+        if (-not ($j.planned_values -and $j.planned_values.root_module)) { return , @($false, 'planned_values.root_module missing (fail closed)') }
+        $mem = Get-Planned 'oci_identity_user_group_membership'; $mem = @($mem)
+        $rm = $j.planned_values.root_module
+        $cm = 0; if ((@($rm.PSObject.Properties.Name) -contains 'child_modules') -and $null -ne $rm.child_modules) { $cm = @($rm.child_modules).Count }
+        $mc = 0
+        if ($j.configuration -and $j.configuration.root_module) {
+            $cr = $j.configuration.root_module
+            if ((@($cr.PSObject.Properties.Name) -contains 'module_calls') -and $null -ne $cr.module_calls) { $mc = @($cr.module_calls.PSObject.Properties).Count }
+        }
+        , @(($mem.Count -eq 0 -and $cm -eq 0 -and $mc -eq 0), "membership resources=$($mem.Count) [$(@($mem | ForEach-Object { "$($_.address)" }) -join ', ')] (want 0); planned child_modules=$cm (want 0); configuration module_calls=$mc (want 0)")
+    }
 
     # ---------- 7. 동적 그룹 [plan] — 이름 예외: joshuatech-node-a ----------
     PlanAssert 'dg-1: dynamic group joshuatech-node-a exists (exactly 1)' {
@@ -941,6 +1083,37 @@ try {
         }
     }
 
+    # ---------- 9b. 예산 [plan] — T010 문면: 월 35 MONTHLY 예산 1 + 알림 규칙 4(ACTUAL 10/50/100 % · FORECAST 100 %, PERCENTAGE) ----------
+    PlanAssert 'budget-1: exactly one oci_budget_budget (amount 35, reset_period MONTHLY) and exactly 4 oci_budget_alert_rule referencing it whose (type, threshold) multiset is {ACTUAL 10, ACTUAL 50, ACTUAL 100, FORECAST 100}, every threshold_type PERCENTAGE' {
+        $bad = @()
+        $bs = Get-Planned 'oci_budget_budget'; $bs = @($bs)
+        if ($bs.Count -ne 1) { $bad += "budget resources=$($bs.Count) (want exactly 1)" }
+        else {
+            $v = $bs[0].values; $keys = @(); if ($v) { $keys = @($v.PSObject.Properties.Name) }
+            foreach ($k in @('amount', 'reset_period')) { if (-not ($keys -contains $k) -or $null -eq $v.$k) { $bad += "$($bs[0].address): '$k' missing/unknown at plan time (fail closed)" } }
+            if (-not [string]::Equals("$($v.amount)", '35', [StringComparison]::Ordinal)) { $bad += "$($bs[0].address): amount=$($v.amount) (want 35)" }
+            if (-not [string]::Equals("$($v.reset_period)", 'MONTHLY', [StringComparison]::Ordinal)) { $bad += "$($bs[0].address): reset_period=$($v.reset_period) (want MONTHLY)" }
+        }
+        $rules = Get-Planned 'oci_budget_alert_rule'; $rules = @($rules)
+        $seen = @()
+        foreach ($r in $rules) {
+            $v = $r.values; $keys = @(); if ($v) { $keys = @($v.PSObject.Properties.Name) }
+            $missing = @(@('type', 'threshold', 'threshold_type') | Where-Object { -not ($keys -contains $_) -or $null -eq $v.$_ })
+            if ($missing.Count -gt 0) { $bad += "$($r.address): [$($missing -join ', ')] missing/unknown at plan time (fail closed)"; continue }
+            if (-not [string]::Equals("$($v.threshold_type)", 'PERCENTAGE', [StringComparison]::Ordinal)) { $bad += "$($r.address): threshold_type=$($v.threshold_type) (want PERCENTAGE)" }
+            $seen += "$($v.type) $($v.threshold)"
+        }
+        $want = @('ACTUAL 10', 'ACTUAL 50', 'ACTUAL 100', 'FORECAST 100')
+        $seenSorted = @($seen | Sort-Object); $wantSorted = @($want | Sort-Object)
+        if ($rules.Count -ne 4 -or -not [string]::Equals(($seenSorted -join '|'), ($wantSorted -join '|'), [StringComparison]::Ordinal)) { $bad += "alert rules=$($rules.Count) with (type threshold) [$($seenSorted -join ', ')] != exactly [$($wantSorted -join ', ')]" }
+        # 규칙의 budget_id는 이 스택의 예산 리소스를 직접 참조해야 한다(리터럴 OCID로 다른 예산에 매달린 규칙은 위 개수를 채워도 무의미)
+        foreach ($c in (Get-Config 'oci_budget_alert_rule')) {
+            $refs = Get-Refs $c.expressions.budget_id; $refs = @($refs)
+            if (@($refs | Where-Object { $_ -match '^oci_budget_budget\.' }).Count -eq 0) { $bad += "$($c.address): budget_id does not reference oci_budget_budget.* (refs [$($refs -join ', ')])" }
+        }
+        , @(($bad.Count -eq 0), "budgets=$($bs.Count); alert rules=$($rules.Count) [$($seen -join ', ')]; bad: $($bad -join ' | ')")
+    }
+
     # ---------- 10. Cloudflare Access [tf-text] — 정책 전부 session_duration 명시 ----------
     Test-Group 'access-1' {
         # 양측 무조건 검사: application 블록 1개 이상 필수(fail closed), application·policy 모든 블록이 session_duration 명시
@@ -951,6 +1124,7 @@ try {
     }
 } finally {
     Remove-Item -LiteralPath $planFile -Force -ErrorAction SilentlyContinue
+    foreach ($c in $script:validateCopies) { if ($c) { Remove-Item -LiteralPath $c -Recurse -Force -ErrorAction SilentlyContinue } }
 }
 
 Write-Host "`n$($script:pass) passed, $($script:fail) failed"
