@@ -1,7 +1,10 @@
 # 기존 인스턴스 2대 — `tofu plan -generate-config-out` 결과(2026-09-03)를 정리한 파일 (T008).
 # 현재 상태 그대로 코드화(diff 0 목표) — 알려진 편차는 후속 태스크에서 수정한다:
-#   are_legacy_imds_endpoints_disabled=false(IMDS v1 활성) → T010,
-#   ephemeral 공개 IP → T009, boot 볼륨 47GB → T013/T014.
+#   are_legacy_imds_endpoints_disabled=false(IMDS v1 활성) → T010, boot 볼륨 47GB → T013/T014.
+# T009(2026-09-03): nsg_ids 배선(노드 A: platform+cluster, 노드 B: cluster) —
+#   provider 문서상 create_vnic_details.nsg_ids는 (Updatable)이라 VNIC in-place 갱신이다.
+#   plan이 replace를 요구하면 prevent_destroy가 막는다 — 그 경우 진행하지 말고 보고한다.
+#   assign_public_ip는 ignore_changes에 추가(ephemeral→reserved 교체 창에서의 drift 차단 — 블록 내 주석).
 # metadata의 ssh_authorized_keys는 공개 키이며 비밀이 아니다(키 교체는 별도 태스크 몫).
 
 resource "oci_core_instance" "node_a" {
@@ -78,14 +81,15 @@ resource "oci_core_instance" "node_a" {
     display_name              = "joshtech_api_1st"
     freeform_tags             = {}
     hostname_label            = "joshtech-api"
-    nsg_ids                   = []
-    private_ip                = "10.0.7.78"
-    private_ip_id             = ""
-    security_attributes       = {}
-    skip_source_dest_check    = false
-    subnet_cidr               = ""
-    subnet_id                 = oci_core_subnet.api.id
-    vlan_id                   = ""
+    # T009: 공개 경계(nsg-node-a-platform: Cloudflare→443) + 클러스터 내부(nsg-cluster).
+    nsg_ids                = [oci_core_network_security_group.node_a_platform.id, oci_core_network_security_group.cluster.id]
+    private_ip             = "10.0.7.78"
+    private_ip_id          = ""
+    security_attributes    = {}
+    skip_source_dest_check = false
+    subnet_cidr            = ""
+    subnet_id              = oci_core_subnet.api.id
+    vlan_id                = ""
   }
 
   instance_options {
@@ -122,7 +126,10 @@ resource "oci_core_instance" "node_a" {
 
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = [metadata, defined_tags, create_vnic_details[0].hostname_label]
+    # assign_public_ip(T009): 공개 IP 배정은 이제 oci_core_public_ip(reserved, network.tf)가 소유한다.
+    # provider는 이 값을 VNIC의 공개 IP 존재 여부로 read하므로, ephemeral 삭제~reserved attach 사이의
+    # plan에서 false로 읽혀 교체(replace)를 유발할 수 있다 — ignore_changes로 그 창의 drift를 차단한다.
+    ignore_changes = [metadata, defined_tags, create_vnic_details[0].hostname_label, create_vnic_details[0].assign_public_ip]
   }
 }
 
@@ -200,14 +207,15 @@ resource "oci_core_instance" "node_b" {
     display_name              = "joshtech_cache"
     freeform_tags             = {}
     hostname_label            = "joshtech-cache"
-    nsg_ids                   = []
-    private_ip                = "10.0.10.193"
-    private_ip_id             = ""
-    security_attributes       = {}
-    skip_source_dest_check    = false
-    subnet_cidr               = ""
-    subnet_id                 = oci_core_subnet.cache.id
-    vlan_id                   = ""
+    # T009: 클러스터 내부(nsg-cluster)만 — 노드 B는 공개 ingress가 전혀 없다.
+    nsg_ids                = [oci_core_network_security_group.cluster.id]
+    private_ip             = "10.0.10.193"
+    private_ip_id          = ""
+    security_attributes    = {}
+    skip_source_dest_check = false
+    subnet_cidr            = ""
+    subnet_id              = oci_core_subnet.cache.id
+    vlan_id                = ""
   }
 
   instance_options {
@@ -244,6 +252,9 @@ resource "oci_core_instance" "node_b" {
 
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = [metadata, defined_tags, create_vnic_details[0].hostname_label]
+    # assign_public_ip(T009): 공개 IP 배정은 이제 oci_core_public_ip(reserved, network.tf)가 소유한다.
+    # provider는 이 값을 VNIC의 공개 IP 존재 여부로 read하므로, ephemeral 삭제~reserved attach 사이의
+    # plan에서 false로 읽혀 교체(replace)를 유발할 수 있다 — ignore_changes로 그 창의 drift를 차단한다.
+    ignore_changes = [metadata, defined_tags, create_vnic_details[0].hostname_label, create_vnic_details[0].assign_public_ip]
   }
 }
