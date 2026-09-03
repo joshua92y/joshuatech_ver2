@@ -18,6 +18,8 @@
 
 ### 완료 확인 체크리스트
 
+> **이름 예외 — OCI(사용자 결정 2026-09-03)**: 그룹 `jt-verify` → 실명 **`joshuatech-verify`**, 버킷 `jt-tfstate`·`jt-backup`·`jt-backup-platform` → 실명 **`joshuatech-tfstate`**(콘솔 생성 2026-09-03, versioning·NoPublicAccess·루트 컴파트먼트)·**`joshuatech-backup`**·**`joshuatech-backup-platform`**(뒤 2개는 T010 OpenTofu가 이 실명으로 생성). tasks·contracts·연구 문서의 `jt-*` 표기는 전부 이 실명으로 읽는다 — backend.tf·T010 IAM 정책·svc 사용자 스코프·백업 스크립트 포함.
+
 > **이름 예외(사용자 결정 2026-09-02)**: GitHub App은 `jt-ci`가 아니라 **`joshuatech-gitapp-1`**(App ID 4800793)이고, 변수·시크릿 이름은 **`JOSHUATECH_CI_APP_CLIENT_ID`**(repo 변수)·**`JOSHUATECH_CI_APP_PRIVATE_KEY`**(Environment `production` 시크릿)다. tasks.md·contracts의 `jt-ci`·`jt-ci[bot]`·`JT_CI_APP_*` 표기는 전부 이 실제 이름으로 읽는다 — 봇 로그인은 `joshuatech-gitapp-1[bot]`(T033 validate lint·T074 워크플로·T115 증거가 이 로그인을 사용). App 권한: Contents RW · Pull requests RW · Metadata R(확인 2026-09-02). Environment `production` 배포 브랜치 = `main`(확인).
 
 - [x] **GitHub App `joshuatech-gitapp-1`** — 생성·권한 3종·`JOSHUATECH_CI_APP_CLIENT_ID` repo 변수·`JOSHUATECH_CI_APP_PRIVATE_KEY` production 환경 시크릿 등록(2026-09-02). 모노레포·platform-gitops **두 저장소 설치 완료**(사용자 확인 2026-09-02). 2026-09-01 노출 키는 **재발급·재등록 완료**, App의 구 키 삭제·바탕화면 구 `.pem` 삭제까지 **운영자 확인 완료**(2026-09-03) — 항목 마감.
