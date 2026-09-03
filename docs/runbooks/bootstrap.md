@@ -89,7 +89,19 @@
 - **운영 규칙(신규)**: Cloudflare 공표 IPv4 대역이 바뀌면 정기 plan에 NSG 규칙 destroy가 나타난다 — "CF CIDR 제거로 인한 NSG rule destroy는 사용자 확인 후 apply". 하네스 `tests/infra/tofu.tests.ps1`의 `$cloudflareCidrs` 스냅샷도 함께 갱신(갱신 전까지 nsg-2/4 RED — 의도된 fail-closed).
 - **하네스 결함 수정(동반)**: `58f39da`(tofu JSON stdout UTF-8 디코드 — CP949에서 "Ampere® Altra™"로 JSON 파싱 실패; NSG 단언을 T009 문면으로 정합) + `b0b4cb2`(NSG source 분류 구멍 봉인, 보안 리스트 ingress 0 단언 `sl-1` 추가, enc-1 콘솔 무관화) — 34단언, 14 PASS / 20 FAIL(잔여 전부 T010·T011 몫).
 
-(T010–T011 기록은 이하에 추가)
+### T010 — 버킷·KMS·IAM·예산·IMDS (2026-09-03)
+
+- **코드**: `storage.tf`·`kms.tf`·`iam.tf`·`budget.tf` + `instances.tf`(IMDS v1 비활성 2노드, `assign_public_ip` 영구 가드 주석)·`import.tf`(tfstate 버킷 import) — 커밋 `dbe428f`, 리뷰 Approved(IAM 15문장 최소권한·교차 버킷 0·문법 확인). 이름(사용자 확인 2026-09-03): 버킷 `joshuatech-backup`·`joshuatech-backup-platform`(+`joshuatech-tfstate` import), 그룹 `joshuatech-tfstate`·`joshuatech-s3-backup`, 정책 `joshuatech-{tfstate,s3-backup,verify,objectstorage-lifecycle,node-a}-policy`, 동적 그룹 `joshuatech-node-a`, KMS `joshuatech-vault`/`joshuatech-key`, 예산 `joshuatech-budget` + 알림 4.
+- **설계 편차(수용)**: 그룹 가입은 legacy IAM API가 Default 도메인 사용자를 못 봐서(precondition 빈 목록) tofu 선언에서 제외 → 콘솔 가입; VD-6 서비스 주체 정책은 `request.permission != / = 'OBJECT_VERSION_DELETE'` 4문장으로 분리(합집합 = 문면 단일 문장, 관찰 시 `=` 반쪽만 제거 가능); svc-verify는 `read objects`(표 ③ "inspect/read").
+- **실행**(운영자): plan `1 import / 19 add / 2 change / 0 destroy` → `apply t010.tfplan` → 20개 완료 + **KMS 키만 실패**(볼트 관리 엔드포인트 `gjvjsruaaadoq-management.kms…` NXDOMAIN — 생성 직후 조회 실패가 로컬·1.1.1.1에 **부정 캐시**됨; 8.8.8.8은 해석) → `ipconfig /flushdns` → 재apply **2 added**(키 + `joshuatech-node-a-policy`) → 재plan **"No changes"**.
+- **Outputs**: `kms_key_id = ocid1.key.oc1.ap-chuncheon-1.gjvjsruaaadoq.ab4w4ljrjk4tfx75c47dgyeibp4pxgh3pn3pttsudq2p2hcbsjifvacwspda`, `kms_management_endpoint = https://gjvjsruaaadoq-management.kms.ap-chuncheon-1.oci.oraclecloud.com`, `kms_crypto_endpoint = https://gjvjsruaaadoq-crypto.kms.ap-chuncheon-1.oci.oraclecloud.com`, `object_storage_namespace = axvjykgvo2m1`.
+- **후속(운영자, 완료 2026-09-03)**: ① 콘솔 그룹 가입 `svc-tfstate → joshuatech-tfstate`, `svc-s3-backup → joshuatech-s3-backup` ② **임시 키 교체**: `[joshuatech-tfstate]` 프로파일을 svc-tfstate Customer Secret Key로 교체 → `plan` "No changes"(svc-tfstate 정책으로 상태 버킷 R/W 확인) → 운영자 계정 임시 키 `joshuatech-tfstate-bootstrap-temp` 삭제(운영자 확인) ③ `oci --profile svc-verify --auth security_token os object list --bucket-name joshuatech-backup-platform --all` → `{"prefixes": []}` (읽기 정책 동작, VD-6 기준선).
+- **VD-6 관찰 계획**: 첫 60일 만료 시점(≈ 2026-11-02 이후) 두 백업 버킷의 이전 버전 수 감소 확인 → `= 'OBJECT_VERSION_DELETE'` 문장 2개 제거 후 다음 만료 재관찰 → 옵션 A/B 확정, `report.md` 기록. `previous-object-versions` 60일 규칙은 두 버킷 동일.
+- **IMDS v1 비활성**: 노드 스크립트는 IMDS v2(`Authorization: Bearer Oracle`, `/opc/v2/`)만 사용해야 함 — host-prep(T014)·platform-backup 스크립트 작성 시 준수.
+- **provider 인증 기본값 결정(T008 이월)**: `auth = var.oci_auth` 기본 `APIKey` **유지** — 운영자 워크스테이션 한정이며 에이전트는 하네스의 읽기 전용 plan 외 접근 없음(하네스 헤더에 전제 명시). 세션 방식은 `-var oci_auth=SecurityToken`.
+- **하네스**: `b020add` — T010 단언을 실명·`access_type`·그룹 기반 IAM·`use keys` 허용·`usage-budgets`·iam-5 `= OBJECT_VERSION_DELETE` 형식으로 정합 + iam-6 접근 행렬·kms-3·lc 접두사 강화 → **36/0**(변이 49건), 리뷰 Approved(Minor 4 이월).
+
+(T011 기록은 이하에 추가)
 
 ## §2 재이미지·host-prep
 
