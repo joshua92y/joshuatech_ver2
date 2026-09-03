@@ -3,8 +3,9 @@
 # (대안인 프리렌더 HTML 자산화는 VD-2, T093 실측).
 
 # ---- VD-3: Rate Limiting 표현식 ----
-# 옵션 B(기본, 경로만): /api/auth/* 또는 /if/flow/* — Free 요금제 Rate Limiting 은 경로 필드만 허용한다는 가정.
-# 옵션 A(host 조건 허용 시): 옵션 B + joshuatech.dev/api/* 확대. var.ratelimit_use_host_condition 으로 apply 시점에 갈린다.
+# 옵션 A(기본, var.ratelimit_use_host_condition = true): 옵션 B + (http.host eq "joshuatech.dev" and /api/*) 확대.
+# 옵션 B(폴백, -var=false): 경로만 — /api/auth/* 또는 /if/flow/*.
+# VD-3 실측 2026-09-03: Free 플랜에서 host 조건 수락(plan 1 change in-place → apply 성공) → 옵션 A 확정(옵션 B 폴백은 -var=false).
 # 어느 쪽이든 호출 측 간격 ≥ 200 ms 규칙(T079·T087·T095)은 그대로다.
 locals {
   ratelimit_expr_path_only = "(starts_with(http.request.uri.path, \"/api/auth/\")) or (starts_with(http.request.uri.path, \"/if/flow/\"))"

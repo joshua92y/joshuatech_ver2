@@ -132,11 +132,11 @@ variable "enable_r2_custom_domain" {
 variable "ratelimit_use_host_condition" {
   description = <<-EOT
     VD-3: Free 요금제 Rate Limiting 표현식에 host 조건을 쓸 수 있는지의 실측 스위치.
-    false(기본) = 옵션 B(경로만: /api/auth/* 또는 /if/flow/*). apply·대시보드가 host 필드를 받아들이면 true = 옵션 A
-    (joshuatech.dev/api/* 까지 확대). API 오류로 거부되면 false 로 확정하고 결과를 report.md 에 적는다(security.tf).
+    true = 옵션 A(경로 규칙 + joshuatech.dev/api/* 확대), false = 옵션 B(경로만: /api/auth/* 또는 /if/flow/*).
+    VD-3 실측 2026-09-03: Free 플랜에서 host 조건 수락 → 옵션 A 확정(옵션 B 폴백은 -var=ratelimit_use_host_condition=false).
   EOT
   type        = bool
-  default     = false
+  default     = true
 }
 
 # ---- R2 ----
