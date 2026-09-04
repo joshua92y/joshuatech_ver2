@@ -97,6 +97,14 @@ $c = $LASTEXITCODE
 Write-Host ($o.TrimEnd())
 Check 'platform-backup' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see platform-backup test output above"
 
+# 1k. traefik-config (T038) — tests/infra/traefik-config.tests.ps1: infra/bootstrap/traefik-config.yaml(HelmChartConfig) 정적 검사
+#     (원문만; 노드·kubectl·helm 실행 없음 — 적용은 운영자 절차). 1j와 같은 규율: SKIP 없이 fail closed(파일 부재 = 전 단언 FAIL),
+#     exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 = FAIL).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/infra/traefik-config.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'traefik-config' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see traefik-config test output above"
+
 # 2. CLAUDE.md <= 200 lines
 $n = if (Test-Path CLAUDE.md) { (Get-Content CLAUDE.md).Count } else { -1 }
 Check "CLAUDE.md lines ($n) <= 200" ($n -ge 0 -and $n -le 200) 'missing or too long'

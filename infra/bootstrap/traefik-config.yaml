@@ -1,0 +1,132 @@
+# infra/bootstrap/traefik-config.yaml — 노드 A K3s 번들 Traefik 커스터마이즈(HelmChartConfig) — 003-platform-foundation T038
+#
+# 이 파일이 Traefik "설정"의 정본이다. 노드 A 의 /var/lib/rancher/k3s/server/manifests/traefik-config.yaml 로 설치되면 K3s deploy
+# 컨트롤러가 HelmChartConfig 를 읽어 번들 차트(traefik-40.1.4+up40.1.0, 이미지 Traefik v3.7.8)에 추가 values 파일로 넘긴다.
+# GitOps 저장소의 platform/traefik/ 에는 Middleware·TLSOption·TLSStore 만 둔다(contracts/gitops-repo.md) — 차트 값은 이곳에만 있다.
+# 비밀은 담지 않는다(참조하는 Secret 이름만 적는다).
+#
+# 편집 금지: 같은 디렉터리의 traefik.yaml 은 K3s 패키지 매니페스트라 k3s 가 시작할 때마다 원본으로 다시 쓴다 — 거기에 값을 넣으면 재시작 때
+#   사라진다. 커스터마이즈는 반드시 이 별도 파일로 한다. <https://docs.k3s.io/helm#customizing-packaged-components-with-helmchartconfig>
+#
+# 값 키는 chart 40.1.x values.yaml 기준이다(research R1 K3S-D6). upstream chart 41.x 는 같은 설정을 다른 이름으로 옮겼으므로 최신 문서를
+#   그대로 붙여넣으면 helm 이 조용히 무시하거나 스키마 검증에서 떨어진다:
+#     40.1.x(이 파일)                          | upstream 41.x
+#     logs.general.format                      | log.format
+#     logs.access.*                            | accessLog.*
+#     logs.access.fields.headers.defaultmode   | accessLog.fields.headers.defaultMode   ← 40.1.x 는 전부 소문자(CLI 플래그 이름 그대로)
+#     logs.access.filters.statuscodes: "…"     | accessLog.filters.statusCodes: [ … ]
+#   40.1.0 values.yaml 의 logs.access.filters 블록은 `# @schema additionalProperties: false` + statuscodes/retryattempts/minduration 3키뿐이라
+#   camelCase 로 적으면 helm 이 스키마 오류로 거부한다. tasks.md T038 문면의 `defaultMode`·`statusCodes: ["400-599"]` 는 41.x 표기이므로
+#   40.1.x 철자(`defaultmode`, `statuscodes: "400-599"`)로 옮겨 적었다 — 의미는 같다(4xx·5xx 만 기록, 헤더는 기본 drop).
+#
+# ports.websecure.forwardedHeaders.trustedIPs = Cloudflare IPv4 대역 15개(2026-09-04 확인).
+#   목록의 정본은 infra/oci/network.tf 의 data.cloudflare_ip_ranges.cloudflare.ipv4_cidrs 이고, 같은 목록이 NSG 443 ingress 규칙을 만든다.
+#   K3s manifests 디렉터리의 파일은 템플릿이 아니라 있는 그대로 적용되므로(OpenTofu 는 노드 파일을 쓰지 않고, 원격 상태를 가진 스택이 저장소에
+#   파일을 생성하게 만들지도 않는다) 이 파일은 그 데이터 소스의 "검증 가능한 리터럴 사본"으로 둔다 — 값이 커밋에 보여 리뷰가 된다.
+#   대조(읽기 전용): curl -s https://api.cloudflare.com/client/v4/ips  →  .result.ipv4_cidrs 가 아래 15줄과 같아야 한다
+#     (2026-09-04 실측 etag 38f79d050aa027e3be3865e495dcc9bc, infra/oci 적용 상태의 NSG 규칙 source 15개와도 일치).
+#   Cloudflare 목록이 바뀌면 infra/oci 의 tofu plan 이 NSG 규칙 증감으로 먼저 알린다 — 그때 이 파일도 같은 커밋에서 고치고 절차 1~2 를 다시 한다.
+#   파드 CIDR(10.42/16)은 넣지 않는다: 신뢰 목록에 넣으면 클러스터 안의 아무 파드나 X-Forwarded-* 를 위조할 수 있다. 앱은 Cloudflare 가
+#   붙이는 CF-Connecting-IP 를 쓴다. 미실측 주의 — K3s ServiceLB(klipper-lb)가 MASQUERADE 하면 Traefik 이 보는 원격 IP 는 svclb 파드 IP 라서
+#   이 목록이 매칭되지 않을 수 있다. 그 경우에도 X-Forwarded-* 를 신뢰하지 않는 현 설정이 안전한 기본값이다(소스 IP 보존 여부는 노드 A 실측).
+#
+# 선행·후속 의존:
+#   - tracing 목적지 k8s-monitoring-alloy-metrics.monitoring.svc:4317 은 T098 에서 생긴다. 그 전에는 Traefik 이 익스포터 연결 실패만 로그에
+#     남기고 서빙은 계속한다. 도달하려면 contracts/network-policy.md 의 `kube-system`(traefik) → `monitoring` 4317 행(T041)이 있어야 한다.
+#   - tlsOptions.default.clientAuth 가 참조하는 Secret cloudflare-origin-pull-ca(kube-system, 키 ca.crt = Cloudflare Global AOP CA)는
+#     T043 에서 만든다. Secret 이 없으면 Traefik 은 TLSOption 오류를 로그에 남기고 클라이언트 인증서 검증만 적용하지 않는다(TLS 서빙은 계속).
+#   - T043 에서 clientAuthType 을 RequireAndVerifyClientCert 로 올린다(전환 순서: 존 AOP on → VerifyClientCertIfGiven 관찰 → Require…).
+#     그때 이 파일의 한 줄만 바꿔 같은 절차로 다시 설치한다 — 노드에서 직접 편집하지 않는다.
+#   - websecure 기본 인증서는 TLSStore default(T042, Secret wildcard-joshuatech-dev-tls)가 준다. 그 전에는 Traefik 자체 서명 인증서로 서빙한다.
+#   - 대시보드 인증은 앞단 Cloudflare Access(GitHub IdP, contracts/hostnames-and-access.md `traefik.joshuatech.dev` → api@internal)가 맡는다.
+#     차트 기본 서비스가 api@internal 이므로 services 는 지정하지 않는다. 차트 예시의 basic-auth 미들웨어는 쓰지 않는다.
+#
+# 운영자 절차(워크스테이션 PowerShell 7; 키 joshuatech-ops 는 ssh-add -c 로 로드; 부트스트랩 창에는 노드 A 공인 IP 144.24.85.118, T039 이후에는
+#   cloudflared 터널 호스트 ssh-a.joshuatech.dev; ssh/scp 공통 옵션 -i ~/.ssh/joshuatech-ops -o IdentitiesOnly=yes 는 아래에서 "…" 로 줄인다):
+#   1. 올리기:
+#        scp … infra/bootstrap/traefik-config.yaml ubuntu@144.24.85.118:/home/ubuntu/traefik-config.yaml
+#   2. 설치(반쪽 파일이 manifests 디렉터리에 놓이지 않도록 install 로 한 번에 배치):
+#        ssh … ubuntu@144.24.85.118 "sudo install -m 644 -o root -g root /home/ubuntu/traefik-config.yaml /var/lib/rancher/k3s/server/manifests/traefik-config.yaml && rm -f /home/ubuntu/traefik-config.yaml"
+#   3. K3s deploy 컨트롤러가 HelmChartConfig 를 적용 → helm-install-traefik Job 이 다시 돌고 Traefik 이 새 값으로 롤아웃된다(수십 초).
+#   4. 확인(전부 읽기 전용 — agent-view 토큰으로도 된다):
+#        kubectl -n kube-system get helmchartconfig traefik -o yaml
+#        kubectl -n kube-system get pods -l app.kubernetes.io/name=traefik -o wide          # 노드 A(role=platform)에서 Running
+#        kubectl -n kube-system logs deploy/traefik | head                                  # 한 줄 JSON 로그
+#        kubectl -n kube-system logs job/helm-install-traefik | tail -20                    # values 스키마 오류는 여기에 찍힌다
+#        kubectl -n kube-system get deploy traefik -o jsonpath='{.spec.template.spec.containers[0].args}' | tr ',' '\n' | grep -Ei 'accesslog|redirections|tracing|forwardedheaders'
+#                                                                                           # 키가 무시되지 않았다는 증거(40.1.x ↔ 41.x 함정)
+#        kubectl -n kube-system get tlsoption default -o yaml                               # clientAuthType·minVersion·sniStrict
+#        kubectl -n kube-system get ingressroute traefik-dashboard -o yaml                  # Host(`traefik.joshuatech.dev`), entryPoint websecure
+#   5. 되돌리기: ssh … ubuntu@144.24.85.118 "sudo rm -f /var/lib/rancher/k3s/server/manifests/traefik-config.yaml"
+#      → K3s 가 HelmChartConfig 를 지우고 번들 기본값으로 다시 조정한다(패키지 traefik.yaml 은 그대로 남는다).
+#   6. 에이전트는 이 절차를 실행하지 않는다(agent-view 는 읽기 전용, SSH 자격 없음). 실행 기록은 docs/runbooks/bootstrap.md 에 남긴다.
+#
+# 정적 계약은 tests/infra/traefik-config.tests.ps1 이 고정한다(run-all 슬롯 1k).
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    nodeSelector:
+      role: platform
+    logs:
+      general:
+        format: json
+      access:
+        enabled: true
+        format: json
+        filters:
+          statuscodes: "400-599"
+        fields:
+          headers:
+            defaultmode: drop
+    tracing:
+      sampleRate: 0.1
+      otlp:
+        enabled: true
+        grpc:
+          enabled: true
+          endpoint: k8s-monitoring-alloy-metrics.monitoring.svc:4317
+          insecure: true
+    ports:
+      web:
+        http:
+          redirections:
+            entryPoint:
+              to: websecure
+              scheme: https
+              permanent: true
+      websecure:
+        forwardedHeaders:
+          trustedIPs:
+            - 173.245.48.0/20
+            - 103.21.244.0/22
+            - 103.22.200.0/22
+            - 103.31.4.0/22
+            - 141.101.64.0/18
+            - 108.162.192.0/18
+            - 190.93.240.0/20
+            - 188.114.96.0/20
+            - 197.234.240.0/22
+            - 198.41.128.0/17
+            - 162.158.0.0/15
+            - 104.16.0.0/13
+            - 104.24.0.0/14
+            - 172.64.0.0/13
+            - 131.0.72.0/22
+    tlsOptions:
+      default:
+        minVersion: VersionTLS12
+        sniStrict: true
+        clientAuth:
+          secretNames:
+            - cloudflare-origin-pull-ca
+          clientAuthType: VerifyClientCertIfGiven
+    ingressRoute:
+      dashboard:
+        enabled: true
+        matchRule: Host(`traefik.joshuatech.dev`)
+        entryPoints:
+          - websecure
