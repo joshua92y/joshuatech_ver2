@@ -43,7 +43,9 @@
 #   $env:CLOUDFLARE_API_TOKEN      = '...'                                   (data.cloudflare_ip_ranges)
 #   $env:AWS_REQUEST_CHECKSUM_CALCULATION = 'when_required'                  (backend.tf 주석)
 #   $env:TEMP_SSH_CIDR = '<운영자 공인 IP>/32'   (tofu 변수가 아니다 — 5단계 CLI 전용)
-#   $PUB = (Get-Content "$HOME\.ssh\joshuatech-ops.pub" -Raw).Trim(); if ($PUB -notmatch '^ssh-ed25519 \S+') { throw 'joshuatech-ops.pub: ssh-ed25519 한 줄이어야 한다' }
+#   if ($env:TEMP_SSH_CIDR -notmatch '^\d{1,3}(\.\d{1,3}){3}/32$') { throw 'TEMP_SSH_CIDR must be /32' }
+#   $PUB = (Get-Content "$HOME\.ssh\joshuatech-ops.pub" -Raw).Trim()
+#   if ($PUB -notmatch '^(sk-)?ssh-ed25519(@openssh\.com)? \S+') { throw 'joshuatech-ops.pub: ssh-ed25519 또는 sk-ssh-ed25519@openssh.com 한 줄이어야 한다' }
 #   $V1KEY = '<v1 개인키 경로>'   (재이미지 직후 유일하게 통하는 키 — 6단계에서만 쓴다; 파기는 §0 ⑦ 순서)
 #   $NODE_B = 'ocid1.instance.oc1.ap-chuncheon-1.an4w4ljr46wbjmqcplrmdldp75dpapkzvlrfx6oxpm4jluti3vpyn7rpersa'
 #   $TEN    = 'ocid1.tenancy.oc1..aaaaaaaat7iglpjj2kugdmf7an2v4uimrxr3ggtwo4txkbwptfjh5apddzpa'   (var.compartment_ocid 기본값)
@@ -76,15 +78,22 @@
 #   oci network nsg rules add --nsg-id $NSG --security-rules "file://$tmp\temp-ssh.json"
 #   $RULE = oci network nsg rules list --nsg-id $NSG --query 'data[?description==`T013 temp ssh (remove me)`].id | [0]' --raw-output
 #   if (-not $RULE) { throw 'temp rule id missing' }
-# 6. SSH 확인 + 로그인 키 교체(직접 22 는 이 리허설 창에서만; 이후는 cloudflared 터널만 — .claude/rules/infra.md):
+# 6. SSH 확인 + 로그인 키 교체 — 순서는 "추가 → 새 키로 검증 → v1 제거"(새 키가 실패하면 v1 이 그대로 남아 잠금 경로 0). 직접 22 는 이 리허설
+#    창에서만; 이후는 cloudflared 터널만(.claude/rules/infra.md):
 #   ssh-keygen -R 129.154.62.250   (새 볼륨 = 새 host key)
-#   ssh -i $V1KEY ubuntu@129.154.62.250 'cloud-init status --wait; lsb_release -a'   → status: done / "Ubuntu 24.04.x LTS"
-#     (첫 부팅의 cloud-init 이 불변 metadata 의 v1 키를 넣었으므로 이 시점엔 v1 으로만 열린다; --wait 로 cloud-init 종료를 기다린 뒤 덮어쓴다)
-#   ssh -i $V1KEY ubuntu@129.154.62.250 "printf '%s\n' '$PUB' > ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && wc -l ~/.ssh/authorized_keys"   → 1
-#   ssh -i "$HOME\.ssh\joshuatech-ops" ubuntu@129.154.62.250 'grep -c wlsgh@Home-2024 ~/.ssh/authorized_keys; lsb_release -ds'   → 0 / Ubuntu 24.04
-#   ssh -i $V1KEY ubuntu@129.154.62.250 true   → Permission denied (publickey) 여야 한다
-#   (이 시점부터 노드 B 의 로그인 키는 joshuatech-ops 뿐이다. 이후 재부팅에서 cloud-init ssh 모듈은 per-instance 라 v1 키를 다시 넣지 않는다.
-#    T014 host-prep.sh 가 같은 교체를 멱등으로 반복하고, 나머지 호스트 준비(iptables·wireguard·패키지 등)도 T014 몫이라 여기서는 하지 않는다.)
+#   ssh -i $V1KEY ubuntu@129.154.62.250 'cloud-init status --wait; lsb_release -a'   → "status: done"(exit 0) 또는 "degraded done"(exit 2)이면 진행 / "Ubuntu 24.04.x LTS"
+#     (첫 부팅의 cloud-init 이 불변 metadata 의 v1 키를 넣었으므로 이 시점엔 v1 으로만 열린다; --wait 로 cloud-init 종료를 기다린 뒤에만 손댄다)
+#   ① 추가(v1 키로):
+#     ssh -i $V1KEY ubuntu@129.154.62.250 "printf '%s\n' '$PUB' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && wc -l ~/.ssh/authorized_keys"   → 2
+#   ② 새 키로 접속해 v1 제거(새 키 접속 자체가 검증이다; 이 명령을 v1 키로 실행하지 말 것):
+#     ssh -i "$HOME\.ssh\joshuatech-ops" ubuntu@129.154.62.250 "grep -v wlsgh@Home-2024 ~/.ssh/authorized_keys > ~/.ssh/ak.new && mv ~/.ssh/ak.new ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && grep -c wlsgh@Home-2024 ~/.ssh/authorized_keys; wc -l ~/.ssh/authorized_keys; lsb_release -ds"   → 0 / 1 / Ubuntu 24.04
+#     (②의 접속이 실패하면 authorized_keys 는 v1 + 새 키 그대로다 — 키·에이전트를 점검하고 ②만 다시 한다. grep -v 결과가 비면 mv 전에 멈춘다.)
+#   ③ v1 거부 확인:
+#     ssh -i $V1KEY ubuntu@129.154.62.250 true   → Permission denied (publickey) 여야 한다
+#   (이 시점부터 노드 B 의 로그인 키는 joshuatech-ops 뿐이다. 이후 재부팅에서 cloud-init ssh 모듈은 per-instance 라 v1 키를 다시 넣지 않는다 —
+#    단 `cloud-init clean` 이나 /var/lib/cloud 삭제는 금지: 다음 부팅에 불변 metadata 의 v1 키가 재주입된다. 재이미지마다 v1 키가 들어오는 것은
+#    정상이며 T014 host-prep.sh 의 멱등 교체(같은 ①→②→③ 순서를 상속)가 흡수한다. 나머지 호스트 준비(iptables·wireguard·패키지 등)도 T014 몫이라
+#    여기서는 하지 않는다.)
 # 7. 구 부트 볼륨 삭제(교체 뒤 detached·AVAILABLE 인지 먼저 확인; delete 프롬프트 y):
 #   oci bv boot-volume get --boot-volume-id $OLD_BV --query 'data.{state:"lifecycle-state",gb:"size-in-gbs"}'   → AVAILABLE / 47
 #   oci compute boot-volume-attachment list --availability-domain $AD --compartment-id $TEN --boot-volume-id $OLD_BV --query 'data[?"lifecycle-state"==`ATTACHED`]'   → 빈 목록
