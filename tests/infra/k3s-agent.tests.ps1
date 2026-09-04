@@ -19,6 +19,7 @@
 #   TOKEN  tok-1 openssl rand 없음  tok-2 echo … token 없음  tok-3 K3S_TOKEN= 없음  tok-4 토큰 파일을 읽어 출력하는 도구 없음
 #          tok-5 존재·600·root:root·-s 검증 + die  tok-6 짧은 형식 거부(^K10 요구)  tok-7 보안 형식 정규식 K10<hex64>::server:
 #          tok-8 k3s.yaml 참조 없음  tok-9 check_token_file 본문에 내용 판독 도구 없음 + 그 안의 모든 grep이 -q/-c
+#          tok-10 CA 해시 추출은 K10<hex64> 캡처만(비밀번호 미출력) + 로그는 절단 표기
 #   VER    ver-1 기본 v1.36.4+k3s1  ver-2 INSTALL_K3S_VERSION="$K3S_VERSION"  ver-3 INSTALL_K3S_EXEC=agent 뿐(CLI 인자·K3S_URL·K3S_TOKEN env 없음)
 #          ver-4 다른 버전 die  ver-5 같은 버전 + unit 존재면 skip  ver-6 버전 형식 정규식
 #   PRE    pre-1 root  pre-2 Ubuntu 24.04 + aarch64  pre-3 cgroup2fs  pre-4 wireguard  pre-5 rules.v4 51820/udp·10250/tcp  pre-6 Asia/Seoul 검증
@@ -71,7 +72,7 @@ function Get-CodeLines([string[]]$lines) { return @($lines | Where-Object { $_ -
 $allNames = @('file-1', 'file-2', 'file-3', 'file-4', 'file-5',
     'cfg-1', 'cfg-2', 'cfg-3', 'cfg-4', 'cfg-5', 'cfg-6', 'cfg-7',
     'forbid-1', 'forbid-2', 'forbid-3', 'forbid-4', 'forbid-5', 'forbid-6', 'forbid-7', 'forbid-8', 'forbid-9', 'forbid-10',
-    'tok-1', 'tok-2', 'tok-3', 'tok-4', 'tok-5', 'tok-6', 'tok-7', 'tok-8', 'tok-9',
+    'tok-1', 'tok-2', 'tok-3', 'tok-4', 'tok-5', 'tok-6', 'tok-7', 'tok-8', 'tok-9', 'tok-10',
     'ver-1', 'ver-2', 'ver-3', 'ver-4', 'ver-5', 'ver-6',
     'pre-1', 'pre-2', 'pre-3', 'pre-4', 'pre-5', 'pre-6', 'pre-7', 'pre-8', 'pre-9', 'pre-10', 'pre-11',
     'inst-1', 'inst-2', 'inst-3', 'inst-4', 'inst-5', 'inst-6', 'inst-7', 'inst-8',
@@ -138,11 +139,17 @@ Test-Group 'cfg' {
     $extra = @($keys | Where-Object { $allowed -notcontains $_ })
     $missing = @($allowed | Where-Object { $keys -notcontains $_ })
     Assert 'cfg-6: rendered top-level keys are exactly the allowed 3 (no extra keys, no unparsed lines)' ($extra.Count -eq 0 -and $missing.Count -eq 0) "extra=[$($extra -join ',')] missing=[$($missing -join ',')]"
+    # 주석 제거 후 판정(줄 끝 주석의 함수 이름이 호출 위치로 오인되지 않게). preflight·check_host_prep·check_install_script 의 호출부까지 고정한다 —
+    # 정의만 있고 아무도 부르지 않으면 검증이 통째로 죽는다.
     $mb = Get-FunctionBody $text 'main'
-    $order = @('check_server_reachable', 'check_token_file', 'render_config', 'install_k3s', 'ensure_service', 'wait_node_registered')
-    $ok = $null -ne $mb
-    if ($ok) { for ($i = 0; $i -lt $order.Count; $i++) { if ((Idx $mb $order[$i]) -lt 0) { $ok = $false } elseif ($i -gt 0 -and (Idx $mb $order[$i - 1]) -ge (Idx $mb $order[$i])) { $ok = $false } } }
-    Assert 'cfg-7: main order check_server_reachable < check_token_file < render_config < install_k3s < ensure_service < wait_node_registered' $ok 'main missing or order wrong (config must exist before the installer starts the agent)'
+    $mbCode = $null
+    if ($null -ne $mb) { $mbCode = (($mb -split "`n" | ForEach-Object { ($_ -replace '#.*$', '') }) -join "`n") }
+    $order = @('preflight', 'check_host_prep', 'check_server_reachable', 'check_token_file', 'check_ca_hash', 'render_config', 'install_k3s', 'ensure_service', 'wait_node_registered', 'summary')
+    $ok = $null -ne $mbCode
+    if ($ok) { for ($i = 0; $i -lt $order.Count; $i++) { if ((Idx $mbCode $order[$i]) -lt 0) { $ok = $false } elseif ($i -gt 0 -and (Idx $mbCode $order[$i - 1]) -ge (Idx $mbCode $order[$i])) { $ok = $false } } }
+    $ib = Get-FunctionBody $text 'install_k3s'
+    $installCheck = ($null -ne $ib) -and ((Idx $ib 'check_install_script') -ge 0) -and ((Idx $ib 'check_install_script') -lt (Idx $ib 'sh "$INSTALL_SCRIPT"'))
+    Assert 'cfg-7: main calls preflight -> check_host_prep -> check_server_reachable -> check_token_file -> check_ca_hash -> render_config -> install_k3s -> ensure_service -> wait_node_registered -> summary, and install_k3s calls check_install_script before running it' ($ok -and $installCheck) "order ok=$ok install_k3s calls check_install_script first=$installCheck"
 }
 
 # ---------- FORBID ----------
@@ -178,6 +185,21 @@ Test-Group 'tok' {
     if ($null -ne $t) { $greps = @([regex]::Matches($t, 'grep(\s+-[^\s]+)*') | ForEach-Object { $_.Value }) }
     $badGreps = @($greps | Where-Object { $_ -cnotmatch '^grep\s+-[A-Za-z]*[qc]' })
     Assert 'tok-9: check_token_file body has no content-reading tool and every grep on the token path is -q/-c' ($null -ne $t -and (-not $readers) -and $greps.Count -ge 3 -and $badGreps.Count -eq 0) "readers=$readers greps=[$($greps -join ' | ')] non-quiet=[$($badGreps -join ' | ')]"
+    # CA 해시 대조는 토큰 파일을 읽는 유일한 예외다. 허용 범위: K10<hex64> 캡처만 출력하고 비밀번호(::server: 뒤)는 치환에서 버린다.
+    $th = Get-FunctionBody $text 'token_ca_hash'
+    $ch = Get-FunctionBody $text 'check_ca_hash'
+    # 출력 문구 부분만 본다 — `[ -z "$want" ]` 같은 검사식에 들어간 변수는 출력이 아니다.
+    $hashPrints = @()
+    if ($null -ne $ch) {
+        foreach ($l in ($ch -split "`n")) {
+            $m = [regex]::Match($l, '\b(log|warn|die|printf|echo)\b(?<msg>.*)$')
+            if (-not $m.Success) { continue }
+            $msg = $m.Groups['msg'].Value
+            if ($msg -cmatch '\$\{?(want|have)\b' -and $msg -cnotmatch '\$\{(want|have):0:') { $hashPrints += $l.Trim() }
+        }
+    }
+    $sedSafe = ($null -ne $th) -and (Has $th 'sed -n ''1s/^K10\([0-9a-f]\{64\}\)::server:.*$/\1/p'' "$K3S_TOKEN_FILE"')
+    Assert 'tok-10: the CA-hash reader prints only the K10 hash capture (never the password half) and logs hashes truncated' ($sedSafe -and ($null -ne $ch) -and $hashPrints.Count -eq 0 -and (Has $ch '/cacerts')) "sed capture ok=$sedSafe; untruncated hash logged on: $($hashPrints -join ' | ')"
 }
 
 # ---------- VER ----------
@@ -185,7 +207,7 @@ Test-Group 'ver' {
     $ib = Get-FunctionBody $text 'install_k3s'
     Assert 'ver-1: K3S_VERSION default v1.36.4+k3s1 (same as the server)' (Has $codeText 'K3S_VERSION="${K3S_VERSION:-v1.36.4+k3s1}"') 'version pin missing'
     Assert 'ver-2: installer gets INSTALL_K3S_VERSION="$K3S_VERSION"' (Has $codeText 'INSTALL_K3S_VERSION="$K3S_VERSION"') 'INSTALL_K3S_VERSION not passed from K3S_VERSION'
-    Assert 'ver-3: INSTALL_K3S_EXEC=agent only; no K3S_URL/K3S_TOKEN env to the installer (they would land in k3s-agent.service.env)' (($codeText -cmatch '(?m)INSTALL_K3S_EXEC=agent sh "\$INSTALL_SCRIPT"\s*$') -and (-not (Has $codeText 'INSTALL_K3S_EXEC="')) -and ($codeText -cnotmatch 'sh "\$INSTALL_SCRIPT" -') -and ($codeText -cnotmatch 'env -i[^\n]*K3S_URL')) 'INSTALL_K3S_EXEC must be exactly agent and the installer env carries no K3S_URL/K3S_TOKEN'
+    Assert 'ver-3: INSTALL_K3S_EXEC=agent only; no K3S_URL/K3S_TOKEN env to the installer (they would land in k3s-agent.service.env)' (($codeText -cmatch '(?m)INSTALL_K3S_EXEC=agent sh "\$INSTALL_SCRIPT"(\s*\|\|\s*die[^\n]*)?\s*$') -and (-not (Has $codeText 'INSTALL_K3S_EXEC="')) -and ($codeText -cnotmatch 'sh "\$INSTALL_SCRIPT"\s+(?!\|\|)\S') -and ($codeText -cnotmatch 'env -i[^\n]*K3S_URL')) 'INSTALL_K3S_EXEC must be exactly agent and the installer env carries no K3S_URL/K3S_TOKEN'
     Assert 'ver-4: a different installed version -> die mentioning system-upgrade-controller' ($null -ne $ib -and (Has $ib '[ "$have" != "$K3S_VERSION" ]') -and ($ib -cmatch 'die "[^\n]*system-upgrade-controller')) 'version mismatch must stop (upgrades belong to SUC)'
     Assert 'ver-5: same version + unit present -> installer skipped (return 0 before sh "$INSTALL_SCRIPT")' ($null -ne $ib -and (Has $ib '[ "$have" = "$K3S_VERSION" ] && [ -f "$K3S_UNIT" ]') -and (Has $ib 'return 0') -and ((Idx $ib 'return 0') -lt (Idx $ib 'sh "$INSTALL_SCRIPT"'))) 'skip guard missing or after the installer call'
     Assert 'ver-6: K3S_VERSION format validated (v<maj>.<min>.<patch>+k3s<n>)' (Has $codeText '^v[0-9]+\.[0-9]+\.[0-9]+\+k3s[0-9]+$') 'version regex missing'
@@ -219,10 +241,10 @@ Test-Group 'inst' {
     $mb = Get-FunctionBody $text 'main'
     Assert 'inst-1: INSTALL_SCRIPT default /tmp/install-k3s.sh; missing -> die; copy sanity (#!/bin/sh, verify_binary)' ((Has $codeText 'INSTALL_SCRIPT="${INSTALL_SCRIPT:-/tmp/install-k3s.sh}"') -and ($null -ne $cb) -and (Has $cb '[ -f "$f" ] || die') -and (Has $cb "'#!/bin/sh'") -and (Has $cb "grep -q 'verify_binary'")) 'install script guard missing'
     Assert 'inst-2: optional INSTALL_SCRIPT_SHA256 compared with sha256sum, mismatch -> die' ($null -ne $cb -and (Has $cb 'sha256sum "$f"') -and (Has $cb '${INSTALL_SCRIPT_SHA256:-}') -and (Has $cb '[ "$have" = "$want" ] || die')) 'sha256 verification missing'
-    Assert 'inst-3: installer runs isolated: env -i PATH HOME INSTALL_K3S_VERSION INSTALL_K3S_EXEC=agent sh "$INSTALL_SCRIPT"' ($null -ne $ib -and ($ib -cmatch '(?m)^\s*env -i PATH="\$PATH" HOME=/root INSTALL_K3S_VERSION="\$K3S_VERSION" INSTALL_K3S_EXEC=agent sh "\$INSTALL_SCRIPT"\s*$')) 'env -i invocation line missing (install.sh copies K3S_* into k3s-agent.service.env)'
+    Assert 'inst-3: installer runs isolated (env -i ... INSTALL_K3S_EXEC=agent sh "$INSTALL_SCRIPT") and a non-zero exit dies' ($null -ne $ib -and ($ib -cmatch '(?m)^\s*env -i PATH="\$PATH" HOME=/root INSTALL_K3S_VERSION="\$K3S_VERSION" INSTALL_K3S_EXEC=agent sh "\$INSTALL_SCRIPT" \|\| die "[^\n]*\$\?[^\n]*"\s*$')) 'env -i invocation line missing, or the installer failure is not turned into a die with $?'
     Assert 'inst-4: version re-checked after install and the k3s-agent unit must exist (die on mismatch)' ($null -ne $ib -and ((Idx $ib 'sh "$INSTALL_SCRIPT"') -lt (Idx $ib '[ "$have" = "$K3S_VERSION" ] || die')) -and (Has $codeText 'K3S_UNIT=/etc/systemd/system/k3s-agent.service') -and (Has $ib '[ -f "$K3S_UNIT" ] || die')) 'post-install verification missing'
     Assert 'inst-5: is-enabled/is-active read before systemctl enable --now k3s-agent' ($null -ne $sb -and (Has $sb 'systemctl is-enabled k3s-agent') -and (Has $sb 'systemctl is-active k3s-agent') -and (Has $sb 'systemctl enable --now k3s-agent') -and ((Idx $sb 'systemctl is-enabled k3s-agent') -lt (Idx $sb 'systemctl enable --now k3s-agent')) -and ((Idx $sb 'systemctl is-active k3s-agent') -lt (Idx $sb 'systemctl enable --now k3s-agent'))) 'service guard missing or after enable'
-    Assert 'inst-6: registration wait via journalctl (REGISTER_TIMEOUT=90, registered/previously-registered), warn not die (kubectl lives on the workstation)' ((Has $codeText 'REGISTER_TIMEOUT=90') -and ($null -ne $wb) -and (Has $wb 'journalctl -u k3s-agent -b') -and (Has $wb 'Successfully registered node') -and (Has $wb 'Node was previously registered') -and ($wb -cmatch '(?m)^\s*warn ') -and ($wb -cnotmatch '(?m)^\s*die ')) 'registration wait missing or fails hard'
+    Assert 'inst-6: registration wait via journalctl since THIS run (REGISTER_TIMEOUT=90, registered/previously-registered), warn not die (kubectl lives on the workstation)' ((Has $codeText 'REGISTER_TIMEOUT=90') -and ($null -ne $wb) -and (Has $wb 'journalctl -u k3s-agent -b --since "$since"') -and (Has $wb 'since=$(date') -and (Has $codeText 'RUN_STARTED_AT=$(date +%s)') -and (Has $wb 'Successfully registered node') -and (Has $wb 'Node was previously registered') -and ($wb -cmatch '(?m)^\s*warn ') -and ($wb -cnotmatch '(?m)^\s*die ')) 'registration wait missing, fails hard, or would accept a stale success line from an earlier run'
     Assert 'inst-7: config changed while the agent already runs -> warn only (no restart)' ($null -ne $sb -and (Has $sb 'CONFIG_CHANGED') -and (Has $sb 'INSTALLED_THIS_RUN') -and ($sb -cmatch '(?m)^\s*warn ') -and (-not (Has $codeText 'systemctl restart'))) 'warn branch missing or restart present'
     Assert 'inst-8: server reachability (curl $K3S_URL/ping) is checked before the installer runs' ($null -ne $rb -and (Has $rb '"$K3S_URL/ping"') -and (Has $rb '|| die') -and ($null -ne $mb) -and ((Idx $mb 'check_server_reachable') -lt (Idx $mb 'install_k3s'))) 'reachability check missing or after install'
 }

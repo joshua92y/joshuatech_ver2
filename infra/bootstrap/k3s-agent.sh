@@ -46,6 +46,11 @@
 #        scp … infra/bootstrap/k3s-agent.sh ubuntu@129.154.62.250:/tmp/k3s-agent.sh
 #        ssh … ubuntu@129.154.62.250 "sudo INSTALL_SCRIPT_SHA256=<T035 절차 2 의 해시> bash /tmp/k3s-agent.sh"
 #        (같은 명령 한 번 더) → summary: changes this run: 0, service enabled+active, registration=confirmed
+#      ⚠ 멈춘 것처럼 보이면(무한 대기): 토큰이나 CA 해시가 어긋나면 k3s agent 는 **실패하지 않고 영원히 재시도**하고 unit 은 TimeoutStartSec=0 이라
+#        install.sh 의 서비스 기동과 systemctl enable --now 가 그대로 블록된다. 다른 터미널에서
+#          ssh … ubuntu@129.154.62.250 "sudo journalctl -u k3s-agent -f"
+#        로 'Waiting to retrieve agent configuration; server is not ready' 가 반복되는지 확인한다(= 토큰/CA/도달성 문제). 이 스크립트는 실행 전에
+#        토큰 형식과 서버 CA 해시를 대조해 경고하지만(check_ca_hash), 대조는 진단이지 차단이 아니다 — 중단은 Ctrl-C 후 토큰을 다시 배치한다.
 #   4. 확인(운영자 admin kubeconfig, T035 절차 4): kubectl get nodes -L role → 2 Ready(joshtech-api role=platform, joshtech-cache role=data);
 #        kubectl get nodes -o wide 로 INTERNAL-IP 가 10.0.7.78 / 10.0.10.193 인지 확인.
 #   5. 실행 기록은 docs/runbooks/bootstrap.md §3 에 컨트롤러 지시로 적는다. 임시 22/tcp 규칙 제거는 T039 몫.
@@ -74,6 +79,7 @@ CHANGES=()
 CONFIG_CHANGED=0
 INSTALLED_THIS_RUN=0
 REGISTERED=unconfirmed
+RUN_STARTED_AT=$(date +%s)   # 등록 로그를 이번 실행분으로만 한정하는 기준 시각(낡은 성공 로그로 confirmed 되는 것을 막는다)
 
 log()  { printf '[k3s-agent] %s\n' "$*"; }
 warn() { printf '[k3s-agent] WARN: %s\n' "$*" >&2; }
@@ -177,6 +183,27 @@ check_token_file() {
   log "token file OK: $f (root:root $mode, 1 line, secure format K10…::server:…; contents never printed)"
 }
 
+# 토큰의 CA 해시 부분만 뽑는다(K10<sha256 hex 64>::server:<pw> 의 가운데 64자). 이 값은 비밀이 아니다 — 서버가 /cacerts 로 공개하는 인증서의 해시이고,
+# 비밀번호(::server: 뒤)는 이 치환에서 버려진다. 뽑히지 않으면 빈 문자열.
+token_ca_hash() {
+  sed -n '1s/^K10\([0-9a-f]\{64\}\)::server:.*$/\1/p' "$K3S_TOKEN_FILE"
+}
+
+# 조인 전 CA 해시 대조. 어긋나면 agent 는 실패하지 않고 영원히 재시도하므로(머리 절차 3 의 경고), 설치 전에 알려 주는 것이 목적이다.
+# 진단이지 차단이 아니다: 라이브 클러스터에서 실측하기 전이라 die 로 올리지 않는다(실측 뒤 승격은 T036 실행 기록에서 판단).
+check_ca_hash() {
+  local want have
+  want=$(token_ca_hash)
+  if [ -z "$want" ]; then warn "토큰에서 CA 해시를 뽑지 못했다 — 대조를 건너뛴다(형식 검증은 통과)"; return 0; fi
+  have=$(curl -sk --max-time 5 "$K3S_URL/cacerts" 2>/dev/null | sha256sum 2>/dev/null | awk '{ print $1 }') || true
+  if [ -z "$have" ]; then warn "$K3S_URL/cacerts 를 읽지 못해 CA 해시를 대조하지 못했다 — 조인이 무한 재시도로 멈추면 절차 3 의 journalctl 확인"; return 0; fi
+  if [ "$want" = "$have" ]; then
+    log "CA hash OK: 토큰의 CA 해시가 $K3S_URL/cacerts 와 일치(${want:0:12}…)"
+  else
+    warn "토큰의 CA 해시(${want:0:12}…)가 서버 CA(${have:0:12}…)와 다르다 — 이 토큰으로 조인하면 k3s-agent 가 'Waiting to retrieve agent configuration' 을 무한 반복한다. 노드 A 의 /var/lib/rancher/k3s/server/token 을 다시 복사할 것(절차 1)"
+  fi
+}
+
 # ---------- 4. config.yaml ----------
 # 모든 agent 플래그는 이 파일 한 곳(K3S-D1). 항목은 tasks T036 문면 + research 노드 B 스니펫에 있는 것만: server, token-file, node-label [role=data].
 # 외부 IP 지정 없음(K3S-D3), 서버 전용 키(tls-san·secrets-encryption·flannel-backend·write-kubeconfig-mode) 없음 — agent 는 server 의 flannel 설정을 따른다.
@@ -226,7 +253,7 @@ install_k3s() {
   # env -i: install.sh 는 K3S_* 를 k3s-agent.service.env 에 기록하므로 이 셸의 K3S_URL/K3S_TOKEN_FILE/K3S_VERSION 을 넘기지 않는다. 플래그는 config.yaml 에만(K3S-D1).
   # INSTALL_K3S_EXEC=agent 뿐 — CLI 인자 없음, K3S_URL 없음(머리 주석 "install.sh 조합"). 바이너리 sha256 은 install.sh 의 verify_binary 가 릴리스 자산과 대조한다.
   log "installing k3s $K3S_VERSION (agent) from $INSTALL_SCRIPT"
-  env -i PATH="$PATH" HOME=/root INSTALL_K3S_VERSION="$K3S_VERSION" INSTALL_K3S_EXEC=agent sh "$INSTALL_SCRIPT"
+  env -i PATH="$PATH" HOME=/root INSTALL_K3S_VERSION="$K3S_VERSION" INSTALL_K3S_EXEC=agent sh "$INSTALL_SCRIPT" || die "install.sh 실패(exit $?) — 위 [ERROR] 참조"
   have=$(installed_k3s_version)
   [ "$have" = "$K3S_VERSION" ] || die "설치 뒤 버전 불일치: got '$have' want '$K3S_VERSION'"
   [ -f "$K3S_UNIT" ] || die "설치 뒤에도 $K3S_UNIT 이 없다(install.sh 가 k3s-agent 가 아닌 다른 unit 을 만들었는지 확인: ls /etc/systemd/system/k3s*.service)"
@@ -254,10 +281,12 @@ ensure_service() {
 # ---------- 7. 등록 로그 대기 ----------
 # 이 노드에는 kubectl 이 없다. 이 부팅의 k3s-agent 저널에서 kubelet 의 등록 메시지("Successfully registered node" — 첫 등록, 또는
 # "Node was previously registered" — 재부팅/재실행)를 기다린다. 없으면 die 하지 않고 warn 한다: Ready 판정의 권위는 운영자 절차 4 의 kubectl 이다.
+# SINCE: 이 실행이 시작된 시각. -b(부팅 전체)만 쓰면 지난 실행의 낡은 성공 로그로도 confirmed 가 되어 이번 조인의 증거가 되지 못한다.
 wait_node_registered() {
-  local i out
+  local i out since
+  since=$(date '+%Y-%m-%d %H:%M:%S' -d "@$RUN_STARTED_AT")
   for ((i = 0; i < REGISTER_TIMEOUT / 5; i++)); do
-    out=$(journalctl -u k3s-agent -b --no-pager -o cat 2>/dev/null || true)
+    out=$(journalctl -u k3s-agent -b --since "$since" --no-pager -o cat 2>/dev/null || true)
     if grep -qE 'Successfully registered node|Node was previously registered' <<< "$out"; then REGISTERED=confirmed; break; fi
     sleep 5
   done
@@ -286,6 +315,7 @@ main() {
   check_host_prep
   check_server_reachable
   check_token_file
+  check_ca_hash
   render_config
   install_k3s
   ensure_service
