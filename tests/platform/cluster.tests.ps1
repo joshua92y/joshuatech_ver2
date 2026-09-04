@@ -53,7 +53,9 @@
 #   np-3        ③ 표 밖 조합 차단 — 정적: jt-prod ingress가 jt-dev를, jt-dev ingress가 data를 허용하지 않음(+ live 수동)
 #   np-4        ④ 정적: vault ingress 허용 ns ⊆ {kube-system, monitoring, external-secrets}(노드 A ipBlock은 별도; vault 자기 ns 불허)(+ live 수동)
 #   np-5        ⑤ 정적: jt-dev egress ipBlock 규칙 전부 ports 있음 + 0.0.0.0/0 규칙은 except 4개(IMDS·RFC1918) + 그런 외부 443 규칙 ≥ 1(0개면 FAIL)
-#               + RFC1918 대역을 cidr 자체로 쓴 규칙 0(+ live 수동)
+#               + RFC1918 대역을 cidr 자체로 쓴 규칙 0. live(np-5-live, 운영자 수동): 1.1.1.1:53(ports 밖)·10.0.7.78:443(RFC1918 except)·
+#               169.254.169.254:80(IMDS except) 실패 + 1.1.1.1:443 성공(양성 대조) — task/계약 :150의 '1.1.1.1:443 실패' 문구는 계약 :52–65·:107
+#               (외부 443 허용 형식)과 모순 → 사용자 결정 2026-09-04(옵션 A)로 프로브 교체; 계약 문구 갱신은 converge 항목
 #   np-6        ⑥ 정적: vault 이외 13 ns의 어떤 egress 규칙도 169.254.169.254를 허용하지 않음, kube-system deny-imds except에 IMDS(+ live 수동)
 #   np-7        ⑦ 전 ns 이벤트에 "violates PodSecurity" 0 — K3s event TTL 1h: 배포 직후(1h 내) 실행해야 의미 있음(그 뒤엔 공허 PASS)
 #   mon-1       alloy-metrics 워크로드(ds/sts/deploy, 이름 접미 또는 라벨) 각각 logs --tail=300 --all-containers에 connection refused ·
@@ -854,7 +856,7 @@ ClusterAssert 'np-5' {
     if ($bad.Count -gt 0) { return @('FAIL', ($bad -join '; ')) }
     return @('PASS', "static: $checked jt-dev egress ipBlock rule(s) carry ports; $external443 external-443 rule(s) carry the 4 except entries; no RFC1918 cidr rule")
 }
-Skip 'np-5-live' '운영자 수동 — jt-dev pod에서 1.1.1.1:443 연결 실패를 실제 프로브로 확인(외부 443 규칙의 except·ports 범위)'
+Skip 'np-5-live' '운영자 수동 프로브: jt-dev pod에서 1.1.1.1:53(ports 밖)·10.0.7.78:443(노드 A 사설 IP, RFC1918 except)·169.254.169.254:80(IMDS except) 연결 실패 + 1.1.1.1:443 연결 성공(양성 대조) — 출력 첨부'
 ClusterAssert 'np-6' {
     $bad = @()
     foreach ($ns in @(Except $ns13 @('vault'))) {
