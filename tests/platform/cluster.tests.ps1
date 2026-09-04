@@ -16,13 +16,16 @@
 #     경로($PSHOME) 때문에 5.1이 Microsoft.PowerShell.Security를 못 읽고 실패한다 — 호출 동안만 그 경로를 빼고 finally에서 복원한다.
 #     stdin은 빈 파일로 리다이렉트한다: 세션 토큰이 만료되면 CLI가 "re-authenticate? [Y/n]"를 묻는데, EOF면 Abort(exit 1 → FAIL)로 끝나고
 #     브라우저 재인증이 열리지 않는다(세션 갱신은 운영자가 `oci session authenticate --profile-name svc-verify`로 직접 한다).
-#   - 비밀·토큰·kubeconfig 내용·개인 경로는 출력하지 않는다(실패 메시지는 리소스 이름·상태만 담는다).
+#   - 비밀·토큰·kubeconfig 내용·개인 경로는 출력하지 않는다(실패 메시지는 리소스 이름·상태만 담는다). 네이티브 stdout/stderr는 반환 전에
+#     kubeconfig 경로 → <KUBECONFIG>, 홈 디렉터리($HOME·USERPROFILE) → ~ 로 마스킹한다(Mask-Text, ordinal).
+#   - 임시 파일(port-forward·oci 리다이렉트)은 프로세스 트리 kill + WaitForExit 뒤 재시도 삭제한다 — %TEMP%\cluster-tests-* 잔존 0.
 #
 # 단계별 SKIP(실패로 세지 않음 — T102 E2E에서 전체 재실행):
 #   - ca-1      CA 미러 Secret(pg-main-ca, ns identity·jt-dev·jt-prod)이 셋 다 없으면 `SKIP ca-1: until T056`
 #   - np-2-*    platform/policies/tests/ assert Job(data-assert·kafka-assert·authz-assert, ns jt-dev)이 없으면 `SKIP … until T041`
 #   - limits-*  jt-dev·jt-prod에 Running pod가 하나도 없으면 `SKIP … until T075`
-#   - mon-1     ds/alloy-metrics(ns monitoring)가 없으면 `SKIP mon-1: until T098`(다른 종류의 alloy-metrics 워크로드가 있으면 FAIL)
+#   - mon-1     ns monitoring의 DaemonSet/StatefulSet/Deployment 중 이름이 alloy-metrics로 끝나거나 라벨 app.kubernetes.io/name=alloy-metrics인
+#               워크로드가 0개면 `SKIP mon-1: until T098`(T098 실제 형상 = StatefulSet k8s-monitoring-alloy-metrics; 종류로 FAIL하지 않는다)
 #   - np-2-manual · np-3-live · np-4-live · np-5-live · np-6-live: ns 내부 출발 프로브(agent-view에는 exec·pod 생성 권한이 없다) —
 #     항상 `SKIP …: 운영자 수동`(명령 출력을 report에 첨부). 정적으로 증명 가능한 부분(np-3·np-4·np-5·np-6)은 클러스터에 적용된
 #     NetworkPolicy 객체를 읽어 단언한다.
@@ -31,14 +34,16 @@
 # 계약 요약(contracts/network-policy.md · gitops-repo.md · tasks.md T031 문면):
 #   nodes-1..3  노드 정확히 2·전부 Ready, 라벨 role=platform / role=data 하나씩, svccontroller.k3s.cattle.io/enablelb=true는 platform 노드만
 #   argo-1..4   applications 전부 Synced/Healthy($argoExcludedApps 제외), appproject default sourceRepos·destinations 빈 배열,
-#               appproject dev·prod namespaceResourceBlacklist ⊇ {NetworkPolicy, ResourceQuota, LimitRange, Role, RoleBinding, ServiceAccount},
-#               Cluster pg-main · Kafka jt-kafka · KafkaNodePool · Vault/Dragonfly PVC · 오퍼레이터 CRD(CNPG·Strimzi·cert-manager·ESO)에
+#               appproject dev·prod namespaceResourceBlacklist ⊇ {NetworkPolicy, ResourceQuota, LimitRange, Role, RoleBinding, ServiceAccount}
+#               (group도 대조: networking.k8s.io / "" / rbac.authorization.k8s.io, '*' 허용),
+#               Cluster pg-main · Kafka jt-kafka · KafkaNodePool · Vault/Dragonfly PVC · 오퍼레이터 CRD(그룹 접미 cnpg.io·strimzi.io·cert-manager.io·external-secrets.io)에
 #               argocd.argoproj.io/sync-options = "Delete=false,Prune=false"(정확 일치)
 #   vault-1..2  seal-status sealed=false · type=ocikms
 #   eso-1..3    clustersecretstore 정확히 5개(vault-platform·vault-dev·vault-prod·vault-data·k8s-data-ca) Ready, externalsecret -A 전부
 #               SecretSynced, secretStoreRef(kind ClusterSecretStore)가 ns scope·remoteRef.key 접두와 일치
 #   ca-1        CA 미러 Secret 키 = ["ca.crt"](ca.key 있으면 FAIL). agent-view는 Secret get이 없으므로 `auth can-i`가 no면
-#               같은 이름의 ExternalSecret spec(dataFrom 없음·remoteRef.property=ca.crt·secretKey=ca.crt·template 키 없음)으로 증명한다.
+#               같은 이름의 ExternalSecret spec(dataFrom 없음·remoteRef.property=ca.crt·secretKey=ca.crt·template data 키 없음·
+#               templateFrom 없음·mergePolicy 미사용·store k8s-data-ca)으로 증명한다.
 #   ns-1..2     네임스페이스 14개 전부 존재, observability 없음
 #   psa-1..2    pod-security.kubernetes.io/enforce = 표(14, kube-system 포함), warn·audit = enforce와 같은 레벨
 #   np-set-1..5 default-deny(13)·allow-dns(13)·allow-same-namespace(정확히 7)·allow-kube-api(정확히 10)·allow-apiserver-webhook(정확히 4, 포트)
@@ -46,11 +51,13 @@
 #   np-1        kube-system의 NetworkPolicy 집합 = {deny-imds}(default-deny 없음)
 #   np-2        ② 매트릭스 행 도달 — assert Job 성공(status.succeeded ≥ 1) + logs 읽기 가능; 나머지 행은 운영자 수동
 #   np-3        ③ 표 밖 조합 차단 — 정적: jt-prod ingress가 jt-dev를, jt-dev ingress가 data를 허용하지 않음(+ live 수동)
-#   np-4        ④ 정적: vault ingress 허용 ns ⊆ {kube-system, monitoring, external-secrets}(+ 노드 A ipBlock)(+ live 수동)
-#   np-5        ⑤ 정적: jt-dev egress ipBlock 규칙 전부 ports 있음 + 0.0.0.0/0 규칙은 except 4개(IMDS·RFC1918)(+ live 수동)
+#   np-4        ④ 정적: vault ingress 허용 ns ⊆ {kube-system, monitoring, external-secrets}(노드 A ipBlock은 별도; vault 자기 ns 불허)(+ live 수동)
+#   np-5        ⑤ 정적: jt-dev egress ipBlock 규칙 전부 ports 있음 + 0.0.0.0/0 규칙은 except 4개(IMDS·RFC1918) + 그런 외부 443 규칙 ≥ 1(0개면 FAIL)
+#               + RFC1918 대역을 cidr 자체로 쓴 규칙 0(+ live 수동)
 #   np-6        ⑥ 정적: vault 이외 13 ns의 어떤 egress 규칙도 169.254.169.254를 허용하지 않음, kube-system deny-imds except에 IMDS(+ live 수동)
-#   np-7        ⑦ 전 ns 이벤트에 "violates PodSecurity" 0
-#   mon-1       ds/alloy-metrics 로그 --tail=300에 connection refused · context deadline exceeded 0
+#   np-7        ⑦ 전 ns 이벤트에 "violates PodSecurity" 0 — K3s event TTL 1h: 배포 직후(1h 내) 실행해야 의미 있음(그 뒤엔 공허 PASS)
+#   mon-1       alloy-metrics 워크로드(ds/sts/deploy, 이름 접미 또는 라벨) 각각 logs --tail=300 --all-containers에 connection refused ·
+#               context deadline exceeded 0
 #   limits-1..2 jt-dev·jt-prod Running pod 컨테이너: limits.cpu 없음 · limits.memory 있음
 #   reloader-1  deployment reloader(ns reloader) Available=True
 #   backup-1..3 joshuatech-backup-platform k3s/ · vault/ 에 24h 내 .age 오브젝트 ≥ 1, 비-.age(평문) 오브젝트 0
@@ -103,9 +110,14 @@ $except4 = @('169.254.169.254/32', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/1
 $storeNames5 = @('vault-platform', 'vault-dev', 'vault-prod', 'vault-data', 'k8s-data-ca')
 $caMirrorKeys = @('pg-main-ca', 'jt-kafka-cluster-ca-cert')
 $blacklistKinds = @('NetworkPolicy', 'ResourceQuota', 'LimitRange', 'Role', 'RoleBinding', 'ServiceAccount')
-$operatorCrdGroups = @('postgresql.cnpg.io', 'strimzi.io', 'cert-manager.io', 'external-secrets.io')
+# namespaceResourceBlacklist 항목의 group(정확 일치; '*'도 허용). core 그룹은 "" (JSON에 group 키가 없으면 ""로 본다)
+$blacklistGroups = @{ 'NetworkPolicy' = 'networking.k8s.io'; 'ResourceQuota' = ''; 'LimitRange' = ''; 'ServiceAccount' = ''; 'Role' = 'rbac.authorization.k8s.io'; 'RoleBinding' = 'rbac.authorization.k8s.io' }
+# 오퍼레이터 CRD 그룹: 정확 일치 또는 ".<접미>"로 끝남 — cnpg.io는 postgresql.cnpg.io·barmancloud.cnpg.io(플러그인) 둘 다 포함
+$operatorCrdGroups = @('cnpg.io', 'strimzi.io', 'cert-manager.io', 'external-secrets.io')
 $assertJobs = @('data-assert', 'kafka-assert', 'authz-assert')
-$vaultIngressNs = @('kube-system', 'monitoring', 'external-secrets', 'vault')   # 매트릭스의 vault 8200 도착 행(+ 자기 ns)
+# assert Job이 실제로 증명하는 매트릭스 범위(np-2-* PASS 문구)
+$assertJobScope = @{ 'data-assert' = 'jt-dev -> data 5432 (pg-main) and 6379 (Dragonfly)'; 'kafka-assert' = 'jt-dev -> data 9093 (Kafka SCRAM/TLS)'; 'authz-assert' = 'jt-dev -> identity 8080 (OpenFGA)' }
+$vaultIngressNs = @('kube-system', 'monitoring', 'external-secrets')   # 매트릭스의 vault 8200 도착 행(노드 A ipBlock은 별도) — vault 자기 ns 없음(allow-same-namespace 대상 아님)
 
 # ---------- 결과 헬퍼 ----------
 function Clip([string]$s, [int]$max = 400) {
@@ -183,7 +195,31 @@ function Condition($obj, [string]$type) {
     return $null
 }
 
-# ---------- 네이티브 실행(stdout UTF-8 디코드; stderr는 임시 파일) ----------
+# 출력 마스킹: kubeconfig 경로·홈 디렉터리를 <KUBECONFIG>/~로 치환(ordinal; \ 와 / 두 표기 모두) — 개인 경로가 리포트에 남지 않게.
+# kubeconfig를 먼저 치환한다(보통 홈 아래에 있어 홈을 먼저 바꾸면 매치가 깨진다).
+function Mask-Text([string]$s) {
+    if ([string]::IsNullOrEmpty($s)) { return $s }
+    $pairs = @()
+    foreach ($kc in @($script:kubeconfig, $env:KUBECONFIG)) { if (-not [string]::IsNullOrWhiteSpace($kc)) { $pairs += , @($kc, '<KUBECONFIG>') } }
+    foreach ($h in @($HOME, $env:USERPROFILE)) { if (-not [string]::IsNullOrWhiteSpace($h)) { $pairs += , @($h, '~') } }
+    foreach ($p in $pairs) {
+        $s = $s.Replace([string]$p[0], [string]$p[1], [StringComparison]::Ordinal)
+        $s = $s.Replace(([string]$p[0]).Replace('\', '/'), [string]$p[1], [StringComparison]::Ordinal)
+    }
+    return $s
+}
+# 임시 파일 삭제(자식 프로세스가 핸들을 늦게 놓을 수 있어 3회 재시도)
+function Remove-WithRetry([string[]]$paths) {
+    foreach ($p in $paths) {
+        if ([string]::IsNullOrWhiteSpace($p)) { continue }
+        for ($i = 1; $i -le 3; $i++) {
+            if (-not (Test-Path -LiteralPath $p)) { break }
+            try { Remove-Item -LiteralPath $p -Force -ErrorAction Stop; break } catch { Start-Sleep -Milliseconds 300 }
+        }
+    }
+}
+
+# ---------- 네이티브 실행(stdout UTF-8 디코드; stderr는 임시 파일; 반환 전 경로 마스킹) ----------
 function Invoke-Native([string]$exe, [string[]]$nativeArgs) {
     $errFile = Join-Path ([IO.Path]::GetTempPath()) ('cluster-tests-stderr-' + [guid]::NewGuid().ToString('N') + '.txt')
     $out = @(); $code = -1; $err = ''
@@ -195,8 +231,8 @@ function Invoke-Native([string]$exe, [string[]]$nativeArgs) {
             $code = $LASTEXITCODE
         } finally { [Console]::OutputEncoding = $prevEncoding }
         $err = if (Test-Path -LiteralPath $errFile) { [IO.File]::ReadAllText($errFile, [Text.Encoding]::UTF8) } else { '' }
-    } finally { Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue }
-    return @{ out = (@($out | ForEach-Object { "$_" }) -join "`n"); err = $err.Trim(); code = $code }
+    } finally { Remove-WithRetry @($errFile) }
+    return @{ out = (Mask-Text (@($out | ForEach-Object { "$_" }) -join "`n")); err = (Mask-Text $err.Trim()); code = $code }
 }
 # oci — stdin을 빈 파일로(대화형 프롬프트 차단), PSModulePath에서 pwsh 7 모듈 경로($PSHOME)를 호출 동안만 제거(헤더 참조).
 # 경로 비교는 Windows 파일 시스템이라 OrdinalIgnoreCase.
@@ -209,15 +245,22 @@ function Invoke-Oci([string]$exe, [string[]]$ociArgs) {
         [IO.File]::WriteAllText($inFile, '')
         $env:PSModulePath = (@($prevModulePath -split [IO.Path]::PathSeparator) | Where-Object { -not $_.StartsWith($PSHOME, [StringComparison]::OrdinalIgnoreCase) }) -join [IO.Path]::PathSeparator
         $p = Start-Process -FilePath $exe -ArgumentList @($ociArgs | ForEach-Object { if ($_.IndexOf(' ') -ge 0) { "`"$_`"" } else { $_ } }) `
-            -RedirectStandardInput $inFile -RedirectStandardOutput $outFile -RedirectStandardError $errFile -NoNewWindow -Wait -PassThru
-        $code = $p.ExitCode
+            -RedirectStandardInput $inFile -RedirectStandardOutput $outFile -RedirectStandardError $errFile -NoNewWindow -PassThru
+        $timedOut = $false
+        if (-not $p.WaitForExit(120000)) {   # 120s 상한 — 초과 시 프로세스 트리 kill + FAIL
+            $timedOut = $true
+            try { $p.Kill($true) } catch { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+            [void]$p.WaitForExit(5000)
+        }
+        $code = if ($timedOut) { -1 } else { $p.ExitCode }
         $out = if (Test-Path -LiteralPath $outFile) { [IO.File]::ReadAllText($outFile, [Text.Encoding]::UTF8) } else { '' }
         $err = if (Test-Path -LiteralPath $errFile) { [IO.File]::ReadAllText($errFile, [Text.Encoding]::UTF8) } else { '' }
+        if ($timedOut) { $err = "oci timed out after 120s (killed). $err" }
     } finally {
         $env:PSModulePath = $prevModulePath
-        Remove-Item -LiteralPath $inFile, $outFile, $errFile -Force -ErrorAction SilentlyContinue
+        Remove-WithRetry @($inFile, $outFile, $errFile)
     }
-    return @{ out = $out; err = $err.Trim(); code = $code }
+    return @{ out = (Mask-Text $out); err = (Mask-Text $err.Trim()); code = $code }
 }
 # kubectl — 항상 --kubeconfig 명시(기본 kubeconfig로 흘러가지 않게) + 요청 타임아웃.
 function Invoke-Kubectl([string[]]$kArgs) {
@@ -417,12 +460,19 @@ ClusterAssert 'argo-3' {
     foreach ($name in @('dev', 'prod')) {
         $p = Get-KubeOne 'argocd' 'appprojects.argoproj.io' $name
         if ($null -eq $p) { $bad += "AppProject $name not found"; continue }
-        $kinds = @(PropArr $p @('spec', 'namespaceResourceBlacklist') | ForEach-Object { [string](Prop $_ 'kind') })
-        $missing = @(Except $blacklistKinds $kinds)
+        $entries = @(PropArr $p @('spec', 'namespaceResourceBlacklist'))
+        $missing = @()
+        foreach ($kind in $blacklistKinds) {
+            $wantGroup = [string]$blacklistGroups[$kind]
+            $hit = @($entries | Where-Object {
+                    $g = Prop $_ 'group'; $gs = if ($null -eq $g) { '' } else { [string]$g }
+                    (Eq ([string](Prop $_ 'kind')) $kind) -and ((Eq $gs $wantGroup) -or (Eq $gs '*')) })
+            if ($hit.Count -eq 0) { $missing += "$kind(group '$wantGroup' or '*')" }
+        }
         if ($missing.Count -gt 0) { $bad += "AppProject ${name}: namespaceResourceBlacklist missing $($missing -join ', ')" }
     }
     if ($bad.Count -gt 0) { return @('FAIL', ($bad -join '; ')) }
-    return @('PASS', "AppProject dev/prod namespaceResourceBlacklist covers $($blacklistKinds -join ', ')")
+    return @('PASS', "AppProject dev/prod namespaceResourceBlacklist covers $($blacklistKinds -join ', ') with matching group")
 }
 ClusterAssert 'argo-4' {
     $bad = @(); $ok = 0
@@ -472,17 +522,21 @@ if ($null -eq $script:clusterReason) {
         $deadline = [DateTime]::UtcNow.AddSeconds(30)
         while ($null -eq $script:sealStatus -and [DateTime]::UtcNow -lt $deadline) {
             if ($pf.HasExited) { break }
-            try { $script:sealStatus = Invoke-RestMethod -Uri "http://127.0.0.1:$localPort/v1/sys/seal-status" -Method Get -TimeoutSec 5 }
+            try { $script:sealStatus = Invoke-RestMethod -Uri "http://127.0.0.1:$localPort/v1/sys/seal-status" -Method Get -TimeoutSec 5 -NoProxy }
             catch { Start-Sleep -Milliseconds 500 }
         }
         if ($null -eq $script:sealStatus) {
-            $errText = if (Test-Path -LiteralPath $pfErr) { [IO.File]::ReadAllText($pfErr, [Text.Encoding]::UTF8).Trim() } else { '' }
+            $errText = if (Test-Path -LiteralPath $pfErr) { Mask-Text ([IO.File]::ReadAllText($pfErr, [Text.Encoding]::UTF8).Trim()) } else { '' }
             $script:sealError = if ($pf.HasExited) { "port-forward exited (code $($pf.ExitCode)): $errText" } else { "seal-status not reachable within 30s via port-forward: $errText" }
         }
-    } catch { $script:sealError = "port-forward start failed: $($_.Exception.Message)" }
+    } catch { $script:sealError = "port-forward start failed: $(Mask-Text $_.Exception.Message)" }
     finally {
-        if ($null -ne $pf -and -not $pf.HasExited) { Stop-Process -Id $pf.Id -Force -ErrorAction SilentlyContinue }
-        Remove-Item -LiteralPath $pfOut, $pfErr -Force -ErrorAction SilentlyContinue
+        # 프로세스 트리 kill(래퍼 .cmd 뒤의 자식까지) → 종료 대기 → 리다이렉트 파일 삭제(핸들 해제 지연 대비 재시도)
+        if ($null -ne $pf) {
+            if (-not $pf.HasExited) { try { $pf.Kill($true) } catch { Stop-Process -Id $pf.Id -Force -ErrorAction SilentlyContinue } }
+            [void]$pf.WaitForExit(5000)
+        }
+        Remove-WithRetry @($pfOut, $pfErr)
     }
 }
 ClusterAssert 'vault-1' {
@@ -582,6 +636,8 @@ ClusterAssert 'ca-1' {
             }
             $tmplKeys = @(PropNames (PropPath $es @('spec', 'target', 'template', 'data')))
             foreach ($tk in $tmplKeys) { if (-not (Eq $tk 'ca.crt')) { $bad += "${ns}: template adds key '$tk'" } }
+            if (@(PropArr $es @('spec', 'target', 'template', 'templateFrom')).Count -gt 0) { $bad += "${ns}: template uses templateFrom (could inject keys)" }
+            if ($null -ne (PropPath $es @('spec', 'target', 'template', 'mergePolicy'))) { $bad += "${ns}: template sets mergePolicy (must be unused)" }
             if (-not (Eq ([string](PropPath $es @('spec', 'secretStoreRef', 'name'))) 'k8s-data-ca')) { $bad += "${ns}: store is not k8s-data-ca" }
         }
     }
@@ -647,16 +703,23 @@ ClusterAssert 'np-set-2' {
     if ($missing.Count -gt 0) { $bad += "missing in: $($missing -join ', ')" }
     foreach ($ns in @(Except $ns13 $missing)) {
         $p = Get-Policy $ns 'allow-dns'
-        $udp = $false; $tcp = $false
+        $udp = $false; $tcp = $false; $sel = $false
         foreach ($rule in @(PropArr $p @('spec', 'egress'))) {
+            foreach ($peer in @(PropArr $rule @('to'))) {
+                # 도착 = kube-system ns 셀렉터 + kube-dns pod 셀렉터(둘 다 한 peer 안에)
+                $nsName = [string](PropPath $peer @('namespaceSelector', 'matchLabels', 'kubernetes.io/metadata.name'))
+                $app = [string](PropPath $peer @('podSelector', 'matchLabels', 'k8s-app'))
+                if ((Eq $nsName 'kube-system') -and (Eq $app 'kube-dns')) { $sel = $true }
+            }
             foreach ($port in @(PropArr $rule @('ports'))) {
                 if (Eq "$(Prop $port 'port')" '53') { if (Eq ([string](Prop $port 'protocol')) 'UDP') { $udp = $true }; if (Eq ([string](Prop $port 'protocol')) 'TCP') { $tcp = $true } }
             }
         }
+        if (-not $sel) { $bad += "${ns}: allow-dns egress 'to' lacks namespaceSelector kubernetes.io/metadata.name=kube-system + podSelector k8s-app=kube-dns" }
         if (-not ($udp -and $tcp)) { $bad += "${ns}: allow-dns egress ports must include 53/UDP and 53/TCP" }
     }
     if ($bad.Count -gt 0) { return @('FAIL', ($bad -join '; ')) }
-    return @('PASS', 'allow-dns (53/UDP+TCP egress) in the 13 non-kube-system ns')
+    return @('PASS', 'allow-dns (egress to kube-system/k8s-app=kube-dns, 53/UDP+TCP) in the 13 non-kube-system ns')
 }
 ClusterAssert 'np-set-3' {
     $have = @(Get-NsWithPolicy 'allow-same-namespace')
@@ -729,10 +792,10 @@ foreach ($job in $assertJobs) {
         $r = Invoke-Kubectl @('-n', 'jt-dev', 'logs', "job/$job", '--tail=50')
         if ($r.code -ne 0) { return @('FAIL', "kubectl logs job/$job failed (exit $($r.code)): $($r.err)") }
         if ([string]::IsNullOrWhiteSpace($r.out)) { return @('FAIL', "Job jt-dev/$job logs are empty") }
-        return @('PASS', "Job jt-dev/$job succeeded and logs readable (matrix rows jt-dev -> data/identity)")
+        return @('PASS', "Job jt-dev/$job succeeded and logs readable — proves only $($assertJobScope[$job])")
     }
 }
-Skip 'np-2-manual' '운영자 수동 — 매트릭스의 나머지 행(kube-system(traefik)→argocd/vault/identity/jt-*/monitoring, identity→data/jt-*, external-secrets→vault, monitoring→scrape 대상)은 ns 내부 출발 프로브가 필요하다(agent-view에 exec·pod 생성 권한 없음). 명령 출력을 report에 첨부'
+Skip 'np-2-manual' '운영자 수동 — assert Job이 증명하지 못하는 매트릭스 행: jt-dev → identity 9000(Authentik JWKS/revoke) · jt-dev·jt-prod → monitoring 4317·4318(OTLP) · jt-prod 출발 행 전부(data 5432·9093·6379, identity 9000·8080, monitoring 4317·4318) · kube-system(traefik) → argocd 8080/vault 8200/identity 9000/jt-dev·jt-prod 8000/monitoring 4317 · identity → data 5432, jt-dev 8000, jt-prod 8000 · external-secrets → vault 8200 · monitoring → scrape 대상(argocd 8082-8084, vault 8200, external-secrets 8080, cert-manager 9402, cnpg-system 8080, data 9187·9404, jt-* 9100·9464). ns 내부 출발 프로브 필요(agent-view에 exec·pod 생성 권한 없음), 명령 출력을 report에 첨부'
 ClusterAssert 'np-3' {
     $bad = @()
     foreach ($pair in @(@('jt-prod', 'jt-dev'), @('jt-dev', 'data'))) {
@@ -752,31 +815,44 @@ ClusterAssert 'np-4' {
     if ($ev.anyAll) { return @('FAIL', 'vault: an ingress rule admits any source (or default-deny missing)') }
     $extra = @(Except $ev.sources $vaultIngressNs)
     if ($extra.Count -gt 0) { return @('FAIL', "vault ingress admits non-matrix ns: $($extra -join ', ')") }
-    return @('PASS', "static: vault ingress sources [$($ev.sources -join ', ')] are within {$($vaultIngressNs -join ', ')} + node A ipBlock")
+    return @('PASS', "static: vault ingress sources [$($ev.sources -join ', ')] are within {$($vaultIngressNs -join ', ')} (node A ipBlock aside)")
 }
 Skip 'np-4-live' '운영자 수동 — monitoring 아닌 ns(예: jt-dev) pod에서 vault.vault.svc:8200 연결 거부를 실제 프로브로 확인'
 ClusterAssert 'np-5' {
-    $bad = @(); $checked = 0
+    # 공허 PASS 방지: 매트릭스 행 jt-dev -> 외부 443(0.0.0.0/0 + except 4 + ports 443/TCP) 규칙이 1개 이상 있어야 한다.
+    # 추가로 jt-dev의 어떤 ipBlock도 RFC1918 대역을 cidr 자체로 쓰지 않는다(except 우회 금지; jt-dev는 allow-kube-api 대상이 아니다).
+    $bad = @(); $checked = 0; $external443 = 0
     foreach ($pol in @(Get-PoliciesIn 'jt-dev')) {
         if (-not (Test-PolicyType $pol 'Egress')) { continue }
         foreach ($rule in @(PropArr $pol @('spec', 'egress'))) {
             $to = @(PropArr $rule @('to'))
             if ($to.Count -eq 0) { $bad += "$(Name $pol): egress rule without 'to' (allows everything)"; continue }
+            $ports = @(PropArr $rule @('ports'))
+            $has443 = @($ports | Where-Object { (Eq "$(Prop $_ 'port')" '443') -and (($null -eq (Prop $_ 'protocol')) -or (Eq ([string](Prop $_ 'protocol')) 'TCP')) }).Count -gt 0
             foreach ($peer in $to) {
                 $ib = Prop $peer 'ipBlock'
                 if ($null -eq $ib) { continue }
                 $checked++
-                $ports = @(PropArr $rule @('ports'))
-                if ($ports.Count -eq 0) { $bad += "$(Name $pol): ipBlock rule without ports" }
-                if (Eq ([string](Prop $ib 'cidr')) '0.0.0.0/0') {
+                $cidr = [string](Prop $ib 'cidr')
+                if ($ports.Count -eq 0) { $bad += "$(Name $pol): ipBlock '$cidr' rule without ports" }
+                if (Eq $cidr '0.0.0.0/0') {
                     $missing = @(Except $except4 @(PropArr $ib @('except')))
                     if ($missing.Count -gt 0) { $bad += "$(Name $pol): 0.0.0.0/0 rule missing except $($missing -join ', ')" }
+                    elseif ($has443 -and $ports.Count -gt 0) { $external443++ }
+                } else {
+                    $netIp = ($cidr.Split('/'))[0]
+                    foreach ($priv in @('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')) {
+                        $in = Test-CidrContains $priv $netIp
+                        if ($null -eq $in) { $bad += "$(Name $pol): unevaluable ipBlock '$cidr'"; break }
+                        if ($in) { $bad += "$(Name $pol): ipBlock '$cidr' allows RFC1918 range $priv"; break }
+                    }
                 }
             }
         }
     }
+    if ($external443 -eq 0) { $bad += 'no jt-dev egress rule 0.0.0.0/0 (with the 4 except entries) and ports 443/TCP (matrix row jt-dev -> external 443 missing)' }
     if ($bad.Count -gt 0) { return @('FAIL', ($bad -join '; ')) }
-    return @('PASS', "static: $checked jt-dev egress ipBlock rule(s) carry ports; 0.0.0.0/0 rules carry the 4 except entries")
+    return @('PASS', "static: $checked jt-dev egress ipBlock rule(s) carry ports; $external443 external-443 rule(s) carry the 4 except entries; no RFC1918 cidr rule")
 }
 Skip 'np-5-live' '운영자 수동 — jt-dev pod에서 1.1.1.1:443 연결 실패를 실제 프로브로 확인(외부 443 규칙의 except·ports 범위)'
 ClusterAssert 'np-6' {
@@ -820,25 +896,32 @@ ClusterAssert 'np-7' {
         $sample = @($viol | Select-Object -First 3 | ForEach-Object { "$(Ns $_)/$(PropPath $_ @('involvedObject', 'name'))" })
         return @('FAIL', "$($viol.Count) PSA violation event(s) (e.g. $($sample -join ', '))")
     }
-    return @('PASS', "0 PSA violation events across $($events.Count) events")
+    return @('PASS', "0 PSA violation events across $($events.Count) events (K3s event TTL 1h — meaningful only when run within 1h of deployment)")
 }
 
 # ---------- 8. monitoring scrape 도달 ----------
 ClusterAssert 'mon-1' {
-    $ds = Get-KubeOne 'monitoring' 'daemonsets.apps' 'alloy-metrics'
-    if ($null -eq $ds) {
-        foreach ($kind in @('statefulsets.apps', 'deployments.apps')) {
-            if ($null -ne (Get-KubeOne 'monitoring' $kind 'alloy-metrics')) { return @('FAIL', "alloy-metrics exists as $kind, not a DaemonSet (task expects ds/alloy-metrics)") }
+    # T098 실제 형상은 StatefulSet k8s-monitoring-alloy-metrics(k8s-monitoring 차트) — 종류를 고정하지 않고 ns monitoring의
+    # DaemonSet/StatefulSet/Deployment 중 이름이 alloy-metrics로 끝나거나 라벨 app.kubernetes.io/name=alloy-metrics인 워크로드를 전부 찾아
+    # 각각 logs --tail=300 --all-containers(config-reloader 사이드카 포함)로 읽는다. 워크로드 0개일 때만 SKIP.
+    $kindRef = [ordered]@{ 'daemonsets.apps' = 'daemonset'; 'statefulsets.apps' = 'statefulset'; 'deployments.apps' = 'deployment' }
+    $found = @()
+    foreach ($k in @($kindRef.Keys | ForEach-Object { "$_" })) {
+        foreach ($w in @(Items (Get-KubeList @('get', $k, '-n', 'monitoring')))) {
+            if ((EndsOrd (Name $w) 'alloy-metrics') -or (Eq (Label $w 'app.kubernetes.io/name') 'alloy-metrics')) { $found += "$($kindRef[$k])/$(Name $w)" }
         }
-        return @('SKIP', 'until T098 (monitoring ds/alloy-metrics not present)')
     }
-    $r = Invoke-Kubectl @('-n', 'monitoring', 'logs', 'ds/alloy-metrics', '--tail=300')
-    if ($r.code -ne 0) { return @('FAIL', "kubectl logs ds/alloy-metrics failed (exit $($r.code)): $($r.err)") }
-    $lines = @($r.out -split "`n")
+    if ($found.Count -eq 0) { return @('SKIP', 'until T098 (no alloy-metrics DaemonSet/StatefulSet/Deployment in ns monitoring)') }
     $rx = [regex]::new('connection refused|context deadline exceeded', [Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [Text.RegularExpressions.RegexOptions]::CultureInvariant)
-    $hits = @($lines | Where-Object { $rx.IsMatch($_) })
-    if ($hits.Count -gt 0) { return @('FAIL', "$($hits.Count) scrape error line(s) in last 300: $(Clip $hits[0] 160)") }
-    return @('PASS', "0 'connection refused'/'context deadline exceeded' lines in ds/alloy-metrics --tail=300 ($($lines.Count) lines)")
+    $hits = @(); $total = 0
+    foreach ($ref in $found) {
+        $r = Invoke-Kubectl @('-n', 'monitoring', 'logs', $ref, '--tail=300', '--all-containers')
+        if ($r.code -ne 0) { return @('FAIL', "kubectl logs $ref failed (exit $($r.code)): $($r.err)") }
+        $lines = @($r.out -split "`n"); $total += $lines.Count
+        $hits += @($lines | Where-Object { $rx.IsMatch($_) })
+    }
+    if ($hits.Count -gt 0) { return @('FAIL', "$($hits.Count) scrape error line(s) in last 300 of $($found -join ', '): $(Clip $hits[0] 160)") }
+    return @('PASS', "0 'connection refused'/'context deadline exceeded' lines in $($found -join ', ') --tail=300 --all-containers ($total lines)")
 }
 
 # ---------- 9. jt-dev·jt-prod pod 리소스 limit ----------
@@ -917,6 +1000,7 @@ foreach ($prefix in @('k3s/', 'vault/')) {
     foreach ($o in $res.objects) { $total++; $name = [string](Prop $o 'name'); if (-not (EndsOrd $name '.age')) { $plain += $name } }
 }
 if ($ociErr.Count -gt 0) { Fail 'backup-3' ($ociErr -join '; ') }
+elseif ($total -eq 0) { Fail 'backup-3' "no objects under ${backupBucket}/k3s/ and vault/ (empty listing is not evidence)" }
 elseif ($plain.Count -gt 0) { Fail 'backup-3' "plaintext (non-.age) object(s) in ${backupBucket}: $($plain -join ', ')" }
 else { Pass 'backup-3' "0 non-.age objects under k3s/ and vault/ ($total objects, all .age)" }
 
