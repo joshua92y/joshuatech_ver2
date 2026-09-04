@@ -7,6 +7,8 @@
 #
 # 편집 금지: 같은 디렉터리의 traefik.yaml 은 K3s 패키지 매니페스트라 k3s 가 시작할 때마다 원본으로 다시 쓴다 — 거기에 값을 넣으면 재시작 때
 #   사라진다. 커스터마이즈는 반드시 이 별도 파일로 한다. <https://docs.k3s.io/helm#customizing-packaged-components-with-helmchartconfig>
+#   우선순위 함정: 그 traefik.yaml 의 HelmChart spec.set 값은 이 파일의 valuesContent 보다 우선한다(research.md:331 — K3s 가
+#   global.systemDefaultRegistry 등을 set 으로 넣는다). set 으로 잡힌 키는 여기서 못 바꾼다 → 절차 4 의 args grep 이 그 검증이다.
 #
 # 값 키는 chart 40.1.x values.yaml 기준이다(research R1 K3S-D6). upstream chart 41.x 는 같은 설정을 다른 이름으로 옮겼으므로 최신 문서를
 #   그대로 붙여넣으면 helm 이 조용히 무시하거나 스키마 검증에서 떨어진다:
@@ -19,47 +21,84 @@
 #   camelCase 로 적으면 helm 이 스키마 오류로 거부한다. tasks.md T038 문면의 `defaultMode`·`statusCodes: ["400-599"]` 는 41.x 표기이므로
 #   40.1.x 철자(`defaultmode`, `statuscodes: "400-599"`)로 옮겨 적었다 — 의미는 같다(4xx·5xx 만 기록, 헤더는 기본 drop).
 #
+# 액세스 로그 헤더: defaultmode drop 만 두면 로그가 익명이 된다. svclb(klipper-lb) 뒤라 ClientHost 는 파드 IP 일 수 있으므로 실질 식별자는
+#   CF-Connecting-IP 뿐이다 → CF-Connecting-IP·CF-Ray·User-Agent 세 개만 names 로 keep 한다(research.md:186-193). Authorization·Cookie 등
+#   나머지는 그대로 drop 이다(FR-011·리뷰 F5).
+#
 # ports.websecure.forwardedHeaders.trustedIPs = Cloudflare IPv4 대역 15개(2026-09-04 확인).
 #   목록의 정본은 infra/oci/network.tf 의 data.cloudflare_ip_ranges.cloudflare.ipv4_cidrs 이고, 같은 목록이 NSG 443 ingress 규칙을 만든다.
 #   K3s manifests 디렉터리의 파일은 템플릿이 아니라 있는 그대로 적용되므로(OpenTofu 는 노드 파일을 쓰지 않고, 원격 상태를 가진 스택이 저장소에
 #   파일을 생성하게 만들지도 않는다) 이 파일은 그 데이터 소스의 "검증 가능한 리터럴 사본"으로 둔다 — 값이 커밋에 보여 리뷰가 된다.
-#   대조(읽기 전용): curl -s https://api.cloudflare.com/client/v4/ips  →  .result.ipv4_cidrs 가 아래 15줄과 같아야 한다
-#     (2026-09-04 실측 etag 38f79d050aa027e3be3865e495dcc9bc, infra/oci 적용 상태의 NSG 규칙 source 15개와도 일치).
-#   Cloudflare 목록이 바뀌면 infra/oci 의 tofu plan 이 NSG 규칙 증감으로 먼저 알린다 — 그때 이 파일도 같은 커밋에서 고치고 절차 1~2 를 다시 한다.
+#   드리프트 감지 장치는 없다. 재검토 주기: 분기 1회 + infra/oci 의 tofu plan 이 NSG 규칙 증감을 보일 때마다. 대조(읽기 전용):
+#     curl -s https://api.cloudflare.com/client/v4/ips   →  .result.ipv4_cidrs 가 아래 15줄과 같아야 한다
+#     (2026-09-04 실측 etag 38f79d050aa027e3be3865e495dcc9bc, infra/oci 적용 상태의 NSG 규칙 source 15개와도 일치). 다르면 이 파일과
+#     infra/oci 를 같은 커밋에서 고치고 절차 1~2 를 다시 한다.
 #   파드 CIDR(10.42/16)은 넣지 않는다: 신뢰 목록에 넣으면 클러스터 안의 아무 파드나 X-Forwarded-* 를 위조할 수 있다. 앱은 Cloudflare 가
-#   붙이는 CF-Connecting-IP 를 쓴다. 미실측 주의 — K3s ServiceLB(klipper-lb)가 MASQUERADE 하면 Traefik 이 보는 원격 IP 는 svclb 파드 IP 라서
-#   이 목록이 매칭되지 않을 수 있다. 그 경우에도 X-Forwarded-* 를 신뢰하지 않는 현 설정이 안전한 기본값이다(소스 IP 보존 여부는 노드 A 실측).
+#   붙이는 CF-Connecting-IP 를 쓴다. 미실측 항목(research.md:1192) — klipper-lb 가 MASQUERADE 하면 Traefik 이 보는 원격 IP 가 svclb 파드 IP 라
+#   이 목록이 매칭되지 않을 수 있다. 측정은 절차 4 의 액세스 로그 한 줄로 하고 결과를 런북에 적는다. 어느 쪽이든 X-Forwarded-* 를 신뢰하지 않는
+#   현 설정이 안전한 기본값이다.
+#
+# tlsOptions.default 는 지금 minVersion 만 둔다 — T038 문면(초기 VerifyClientCertIfGiven·sniStrict)과의 **의도적 편차**다(문면 수정은 converge 몫).
+#   이유 1(clientAuth): 참조 Secret cloudflare-origin-pull-ca 는 T043 에서 생긴다. 없는 상태로 clientAuth 를 넣으면 Traefik 이 Secret 부재를
+#     경고만 하고 CAFiles 없이 TLSOption 을 등록 → "invalid clientAuthType: VerifyClientCertIfGiven, CAFiles is required" 로 TLS 설정이 깨지고
+#     websecure 라우터가 broken 상태가 되어 **443 핸드셰이크가 전부 끊긴다**. helm 스키마는 통과하므로 Job 로그에도 안 보인다.
+#   이유 2(sniStrict): sniStrict 는 SNI 에 맞는 인증서를 못 찾으면 DefaultCertificate 폴백에 가지 않고 끊는다. 게다가 인증서 탐색은 동적 인증서만
+#     보므로, 와일드카드를 TLSStore 의 defaultCertificate 로만 지정하면 T042 뒤에도 이 경로에서 못 찾는다.
+#   적용 순서: **T042(와일드카드 인증서) → T043(CA Secret) → TLSOption 완성**. 각 단계에서 아래 조각을 valuesContent 의 tlsOptions.default 에
+#   더하고 절차 1~2 로 다시 설치한다(중간마다 절차 4 의 443 확인).
+#     T042 뒤 — 와일드카드가 TLSStore 의 certificates 목록 또는 라우터 tls.secretName 으로 실려 **동적 인증서**가 된 것을 확인한 다음에만:
+#         sniStrict: true
+#     T043 뒤 — kube-system Secret cloudflare-origin-pull-ca(키 ca.crt = Cloudflare Global AOP CA)를 만든 다음에만:
+#         clientAuth:
+#           secretNames:
+#             - cloudflare-origin-pull-ca
+#           clientAuthType: VerifyClientCertIfGiven   # 관찰 기간 뒤 T043 에서 RequireAndVerifyClientCert 로 승격
 #
 # 선행·후속 의존:
-#   - tracing 목적지 k8s-monitoring-alloy-metrics.monitoring.svc:4317 은 T098 에서 생긴다. 그 전에는 Traefik 이 익스포터 연결 실패만 로그에
-#     남기고 서빙은 계속한다. 도달하려면 contracts/network-policy.md 의 `kube-system`(traefik) → `monitoring` 4317 행(T041)이 있어야 한다.
-#   - tlsOptions.default.clientAuth 가 참조하는 Secret cloudflare-origin-pull-ca(kube-system, 키 ca.crt = Cloudflare Global AOP CA)는
-#     T043 에서 만든다. Secret 이 없으면 Traefik 은 TLSOption 오류를 로그에 남기고 클라이언트 인증서 검증만 적용하지 않는다(TLS 서빙은 계속).
-#   - T043 에서 clientAuthType 을 RequireAndVerifyClientCert 로 올린다(전환 순서: 존 AOP on → VerifyClientCertIfGiven 관찰 → Require…).
-#     그때 이 파일의 한 줄만 바꿔 같은 절차로 다시 설치한다 — 노드에서 직접 편집하지 않는다.
-#   - websecure 기본 인증서는 TLSStore default(T042, Secret wildcard-joshuatech-dev-tls)가 준다. 그 전에는 Traefik 자체 서명 인증서로 서빙한다.
-#   - 대시보드 인증은 앞단 Cloudflare Access(GitHub IdP, contracts/hostnames-and-access.md `traefik.joshuatech.dev` → api@internal)가 맡는다.
-#     차트 기본 서비스가 api@internal 이므로 services 는 지정하지 않는다. 차트 예시의 basic-auth 미들웨어는 쓰지 않는다.
+#   - tracing 목적지 k8s-monitoring-alloy-metrics.monitoring.svc:4317 은 T098 에서 생긴다. 그 전까지 OTLP 익스포터가 목적지를 찾지 못해 오류
+#     로그가 주기적으로 쌓인다 — 요청 처리·서빙에는 영향이 없는 순수 잡음이다. 조사에 방해되면 tracing.otlp.enabled 를 false 로 두었다가
+#     T098 에서 되돌린다(같은 절차 1~2). 도달하려면 contracts/network-policy.md 의 `kube-system`(traefik) → `monitoring` 4317 행(T041)이 필요하다.
+#   - T042: 와일드카드 인증서(Secret wildcard-joshuatech-dev-tls) + TLSStore default. 그전에는 Traefik 자체 서명 인증서로 서빙한다.
+#   - T043: CA Secret 생성 + clientAuth 블록 추가 + AOP 승격. T043 이후에는 절차 4 의 직접 curl 이 **실패하는 것이 정상**이다(T032 단언과 짝).
+#   - T084: 대시보드에 Authentik forward-auth 미들웨어(`authentik-forwardauth`)를 붙이며 **이 파일을 다시 고친다**
+#     (ingressRoute.dashboard.middlewares). Cloudflare 계정 교차 우회에 대한 유일한 오리진 측 통제이므로 빠뜨리면 안 된다.
+#   - 대시보드 서비스는 차트 기본값 api@internal(contracts/hostnames-and-access.md), 앞단 인증은 Cloudflare Access(GitHub IdP).
 #
 # 운영자 절차(워크스테이션 PowerShell 7; 키 joshuatech-ops 는 ssh-add -c 로 로드; 부트스트랩 창에는 노드 A 공인 IP 144.24.85.118, T039 이후에는
-#   cloudflared 터널 호스트 ssh-a.joshuatech.dev; ssh/scp 공통 옵션 -i ~/.ssh/joshuatech-ops -o IdentitiesOnly=yes 는 아래에서 "…" 로 줄인다):
+#   cloudflared 터널 호스트 ssh-a.joshuatech.dev; ssh/scp 공통 옵션 -i ~/.ssh/joshuatech-ops -o IdentitiesOnly=yes 는 아래에서 "…" 로 줄인다.
+#   kubectl 은 **운영자 admin kubeconfig** 로 실행한다 — agent-view 토큰으로 되는 것은 pods·logs 조회뿐이고 helm.cattle.io·traefik.io CR 은
+#   T041 의 agent-view-extra 에도 없다. T038 시점에는 agent-view SA 자체가 아직 없다):
 #   1. 올리기:
 #        scp … infra/bootstrap/traefik-config.yaml ubuntu@144.24.85.118:/home/ubuntu/traefik-config.yaml
 #   2. 설치(반쪽 파일이 manifests 디렉터리에 놓이지 않도록 install 로 한 번에 배치):
 #        ssh … ubuntu@144.24.85.118 "sudo install -m 644 -o root -g root /home/ubuntu/traefik-config.yaml /var/lib/rancher/k3s/server/manifests/traefik-config.yaml && rm -f /home/ubuntu/traefik-config.yaml"
-#   3. K3s deploy 컨트롤러가 HelmChartConfig 를 적용 → helm-install-traefik Job 이 다시 돌고 Traefik 이 새 값으로 롤아웃된다(수십 초).
-#   4. 확인(전부 읽기 전용 — agent-view 토큰으로도 된다):
+#   3. K3s deploy 컨트롤러가 HelmChartConfig 를 적용 → helm-install-traefik Job 이 다시 돌고 Traefik 이 새 값으로 롤아웃된다.
+#      **순단 주의**: Traefik Deployment 는 replica 1 이라 롤아웃 동안 443 이 수십 초 끊긴다. 유지보수 창에서 하고 아래 rollout status 로 완료를 본다.
+#   4. 확인(읽기 전용 조회 + 1회성 요청):
 #        kubectl -n kube-system get helmchartconfig traefik -o yaml
+#        kubectl -n kube-system rollout status deploy/traefik --timeout=120s
 #        kubectl -n kube-system get pods -l app.kubernetes.io/name=traefik -o wide          # 노드 A(role=platform)에서 Running
-#        kubectl -n kube-system logs deploy/traefik | head                                  # 한 줄 JSON 로그
-#        kubectl -n kube-system logs job/helm-install-traefik | tail -20                    # values 스키마 오류는 여기에 찍힌다
+#        kubectl -n kube-system logs deploy/traefik --tail=200 | grep -Ei 'error|invalid clientAuthType|tls'   # 비어야 정상(TLS 설정 실패는 여기서만 보인다)
+#        kubectl -n kube-system logs job/helm-install-traefik | tail -20                    # values 스키마 오류
 #        kubectl -n kube-system get deploy traefik -o jsonpath='{.spec.template.spec.containers[0].args}' | tr ',' '\n' | grep -Ei 'accesslog|redirections|tracing|forwardedheaders'
-#                                                                                           # 키가 무시되지 않았다는 증거(40.1.x ↔ 41.x 함정)
-#        kubectl -n kube-system get tlsoption default -o yaml                               # clientAuthType·minVersion·sniStrict
+#                                                                                           # 키가 무시되지 않았다는 증거(40.1.x ↔ 41.x, spec.set 우선)
+#        curl -sk --resolve traefik.joshuatech.dev:443:144.24.85.118 https://traefik.joshuatech.dev -o /dev/null -w '%{http_code}\n'
+#                                                                                           # 443 핸드셰이크 실증. 지금은 코드가 나와야 정상,
+#                                                                                           # T043(AOP 강제) 이후에는 실패가 정상이다.
 #        kubectl -n kube-system get ingressroute traefik-dashboard -o yaml                  # Host(`traefik.joshuatech.dev`), entryPoint websecure
-#   5. 되돌리기: ssh … ubuntu@144.24.85.118 "sudo rm -f /var/lib/rancher/k3s/server/manifests/traefik-config.yaml"
-#      → K3s 가 HelmChartConfig 를 지우고 번들 기본값으로 다시 조정한다(패키지 traefik.yaml 은 그대로 남는다).
-#   6. 에이전트는 이 절차를 실행하지 않는다(agent-view 는 읽기 전용, SSH 자격 없음). 실행 기록은 docs/runbooks/bootstrap.md 에 남긴다.
+#        kubectl -n kube-system logs deploy/traefik --tail=50 | grep '"ClientHost"' | tail -1
+#                                                                                           # klipper-lb 소스 IP 실측(research.md:1192 미확인 항목):
+#                                                                                           # ClientHost 가 10.42.x.x 면 소스 IP 미보존 → 식별자는
+#                                                                                           # request_CF-Connecting-IP 뿐. 결과를 런북에 기록한다.
+#      helm-install-traefik Job 이 실패하면 Job 은 immutable 이라 같은 이름으로 재시도되지 않는다: 원인을 로그로 본 뒤
+#        kubectl -n kube-system delete job helm-install-traefik      # helm-controller 가 즉시 다시 만든다
+#      릴리스가 pending-install/pending-upgrade 로 남으면(kubectl -n kube-system get secrets -l owner=helm,name=traefik) 위 Job 삭제를 반복한다.
+#      수동 helm rollback 은 하지 않는다 — HelmChart/HelmChartConfig CR 이 정본이다.
+#   5. 되돌리기(두 명령, 반드시 이 순서 — K3s 는 manifests 파일이 사라져도 이미 적용한 객체를 지우지 않는다(research.md:331)):
+#        ssh … ubuntu@144.24.85.118 "sudo rm -f /var/lib/rancher/k3s/server/manifests/traefik-config.yaml"
+#        kubectl -n kube-system delete helmchartconfig traefik
+#      (파일을 남긴 채 객체만 지우면 다음 k3s 재시작에 되살아난다.) 그 뒤 helm-install-traefik Job 재실행 → rollout status → 443 재확인.
+#   6. 에이전트는 이 절차를 실행하지 않는다(SSH 자격 없음, 클러스터는 읽기 전용). 실행 기록은 docs/runbooks/bootstrap.md 에 남긴다.
 #
 # 정적 계약은 tests/infra/traefik-config.tests.ps1 이 고정한다(run-all 슬롯 1k).
 apiVersion: helm.cattle.io/v1
@@ -82,6 +121,10 @@ spec:
         fields:
           headers:
             defaultmode: drop
+            names:
+              CF-Connecting-IP: keep
+              CF-Ray: keep
+              User-Agent: keep
     tracing:
       sampleRate: 0.1
       otlp:
@@ -119,11 +162,6 @@ spec:
     tlsOptions:
       default:
         minVersion: VersionTLS12
-        sniStrict: true
-        clientAuth:
-          secretNames:
-            - cloudflare-origin-pull-ca
-          clientAuthType: VerifyClientCertIfGiven
     ingressRoute:
       dashboard:
         enabled: true
