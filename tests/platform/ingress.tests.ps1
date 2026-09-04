@@ -19,17 +19,22 @@
 #     신원(agent-view) 게이트는 러너가 담당한다 — 직접 실행할 때도 agent-view kubeconfig만 쓴다. kubeconfig 경로·내용은 출력하지 않는다.
 #   - 노드 A 공인 IP는 파일 상단 상수($NodeAPublicIp)다. 출처: infra/oci output node_a_reserved_public_ip(T009 적용 2026-09-03,
 #     docs/runbooks/bootstrap.md). 여기서 tofu output을 부르지 않는다(자격 필요). node-1이 kubelet의 ExternalIP(보고될 때)와 대조해
-#     상수 표류를 잡는다 — 표류면 aop-1이 엉뚱한 IP를 두드리게 되므로 FAIL.
+#     상수 표류를 잡는다 — 표류면 aop-1이 엉뚱한 IP를 두드리게 되므로 FAIL이고, platform 노드 집합도 확정하지 않으므로
+#     traefik-2("platform node set unknown")·aop-1(전제 미충족)도 함께 FAIL한다.
 #   - HTTP 302 단언은 edge(Access)에서 응답하므로 오리진·Ingress 없이도 통과할 수 있다(2026-09-04 실측: T011 Access 앱만으로 302).
+#     Location은 팀 도메인 joshua-tech.cloudflareaccess.com(호스트 정확 일치, OrdinalIgnoreCase) + 경로 /cdn-cgi/access/login/ 접두여야 한다.
 #     그래서 argo-2·vault-2가 Ingress(networking.k8s.io) 리소스 존재를 kubectl로 따로 요구한다(T044 전 vault-2는 FAIL이 정상 — SKIP 아님).
 #     traefik 대시보드는 IngressRoute(api@internal)라 agent-view(view + agent-view-extra)로 읽을 수 없어 HTTP 단언(traefik-1)만 둔다.
 #   - aop-1(직접 TLS 거부)은 traefik-2(Traefik Running on role=platform)·node-1이 통과했을 때만 증거로 인정한다 — 아무것도 없는
 #     IP가 응답하지 않는 것은 AOP 증거가 아니다(fail closed). 운영자 PC는 Cloudflare 대역 밖이라 NSG 계층에서 먼저 막힐 수 있으며
 #     (curl 28 timeout), 그 경우도 "직접 접속 거부"로 PASS하되 근거에 계층을 적는다. HTTP 상태가 하나라도 오면 FAIL.
-#   - cert-1/cert-2: 우선 `kubectl get secret -o jsonpath` → base64 → PEM → X509Certificate2(NotAfter). 계약상 agent-view는 Secret get이
-#     없으므로(contracts/hostnames-and-access.md §에이전트 자격) Forbidden이면 cert-manager Certificate(spec.secretName = 그 Secret)의
-#     Ready=True·status.notAfter로 판정한다(cert-manager는 Secret이 있고 유효할 때만 Ready=True; cert-manager-view가 view에 집계됨).
-#     Secret 값·PEM·base64는 어떤 경우에도 출력하지 않는다(근거에는 subject·notAfter·남은 일수만).
+#     "거부"로 인정하는 curl 종료 코드는 화이트리스트 7·28·35·52·55·56뿐이다 — 그 외(-1 실행 실패, 2 사용법, 3 URL, 6 DNS, 8 이상 응답 등)는
+#     거부가 아니라 도구/호출 오류이므로 "unexpected curl exit N (not a refusal)"로 FAIL한다(공허한 PASS 방지).
+#   - cert-1/cert-2: Secret 값은 읽지 않는다(계약 §에이전트 자격: agent-view는 Secret get이 없다 — contracts/hostnames-and-access.md).
+#     대신 cert-manager Certificate(kube-system, spec.secretName = wildcard-joshuatech-dev-tls 정확히 1개)의 Ready=True·status.notAfter로
+#     판정한다(cert-manager는 Secret이 있고 유효할 때만 Ready=True). cert-manager 차트 기본 `global.rbac.aggregateClusterRoles=true`로
+#     `view`에 집계된 certificates get/list에 의존한다(T042가 값을 명시). cert-2는 남은 기간이 30일을 **초과**해야 한다(TotalDays > 30,
+#     내림 없음). 근거에는 Certificate 이름·notAfter·남은 일수만 적는다.
 #   - 문자열 판정은 전부 ordinal([string]::Equals/EndsWith/IndexOf + StringComparison; 호스트명만 OrdinalIgnoreCase).
 #
 # 단언 ↔ T032 항목:
@@ -40,7 +45,7 @@
 #   node-1     role=platform 노드 존재 + ExternalIP(보고 시) = 상수
 #   traefik-2  Traefik pod Running, 전부 role=platform 노드에 스케줄
 #   aop-1      curl --resolve <노드 A IP> 직접 TLS 핸드셰이크 실패(성공하면 FAIL)
-#   cert-1/2   kube-system/wildcard-joshuatech-dev-tls 존재 / 만료 > 30일
+#   cert-1/2   kube-system/wildcard-joshuatech-dev-tls 존재(Certificate Ready=True로 판정) / 만료까지 30일 초과
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false   # 자식 프로세스의 0이 아닌 종료 코드를 예외로 바꾸지 않는다 — $LASTEXITCODE로 판정
 
@@ -49,7 +54,8 @@ $Zone = 'joshuatech.dev'
 $ArgoHost = "argo.$Zone"
 $VaultHost = "vault.$Zone"
 $TraefikHost = "traefik.$Zone"
-$AccessHostSuffix = '.cloudflareaccess.com'      # Cloudflare Access 로그인 호스트(팀 joshua-tech.cloudflareaccess.com)
+$AccessLoginHost = 'joshua-tech.cloudflareaccess.com'   # Cloudflare Zero Trust 팀 도메인(계약) — Location 호스트 정확 일치
+$AccessLoginPathPrefix = '/cdn-cgi/access/login/'        # Access 로그인 경로 접두 — Location 경로 StartsWith(Ordinal)
 # 노드 A reserved 공인 IP — 출처: infra/oci output node_a_reserved_public_ip (T009 적용 2026-09-03). tofu output 호출 없음(자격 필요).
 # 값이 바뀌면 이 상수를 갱신한다(node-1이 kubelet ExternalIP와 대조해 표류를 FAIL로 드러낸다).
 $NodeAPublicIp = '144.24.85.118'
@@ -122,13 +128,16 @@ function Invoke-CurlHead([string]$url, [string[]]$extraArgs) {
     return @{ code = $r.code; status = $status; location = $location; err = $r.err }
 }
 
-# Location이 https://<x>.cloudflareaccess.com/… 인지 판정. 반환 @(ok, 출력용 문자열) — 쿼리(meta 토큰)는 출력하지 않는다.
+# Location이 https://joshua-tech.cloudflareaccess.com/cdn-cgi/access/login/… 인지 판정(호스트 정확 일치 + 경로 접두).
+# 반환 @(ok, 출력용 문자열) — 쿼리(meta 토큰)는 출력하지 않는다.
 function Test-AccessLocation([string]$location) {
     $uri = $null
     try { $uri = [Uri]::new($location) } catch { return @($false, 'unparseable Location header') }
     if (-not $uri.IsAbsoluteUri) { return @($false, 'relative Location header') }
     $safe = "$($uri.Scheme)://$($uri.Host)$($uri.AbsolutePath)"
-    $ok = [string]::Equals($uri.Scheme, 'https', [StringComparison]::Ordinal) -and $uri.Host.EndsWith($AccessHostSuffix, [StringComparison]::OrdinalIgnoreCase)
+    $ok = [string]::Equals($uri.Scheme, 'https', [StringComparison]::Ordinal) -and
+    [string]::Equals($uri.Host, $AccessLoginHost, [StringComparison]::OrdinalIgnoreCase) -and
+    $uri.AbsolutePath.StartsWith($AccessLoginPathPrefix, [StringComparison]::Ordinal)
     return @($ok, $safe)
 }
 
@@ -148,8 +157,13 @@ $script:kubeReady = $false
 $script:kubeReason = 'tool-2 not evaluated'
 $script:kubeconfigPath = $null
 
+# stderr에 kubeconfig 경로가 섞여 나올 수 있으므로(kubectl 오류 문구) 근거로 쓰기 전에 <KUBECONFIG>로 가린다(ordinal Replace).
 function Invoke-Kubectl([string[]]$kubectlArgs) {
-    return Invoke-Native 'kubectl' (@("--kubeconfig=$script:kubeconfigPath", "--request-timeout=$KubectlRequestTimeout") + @($kubectlArgs))
+    $r = Invoke-Native 'kubectl' (@("--kubeconfig=$script:kubeconfigPath", "--request-timeout=$KubectlRequestTimeout") + @($kubectlArgs))
+    if (-not [string]::IsNullOrEmpty($script:kubeconfigPath) -and -not [string]::IsNullOrEmpty($r.err)) {
+        $r.err = $r.err.Replace($script:kubeconfigPath, '<KUBECONFIG>', [StringComparison]::Ordinal)
+    }
+    return $r
 }
 
 # kubectl 의존 단언: 전제가 없으면 사유와 함께 FAIL(fail closed). $body는 @($cond, $detail) 2요소 배열을 돌려준다.
@@ -206,9 +220,9 @@ Test-Group 'tool' {
 
 # ---------- access: 세 호스트 → 302 Cloudflare Access 로그인 (T032: argo 302 · vault 302 · traefik 대시보드 Access 뒤) ----------
 Test-Group 'access' {
-    Assert-AccessRedirect "argo-1: https://$ArgoHost -> 302 Cloudflare Access login (Location *$AccessHostSuffix)" $ArgoHost
-    Assert-AccessRedirect "vault-1: https://$VaultHost -> 302 Cloudflare Access login (Location *$AccessHostSuffix)" $VaultHost
-    Assert-AccessRedirect "traefik-1: https://$TraefikHost dashboard behind Access -> 302 (Location *$AccessHostSuffix)" $TraefikHost
+    Assert-AccessRedirect "argo-1: https://$ArgoHost -> 302 Cloudflare Access login (Location https://$AccessLoginHost$AccessLoginPathPrefix...)" $ArgoHost
+    Assert-AccessRedirect "vault-1: https://$VaultHost -> 302 Cloudflare Access login (Location https://$AccessLoginHost$AccessLoginPathPrefix...)" $VaultHost
+    Assert-AccessRedirect "traefik-1: https://$TraefikHost dashboard behind Access -> 302 (Location https://$AccessLoginHost$AccessLoginPathPrefix...)" $TraefikHost
 }
 
 # ---------- cluster: 노드 A(role=platform)·Traefik 배치·Ingress 존재 (T032: Traefik pod가 노드 A; argo/vault Ingress) ----------
@@ -223,7 +237,6 @@ Test-Group 'cluster' {
         $items = @($g.obj.items | Where-Object { $null -ne $_ })
         if ($items.Count -lt 1) { return @($false, "no node carries label $PlatformNodeSelector") }
         $names = @($items | ForEach-Object { "$($_.metadata.name)" })
-        $script:platformNodeNames = $names
         $ext = @()
         foreach ($n in $items) {
             foreach ($a in @($n.status.addresses)) {
@@ -232,6 +245,8 @@ Test-Group 'cluster' {
         }
         $drift = @($ext | Where-Object { -not [string]::Equals($_, $NodeAPublicIp, [StringComparison]::Ordinal) })
         if ($drift.Count -gt 0) { return @($false, "platform node ExternalIP [$($drift -join ',')] != constant $NodeAPublicIp -- update the constant (source: infra/oci output node_a_reserved_public_ip)") }
+        # 표류 검사를 지난 뒤에만 platform 노드 집합을 확정한다 — node-1 FAIL이면 traefik-2·aop-1도 전제 미충족으로 FAIL.
+        $script:platformNodeNames = $names
         $script:nodeIpOk = $true
         $note = if ($ext.Count -eq 0) { 'kubelet reports no ExternalIP; constant used' } else { 'kubelet ExternalIP matches constant' }
         return @($true, "nodes=[$($names -join ',')] $note")
@@ -285,76 +300,57 @@ Test-Group 'aop' {
         Assert $id $false "direct origin access SUCCEEDED: curl exit=$($r.code) status=[$($r.status)] -- Authenticated Origin Pulls / NSG not enforced"
         return
     }
-    $layer = switch ($r.code) {
-        28 { 'timeout -- blocked before TLS (NSG/network layer; operator host is outside Cloudflare ranges)' }
-        7 { 'connection refused' }
-        35 { 'TLS handshake failure (AOP client-certificate rejection)' }
-        56 { 'receive failure during TLS (AOP rejection)' }
-        55 { 'send failure during TLS' }
-        default { "curl exit $($r.code)" }
+    # 거부로 인정하는 curl 종료 코드 화이트리스트 — 그 외는 거부가 아니라 도구/호출 오류(-1 실행 실패, 2 사용법, 3 URL, 6 DNS, 8 이상 응답 등)이므로 FAIL.
+    $refusalLabels = @{
+        7  = 'failed to connect (refused/unreachable)'
+        28 = 'timeout -- blocked before TLS (NSG/network layer; operator host is outside Cloudflare ranges)'
+        35 = 'TLS handshake failure (AOP client-certificate rejection)'
+        52 = 'empty reply from server (connection closed without a response)'
+        55 = 'send failure during TLS'
+        56 = 'receive failure during TLS (AOP rejection alert)'
     }
-    Assert $id $true "refused: $layer; err=$($r.err)"
+    $code = [int]$r.code
+    if (-not $refusalLabels.ContainsKey($code)) {
+        Assert $id $false "unexpected curl exit $code (not a refusal); err=$($r.err)"
+        return
+    }
+    Assert $id $true "refused: curl exit $code = $($refusalLabels[$code]); err=$($r.err)"
 }
 
 # ---------- cert: 와일드카드 인증서 Secret 존재·만료 (T032: kube-system/wildcard-joshuatech-dev-tls 존재·만료 > 30일) ----------
+# Secret 값은 읽지 않는다(계약 §에이전트 자격) — cert-manager Certificate(spec.secretName = 그 Secret)의 Ready·status.notAfter로만 판정한다.
 Test-Group 'cert' {
-    $id1 = "cert-1: Secret $WildcardSecretNamespace/$WildcardSecretName exists"
-    $id2 = "cert-2: wildcard certificate NotAfter is more than $MinCertDaysLeft days away"
+    $id1 = "cert-1: Secret $WildcardSecretNamespace/$WildcardSecretName exists (cert-manager Certificate spec.secretName match, Ready=True)"
+    $id2 = "cert-2: wildcard certificate status.notAfter is more than $MinCertDaysLeft days away (TotalDays > $MinCertDaysLeft)"
     if (-not $script:kubeReady) {
         Assert $id1 $false "kubectl unavailable ($script:kubeReason)"
         Assert $id2 $false "kubectl unavailable ($script:kubeReason)"
         return
     }
-    $notAfterUtc = $null
-    # 1차: Secret 직접(자격이 허용할 때). 값(base64·PEM)은 변수에만 머물고 절대 출력하지 않는다.
-    $r = Invoke-Kubectl @('get', 'secret', '-n', $WildcardSecretNamespace, $WildcardSecretName, '-o', 'jsonpath={.data.tls\.crt}')
-    if ($r.code -eq 0) {
-        if ([string]::IsNullOrWhiteSpace($r.out)) { Assert $id1 $false 'Secret exists but data.tls.crt is empty'; Assert $id2 $false 'no certificate to inspect'; return }
-        $cert = $null
-        try {
-            $pem = [Text.Encoding]::ASCII.GetString([Convert]::FromBase64String($r.out.Trim()))
-            $m = [regex]::Match($pem, '-----BEGIN CERTIFICATE-----(?<b64>[\s\S]*?)-----END CERTIFICATE-----')   # 첫 블록 = leaf
-            if (-not $m.Success) { throw [FormatException]::new('no PEM CERTIFICATE block in tls.crt') }
-            $der = [Convert]::FromBase64String(($m.Groups['b64'].Value -replace '\s', ''))
-            $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($der)
-            $notAfterUtc = $cert.NotAfter.ToUniversalTime()
-            Assert $id1 $true "via Secret data.tls.crt (X.509 subject=$($cert.Subject))"
-        } catch {
-            Assert $id1 $false "Secret present but tls.crt did not parse as X.509: $($_.Exception.GetType().Name): $($_.Exception.Message)"
-            Assert $id2 $false 'certificate unparseable'
-            return
-        } finally { if ($null -ne $cert) { $cert.Dispose() }; $pem = $null; $der = $null }
-    } elseif ($r.err.IndexOf('forbidden', [StringComparison]::OrdinalIgnoreCase) -ge 0) {
-        # 2차: agent-view는 Secret get이 없다(계약) → cert-manager Certificate(spec.secretName = Secret)의 Ready·notAfter로 판정.
-        $g = Get-KubeJson @('certificates.cert-manager.io', '-n', $WildcardSecretNamespace)
-        if ($null -eq $g.obj) { Assert $id1 $false "Secret get forbidden for this identity and cert-manager Certificate fallback failed: $($g.reason)"; Assert $id2 $false 'no certificate source'; return }
-        $c = @($g.obj.items | Where-Object { $null -ne $_ -and [string]::Equals("$($_.spec.secretName)", $WildcardSecretName, [StringComparison]::Ordinal) })
-        if ($c.Count -ne 1) { Assert $id1 $false "Secret get forbidden; expected exactly 1 cert-manager Certificate with spec.secretName=$WildcardSecretName, found $($c.Count)"; Assert $id2 $false 'no certificate source'; return }
-        $cname = "$($c[0].metadata.name)"
-        $ready = @($c[0].status.conditions | Where-Object { $null -ne $_ -and [string]::Equals("$($_.type)", 'Ready', [StringComparison]::Ordinal) })
-        $isReady = ($ready.Count -eq 1) -and [string]::Equals("$($ready[0].status)", 'True', [StringComparison]::Ordinal)
-        if (-not $isReady) {
-            $reasons = @($ready | ForEach-Object { "$($_.reason)" })
-            Assert $id1 $false "Certificate $cname Ready != True (reason=[$($reasons -join ',')]) -- cert-manager sets Ready=True only when the Secret exists and is valid"
-            Assert $id2 $false 'certificate not Ready'
-            return
-        }
-        Assert $id1 $true "via cert-manager Certificate $cname Ready=True (agent-view has no Secret get; contract §agent credentials)"
-        $na = "$($c[0].status.notAfter)"
-        $parsed = [DateTimeOffset]::MinValue
-        if (-not [DateTimeOffset]::TryParse($na, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind, [ref]$parsed)) {
-            Assert $id2 $false "Certificate $cname status.notAfter unparseable: [$na]"
-            return
-        }
-        $notAfterUtc = $parsed.UtcDateTime
-    } elseif ($r.err.IndexOf('NotFound', [StringComparison]::Ordinal) -ge 0) {
-        Assert $id1 $false "Secret not found: $(Clip $r.err)"; Assert $id2 $false 'no certificate'; return
-    } else {
-        Assert $id1 $false "kubectl get secret exit=$($r.code) err=$(Clip $r.err)"; Assert $id2 $false 'no certificate'; return
+    $g = Get-KubeJson @('certificates.cert-manager.io', '-n', $WildcardSecretNamespace)
+    if ($null -eq $g.obj) { Assert $id1 $false "cert-manager Certificate list failed: $($g.reason)"; Assert $id2 $false 'no certificate source'; return }
+    $c = @($g.obj.items | Where-Object { $null -ne $_ -and [string]::Equals("$($_.spec.secretName)", $WildcardSecretName, [StringComparison]::Ordinal) })
+    if ($c.Count -ne 1) { Assert $id1 $false "expected exactly 1 cert-manager Certificate in $WildcardSecretNamespace with spec.secretName=$WildcardSecretName, found $($c.Count)"; Assert $id2 $false 'no certificate source'; return }
+    $cname = "$($c[0].metadata.name)"
+    $ready = @($c[0].status.conditions | Where-Object { $null -ne $_ -and [string]::Equals("$($_.type)", 'Ready', [StringComparison]::Ordinal) })
+    $isReady = ($ready.Count -eq 1) -and [string]::Equals("$($ready[0].status)", 'True', [StringComparison]::Ordinal)
+    if (-not $isReady) {
+        $reasons = @($ready | ForEach-Object { "$($_.reason)" })
+        Assert $id1 $false "Certificate $cname Ready != True (reason=[$($reasons -join ',')]) -- cert-manager sets Ready=True only when the Secret exists and is valid"
+        Assert $id2 $false 'certificate not Ready'
+        return
     }
-    $daysLeft = [math]::Floor(($notAfterUtc - [DateTime]::UtcNow).TotalDays)
+    Assert $id1 $true "Certificate $cname Ready=True (Secret value never read; agent-view has no Secret get)"
+    $na = "$($c[0].status.notAfter)"
+    $parsed = [DateTimeOffset]::MinValue
+    if (-not [DateTimeOffset]::TryParse($na, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind, [ref]$parsed)) {
+        Assert $id2 $false "Certificate $cname status.notAfter unparseable: [$na]"
+        return
+    }
+    $notAfterUtc = $parsed.UtcDateTime
+    $daysLeft = ($notAfterUtc - [DateTime]::UtcNow).TotalDays   # 내림 없음 — 30일을 초과해야 PASS
     $naText = $notAfterUtc.ToString('yyyy-MM-ddTHH:mm:ssZ', [Globalization.CultureInfo]::InvariantCulture)
-    Assert $id2 ($daysLeft -gt $MinCertDaysLeft) "notAfter=$naText daysLeft=$daysLeft (min $MinCertDaysLeft)"
+    Assert $id2 ($daysLeft -gt $MinCertDaysLeft) "notAfter=$naText daysLeft=$($daysLeft.ToString('0.00', [Globalization.CultureInfo]::InvariantCulture)) (must exceed $MinCertDaysLeft)"
 }
 
 # ---------- 요약 ----------
