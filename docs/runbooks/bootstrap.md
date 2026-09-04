@@ -113,7 +113,15 @@
 - **sensitive 출력 보관(운영자 확인 2026-09-03)**: `service_tokens`(web-bff-dev·web-bff-prod·tester-m2m·tester-k8s client_id/secret) + `tunnel_token` → 비밀번호 관리자. Vault 투입은 T043(`kv/platform/access/*`), 터널 토큰은 T014/T035 cloudflared 설치 시 사용.
 - **효과**: `argo`·`vault`·`traefik`·`admin`·`preview`·`k8s`·`ssh-a/b`·`auth./if/admin`은 Access(GitHub `joshua92y@gmail.com`) 뒤. SSL strict·HTTPS 강제·TLS 1.2·AOP 존 설정 코드 고정. 터널 CNAME `ssh-a`·`ssh-b`·`k8s` 준비(cloudflared는 T014에서 기동).
 
-(T012–T014 기록은 §1 이후 §2·§5 절에 추가)
+### T012 — v1 배포 차단 (2026-09-04)
+
+- **사용자 결정(옵션 B 최소안, 2026-09-04)**: 승인 문면의 "v1 GitHub Secrets 전부 삭제"는 **US8(T105) v1 삭제 시 일괄**로 이월. 근거: v1 CI가 v2 인프라에 쓰기 못 하게 하는 것이 목적이며, 토큰을 원천에서 revoke하면 시크릿은 껍데기가 되고 시크릿 삭제는 복구 불가라 부담. 현재 `joshua92y/joshtech` 시크릿 20개(CF_API_TOKEN·DJANGO_API_URL·FLY_API_TOKEN·GHCR_TOKEN·INTERNAL_API_KEY·NEON_API_KEY·OCI_HOST_CACHE_VM·OCI_HOST_FASTAPI_VM·OCI_SSH_PRIVATE_KEY·PAGE_ACCESS_PASSWORD·POSTMARK_API_KEY·R2_ACCESS_KEY·R2_ACCOUNT_ID·R2_BUCKET·R2_ENDPOINT·R2_SECRET_KEY·RAILWAY_TOKEN·RENDER_DEPLOY_HOOK·RENDER_DEPLOY_HOOK_DJANGO·SECRET_KEY)는 **T105에서 삭제**(T105 문면 "잔여 확인만"은 실제 삭제로 읽는다).
+- **PR**: `joshua92y/joshtech` PR #1 — 워크플로 4개(`deploy-fastapi-ghcr`·`deploy-django-ghcr`·`deploy-dragonfly-worker`·`deploy-nextjs-ghcr`)에서 `push(paths)` 트리거 제거, `workflow_dispatch`만 유지(23줄 삭제, YAML 4/4 검증). squash 머지 `5b60554`(2026-09-04 01:47 UTC), 브랜치 삭제. 머지 후 main 검증: 4개 모두 `on: workflow_dispatch:`만, 머지로 트리거된 실행 0. main에 branch protection/ruleset 없음.
+- **Render**: 웹서비스 `portfolio-django-admin` Auto-Deploy **Off**(운영자 2026-09-04).
+- **Cloudflare**: v1 사용자 API 토큰 **`joshtech_cf_api` 폐기**(운영자 2026-09-04). 유효 토큰은 `joshuatech-tofu-deploy`·`joshuatech-analytics-read`·`joshuatech-cert-manager-dns01`·`joshuatech-ddns-dns-edit`. **R2 API 토큰(v1 `R2_ACCESS_KEY`)** revoke는 운영자 확인 대기.
+- **잔여 자격(의도)**: `OCI_SSH_PRIVATE_KEY`(v1 SSH 키)는 T014에서 두 노드 `authorized_keys`를 `jt-ops`로 교체하며 무효화(파기 순서는 §0 토큰 표 ⑦).
+
+(T013–T014 기록은 §2 절에 추가)
 
 ## §2 재이미지·host-prep
 
