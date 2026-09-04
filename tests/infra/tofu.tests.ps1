@@ -86,8 +86,12 @@
 #     볼트는 정확히 1, vault_type DEFAULT, display_name joshuatech-vault; 키·볼트 블록 모두 prevent_destroy [tf-text].
 #   - Cloudflare Access(T008/T011): cloudflare_zero_trust_access_application 블록이 1개 이상 있어야 하고,
 #     application·policy 두 타입의 모든 블록이 각각 session_duration을 명시해야 한다(양측 무조건 검사).
+#   - cloudflared 터널(T011/T039): 터널 리소스·config 블록 각각 정확히 1개, 둘 다 remote-managed(config_src·source = "cloudflare")이고
+#     ingress는 선언 순서대로 정확히 4개다 — ssh-a → 노드 A ssh:22, ssh-b → 노드 B ssh:22, k8s → tcp://kubernetes.default.svc.cluster.local:443,
+#     hostname 없는 http_status:404이 마지막. k8s origin이 :6443이면 FAIL이다(Service `kubernetes`는 port 443 → targetPort 6443이고
+#     cloudflared tcp origin은 주어진 포트로 그대로 dial하므로 6443은 연결 실패 — T039 리뷰 J2).
 #
-# 단언 수: 38 (tool 1, enc 1, dir 2, validate 4, plan 2, nsg 4, sl 1, inst 3, bucket 4, iam 7, dg 2, kms 3, lc 2, budget 1, access 1)
+# 단언 수: 40 (tool 1, enc 1, dir 2, validate 4, plan 2, nsg 4, sl 1, inst 3, bucket 4, iam 7, dg 2, kms 3, lc 2, budget 1, access 1, tunnel 2)
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -1137,6 +1141,63 @@ try {
         $pols = Get-TfResourceBlocks $cfDir 'cloudflare_zero_trust_access_policy'
         $bad = @(@($apps) + @($pols) | Where-Object { $_.body -notmatch 'session_duration\s*=' } | ForEach-Object { "$($_.file):$($_.name)" })
         Assert 'access-1: >=1 Access application block; every application AND policy block sets session_duration [tf-text]' ($apps.Count -ge 1 -and $bad.Count -eq 0) "app blocks=$($apps.Count), policy blocks=$($pols.Count); missing session_duration: $($bad -join ', ')"
+    }
+
+    # ---------- 11. cloudflared 터널 ingress [tf-text] — 계약 hostnames-and-access.md §호스트 표(ssh-a·ssh-b·k8s) ----------
+    # k8s origin 포트가 443인 것이 핵심이다(T039 리뷰 J2): `default` ns의 Service `kubernetes`는 port 443 → targetPort 6443이고,
+    # cloudflared의 tcp origin은 주어진 host:port로 그대로 dial하므로 6443을 적으면 서비스 포트가 없어 연결이 실패한다.
+    # NetworkPolicy `allow-kube-api`(노드 A/32:6443)와도 정합이다 — ClusterIP DNAT가 filter 평가보다 먼저라 목적지는 이미 노드 A:6443이다.
+    Test-Group 'tunnel-1' {
+        $cfgs = @(Get-TfResourceBlocks $cfDir 'cloudflare_zero_trust_tunnel_cloudflared_config')
+        $bad = @()
+        if ($cfgs.Count -ne 1) { $bad += "tunnel config blocks=$($cfgs.Count) (want exactly 1)" }
+        # ingress 항목을 선언 순서대로 모은다: hostname 다음의 service가 그 항목의 origin, hostname 없는 service는 catch-all.
+        $entries = @()
+        foreach ($c in $cfgs) {
+            $cur = $null
+            foreach ($m in ([regex]'(?m)^\s*(hostname|service)\s*=\s*"([^"]*)"').Matches($c.body)) {
+                $k = $m.Groups[1].Value; $v = $m.Groups[2].Value
+                if ($k -eq 'hostname') {
+                    if ($null -ne $cur) { $bad += "ingress entry '$($cur.hostname)' has no service" }
+                    $cur = @{ hostname = $v; service = '' }
+                }
+                else {
+                    if ($null -eq $cur) { $cur = @{ hostname = ''; service = $v } } else { $cur.service = $v }
+                    $entries += $cur; $cur = $null
+                }
+            }
+            if ($null -ne $cur) { $bad += "ingress entry '$($cur.hostname)' has no service" }
+        }
+        if ($entries.Count -ne 4) { $bad += "ingress entries=$($entries.Count) (want exactly 4: ssh-a, ssh-b, k8s, catch-all)" }
+        else {
+            if ($entries[0].hostname -notmatch '^ssh-a\.') { $bad += "ingress[0] hostname='$($entries[0].hostname)' (want ssh-a.<zone>)" }
+            if ($entries[0].service -notmatch '^ssh://.+:22$' -or $entries[0].service -notmatch '(?i)node[-_]?a') { $bad += "ingress[0] service='$($entries[0].service)' (want ssh://<node A private ip>:22)" }
+            if ($entries[1].hostname -notmatch '^ssh-b\.') { $bad += "ingress[1] hostname='$($entries[1].hostname)' (want ssh-b.<zone>)" }
+            if ($entries[1].service -notmatch '^ssh://.+:22$' -or $entries[1].service -notmatch '(?i)node[-_]?b') { $bad += "ingress[1] service='$($entries[1].service)' (want ssh://<node B private ip>:22)" }
+            if ($entries[2].hostname -notmatch '^k8s\.') { $bad += "ingress[2] hostname='$($entries[2].hostname)' (want k8s.<zone>)" }
+            if (-not [string]::Equals($entries[2].service, 'tcp://kubernetes.default.svc.cluster.local:443', [StringComparison]::Ordinal)) {
+                $bad += "ingress[2] service='$($entries[2].service)' (want tcp://kubernetes.default.svc.cluster.local:443 -- Service port 443 -> targetPort 6443)"
+            }
+            if ($entries[3].hostname -ne '') { $bad += "ingress[3] must be the hostname-less catch-all (got hostname='$($entries[3].hostname)')" }
+            if (-not [string]::Equals($entries[3].service, 'http_status:404', [StringComparison]::Ordinal)) { $bad += "ingress[3] service='$($entries[3].service)' (want http_status:404)" }
+            foreach ($i in 0..2) { if ($entries[$i].hostname -notmatch 'zone_name') { $bad += "ingress[$i] hostname='$($entries[$i].hostname)' does not reference var.zone_name" } }
+        }
+        # 어떤 origin도 6443을 향하지 않는다(J2 회귀 가드 — 항목 수가 달라져도 남는 검사)
+        foreach ($e in $entries) { if ($e.service -match ':6443(\D|$)') { $bad += "ingress service '$($e.service)' targets :6443 (the K8s API Service port is 443)" } }
+        $seen = @($entries | ForEach-Object { "$($_.hostname)->$($_.service)" })
+        Assert 'tunnel-1: exactly one tunnel config with 4 ingress entries in order (ssh-a -> node A 22, ssh-b -> node B 22, k8s -> tcp://kubernetes.default.svc.cluster.local:443, hostname-less http_status:404 last); no origin targets :6443 [tf-text]' ($bad.Count -eq 0) "config blocks=$($cfgs.Count); entries: $($seen -join ' | '); bad: $($bad -join ' | ')"
+    }
+
+    # 터널은 remote-managed다(설정 정본 = Cloudflare 쪽). cloudflared pod에는 토큰만 주고 config 파일을 두지 않는 근거이므로 고정한다.
+    Test-Group 'tunnel-2' {
+        $tuns = @(Get-TfResourceBlocks $cfDir 'cloudflare_zero_trust_tunnel_cloudflared')
+        $cfgs = @(Get-TfResourceBlocks $cfDir 'cloudflare_zero_trust_tunnel_cloudflared_config')
+        $bad = @()
+        if ($tuns.Count -ne 1) { $bad += "tunnel resources=$($tuns.Count) (want exactly 1)" }
+        if ($cfgs.Count -ne 1) { $bad += "tunnel config blocks=$($cfgs.Count) (want exactly 1)" }
+        foreach ($t in $tuns) { if ($t.body -notmatch 'config_src\s*=\s*"cloudflare"') { $bad += "$($t.file):$($t.name) config_src != cloudflare (remote-managed)" } }
+        foreach ($c in $cfgs) { if ($c.body -notmatch '(?m)^\s*source\s*=\s*"cloudflare"') { $bad += "$($c.file):$($c.name) source != cloudflare (remote-managed)" } }
+        Assert 'tunnel-2: exactly one tunnel resource with config_src = "cloudflare" and its config block with source = "cloudflare" (remote-managed; cloudflared pod carries only the token) [tf-text]' ($bad.Count -eq 0) "tunnels=$($tuns.Count) configs=$($cfgs.Count); bad: $($bad -join ' | ')"
     }
 } finally {
     Remove-Item -LiteralPath $planFile -Force -ErrorAction SilentlyContinue
