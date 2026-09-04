@@ -279,3 +279,9 @@ output "node_b_reserved_public_ip" {
   description = "노드 B(joshtech_cache) reserved 공개 IP"
   value       = oci_core_public_ip.node_b.ip_address
 }
+
+# T013/T014 임시 SSH 규칙(tofu 밖, OCI CLI add/remove)의 대상 NSG — instances.tf 머리 주석 5·8단계.
+output "nsg_cluster_id" {
+  description = "nsg-cluster OCID"
+  value       = oci_core_network_security_group.cluster.id
+}
