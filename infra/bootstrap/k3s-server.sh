@@ -32,7 +32,8 @@
 #      하나를 추가해 T039(cloudflared 터널 가동) 끝까지 유지한다. 추가는 infra/oci/instances.tf 머리 주석 T014 5단계와 같은 명령(description
 #      'T035-T039 temp ssh (remove at T039)'). 이 절차에서는 제거하지 않음(T039 몫 — 제거 증명은 nsg rules list). 창 동안 노드 B 의 22 도 열린다.
 #   1. 서버 토큰(짧은 형식) — 워크스테이션에서 생성해 비밀번호 관리자에 먼저 저장하고, 노드에는 파일로만 올린다(화면에 찍지 않는다):
-#        $tok = (openssl rand -hex 32).Trim()                                   # 64 hex
+#        $tok = [Convert]::ToHexString([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)).ToLower()   # 64 hex, .NET 만으로
+#        # (openssl 이 PATH 에 있으면 $tok = (openssl rand -hex 32).Trim() 도 같다 — PowerShell 7 기본 PATH 에는 없을 수 있다)
 #        # → 비밀번호 관리자 항목 "k3s server token (node A, short form)" 에 $tok 저장. 노드 B 조인(T036)은 A 가 생성하는 K10 보안 형식을 따로 쓴다.
 #        [IO.File]::WriteAllText("$env:TEMP\k3s-token", $tok)                  # 개행 없이 — PowerShell 파이프/Set-Content 는 CRLF 를 붙인다
 #        scp … "$env:TEMP\k3s-token" ubuntu@144.24.85.118:/home/ubuntu/k3s-token   # /home/ubuntu 는 0750 — /tmp 보다 좁다
@@ -46,21 +47,32 @@
 #   3. 이 스크립트 실행(두 번 — 2회차는 changes this run: 0 이어야 한다):
 #        scp … infra/bootstrap/k3s-server.sh ubuntu@144.24.85.118:/tmp/k3s-server.sh
 #        ssh … ubuntu@144.24.85.118 "sudo K3S_TOKEN_FILE=/etc/rancher/k3s/token INSTALL_SCRIPT_SHA256=<절차 2 의 해시> bash /tmp/k3s-server.sh"
-#        (같은 명령 한 번 더) → summary: changes this run: 0, node Ready=1, labels=1, secrets-encrypt Enabled
+#        (같은 명령 한 번 더) → summary: changes this run: 0, node Ready=1, labels=1, secrets-encrypt Enabled(XSalsa20-POLY1305)
+#      첫 설치(1회차)는 install.sh 안의 서비스 기동에서 멈춰 보일 수 있다: k3s.service 는 TimeoutStartSec=0 이라 systemd 가 기동을 기다리며,
+#      이 스크립트의 180 s Ready 상한은 그 뒤(재실행 경로 포함)에만 적용된다. 진행 상황은 다른 세션에서 ssh … "sudo journalctl -u k3s -f" 로 본다.
 #   4. admin kubeconfig(/etc/rancher/k3s/k3s.yaml, root 0600) 1회 취득 — 터미널에 출력하지 않는다(sudo cat … 금지). 복사본을 만들어 scp 로 가져온다:
 #        ssh … ubuntu@144.24.85.118 "sudo install -m 600 -o ubuntu -g ubuntu /etc/rancher/k3s/k3s.yaml /home/ubuntu/k3s-admin.yaml"
 #        scp … ubuntu@144.24.85.118:/home/ubuntu/k3s-admin.yaml "$env:TEMP\k3s-admin.yaml"
 #        ssh … ubuntu@144.24.85.118 "shred -u /home/ubuntu/k3s-admin.yaml"
-#      파일의 server: 는 기본 https://127.0.0.1:6443 — cloudflared 경유(T039 뒤: cloudflared access tcp --hostname k8s.joshuatech.dev --url 127.0.0.1:6443)
-#      에는 그대로 쓰고, 부트스트랩 창의 직접 접근(사설 IP, 점프/VPN 경유)에는 https://10.0.7.78:6443 으로 바꾼다(둘 다 SAN 에 있다). 내용을 비밀번호
-#      관리자 항목 "k3s admin kubeconfig (node A)" 에 저장한 뒤 Remove-Item "$env:TEMP\k3s-admin.yaml". 이 kubeconfig 는 운영자 전용 —
-#      에이전트·tester·CI 에는 절대 배포하지 않는다(그들은 T041 의 agent-view 토큰 kubeconfig).
-#   5. 확인(운영자 kubeconfig): kubectl get nodes -L role,svccontroller.k3s.cattle.io/enablelb → 1 Ready, role=platform, enablelb=true.
+#      파일의 server: 는 기본 https://127.0.0.1:6443 — 그대로 둔다. 부트스트랩 창에는 SSH 로컬 포워딩(아래 5), T039 뒤에는 cloudflared
+#      (cloudflared access tcp --hostname k8s.joshuatech.dev --url 127.0.0.1:6443)가 같은 주소를 제공하므로 편집이 필요 없다.
+#      보관: 비밀번호 관리자 항목 "k3s admin kubeconfig (node A)" + 운영자 워크스테이션 $HOME\.kube\joshuatech-admin.yaml(소유자 전용 ACL —
+#      icacls "$HOME\.kube\joshuatech-admin.yaml" /inheritance:r /grant:r "$env:USERNAME:(R,W)"), 그리고 Remove-Item "$env:TEMP\k3s-admin.yaml".
+#      취급: 운영자 셸에서 kubectl --kubeconfig "$HOME\.kube\joshuatech-admin.yaml" … 로만 쓴다. 에이전트 셸의 KUBECONFIG 로 내보내지 않고,
+#      이 저장소·워크트리·CI 에 두지 않는다(.claude/rules/infra.md "Credentials": admin kubeconfig 는 에이전트 환경 변수·파일·저장소에 "임시로도"
+#      두지 않는다). 에이전트·tester 는 T041 의 agent-view 토큰 kubeconfig 만 쓴다.
+#   5. 확인 — 둘 중 하나. (a) 노드에서 직접:
+#        ssh … ubuntu@144.24.85.118 "sudo k3s kubectl get nodes -L role,svccontroller.k3s.cattle.io/enablelb"
+#      (b) 워크스테이션에서 SSH 로컬 포워딩(NSG 변경 0, kubeconfig 편집 0 — server: 가 이미 127.0.0.1:6443):
+#        ssh -i ~/.ssh/joshuatech-ops -o IdentitiesOnly=yes -N -L 6443:127.0.0.1:6443 ubuntu@144.24.85.118      # 별도 창에서 유지
+#        kubectl --kubeconfig "$HOME\.kube\joshuatech-admin.yaml" get nodes -L role,svccontroller.k3s.cattle.io/enablelb
+#      기대: 1 Ready, role=platform, enablelb=true.
 #   6. 실행 기록은 docs/runbooks/bootstrap.md §3 에 컨트롤러 지시로 적는다. cloudflared access logout 은 부트스트랩 예외 경로에서 해당 없음.
 #
 # 절대 하지 않는 것: 토큰 생성·출력·로그, kubeconfig 출력·복사(절차 4 는 운영자의 손), IMDS 조회, "curl 파이프 sh", 버전 변경(다른 버전이 있으면 중단),
 #   k3s 재시작(config 가 바뀌어도 실행 중인 k3s 는 건드리지 않고 경고만), host-prep 결과의 재구성(iptables·모듈·시간대·패키지는 검증만),
-#   kubectl 로 리소스 생성·삭제·변경.
+#   kubectl 로 리소스 생성·삭제·변경. k3s-uninstall.sh 실행(그 스크립트는 /etc/rancher/k3s 를 통째로 지운다 — 토큰과 config.yaml 까지 사라지므로
+#   재부트스트랩은 위 절차 1단계(토큰 배치)부터 다시 해야 한다).
 set -euo pipefail
 
 # ---------- 상수 ----------
@@ -217,7 +229,7 @@ install_k3s() {
   local have
   have=$(installed_k3s_version)
   if [ -n "$have" ] && [ "$have" != "$K3S_VERSION" ]; then
-    die "설치된 k3s $have ≠ 요구 $K3S_VERSION — 이 스크립트는 버전을 바꾸지 않는다(패치 승격은 system-upgrade-controller Plan 몫, 다운그레이드 불가)"
+    die "설치된 k3s $have ≠ 요구 $K3S_VERSION — 이 스크립트는 버전을 바꾸지 않는다(패치 승격은 system-upgrade-controller Plan 몫, 다운그레이드 불가). 설치는 그대로 두고 config·상태만 재검증하려면 K3S_VERSION=$have 로 다시 실행한다"
   fi
   if [ "$have" = "$K3S_VERSION" ] && [ -f "$K3S_UNIT" ]; then
     log "k3s $have already installed ($K3S_UNIT present) — installer skipped"
@@ -227,7 +239,7 @@ install_k3s() {
   # env -i: install.sh 는 K3S_* 를 k3s.service.env 에 기록하므로 이 셸의 K3S_TOKEN_FILE/K3S_VERSION 을 넘기지 않는다. 플래그는 config.yaml 에만(K3S-D1).
   # INSTALL_K3S_EXEC=server 뿐 — CLI 인자 없음. 바이너리 sha256 은 install.sh 의 verify_binary 가 릴리스 자산과 대조한다.
   log "installing k3s $K3S_VERSION (server) from $INSTALL_SCRIPT"
-  env -i PATH="$PATH" HOME=/root INSTALL_K3S_VERSION="$K3S_VERSION" INSTALL_K3S_EXEC=server sh "$INSTALL_SCRIPT"
+  env -i PATH="$PATH" HOME=/root INSTALL_K3S_VERSION="$K3S_VERSION" INSTALL_K3S_EXEC=server sh "$INSTALL_SCRIPT" || die "install.sh 실패(exit $?) — 위 [ERROR] 참조"
   have=$(installed_k3s_version)
   [ "$have" = "$K3S_VERSION" ] || die "설치 뒤 버전 불일치: got '$have' want '$K3S_VERSION'"
   [ -f "$K3S_UNIT" ] || die "설치 뒤에도 $K3S_UNIT 이 없다"
@@ -257,11 +269,12 @@ wait_node_ready() {
   local i out ready=0
   for ((i = 0; i < READY_TIMEOUT / 5; i++)); do
     out=$(k3s kubectl get nodes --no-headers 2>/dev/null || true)
-    if awk '$2 == "Ready" { f = 1 } END { exit !f }' <<< "$out"; then ready=1; break; fi
+    # STATUS 열은 Ready / Ready,SchedulingDisabled(cordon) / NotReady 등 — 쉼표 앞부분이 Ready 면 Ready 로 센다
+    if awk '$2 ~ /^Ready(,|$)/ { f = 1 } END { exit !f }' <<< "$out"; then ready=1; break; fi
     sleep 5
   done
   [ "$ready" = 1 ] || die "노드가 ${READY_TIMEOUT}s 안에 Ready 가 아니다 — journalctl -u k3s -n 100 / k3s kubectl get nodes"
-  READY_NODES=$(awk '$2 == "Ready"' <<< "$out" | grep -c . || true)
+  READY_NODES=$(awk '$2 ~ /^Ready(,|$)/' <<< "$out" | grep -c . || true)
   log "node Ready: $READY_NODES (waited ~$((i * 5))s)"
 }
 
@@ -280,7 +293,8 @@ check_secrets_encryption() {
     sleep 5
   done
   grep -q '^Encryption Status: Enabled' <<< "$st" || die "secrets-encryption 이 Enabled 가 아니다(k3s secrets-encrypt status) — config.yaml 의 secrets-encryption: true 가 첫 기동에 적용됐는지 확인"
-  grep -qi 'secretbox' <<< "$st" || warn "secrets-encrypt status 에 secretbox 가 보이지 않는다 — provider 확인(K3S-D2)"
+  # v1.36 의 status 는 키 타입을 XSalsa20-POLY1305(= secretbox 의 알고리즘)로 표기한다 — 두 표기 모두 허용한다
+  grep -qiE 'XSalsa20|secretbox' <<< "$st" || warn "secrets-encrypt status 에 secretbox/XSalsa20 표기가 없다 — provider 확인(K3S-D2)"
   SE_STATUS=$(grep -E '^(Encryption Status|Current Rotation Stage|Server Encryption Hashes):' <<< "$st" | tr '\n' ';' || true)
   log "secrets-encrypt: $SE_STATUS"
 }
