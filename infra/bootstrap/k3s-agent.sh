@@ -45,7 +45,8 @@
 #   3. 이 스크립트 실행(두 번 — 2회차는 changes this run: 0 이어야 한다):
 #        scp … infra/bootstrap/k3s-agent.sh ubuntu@129.154.62.250:/tmp/k3s-agent.sh
 #        ssh … ubuntu@129.154.62.250 "sudo INSTALL_SCRIPT_SHA256=<T035 절차 2 의 해시> bash /tmp/k3s-agent.sh"
-#        (같은 명령 한 번 더) → summary: changes this run: 0, service enabled+active, registration=confirmed
+#        (같은 명령 한 번 더) → summary: changes this run: 0, service enabled+active, registration=confirmed-earlier-in-boot
+#        (2회차의 registration 은 confirmed 가 아니라 confirmed-earlier-in-boot 가 정상이다 — 이미 조인된 노드는 새 등록 로그를 남기지 않는다)
 #      ⚠ 멈춘 것처럼 보이면(무한 대기): 토큰이나 CA 해시가 어긋나면 k3s agent 는 **실패하지 않고 영원히 재시도**하고 unit 은 TimeoutStartSec=0 이라
 #        install.sh 의 서비스 기동과 systemctl enable --now 가 그대로 블록된다. 다른 터미널에서
 #          ssh … ubuntu@129.154.62.250 "sudo journalctl -u k3s-agent -f"
@@ -74,11 +75,12 @@ RULES_V4=/etc/iptables/rules.v4
 WG_MODULES_CONF=/etc/modules-load.d/wireguard.conf
 TZ_WANT=Asia/Seoul
 REGISTER_TIMEOUT=90   # 초. 등록 로그 대기 상한(5 s 간격)
+REGISTER_PATTERN='Successfully registered node|Node was previously registered'
 
 CHANGES=()
 CONFIG_CHANGED=0
 INSTALLED_THIS_RUN=0
-REGISTERED=unconfirmed
+REGISTERED=unconfirmed   # confirmed | confirmed-earlier-in-boot | unconfirmed (wait_node_registered 의 3단계)
 RUN_STARTED_AT=$(date +%s)   # 등록 로그를 이번 실행분으로만 한정하는 기준 시각(낡은 성공 로그로 confirmed 되는 것을 막는다)
 
 log()  { printf '[k3s-agent] %s\n' "$*"; }
@@ -281,20 +283,31 @@ ensure_service() {
 # ---------- 7. 등록 로그 대기 ----------
 # 이 노드에는 kubectl 이 없다. 이 부팅의 k3s-agent 저널에서 kubelet 의 등록 메시지("Successfully registered node" — 첫 등록, 또는
 # "Node was previously registered" — 재부팅/재실행)를 기다린다. 없으면 die 하지 않고 warn 한다: Ready 판정의 권위는 운영자 절차 4 의 kubectl 이다.
-# SINCE: 이 실행이 시작된 시각. -b(부팅 전체)만 쓰면 지난 실행의 낡은 성공 로그로도 confirmed 가 되어 이번 조인의 증거가 되지 못한다.
+# 등록 판정은 3단계다(2026-09-04 T036 실행 실측):
+#   confirmed                 이번 실행 시작(--since $RUN_STARTED_AT) 이후 등록 로그 — 첫 조인의 증거.
+#   confirmed-earlier-in-boot 이번 실행분은 없지만 이번 부팅(-b) 로그에는 있음 — 이미 조인된 노드의 재실행(멱등 경로)에서 정상이다.
+#                             kubelet 은 재조인이 필요 없으면 새 등록 로그를 남기지 않으므로, 이 경우를 WARN 으로 두면 정상 재실행이 이상으로 보인다.
+#   unconfirmed               둘 다 없음 — 이때만 WARN.
+# 어느 경우든 조인 판정의 권위는 운영자 워크스테이션의 `kubectl get nodes` 다(이 노드에는 kubectl 이 없다).
 wait_node_registered() {
   local i out since
   since=$(date '+%Y-%m-%d %H:%M:%S' -d "@$RUN_STARTED_AT")
   for ((i = 0; i < REGISTER_TIMEOUT / 5; i++)); do
     out=$(journalctl -u k3s-agent -b --since "$since" --no-pager -o cat 2>/dev/null || true)
-    if grep -qE 'Successfully registered node|Node was previously registered' <<< "$out"; then REGISTERED=confirmed; break; fi
+    if grep -qE "$REGISTER_PATTERN" <<< "$out"; then REGISTERED=confirmed; break; fi
     sleep 5
   done
   if [ "$REGISTERED" = confirmed ]; then
-    log "node registration: confirmed in journal (waited ~$((i * 5))s)"
-  else
-    warn "${REGISTER_TIMEOUT}s 안에 등록 로그를 찾지 못했다 — journalctl -u k3s-agent -n 100 / 운영자 워크스테이션에서 kubectl get nodes -L role"
+    log "node registration: confirmed in this run's journal (waited ~$((i * 5))s)"
+    return 0
   fi
+  out=$(journalctl -u k3s-agent -b --no-pager -o cat 2>/dev/null || true)
+  if grep -qE "$REGISTER_PATTERN" <<< "$out"; then
+    REGISTERED=confirmed-earlier-in-boot
+    log "node registration: confirmed earlier in this boot — 이번 실행에는 새 등록 로그가 없다(이미 조인된 노드의 재실행이면 정상). 판정은 운영자 워크스테이션의 kubectl get nodes -L role"
+    return 0
+  fi
+  warn "${REGISTER_TIMEOUT}s 안에 이번 실행분 등록 로그가 없고 이번 부팅 로그에도 없다 — journalctl -u k3s-agent -n 100 / 판정은 운영자 워크스테이션의 kubectl get nodes -L role"
 }
 
 # ---------- summary ----------
