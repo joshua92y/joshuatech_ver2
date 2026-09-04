@@ -82,6 +82,21 @@ $c = $LASTEXITCODE
 Write-Host ($o.TrimEnd())
 Check 'k3s-server' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see k3s-server test output above"
 
+# 1i. k3s-agent (T036) — tests/infra/k3s-agent.tests.ps1: infra/bootstrap/k3s-agent.sh 정적 검사(원문만; 노드 실행·조인 없음).
+#     1h와 같은 규율: SKIP 없이 fail closed(스크립트 부재 = 전 단언 FAIL; 유일한 SKIP 줄은 bash 부재 시 syntax-1 뿐이며 합계에 들어가지 않는다),
+#     exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 = FAIL).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/infra/k3s-agent.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'k3s-agent' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see k3s-agent test output above"
+
+# 1j. platform-backup (T036, FR-047) — tests/infra/platform-backup.tests.ps1: infra/bootstrap/platform-backup.{sh,service,timer} 정적 검사
+#     (원문만; 백업 실행·kubectl·oci·age 호출 없음). 세 파일 중 하나라도 없으면 전 단언 FAIL(fail closed), 1i와 같은 양성 증거 규율.
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/infra/platform-backup.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'platform-backup' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see platform-backup test output above"
+
 # 2. CLAUDE.md <= 200 lines
 $n = if (Test-Path CLAUDE.md) { (Get-Content CLAUDE.md).Count } else { -1 }
 Check "CLAUDE.md lines ($n) <= 200" ($n -ge 0 -and $n -le 200) 'missing or too long'
