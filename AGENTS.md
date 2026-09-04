@@ -6,7 +6,7 @@
 Developer portfolio platform rebuilt from scratch (v1: `d:\code\joshuatech`). Operated with SaaS-grade discipline and multi-tenant-ready boundaries; publishes its own learning notes (learning in public). **Current state (SP-0): tooling and conventions only — no application code. The stack is decided in SP-1.**
 
 ## Active agent integration
-Spec Kit integration: `claude` only (skills under `.claude/skills/speckit-*`). Other agents (Codex, Gemini, …) read this file, `.specify/memory/constitution.md`, and `specs/<feature>/`. They do not get the Claude hooks, so they must follow the workflow manually and must never edit an approved `spec.md`, `plan.md`, or `tasks.md`.
+Spec Kit integrations: `claude` (skills under `.claude/skills/speckit-*`) and `codex` (skills under `.agents/skills/speckit-*`); `claude` remains the default integration. Codex reads this file, `.specify/memory/constitution.md`, and `specs/<feature>/`, but it does not inherit `.claude/settings.json`, Claude hooks, rules, or agents. Other agents (Gemini, …) follow the workflow manually. No agent may edit an approved `spec.md`, `plan.md`, or `tasks.md`.
 
 ## Commands
 | Purpose | Command |
@@ -21,6 +21,7 @@ Spec Kit integration: `claude` only (skills under `.claude/skills/speckit-*`). O
 ## Layout
 ```
 .specify/        Spec Kit runtime: memory/constitution.md, templates/ (+overrides/), scripts/powershell/, extensions/, feature.json (local only)
+.agents/         Codex repository skills (Spec Kit)
 .claude/         Claude layer: settings.json, skills/, agents/tester.md, rules/, hooks/
 apps/            application code: web (Next.js) + one directory per Django pod
 packages/        shared JS/Py packages: events (schemas), django-common, content

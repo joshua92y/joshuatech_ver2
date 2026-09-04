@@ -66,6 +66,12 @@ $c = $LASTEXITCODE
 Write-Host ($o.TrimEnd())
 Check 'agent-layer' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see agent-layer test output above"
 
+# 1f2. Codex + Claude Spec Kit integration contract.
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/agents/codex-integration.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'codex-integration' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see Codex integration test output above"
+
 # 1g. host-prep (T014) — tests/infra/host-prep.tests.ps1: infra/bootstrap/host-prep.sh 정적 검사(원문만; 노드 실행 없음).
 #     SKIP 없이 fail closed(스크립트 부재 = 전 단언 FAIL; 유일한 SKIP 줄은 bash 부재 시 syntax-1 뿐이며 합계에 들어가지 않는다).
 #     1f와 같은 양성 증거 규율: exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 = FAIL).

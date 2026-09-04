@@ -6,7 +6,7 @@
 처음부터 다시 만든 개발자 포트폴리오 플랫폼(v1: `d:\code\joshuatech`). SaaS급 규율과 멀티테넌트 대응 가능한 경계를 갖추고 운영되며, 자신의 학습 노트를 직접 공개한다(learning in public). **현재 상태(SP-0): 툴링과 규약만 존재 — 애플리케이션 코드는 아직 없다. 스택은 SP-1에서 결정한다.**
 
 ## Active agent integration
-Spec Kit 통합 대상은 `claude`뿐이다(`.claude/skills/speckit-*` 아래의 스킬). 다른 에이전트(Codex, Gemini 등)는 이 파일, `.specify/memory/constitution.md`, `specs/<feature>/`를 읽는다. 이들은 Claude 훅(hook)을 제공받지 못하므로 워크플로우를 수동으로 따라야 하며, 승인된 `spec.md`, `plan.md`, `tasks.md`를 절대 수정해서는 안 된다.
+Spec Kit 통합 대상은 `claude`(`.claude/skills/speckit-*` 아래의 스킬)와 `codex`(`.agents/skills/speckit-*` 아래의 스킬)이며, 기본 통합은 계속 `claude`다. Codex는 이 파일, `.specify/memory/constitution.md`, `specs/<feature>/`를 읽지만 `.claude/settings.json`, Claude 훅, 규칙, 에이전트는 상속하지 않는다. 다른 에이전트(Gemini 등)는 워크플로우를 수동으로 따른다. 모든 에이전트는 승인된 `spec.md`, `plan.md`, `tasks.md`를 절대 수정해서는 안 된다.
 
 ## Commands
 | 목적 | 명령어 |
@@ -21,6 +21,7 @@ Spec Kit 통합 대상은 `claude`뿐이다(`.claude/skills/speckit-*` 아래의
 ## Layout
 ```
 .specify/        Spec Kit 런타임: memory/constitution.md, templates/ (+overrides/), scripts/powershell/, extensions/, feature.json (로컬 전용)
+.agents/         Codex 저장소 스킬(Spec Kit)
 .claude/         Claude 레이어: settings.json, skills/, agents/tester.md, rules/, hooks/
 apps/            애플리케이션 코드: web(Next.js) + Django pod별 디렉터리 하나씩
 packages/        공유 JS/Py 패키지: events(스키마), django-common, content
