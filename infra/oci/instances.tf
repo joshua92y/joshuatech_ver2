@@ -10,9 +10,9 @@
 #   metadata 의 user_data·ssh_authorized_keys 를 launch 뒤 불변으로 취급한다(아래 근거; 운영자 실측 2026-09-04 400 InvalidParameter).
 #   실제 로그인 키 교체는 호스트의 ~ubuntu/.ssh/authorized_keys 에서 한다(T013 은 아래 6단계 수동, T014 는 host-prep.sh).
 #
-# ---- T013 재이미지 리허설: 노드 B joshtech_cache (Ubuntu 24.04, 부트 100 GB) — 운영자 절차 ----
+# ---- T013 재이미지 리허설: 노드 B joshtech_cache (Ubuntu 24.04, 부트 100 GB) — 운영자 절차 (완료 2026-09-04, 기록 docs/runbooks/bootstrap.md §2) ----
 # 에이전트는 plan/apply·SSH·oci 변경 명령을 실행하지 않는다. 아래는 운영자가 사용자 재확인 뒤 순서대로 실행한다(PowerShell 7 기준).
-# 변수는 variables.tf(ubuntu_2404_image_ocid·node_boot_volume_size_gb) — T014 는 노드 A에 같은 변수를 배선한다.
+# 변수는 variables.tf(ubuntu_2404_image_ocid·node_boot_volume_size_gb) — T014 는 노드 A에 같은 변수를 배선했다(아래 "T014" 절이 이 절차를 노드 A 값으로 반복한다).
 #
 # 스키마·API 근거(provider oracle/oci 8.29.0 internal/service/core/core_instance_resource.go, oci-go-sdk core/update_instance_details.go,
 # cloud-init cloudinit/sources/DataSourceOracle.py 원문 확인 2026-09-04):
@@ -45,7 +45,8 @@
 #   $env:TEMP_SSH_CIDR = '<운영자 공인 IP>/32'   (tofu 변수가 아니다 — 5단계 CLI 전용)
 #   if ($env:TEMP_SSH_CIDR -notmatch '^\d{1,3}(\.\d{1,3}){3}/32$') { throw 'TEMP_SSH_CIDR must be /32' }
 #   $PUB = (Get-Content "$HOME\.ssh\joshuatech-ops.pub" -Raw).Trim()
-#   if ($PUB -notmatch '^(sk-)?ssh-ed25519(@openssh\.com)? \S+') { throw 'joshuatech-ops.pub: ssh-ed25519 또는 sk-ssh-ed25519@openssh.com 한 줄이어야 한다' }
+#   if ($PUB -notmatch '^(ssh-ed25519|sk-ssh-ed25519@openssh\.com) \S+') { throw 'joshuatech-ops.pub: ssh-ed25519 또는 sk-ssh-ed25519@openssh.com 한 줄이어야 한다' }
+#   (ssh/scp 의 -o IdentitiesOnly=yes: ssh-agent 에 v1·새 키가 함께 실려 있어도 -i 로 지정한 키만 제시한다 — 6단계 ①②③ 의 "어느 키로 열렸는가" 검증이 성립하는 조건)
 #   $V1KEY = '<v1 개인키 경로>'   (재이미지 직후 유일하게 통하는 키 — 6단계에서만 쓴다; 파기는 §0 ⑦ 순서)
 #   $NODE_B = 'ocid1.instance.oc1.ap-chuncheon-1.an4w4ljr46wbjmqcplrmdldp75dpapkzvlrfx6oxpm4jluti3vpyn7rpersa'
 #   $TEN    = 'ocid1.tenancy.oc1..aaaaaaaat7iglpjj2kugdmf7an2v4uimrxr3ggtwo4txkbwptfjh5apddzpa'   (var.compartment_ocid 기본값)
@@ -81,15 +82,15 @@
 # 6. SSH 확인 + 로그인 키 교체 — 순서는 "추가 → 새 키로 검증 → v1 제거"(새 키가 실패하면 v1 이 그대로 남아 잠금 경로 0). 직접 22 는 이 리허설
 #    창에서만; 이후는 cloudflared 터널만(.claude/rules/infra.md):
 #   ssh-keygen -R 129.154.62.250   (새 볼륨 = 새 host key)
-#   ssh -i $V1KEY ubuntu@129.154.62.250 'cloud-init status --wait; lsb_release -a'   → "status: done"(exit 0) 또는 "degraded done"(exit 2)이면 진행 / "Ubuntu 24.04.x LTS"
+#   ssh -o IdentitiesOnly=yes -i $V1KEY ubuntu@129.154.62.250 'cloud-init status --wait; lsb_release -a'   → "status: done"(exit 0) 또는 "degraded done"(exit 2)이면 진행 / "Ubuntu 24.04.x LTS"
 #     (첫 부팅의 cloud-init 이 불변 metadata 의 v1 키를 넣었으므로 이 시점엔 v1 으로만 열린다; --wait 로 cloud-init 종료를 기다린 뒤에만 손댄다)
 #   ① 추가(v1 키로):
-#     ssh -i $V1KEY ubuntu@129.154.62.250 "printf '%s\n' '$PUB' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && wc -l ~/.ssh/authorized_keys"   → 2
+#     ssh -o IdentitiesOnly=yes -i $V1KEY ubuntu@129.154.62.250 "printf '%s\n' '$PUB' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && wc -l ~/.ssh/authorized_keys"   → 2
 #   ② 새 키로 접속해 v1 제거(새 키 접속 자체가 검증이다; 이 명령을 v1 키로 실행하지 말 것):
-#     ssh -i "$HOME\.ssh\joshuatech-ops" ubuntu@129.154.62.250 "grep -v wlsgh@Home-2024 ~/.ssh/authorized_keys > ~/.ssh/ak.new && mv ~/.ssh/ak.new ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && grep -c wlsgh@Home-2024 ~/.ssh/authorized_keys; wc -l ~/.ssh/authorized_keys; lsb_release -ds"   → 0 / 1 / Ubuntu 24.04
+#     ssh -o IdentitiesOnly=yes -i "$HOME\.ssh\joshuatech-ops" ubuntu@129.154.62.250 "grep -v wlsgh@Home-2024 ~/.ssh/authorized_keys > ~/.ssh/ak.new && mv ~/.ssh/ak.new ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && grep -c wlsgh@Home-2024 ~/.ssh/authorized_keys; wc -l ~/.ssh/authorized_keys; lsb_release -ds"   → 0 / 1 / Ubuntu 24.04
 #     (②의 접속이 실패하면 authorized_keys 는 v1 + 새 키 그대로다 — 키·에이전트를 점검하고 ②만 다시 한다. grep -v 결과가 비면 mv 전에 멈춘다.)
 #   ③ v1 거부 확인:
-#     ssh -i $V1KEY ubuntu@129.154.62.250 true   → Permission denied (publickey) 여야 한다
+#     ssh -o IdentitiesOnly=yes -i $V1KEY ubuntu@129.154.62.250 true   → Permission denied (publickey) 여야 한다
 #   (이 시점부터 노드 B 의 로그인 키는 joshuatech-ops 뿐이다. 이후 재부팅에서 cloud-init ssh 모듈은 per-instance 라 v1 키를 다시 넣지 않는다 —
 #    단 `cloud-init clean` 이나 /var/lib/cloud 삭제는 금지: 다음 부팅에 불변 metadata 의 v1 키가 재주입된다. 재이미지마다 v1 키가 들어오는 것은
 #    정상이며 T014 host-prep.sh 의 멱등 교체(같은 ①→②→③ 순서를 상속)가 흡수한다. 나머지 호스트 준비(iptables·wireguard·패키지 등)도 T014 몫이라
@@ -98,14 +99,56 @@
 #   oci bv boot-volume get --boot-volume-id $OLD_BV --query 'data.{state:"lifecycle-state",gb:"size-in-gbs"}'   → AVAILABLE / 47
 #   oci compute boot-volume-attachment list --availability-domain $AD --compartment-id $TEN --boot-volume-id $OLD_BV --query 'data[?"lifecycle-state"==`ATTACHED`]'   → 빈 목록
 #   oci bv boot-volume delete --boot-volume-id $OLD_BV
-# 8. 임시 규칙 제거 + 확인:
-#   ConvertTo-Json @($RULE) -AsArray -Compress | Set-Content -NoNewline -Encoding ascii "$tmp\rule-ids.json"
-#   oci network nsg rules remove --nsg-id $NSG --security-rule-ids "file://$tmp\rule-ids.json"
+# 8. 임시 규칙 제거 + 확인 — --security-rule-ids 는 인라인 JSON 이어야 한다(T013 실측: file:// 형식은 "Unable to process JSON input" 으로 실패):
+#   oci network nsg rules remove --nsg-id $NSG --security-rule-ids "[`"$RULE`"]"
 #   oci network nsg rules list --nsg-id $NSG --query 'length(data)'   → 1 (자기참조 all 하나만) — 임시 규칙 제거의 유일한 증거다
 #   tofu -chdir=infra/oci plan -detailed-exitcode   → exit 0 "No changes" — 규칙 제거의 증명이 아니라(tofu 는 CLI 규칙을 못 본다) 재이미지 뒤 회귀 검사다.
 #     source_details.boot_volume_size_in_gbs 나 boot_volume_id 의 변경이 보이면 STOP: provider 가 DETACHED 구 attachment(Items[0])를 읽은 것이다 —
 #     7단계 삭제가 끝났는지 확인하고 다시 plan, 그래도 남으면 apply 하지 말고 보고(구 볼륨 리사이즈 경로).
 # 9. 하네스: 같은 셸(TF_VAR_budget_alert_email 설정)에서 pwsh -NoProfile -File tests/infra/tofu.tests.ps1 — plan 단언 포함 전부 PASS 여야 한다.
+#
+# ---- T014 노드 A joshtech_api_1st 재이미지 — T013 절차 0–9 를 아래 치환으로 반복한다(운영자, 사용자 재확인 뒤; 6단계만 host-prep.sh 로 바뀐다) ----
+# 노드 A 값: $NODE_A = 'ocid1.instance.oc1.ap-chuncheon-1.an4w4ljr46wbjmqcqnacrfilhr4yro4dizvsplrti2lcyt4cnf43fhbiqpga', 공개 IP 144.24.85.118(reserved),
+#   사설 IP 10.0.7.78(subnet api), NSG [nsg-node-a-platform, nsg-cluster], FAULT-DOMAIN-3, 현재 이미지 …yjkoaca(v1 Ubuntu) 47 GB.
+#   VNIC·사설 IP·reserved IP·NSG 소속은 교체 뒤에도 그대로다(T013 과 같은 메커니즘: UpdateInstance sourceDetails, VNIC 재생성 없음).
+# 영향: 노드 A 는 Cloudflare 가 바라보는 v1 API 의 호스트다 — 재이미지 = v1 API 서비스 종료(노드 위 컨테이너·볼륨 소멸, 백업 없음).
+#   사용자 수용 T009 옵션 2(2026-09-03); v1 배포는 T012 에서 이미 차단됐다. 노드 B 와 달리 이 창은 되돌릴 수 없으므로 실행 직전 사용자 재확인.
+# 스토리지 창: 100(B) + 47(A 구) + 100(A 신) = 247 GB. T013 실측 available 61,346 GB 라 여유(1단계에서 다시 읽는다).
+# 0. T013 0단계와 같다. 다만 $NODE_B 대신 $NODE_A, $tmp 는 t014. $PUB 는 host-prep.sh 의 NEW_PUBKEY 로도 쓴다(같은 한 줄).
+# 1. $NODE_B → $NODE_A. 현재 이미지 os 가 Ubuntu 인지(v1 …yjkoaca) 확인, $OLD_BV 기록(ATTACHED 필터 조회가 정본).
+# 2. 동일 — metadata 는 건드리지 않는다(API 불변).
+# 3. plan 기대 = oci_core_instance.node_a update in-place 1: source_details.source_id …yjkoaca → var.ubuntu_2404_image_ocid,
+#    boot_volume_size_in_gbs "47" → "100", is_preserve_boot_volume_enabled false → true, update_operation_constraint null → "ALLOW_DOWNTIME";
+#    요약 "0 to add, 1 to change, 0 to destroy"; Outputs: + node_a_boot_volume_id(참고값; 이 시점엔 OLD_BV). node_b·NSG·metadata 변경이 보이면 apply 금지.
+#   tofu -chdir=infra/oci plan -out=t014.tfplan
+# 4. tofu -chdir=infra/oci apply t014.tfplan → $NEW_BV(ATTACHED 필터, $NODE_A) ≠ $OLD_BV 확인(T013 4단계 명령의 $NODE_B → $NODE_A).
+# 5. 임시 규칙: description 'T014 temp ssh (remove me)'. NSG 는 같은 nsg-cluster(두 노드 공유 — 창 동안 노드 B 의 22 도 열린다; 창은 짧게).
+#    이 창에서 노드 B host-prep 도 함께 돌린다(아래 6-④).
+# 6. SSH 확인 + 로그인 키 교체 + 호스트 준비 — host-prep.sh 두 번(추가 → 새 키로 검증 → v1 제거 순서를 스크립트가 상속; DROP_V1_KEY=1 은
+#    새 키 세션에서만 유효하고 스크립트가 sshd 로그 지문으로 강제한다). PowerShell 은 '<' 리다이렉션이 없고 파이프가 CRLF 를 붙이므로 scp 로 올린다:
+#   ssh-keygen -R 144.24.85.118
+#   ssh -o IdentitiesOnly=yes -i $V1KEY ubuntu@144.24.85.118 'cloud-init status --wait; lsb_release -ds'   → done(0) 또는 degraded done(2) / Ubuntu 24.04.x
+#   ① 1회차(v1 키 세션 — 새 키 추가 + iptables·wireguard·패키지·unattended·시간대; DROP_V1_KEY 없음):
+#     scp -o IdentitiesOnly=yes -i $V1KEY infra/bootstrap/host-prep.sh ubuntu@144.24.85.118:/tmp/host-prep.sh
+#     ssh -o IdentitiesOnly=yes -i $V1KEY ubuntu@144.24.85.118 "sudo NEW_PUBKEY='$PUB' NODE_ROLE=platform bash /tmp/host-prep.sh"   → summary: authorized_keys 2 line(s), other keys=1
+#   ② 2회차(새 키 세션 — 접속 성공 자체가 검증):
+#     ssh -o IdentitiesOnly=yes -i "$HOME\.ssh\joshuatech-ops" ubuntu@144.24.85.118 "sudo NEW_PUBKEY='$PUB' NODE_ROLE=platform DROP_V1_KEY=1 bash /tmp/host-prep.sh"
+#       → changes this run: 1(authorized_keys 다른 키 1 줄 제거)뿐, 나머지 unchanged/present = 멱등 증거; authorized_keys 1 line(s), other keys=0
+#   ③ ssh -o IdentitiesOnly=yes -i $V1KEY ubuntu@144.24.85.118 true   → Permission denied (publickey)
+#   ④ 노드 B(이미 새 키뿐; NODE_ROLE=data) — 같은 창에서 두 번 돌려 멱등을 증명한다(2회차 DROP_V1_KEY=1 은 "제거할 다른 키 없음" 이어야 한다):
+#     scp -o IdentitiesOnly=yes -i "$HOME\.ssh\joshuatech-ops" infra/bootstrap/host-prep.sh ubuntu@129.154.62.250:/tmp/host-prep.sh
+#     ssh -o IdentitiesOnly=yes -i "$HOME\.ssh\joshuatech-ops" ubuntu@129.154.62.250 "sudo NEW_PUBKEY='$PUB' NODE_ROLE=data bash /tmp/host-prep.sh"
+#     ssh -o IdentitiesOnly=yes -i "$HOME\.ssh\joshuatech-ops" ubuntu@129.154.62.250 "sudo NEW_PUBKEY='$PUB' NODE_ROLE=data DROP_V1_KEY=1 bash /tmp/host-prep.sh"   → changes this run: 0
+#   (두 노드 모두 /tmp/host-prep.sh 는 남겨도 무해 — 비밀이 없다. 원하면 rm.)
+# 7. 동일($OLD_BV = 노드 A 구 볼륨, 47 GB — AVAILABLE·attachment 없음 확인 뒤 삭제).
+# 8. 임시 규칙 제거는 인라인 JSON(T013 8단계와 동일 형식):
+#   oci network nsg rules remove --nsg-id $NSG --security-rule-ids "[`"$RULE`"]"
+#   oci network nsg rules list --nsg-id $NSG --query 'length(data)'   → 1
+# 8b. outputs-only 수렴(T013 실측: 구 볼륨 삭제 뒤 provider 가 새 attachment 를 읽어 boot_volume_id output 만 바뀐다):
+#   tofu -chdir=infra/oci plan -detailed-exitcode   → exit 2 이되 "Plan: 0 to add, 0 to change, 0 to destroy" + "Changes to Outputs: ~ node_a_boot_volume_id" 만이어야 한다
+#   tofu -chdir=infra/oci apply   (outputs-only; 리소스 변경이 하나라도 보이면 STOP — T013 8단계의 DETACHED 구 attachment 경로 점검)
+#   tofu -chdir=infra/oci plan -detailed-exitcode   → exit 0 "No changes"
+# 9. 동일 + pwsh -NoProfile -File tests/infra/host-prep.tests.ps1(정적) — 실행 결과(summary 두 노드 × 2회)는 docs/runbooks/bootstrap.md §2 T014 에 기록한다.
 
 resource "oci_core_instance" "node_a" {
   availability_domain = "TxjY:AP-CHUNCHEON-1-AD-1"
@@ -116,11 +159,15 @@ resource "oci_core_instance" "node_a" {
   fault_domain        = "FAULT-DOMAIN-3"
   freeform_tags       = {}
   metadata = {
+    # T014: OCI API 상 불변(launch 뒤 갱신·삭제·추가 거부; provider 는 변경을 replace 로 취급) — 이 v1 리터럴이 곧 실제 값이다.
+    # 실제 로그인 키 교체는 호스트 authorized_keys 에서 한다(머리 주석 T014 6단계 = infra/bootstrap/host-prep.sh). 여기서는 절대 바꾸지 않는다.
     ssh_authorized_keys = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDLOZ71CEhQCsJoElCcU25q+/FOBwvFv/yfYKX/4osSFNHHGRGhTpF8VrcCruQKg2zPtV6krMP9THdF4B4c+Z4Rl30MQec8xHK973SBby7SQ1EjVTfrp23d396ng8JEVo0sQXHPi8gjkTpdFQ+7jcUyIM6r3vGK93gXcz4TEqUCmKiJF7DID5Kex9V3HQvXr304yU/QKfWnvkORWfHidVihM4aDSKBqzJIHAs7gjlZCqzVSURczRFD1vqNh8Ry3ndDSqEUgc4xzkszlEJfQ71Gmxmq4ORysgGce6Z2GRTuCQ8y6X5ao8qOjlgIMfDd78sduIHlf6hiS8cqOFYjIcpoOOxPBceljoSrftyuuMs+ld5VKMqKyZFkxwi+90dxvqadLutPZ0dBGZJE+EqTkqLW2qdQ+HnkMiYG5jRXHULP8zfAygjNc0YFuRT20UHr25A7CiNFcSjukDqAsNraW7fNXSX3Fv81LwFB79qFLn42OqjX5bpmPeTPckv1xp2gbz+tNVAIThynWcd48M0KtDmYhIF/E7EvQWthBSqJUPhZ0X9x9p27rRTGILAi1gZJYFjU1EPiSFV9kp0IIg6eJhpkgO17akYTVsf4yzkquLnoN+IZY5zAMhbd+MVXp+hrnhZlZkYiMEaDT0rfS7Q0JmJRktkO2UmoDefygqUdd2JNIEw== wlsgh@Home-2024"
   }
   security_attributes = {}
   shape               = "VM.Standard.A1.Flex"
   state               = "RUNNING"
+  # T014: 재이미지(source_details.source_id 교체)는 재부팅을 수반한다. SDK/API 기본값도 ALLOW_DOWNTIME 이지만 의도 고정용으로 명시한다(AVOID_DOWNTIME 이면 거부).
+  update_operation_constraint = "ALLOW_DOWNTIME"
 
   agent_config {
     are_all_plugins_disabled = false
@@ -216,12 +263,15 @@ resource "oci_core_instance" "node_a" {
     vcpus                     = 2
   }
 
+  # T014: 이미지 교체(in-place UPDATE — 머리 주석 "스키마 근거"; 노드 B T013 과 같은 변수). 이전 이미지 ocid1.image.oc1.ap-chuncheon-1.aaaaaaaamwkrl3fycvbnrt6d3cztl22se3j3z5x22yxhfvedu3za2yjkoaca (v1, 47 GB).
   source_details {
-    boot_volume_size_in_gbs         = "47"
-    boot_volume_vpus_per_gb         = "10"
-    is_preserve_boot_volume_enabled = false
+    boot_volume_size_in_gbs = var.node_boot_volume_size_gb
+    # boot_volume_vpus_per_gb 는 provider 8.29.0 에서 ForceNew 다 — 절대 바꾸지 않는다(바꾸면 replace → prevent_destroy 가 막는다).
+    boot_volume_vpus_per_gb = "10"
+    # 교체 성공 뒤 이전 부트 볼륨을 보존(detached) — 운영자가 검사·수동 삭제한다(머리 주석 7단계). terminate 시 옵션인 최상위 preserve_boot_volume 과는 다르다.
+    is_preserve_boot_volume_enabled = true
     kms_key_id                      = ""
-    source_id                       = "ocid1.image.oc1.ap-chuncheon-1.aaaaaaaamwkrl3fycvbnrt6d3cztl22se3j3z5x22yxhfvedu3za2yjkoaca"
+    source_id                       = var.ubuntu_2404_image_ocid
     source_type                     = "image"
   }
 
@@ -373,7 +423,12 @@ resource "oci_core_instance" "node_b" {
 }
 
 # T013/T014 참고값: provider getBootVolume 이 boot volume attachment 목록의 Items[0] 을 상태 필터 없이 취하므로 교체 직후에는 DETACHED 구 볼륨이
-# 올 수 있다. 정본은 머리 주석 1·4단계의 ATTACHED 필터 CLI 조회다.
+# 올 수 있다. 정본은 머리 주석 1·4단계의 ATTACHED 필터 CLI 조회다. 구 볼륨 삭제 뒤 이 값만 바뀌는 plan 은 outputs-only apply 로 수렴한다(8b단계).
+output "node_a_boot_volume_id" {
+  description = "노드 A(joshtech_api_1st) 부트 볼륨 OCID — 참고값(state 기준; 정본은 ATTACHED 필터 CLI 조회)"
+  value       = oci_core_instance.node_a.boot_volume_id
+}
+
 output "node_b_boot_volume_id" {
   description = "노드 B(joshtech_cache) 부트 볼륨 OCID — 참고값(state 기준; 정본은 ATTACHED 필터 CLI 조회)"
   value       = oci_core_instance.node_b.boot_volume_id
