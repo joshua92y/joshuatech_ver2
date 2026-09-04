@@ -14,6 +14,7 @@ Contracts of record: `specs/003-platform-foundation/contracts/gitops-repo.md` an
 - A routine `tofu plan` MUST show 0 destroys. Any plan with a destroy stops the work: get the user's explicit approval and record it in the PR before applying.
 - Change flow is plan → review → apply; never apply an unreviewed plan. Pin provider versions; state and credentials never enter the repository.
 - NSG: 443 ingress is open to Cloudflare IPv4 ranges only; no `0.0.0.0/0` ingress rules. SSH (22) is never publicly exposed — access goes through the cloudflared tunnel only. IMDS v1 stays disabled on instances.
+- **Bootstrap exception (T013/T014 only, while cloudflared is not yet running on the node):** the operator may add a temporary NSG ingress rule for 22/tcp from exactly one operator address (`<ip>/32`, never `0.0.0.0/0`) with the OCI CLI, outside OpenTofu — it is never declared under `infra/`. The rule is removed in the same operator session, and removal is proven by `oci network nsg rules list` showing only the declared rules; a clean `tofu plan` does not prove it, because OpenTofu does not track rules it did not create.
 
 ## GitOps (platform-gitops conventions)
 
@@ -39,5 +40,5 @@ Contracts of record: `specs/003-platform-foundation/contracts/gitops-repo.md` an
 ## `jt-ops` key rules
 
 - The `jt-ops` SSH key MUST be a FIDO2 hardware key. If hardware-backed keys are impossible, use a passphrase-protected key loaded with `ssh-add -c` (confirm-on-use prompt) — never an unprotected key.
-- SSH connections go through cloudflared (`ssh-a.` / `ssh-b.` tunnel hosts), never a direct public endpoint.
+- SSH connections go through cloudflared (`ssh-a.` / `ssh-b.` tunnel hosts), never a direct public endpoint — except under the bootstrap exception above.
 - At the end of every operator session, run `cloudflared access logout`.

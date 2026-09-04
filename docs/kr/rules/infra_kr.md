@@ -15,6 +15,7 @@ paths:
 - 일상적인 `tofu plan`은 반드시 destroy 0을 보여야 한다. destroy가 포함된 plan은 작업을 중단시킨다: 사용자의 명시적 승인을 받고 적용(apply) 전에 PR에 기록한다.
 - 변경 흐름은 plan → review → apply다; 검토되지 않은 plan을 절대 적용하지 않는다. 프로바이더 버전을 고정한다; 상태(state)와 자격 증명은 저장소에 절대 들어가지 않는다.
 - NSG: 443 인그레스는 Cloudflare IPv4 대역에만 열려 있다; `0.0.0.0/0` 인그레스 규칙 금지. SSH(22)는 절대 공개적으로 노출하지 않는다 — 접근은 cloudflared 터널을 통해서만 한다. 인스턴스에서 IMDS v1은 비활성 상태를 유지한다.
+- **부트스트랩 예외(T013/T014에 한함, 노드에 cloudflared가 아직 돌지 않는 동안):** 운영자는 OCI CLI로 정확히 하나의 운영자 주소(`<ip>/32`, `0.0.0.0/0`은 절대 불가)에서 22/tcp로 들어오는 임시 NSG 인그레스 규칙을 OpenTofu 밖에서 추가할 수 있다 — `infra/` 아래에는 절대 선언하지 않는다. 규칙은 같은 운영자 세션 안에서 제거하며, 제거의 증거는 `oci network nsg rules list`에 선언된 규칙만 남아 있는 것이다; OpenTofu는 자기가 만들지 않은 규칙을 추적하지 않으므로 깨끗한 `tofu plan`은 증거가 되지 않는다.
 
 ## GitOps (platform-gitops conventions)
 
@@ -40,5 +41,5 @@ paths:
 ## `jt-ops` key rules
 
 - `jt-ops` SSH 키는 반드시 FIDO2 하드웨어 키여야 한다. 하드웨어 기반 키가 불가능하면 `ssh-add -c`(사용 시 확인 프롬프트)로 로드하는 패스프레이즈 보호 키를 쓴다 — 보호 없는 키는 절대 안 된다.
-- SSH 연결은 cloudflared(`ssh-a.` / `ssh-b.` 터널 호스트)를 통해서만 하고, 직접 공개 엔드포인트로는 절대 하지 않는다.
+- SSH 연결은 cloudflared(`ssh-a.` / `ssh-b.` 터널 호스트)를 통해서만 하고, 직접 공개 엔드포인트로는 절대 하지 않는다 — 위의 부트스트랩 예외만 제외한다.
 - 모든 운영자 세션이 끝날 때 `cloudflared access logout`을 실행한다.
