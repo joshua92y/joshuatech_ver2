@@ -14,11 +14,12 @@
 #          doc-3 chart 40.1.x ↔ upstream 41.x 키 차이  doc-4 T043 에서 더할 clientAuth 조각 + Secret 선행
 #          doc-5 T042 에서 더할 sniStrict + 동적 인증서 선행  doc-6 적용 순서(T042 → T043) + 문면과의 의도적 편차 명시
 #          doc-7 설치 절차(scp + sudo install -m 644 -o root -g root → server/manifests/traefik-config.yaml)
-#          doc-8 확인 명령(helmchartconfig · rollout status · pods -o wide · logs --tail=200 · 443 curl)
+#          doc-8 확인 명령(helmchartconfig · rollout status · pods -o wide + 새 파드 재확인 · logs --since=10m · 노드 내부 443 curl;
+#                 워크스테이션·공인 IP curl 과 --tail=200 은 금지 — 2026-09-04 실행에서 확인이 되지 않던 형태)
 #          doc-9 되돌리기 2단계(파일 rm + kubectl delete helmchartconfig traefik — 파일 삭제만으로는 객체가 남는다)
 #          doc-10 helm-install Job 실패 복구(immutable → delete job)  doc-11 자격(운영자 admin kubeconfig, agent-view 한계)
 #          doc-12 롤아웃 순단 경고(replica 1, 443)  doc-13 HelmChart spec.set 우선 함정  doc-14 T084 forward-auth 재수정 예고
-#          doc-15 klipper-lb 소스 IP 실측 방법(ClientHost ↔ request_CF-Connecting-IP)  doc-16 T098 전 tracing 잡음
+#          doc-15 klipper-lb 소스 IP 실측 방법(4xx 유발 `/__probe-404` → ClientHost ↔ request_CF-Connecting-IP)  doc-16 T098 전 tracing 잡음
 #          doc-17 Cloudflare 목록 근거(data.cloudflare_ip_ranges + infra/oci/network.tf) + 드리프트 재검토 주기
 #   K8S    k8s-1 문서 1개  k8s-2 apiVersion helm.cattle.io/v1  k8s-3 kind HelmChartConfig  k8s-4 metadata.name traefik
 #          k8s-5 metadata.namespace kube-system  k8s-6 spec.valuesContent 블록 스칼라 '|-'
@@ -194,13 +195,18 @@ Test-Group 'doc' {
         (Has $header 'sudo install -m 644 -o root -g root') -and
         (Has $header '/var/lib/rancher/k3s/server/manifests/traefik-config.yaml')
     ) 'header must show scp then sudo install into /var/lib/rancher/k3s/server/manifests/'
+    # 2026-09-04 실행 실측: 워크스테이션에서 공인 IP 로 건 --resolve 는 NSG 때문에 늘 000 이라 확인이 되지 않고,
+    # --tail 은 롤아웃 이전 로그를 보여 주며, rollout status 는 helm upgrade 보다 먼저 지나갈 수 있다.
     Assert 'doc-8: header carries verification that would actually fail on a broken rollout' (
         (Has $header 'kubectl -n kube-system get helmchartconfig traefik -o yaml') -and
         (Has $header 'kubectl -n kube-system rollout status deploy/traefik --timeout=120s') -and
         (Has $header 'kubectl -n kube-system get pods -l app.kubernetes.io/name=traefik -o wide') -and
-        (Has $header 'kubectl -n kube-system logs deploy/traefik --tail=200') -and
-        (Has $header 'curl -sk --resolve traefik.joshuatech.dev:443:')
-    ) 'header must include rollout status, error-grepped logs and a real 443 handshake check'
+        (Has $header 'RESTARTS') -and
+        (Has $header 'kubectl -n kube-system logs deploy/traefik --since=10m') -and
+        (-not (Has $header '--tail=200')) -and
+        (Has $header 'curl -sk --resolve traefik.joshuatech.dev:443:10.0.7.78') -and
+        (-not (Has $header '--resolve traefik.joshuatech.dev:443:144.24.85.118'))
+    ) 'header must use rollout status + new-pod recheck (AGE/RESTARTS) + --since logs + a node-internal 443 handshake (the workstation/public-IP curl is always 000)'
     Assert 'doc-9: header rollback deletes the file AND the HelmChartConfig object' (
         (Has $header '되돌리기') -and
         (Has $header 'sudo rm -f /var/lib/rancher/k3s/server/manifests/traefik-config.yaml') -and
@@ -221,9 +227,9 @@ Test-Group 'doc' {
     Assert 'doc-14: header lists T084 (Authentik forward-auth) as a later edit of this file' (
         (Has $header 'T084') -and (Has $header 'authentik-forwardauth')
     ) 'header must point at T084 for the dashboard forward-auth middleware'
-    Assert 'doc-15: header gives the klipper-lb source-IP measurement' (
-        (Has $header 'ClientHost') -and (Has $header 'request_CF-Connecting-IP')
-    ) 'header must explain how to measure whether the client source IP survives svclb'
+    Assert 'doc-15: header gives the klipper-lb source-IP measurement, including how to make a log line appear' (
+        (Has $header 'ClientHost') -and (Has $header 'request_CF-Connecting-IP') -and (Has $header '/__probe-404')
+    ) 'the access log only keeps 4xx/5xx, so the measurement needs a deliberate 4xx probe — a 302 leaves no line'
     Assert 'doc-16: header explains the tracing noise window before T098' (
         (Has $header 'T098') -and (Has $header 'tracing.otlp.enabled')
     ) 'header must state that OTLP errors are noise until Alloy exists and how to silence them'
