@@ -125,7 +125,15 @@
 
 ## §2 재이미지·host-prep
 
-(T013–T014에서 작성)
+### T013 — 노드 B `joshtech_cache` 재이미지 리허설 (2026-09-04)
+
+- **코드**: `instances.tf`(노드 B `source_details` = `var.ubuntu_2404_image_ocid`·`var.node_boot_volume_size_gb`(100)·`is_preserve_boot_volume_enabled = true`, `update_operation_constraint = "ALLOW_DOWNTIME"`), `variables.tf`(이미지 OCID·크기), outputs `node_b_boot_volume_id`(참고값)·`nsg_cluster_id` — 커밋 `4a57d3c` + 절차 개정 `6899fee`(리뷰 2회: Major 3·Minor 8 반영). provider 8.29 근거: `source_details.*`는 in-place UPDATE(`UpdateInstanceSourceViaImageDetails`), `boot_volume_vpus_per_gb`·`metadata`는 ForceNew.
+- **실측 사실(설계 영향)**: OCI 인스턴스 metadata의 `ssh_authorized_keys`·`user_data`는 **launch 후 갱신·추가 불가**(400 "cannot be updated and must be provided with the already existing value"; SDK 문서 동일). 따라서 재이미지된 볼륨의 첫 부팅은 항상 v1 키를 심고, 새 키는 **v1 키로 접속해 `~/.ssh/authorized_keys`를 교체**해야 한다(순서: 추가 → 새 키로 검증 → v1 제거). `cloud-init clean`/`/var/lib/cloud` 삭제 금지(PER_INSTANCE 세마포어 소실 시 v1 키 재주입). 임시 SSH 22 규칙은 하네스 계약상 tofu 밖 CLI로 열고 닫는다(infra.md 부트스트랩 예외 절 `1a112b1`).
+- **사전 확인**: 현재 이미지 os Canonical Ubuntu 24.04(커스텀 "캐시서"), 목표 `Canonical-Ubuntu-24.04-aarch64-2026.07.17-0` AVAILABLE, block-storage AD-1 used 94 / available 61,346 GB, OLD_BV `…ab4w4ljrsndyg7ok…ttwpkhigq`(47 GB).
+- **실행(운영자, 사용자 재확인 2026-09-04)**: plan `0 add / 1 change(node_b in-place) / 0 destroy` → apply **3m40s** → NEW_BV `…ab4w4ljrkbjz4iuv…rownkpojq`(≠ OLD_BV) → nsg-cluster에 22/tcp ← 220.120.14.112/32 임시 규칙(id 30060C) → v1 키로 `cloud-init status` done, **`Ubuntu 24.04.4 LTS`** → `authorized_keys`를 `joshuatech-ops` 한 줄로 교체 → 새 키 로그인 성공(`grep -c wlsgh@Home-2024` = 0) → **v1 키 Permission denied** → 구 볼륨 AVAILABLE/47 확인 후 삭제 → 임시 규칙 제거(`nsg rules list length` = **1**) → 재plan: 리소스 변경 0(output `node_b_boot_volume_id`만 새 값으로 갱신 → outputs-only apply로 수렴).
+- **절차 메모**: `oci network nsg rules remove --security-rule-ids "file://…json"`은 "Unable to process JSON input"으로 실패, 인라인 `'["<id>"]'`는 성공 — T014 절차는 인라인 형식 사용. 재이미지 뒤 노드 B의 VNIC·사설 IP 10.0.10.193·reserved IP 129.154.62.250·nsg-cluster 소속 불변. 노드 B의 v1 데이터(Redis)는 소멸(사용자 결정, 백업 없음).
+
+(T014 기록은 이하에 추가)
 
 ## §3 K3s·Argo
 
