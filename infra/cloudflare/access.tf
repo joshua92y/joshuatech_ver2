@@ -70,6 +70,7 @@ resource "cloudflare_zero_trust_access_policy" "svc_auth_k8s" {
 }
 
 # 운영자 로그인: allow, include = 운영자 이메일, require = GitHub IdP 로그인(login_method). 기본 24h.
+# include 이메일 = var.operator_email(기본값 없음) — 이 값이 GitHub 기본 이메일과 다르면 운영자 잠금; 변경 plan 에 email diff 가 보이면 반드시 멈출 것.
 resource "cloudflare_zero_trust_access_policy" "admin_github" {
   account_id       = local.account_id
   name             = "admin-github"
@@ -85,6 +86,7 @@ resource "cloudflare_zero_trust_access_policy" "admin_github" {
 }
 
 # 같은 규칙의 1h 판 — ssh 앱 전용(계약: "ssh 앱만 1h"; 정책 session_duration 이 앱 값을 덮으므로 별도 정책이 필요).
+# include 이메일 = var.operator_email(기본값 없음) — 이 값이 GitHub 기본 이메일과 다르면 운영자 잠금; 변경 plan 에 email diff 가 보이면 반드시 멈출 것.
 resource "cloudflare_zero_trust_access_policy" "admin_github_ssh" {
   account_id       = local.account_id
   name             = "admin-github-ssh"

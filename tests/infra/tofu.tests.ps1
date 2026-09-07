@@ -90,8 +90,12 @@
 #     ingress는 선언 순서대로 정확히 4개다 — ssh-a → 노드 A ssh:22, ssh-b → 노드 B ssh:22, k8s → tcp://kubernetes.default.svc.cluster.local:443,
 #     hostname 없는 http_status:404이 마지막. k8s origin이 :6443이면 FAIL이다(Service `kubernetes`는 port 443 → targetPort 6443이고
 #     cloudflared tcp origin은 주어진 포트로 그대로 dial하므로 6443은 연결 실패 — T039 리뷰 J2).
+#   - Cloudflare 신원·자격 변수(2026-09-07 사고): infra/cloudflare 의 variable 블록 operator_email·github_oauth_client_id·
+#     github_oauth_client_secret 은 각각 정확히 1개 있고 `default` 를 선언하지 않는다(값은 TF_VAR_* 로만). operator_email 에 기본값이
+#     있던 동안 TF_VAR_operator_email 없는 셸의 apply 가 admin-github·admin-github-ssh 의 include 이메일을 T011 값(GitHub 기본 이메일)
+#     에서 기본값으로 조용히 바꿨다(운영자 잠금 위험) — validate 는 이를 잡지 못하므로 원문으로 고정한다(cf-vars-1, 블록 부재도 FAIL).
 #
-# 단언 수: 40 (tool 1, enc 1, dir 2, validate 4, plan 2, nsg 4, sl 1, inst 3, bucket 4, iam 7, dg 2, kms 3, lc 2, budget 1, access 1, tunnel 2)
+# 단언 수: 41 (tool 1, enc 1, dir 2, validate 4, plan 2, nsg 4, sl 1, inst 3, bucket 4, iam 7, dg 2, kms 3, lc 2, budget 1, access 1, cf-vars 1, tunnel 2)
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -225,6 +229,22 @@ function Get-TfResourceBlocks([string]$dir, [string]$type) {
     foreach ($f in @(Get-ChildItem -LiteralPath $dir -File -Filter '*.tf')) {
         $text = Get-TfText $f.FullName
         $rx = [regex]('resource\s+"' + [regex]::Escape($type) + '"\s+"([A-Za-z0-9_-]+)"\s*\{')
+        foreach ($m in $rx.Matches($text)) {
+            $i = $m.Index + $m.Length
+            $j = Find-TfBlockEnd $text $i
+            $blocks += @{ name = $m.Groups[1].Value; body = $text.Substring($i, [Math]::Max(0, $j - $i - 1)); file = $f.Name }
+        }
+    }
+    return , $blocks
+}
+# variable "<name>" { ... } 블록 — 같은 파서(전체 행 주석 제거 + 중괄호 균형). 각 블록은 자기 여는 중괄호에서 독립 추출되므로
+# 다른 변수의 heredoc description 이 파서를 흔들어도 그 블록에만 국한된다(검사 대상 블록은 본문에 heredoc 을 두지 않는 것이 안전하다).
+function Get-TfVariableBlocks([string]$dir) {
+    $blocks = @()
+    if (-not (Test-Path -LiteralPath $dir -PathType Container)) { return , $blocks }
+    foreach ($f in @(Get-ChildItem -LiteralPath $dir -File -Filter '*.tf')) {
+        $text = Get-TfText $f.FullName
+        $rx = [regex]'(?m)^\s*variable\s+"([A-Za-z0-9_-]+)"\s*\{'
         foreach ($m in $rx.Matches($text)) {
             $i = $m.Index + $m.Length
             $j = Find-TfBlockEnd $text $i
@@ -1141,6 +1161,22 @@ try {
         $pols = Get-TfResourceBlocks $cfDir 'cloudflare_zero_trust_access_policy'
         $bad = @(@($apps) + @($pols) | Where-Object { $_.body -notmatch 'session_duration\s*=' } | ForEach-Object { "$($_.file):$($_.name)" })
         Assert 'access-1: >=1 Access application block; every application AND policy block sets session_duration [tf-text]' ($apps.Count -ge 1 -and $bad.Count -eq 0) "app blocks=$($apps.Count), policy blocks=$($pols.Count); missing session_duration: $($bad -join ', ')"
+    }
+
+    # ---------- 10b. Cloudflare 신원·자격 변수 [tf-text] — default 없음(값은 TF_VAR_* 로만) ----------
+    # 2026-09-07 사고: operator_email 에 기본값이 있어 TF_VAR_operator_email 없는 셸의 apply 가 admin-github·admin-github-ssh 의
+    # include 이메일을 T011 값(GitHub 기본 이메일)에서 기본값으로 조용히 바꿨다(운영자 잠금 위험). validate 는 기본값 유무를 보지
+    # 않으므로 원문에서 세 변수 블록의 `default` 부재를 고정한다. 블록이 없거나 중복이어도 FAIL(fail closed).
+    Test-Group 'cf-vars-1' {
+        $want = @('operator_email', 'github_oauth_client_id', 'github_oauth_client_secret')
+        $vars = Get-TfVariableBlocks $cfDir
+        $bad = @()
+        foreach ($n in $want) {
+            $hits = @(@($vars) | Where-Object { [string]::Equals("$($_.name)", $n, [StringComparison]::Ordinal) })
+            if ($hits.Count -ne 1) { $bad += "variable '$n': blocks=$($hits.Count) (want exactly 1)"; continue }
+            if ($hits[0].body -match '(?m)^\s*default\s*=') { $bad += "variable '$n' ($($hits[0].file)) declares a default" }
+        }
+        Assert 'cf-vars-1: infra/cloudflare variable blocks operator_email, github_oauth_client_id, github_oauth_client_secret each exist exactly once and declare no default (identity/credential values come only from TF_VAR_*) [tf-text]' ($bad.Count -eq 0) "variable blocks=$(@($vars).Count); bad: $($bad -join ' | ')"
     }
 
     # ---------- 11. cloudflared 터널 ingress [tf-text] — 계약 hostnames-and-access.md §호스트 표(ssh-a·ssh-b·k8s) ----------

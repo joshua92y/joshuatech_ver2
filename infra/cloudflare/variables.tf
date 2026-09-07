@@ -61,9 +61,15 @@ variable "github_oauth_client_secret" {
 }
 
 variable "operator_email" {
-  description = "admin-github 정책이 allow 하는 운영자 이메일(contracts/hostnames-and-access.md §Access 정책 규칙)."
+  description = <<-EOT
+    admin-github·admin-github-ssh 정책이 allow 하는 운영자 이메일(contracts/hostnames-and-access.md §Access 정책 규칙).
+    기본값 없음 — TF_VAR_operator_email 로 반드시 지정. 운영자의 GitHub 계정이 Cloudflare Access 에 보고하는 기본(primary)
+    이메일이어야 하며, 값이 다르면 admin/ssh/k8s 등 GitHub IdP 앱 전부에서 로그인이 거부된다.
+    2026-09-07 기본값 회전 사고(환경변수 없는 셸의 apply 가 include 이메일을 T011 값에서 기본값으로 조용히 바꿈)로 기본값을 제거했다 —
+    tests/infra/tofu.tests.ps1 cf-vars-1 이 default 부재를 원문으로 검사한다.
+  EOT
   type        = string
-  default     = "egenauto.dev@gmail.com"
+  nullable    = false
 
   validation {
     condition     = can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.operator_email))
