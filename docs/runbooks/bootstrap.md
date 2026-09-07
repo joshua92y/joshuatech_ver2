@@ -184,7 +184,23 @@
 
 ## §6 업그레이드 창
 
-(T037에서 작성)
+정본 코드는 platform-gitops `platform/system-upgrade/`(system-upgrade-controller v0.20.1 + Plan `k3s-server`·`k3s-agent`, 채널 `v1.36` — 동작 순서·실패 시 상태·수동 트리거·T041 인수 절차는 그 README)이고, 이 절은 **운영자가 창 뒤에 확인할 것**을 고정한다(FR-048, T037). T037은 코드만 작성했고 라이브 실행은 없었다 — 클러스터 적용은 T041 Argo CD sync(Application `platform-system-upgrade`) 또는 그 전 운영자 수동 apply(README ①②)이며, 실행 기록은 그때 §3에 남긴다.
+
+- **창**: 매주 **일요일 03:00–05:00 KST**(`Asia/Seoul`). Grafana mute timing(T098)과 같은 창이고, CNPG `ScheduledBackup`(02:00 KST)·`platform-backup.timer`(02:30 KST) 뒤다. 창은 Job **생성**만 제한한다 — 03:00 이후 시작한 Job은 05:00을 넘겨도 끝까지 간다.
+- **사전(자동 — 운영자가 할 일 없음)**: `k3s-server` Plan의 `prepare` 컨테이너가 `chroot /host /usr/local/bin/platform-backup.sh --pre-upgrade`를 먼저 실행하고 **exit 0일 때만** cordon → 바이너리 교체 → k3s 재시작으로 넘어간다(k3s 번들 필수; Vault 스냅샷은 T044 뒤 필수, 그 전에는 `WARN … 건너뜀`이 정상). 노드 B(`k3s-agent`)는 노드 A 완료·버전 일치를 기다린 뒤 같은 순서(백업 없음)로 간다. 서버 재시작 동안 API 서버가 수십 초~수 분 끊기고 파드는 계속 돈다. 클러스터 버전이 채널과 같아도 첫 창에는 Job이 돌며(백업·cordon·바이너리 비교·uncordon, 재시작 없음) — 이것이 게이트의 첫 실증이다.
+- **사후 확인(운영자, 일요일 오전 — 끝난 Job은 15분 뒤 삭제되므로 로그는 Loki(T098) 또는 그 안에)**:
+  1. 노드: `kubectl get nodes -o wide` — 두 노드 Ready, VERSION이 같은 채널 버전, `SchedulingDisabled` 없음(cordon 자동 해제). 남아 있으면 실패다(아래 실패 시).
+  2. Plan·Job: `kubectl -n system-upgrade get plans -o wide`(COMPLETE `True`, MESSAGE 비어 있음) · `kubectl -n system-upgrade get jobs,pods`(Failed 0) · `kubectl -n system-upgrade get events --sort-by=.lastTimestamp | tail -n 20`(`JobFailed` 없음).
+  3. **Traefik HelmChartConfig 값 스키마(FR-048)** — K3s 패치가 번들 Traefik 차트를 바꿀 수 있고, `infra/bootstrap/traefik-config.yaml`은 chart **40.1.x 키**로 쓰였다(파일 머리의 40.1.x ↔ 41.x 대조표):
+     - `kubectl -n kube-system get helmchart traefik -o jsonpath='{.spec.chart}{"\n"}'`와 `kubectl -n kube-system logs job/helm-install-traefik | tail -n 30` — chart 버전(T038 시점 `traefik-40.1.4+up40.1.0`)이 바뀌었는지, `helm upgrade … --values values-1-000-HelmChartConfig-ValuesContent.yaml`이 오류 없이 끝났는지.
+     - `kubectl -n kube-system get deploy traefik -o jsonpath='{.spec.template.spec.containers[0].args}' | tr ',' '\n' | grep -E 'accesslog.fields.headers.defaultmode|accesslog.filters.statuscodes|tracing.otlp.grpc.endpoint|forwardedHeaders.trustedIPs'` — **40.1.x 키 4종**이 인자로 살아 있어야 한다(T038 ②와 같은 출력). 하나라도 빠지면 새 차트가 값을 조용히 무시한 것이다.
+     - 차트 버전이 바뀌었으면: K3s 릴리스 노트(번들 Traefik 차트 버전)와 traefik-helm-chart 릴리스 노트로 키 변경(예 `logs.*` → `log.*`/`accessLog.*`)을 확인하고 `traefik-config.yaml`을 새 스키마로 고쳐 §3 T038 절차 1~2로 재설치, 절차 4(노드 내부 443 `302`·args grep·오류 로그 0)로 확인한다. `tests/infra/traefik-config.tests.ps1`도 같은 커밋에서 갱신한다.
+  4. Vault(T044 뒤): `kubectl -n vault get pods` Running, `kubectl -n vault port-forward svc/vault 8200` 뒤 `GET /v1/sys/seal-status` → `sealed=false`·`type=ocikms`(안 풀렸으면 런북 `vault-unseal`).
+  5. 백업 지표: `ssh ssh-a "cat /var/lib/node_exporter/textfile_collector/platform_backup_k3s.prom"`(T044 뒤 `_vault.prom`도) — `platform_backup_last_success_timestamp`가 **창 시각(03:00 KST 이후)**으로 갱신됐는지(= prepare 게이트가 실제로 돌았다는 증거) + `oci --profile svc-verify --auth security_token os object list --bucket-name joshuatech-backup-platform --prefix k3s/`에 그 시각의 `.tar.age`가 있는지.
+  6. 나머지: `kubectl get pods -A | grep -Ev 'Running|Completed'`(빈 출력), Argo CD 앱 Synced/Healthy(T041 뒤), 터널 `ssh-a`/`ssh-b`/`k8s` 접속.
+- **실패 시**: `JobFailed` 이벤트·Plan `Complete=False`가 있으면 노드가 `SchedulingDisabled`로 남을 수 있다(cordon 뒤 upgrade 실패). prepare(백업) 실패면 cordon 전이라 노드는 정상 스케줄 상태다. 원인(`kubectl -n system-upgrade logs <apply-… pod> -c prepare` 또는 `-c upgrade`, `ssh ssh-a "sudo journalctl -u k3s --since '03:00'"`)을 고친 뒤 README §수동 트리거로 재실행한다 — 실패한 Plan은 갱신될 때까지 새 Job을 만들지 않는다. Plan을 지웠을 때만 `kubectl uncordon <node>`를 직접 한다(Plan이 살아 있으면 다음 성공 Job이 푼다).
+- **롤백 불가(명시)**: `rancher/k3s-upgrade`는 다운그레이드를 거부한다(현재 버전이 더 높으면 Job 실패, cordon 유지) — Plan `version`을 낮춰도 되돌아가지 않는다. K3s를 이전 버전으로 되돌리는 길은 FR-041 `rollback` 런북(T106)의 절차(핀 재설치 → `systemctl stop k3s` → §7의 번들 복원 → start → 노드 B 재조인, `--cluster-reset` 금지)뿐이며 계획 다운타임이 든다. 그래서 prepare 게이트의 백업이 창의 복원점이다.
+- **마이너 승격(수동)**: 채널 `v1.36` → `v1.37`은 PR로 두 Plan의 `channel`을 바꾼다(마이너를 건너뛰지 않는다). Argo CD·플랫폼 차트 승격은 Renovate PR + 이 창에서만 머지(FR-048).
 
 ## §7 K3s 번들 복원
 
