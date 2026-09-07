@@ -67,7 +67,8 @@
 #        ssh -i ~/.ssh/joshuatech-ops -o IdentitiesOnly=yes -N -L 6443:127.0.0.1:6443 ubuntu@144.24.85.118      # 별도 창에서 유지
 #        kubectl --kubeconfig "$HOME\.kube\joshuatech-admin.yaml" get nodes -L role,svccontroller.k3s.cattle.io/enablelb
 #      기대: 1 Ready, role=platform, enablelb=true.
-#   6. 실행 기록은 docs/runbooks/bootstrap.md §3 에 컨트롤러 지시로 적는다. cloudflared access logout 은 부트스트랩 예외 경로에서 해당 없음.
+#   6. 실행 기록은 docs/runbooks/bootstrap.md §3 에 컨트롤러 지시로 적는다. Access 세션 종료(cloudflared 토큰 캐시 삭제)는 부트스트랩 예외 경로에서 해당 없음
+#      (`cloudflared access logout` 하위 명령은 존재하지 않는다 — 2026-09-07 확인, 규칙 infra.md 참조).
 #
 # 절대 하지 않는 것: 토큰 생성·출력·로그, kubeconfig 출력·복사(절차 4 는 운영자의 손), IMDS 조회, "curl 파이프 sh", 버전 변경(다른 버전이 있으면 중단),
 #   k3s 재시작(config 가 바뀌어도 실행 중인 k3s 는 건드리지 않고 경고만), host-prep 결과의 재구성(iptables·모듈·시간대·패키지는 검증만),

@@ -43,4 +43,4 @@ paths:
 
 - `jt-ops` SSH 키는 반드시 FIDO2 하드웨어 키여야 한다. 하드웨어 기반 키가 불가능하면 `ssh-add -c`(사용 시 확인 프롬프트)로 로드하는 패스프레이즈 보호 키를 쓴다 — 보호 없는 키는 절대 안 된다.
 - SSH 연결은 cloudflared(`ssh-a.` / `ssh-b.` 터널 호스트)를 통해서만 하고, 직접 공개 엔드포인트로는 절대 하지 않는다 — 위의 부트스트랩 예외만 제외한다.
-- 모든 운영자 세션이 끝날 때 `cloudflared access logout`을 실행한다.
+- 모든 운영자 세션이 끝날 때 Access 세션을 종료한다: `cloudflared access tcp` 리스너를 끄고 `~/.cloudflared/`의 캐시 토큰(`*-token`, `*-org-token`; Windows는 `%USERPROFILE%\.cloudflared\`)을 삭제한다. `cloudflared access logout` 하위 명령은 존재하지 않는다(2026-09-07, 2026.8.3에서 확인).

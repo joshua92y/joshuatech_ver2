@@ -42,4 +42,4 @@ Contracts of record: `specs/003-platform-foundation/contracts/gitops-repo.md` an
 
 - The `jt-ops` SSH key MUST be a FIDO2 hardware key. If hardware-backed keys are impossible, use a passphrase-protected key loaded with `ssh-add -c` (confirm-on-use prompt) — never an unprotected key.
 - SSH connections go through cloudflared (`ssh-a.` / `ssh-b.` tunnel hosts), never a direct public endpoint — except under the bootstrap exception above.
-- At the end of every operator session, run `cloudflared access logout`.
+- At the end of every operator session, end the Access session: stop any `cloudflared access tcp` listener and delete the cached tokens in `~/.cloudflared/` (`*-token`, `*-org-token`; Windows `%USERPROFILE%\.cloudflared\`). There is no `cloudflared access logout` subcommand (verified 2026-09-07 on 2026.8.3).
