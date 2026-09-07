@@ -36,6 +36,7 @@ Contracts of record: `specs/003-platform-foundation/contracts/gitops-repo.md` an
 
 - NEVER put the operator's personal account credentials, the admin kubeconfig, or the `jt-ops` SSH private key into agent environment variables, files, or the repository — in any form, including "temporarily".
 - Agent identities are fixed: E2E flows use `e2e@joshuatech.dev`; cluster access uses a short-lived `agent-view` token; OCI access uses `svc-verify` session tokens only. If a task seems to need more, stop and ask the user — do not escalate.
+- **Harness exception (user decision C, 2026-09-07):** `tests/infra/tofu.tests.ps1` — and therefore `tests/run-all.ps1` — runs a read-only `tofu plan -lock=false` against `infra/oci` with the operator's default OCI profile and the `joshuatech-tfstate` state profile. This is the only agent-invoked command allowed to touch operator credentials: it never applies, never writes state, and exists to prove "0 destroys". Agents must not widen it — no other harness, script, or ad-hoc command may use those profiles, and a harness change that adds a write path is a rule violation.
 
 ## `jt-ops` key rules
 
