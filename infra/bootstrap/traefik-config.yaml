@@ -102,6 +102,7 @@
 #        kubectl -n kube-system delete job helm-install-traefik      # helm-controller 가 즉시 다시 만든다
 #      릴리스가 pending-install/pending-upgrade 로 남으면(kubectl -n kube-system get secrets -l owner=helm,name=traefik) 위 Job 삭제를 반복한다.
 #      수동 helm rollback 은 하지 않는다 — HelmChart/HelmChartConfig CR 이 정본이다.
+#      업그레이드 창 뒤 재확인(K3s 패치가 번들 차트 버전을 바꿀 수 있다)은 docs/runbooks/bootstrap.md §6 사후 확인 3항 — 그 절이 이 절차 1·2(재설치)·4(확인)를 가리킨다.
 #   5. 되돌리기(두 명령, 반드시 이 순서 — K3s 는 manifests 파일이 사라져도 이미 적용한 객체를 지우지 않는다(research.md:331)):
 #        ssh … ubuntu@144.24.85.118 "sudo rm -f /var/lib/rancher/k3s/server/manifests/traefik-config.yaml"
 #        kubectl -n kube-system delete helmchartconfig traefik
