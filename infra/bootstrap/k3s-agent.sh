@@ -8,7 +8,8 @@
 # 정적 계약은 tests/infra/k3s-agent.tests.ps1 이 고정한다.
 #
 # 하는 일(순서): 전제 검증(host-prep 결과를 검증만 한다 — iptables·모듈·시간대를 재구성하지 않는다) → 서버 도달 확인(K3S_URL TLS 핸드셰이크)
-#   → 토큰 파일 검증(보안 형식 K10<CA sha256>::server:<pw>, 내용 미출력) → config.yaml 렌더(0600, 내용이 같으면 손대지 않음)
+#   → 토큰 파일 검증(보안 형식 K10<CA sha256>::server:<pw>, 내용 미출력) → resolv.conf 렌더(0644, 파드 DNS 업스트림 — 아래 "파드 DNS")
+#   → config.yaml 렌더(0600, 내용이 같으면 손대지 않음)
 #   → K3s 설치(운영자가 미리 내려받아 검토한 공식 설치 스크립트 사본을 버전 고정으로 실행; 같은 버전이 이미 있으면 skip, 다른 버전이면 중단)
 #   → k3s-agent.service enabled/active 확인 → 등록 로그 대기(최대 90 s; 이 노드에는 kubectl 이 없다 — Ready 판정은 운영자 절차 4) → summary.
 #   클러스터 상태를 바꾸는 명령은 설치와 기동(systemctl enable --now)뿐이다.
@@ -23,6 +24,20 @@
 #   K3S_VERSION           선택. 기본 v1.36.4+k3s1(research R1 버전 표, 고정 — 서버와 같은 버전). 패치 승격은 system-upgrade-controller agent Plan 몫.
 #   INSTALL_SCRIPT        선택. 기본 /tmp/install-k3s.sh — 운영자가 T035 절차 2 에서 내려받아 검토한 get.k3s.io 사본(같은 파일). 설치가 필요할 때만 요구된다.
 #   INSTALL_SCRIPT_SHA256 선택. 지정하면 사본의 sha256 이 이 값과 다를 때 중단한다(T035 에서 기록한 해시와 같아야 한다).
+#   K3S_RESOLV_NAMESERVERS 선택. 기본 "1.1.1.1 8.8.8.8"(공백 구분, 노드 A 와 같은 값). /etc/rancher/k3s/resolv.conf 에 nameserver 줄로 렌더되고
+#                         kubelet 이 파드 DNS 업스트림으로 쓴다(아래 "파드 DNS"). 공개 주소만 받는다 — 루프백·링크로컬(169.254/16: OCI VCN
+#                         리졸버·IMDS)·사설(10/8·172.16/12·192.168/16)·멀티캐스트는 preflight 에서 die. 노드 자신의 DNS 는 건드리지 않는다.
+#
+# 파드 DNS(resolv-conf) — 사용자 결정 2026-09-08 옵션 B, T041 PR-B2 선행 게이트(근거 전문은 k3s-server.sh 머리 주석 "파드 DNS"):
+#   K3s 기본값은 노드의 /run/systemd/resolve/resolv.conf 를 kubelet 에 넘기고, 그 파일의 유일한 업스트림은 OCI VCN 리졸버 = IMDS 주소다
+#   (pkg/agent/config/config.go locateOrGenerateResolvConf + isValidNameserver 의 IMDS 예외). T041 의 계약 정책 kube-system/deny-imds 는
+#   egress 를 "0.0.0.0/0 except IMDS" 로 제한하므로 그대로 두면 CoreDNS 의 외부 이름 해석이 끊긴다. 그래서 계약이 아니라 노드가 파드에
+#   물려주는 resolv.conf 를 공개 리졸버로 바꾼다 — 계약 매트릭스 변경 0.
+#   노드 B 는 자기 노드에서 도는 파드(argocd 5개·cloudflared 등)의 DNS 를 kubelet 이 정하므로 노드 A 와 같은 파일이 필요하다. CoreDNS 가
+#   노드 A 에 있어도 이 설정을 빼면 노드 B 에서 뜨는 dnsPolicy: Default 파드가 다시 VCN 리졸버를 물게 된다(양쪽 노드에 동일 적용).
+#   resolv-conf 는 server·agent 양쪽의 유효한 config.yaml 키다(pkg/cli/cmds/agent.go 197-202 정의 + 322 agent 명령, server.go 606 ServerFlags;
+#   docs.k3s.io/cli/agent CLI help "--resolv-conf value (agent/networking) Kubelet resolv.conf file"). 살아 있는 노드 적용 절차는
+#   docs/runbooks/bootstrap.md §3 "파드 DNS 업스트림 전환".
 #
 # install.sh 조합(2026-09-04 get.k3s.io 원문 확인, 사본 sha256 e5cc3b3d9dfc1662c2d9be6da5abc9a4cd317d6abc3a5ffc02e3dd3248207fee):
 #   setup_env 은 첫 인자가 명령이면 CMD_K3S=$1 로 잡는다 — INSTALL_K3S_EXEC=agent 만으로 CMD_K3S=agent, SYSTEM_NAME=k3s-agent 가 되고 K3S_URL 은
@@ -57,7 +72,8 @@
 #   5. 실행 기록은 docs/runbooks/bootstrap.md §3 에 컨트롤러 지시로 적는다. 임시 22/tcp 규칙 제거는 T039 몫.
 #
 # 절대 하지 않는 것: 토큰 생성·출력·로그, kubeconfig 취급(이 노드에는 없다), IMDS 조회, "curl 파이프 sh", 버전 변경(다른 버전이 있으면 중단),
-#   k3s-agent 재시작(config 가 바뀌어도 실행 중인 agent 는 건드리지 않고 경고만), host-prep 결과의 재구성(iptables·모듈·시간대·패키지는 검증만),
+#   k3s-agent 재시작(config 가 바뀌어도 실행 중인 agent 는 건드리지 않고 경고만), 노드 자신의 이름 해석 변경(/etc/resolv.conf·systemd-resolved·
+#   netplan 은 손대지 않는다 — 만드는 것은 kubelet 이 파드에 물려줄 별도 파일뿐이다), host-prep 결과의 재구성(iptables·모듈·시간대·패키지는 검증만),
 #   K3S_URL/K3S_TOKEN 을 환경 변수로 설치 스크립트에 넘기기(service.env 평문 잔존).
 set -euo pipefail
 
@@ -67,8 +83,10 @@ K3S_URL="${K3S_URL:-https://10.0.7.78:6443}"
 NODE_PRIVATE_IP="${NODE_PRIVATE_IP:-10.0.10.193}"
 K3S_VERSION="${K3S_VERSION:-v1.36.4+k3s1}"
 INSTALL_SCRIPT="${INSTALL_SCRIPT:-/tmp/install-k3s.sh}"
+K3S_RESOLV_NAMESERVERS="${K3S_RESOLV_NAMESERVERS:-1.1.1.1 8.8.8.8}"
 K3S_CONFIG_DIR=/etc/rancher/k3s
 K3S_CONFIG="$K3S_CONFIG_DIR/config.yaml"
+K3S_RESOLV_CONF="$K3S_CONFIG_DIR/resolv.conf"
 K3S_UNIT=/etc/systemd/system/k3s-agent.service
 K3S_SERVER_DIR=/var/lib/rancher/k3s/server
 RULES_V4=/etc/iptables/rules.v4
@@ -78,6 +96,7 @@ REGISTER_TIMEOUT=90   # 초. 등록 로그 대기 상한(5 s 간격)
 REGISTER_PATTERN='Successfully registered node|Node was previously registered'
 
 CHANGES=()
+RESOLV_NS=()   # preflight 가 K3S_RESOLV_NAMESERVERS 를 검증해 채운다(render_resolv_conf 의 입력)
 CONFIG_CHANGED=0
 INSTALLED_THIS_RUN=0
 REGISTERED=unconfirmed   # confirmed | confirmed-earlier-in-boot | unconfirmed (wait_node_registered 의 3단계)
@@ -110,6 +129,31 @@ write_if_changed() {
   mark_changed "wrote $path"
 }
 
+# 파드 DNS 업스트림으로 쓸 수 있는 주소인가(머리 주석 "파드 DNS"; k3s-server.sh 와 같은 구현). IPv4 점 표기 + 전역 유니캐스트만 통과시킨다:
+# 0/8·루프백 127/8·사설 10/8·172.16/12·192.168/16·링크로컬 169.254/16(OCI VCN 리졸버·IMDS)·멀티캐스트 이상 224+ 는 거부.
+# K3s 의 isValidNameserver 와 달리 IMDS 예외를 두지 않는다 — 그 예외가 지금 이 전환의 원인이다(deny-imds 가 그 주소를 막는다).
+is_public_nameserver() {
+  local ip=$1 a b o
+  [[ "$ip" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]] || return 1
+  # BASH_REMATCH 는 다음 [[ =~ ]] 마다 덮어써지므로(실패하면 비어 버린다) 옥텟을 먼저 배열로 옮긴다
+  local -a oct=("${BASH_REMATCH[@]:1}")
+  # 옥텟은 0-255, 선행 0 금지("010" 을 8진수로 읽는 리졸버 구현이 있다)
+  for o in "${oct[@]}"; do
+    case "$o" in 0?*) return 1 ;; esac
+    [ "$((10#$o))" -le 255 ] || return 1
+  done
+  a=$((10#${oct[0]}))
+  b=$((10#${oct[1]}))
+  case "$a" in
+    0 | 10 | 127) return 1 ;;
+    169) [ "$b" -ne 254 ] || return 1 ;;
+    172) { [ "$b" -lt 16 ] || [ "$b" -gt 31 ]; } || return 1 ;;
+    192) [ "$b" -ne 168 ] || return 1 ;;
+  esac
+  [ "$a" -lt 224 ] || return 1
+  return 0
+}
+
 # 설치된 k3s 버전(k3s --version 첫 줄 "k3s version vX.Y.Z+k3sN (hash)"). 바이너리가 없으면 빈 문자열.
 installed_k3s_version() {
   command -v k3s >/dev/null 2>&1 || return 0
@@ -118,7 +162,7 @@ installed_k3s_version() {
 
 # ---------- 0. 사전 확인 ----------
 preflight() {
-  local addrs server_host
+  local addrs server_host ns
   [ "$(id -u)" -eq 0 ] || die "root 로 실행해야 한다(sudo)"
   # shellcheck disable=SC1091
   . /etc/os-release
@@ -129,6 +173,12 @@ preflight() {
   [[ "$K3S_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\+k3s[0-9]+$ ]] || die "K3S_VERSION 형식 불량: '$K3S_VERSION' (예: v1.36.4+k3s1)"
   case "$K3S_TOKEN_FILE" in /*) ;; *) die "K3S_TOKEN_FILE 은 절대 경로여야 한다: '$K3S_TOKEN_FILE'" ;; esac
   case "$INSTALL_SCRIPT" in /*) ;; *) die "INSTALL_SCRIPT 는 절대 경로여야 한다: '$INSTALL_SCRIPT'" ;; esac
+  # 파드 DNS 업스트림(머리 주석 "파드 DNS"): 공백 구분 목록 → 배열. 비었거나 공개 주소가 아니면 중단한다.
+  read -r -a RESOLV_NS <<< "$K3S_RESOLV_NAMESERVERS"
+  [ "${#RESOLV_NS[@]}" -ge 1 ] || die "K3S_RESOLV_NAMESERVERS 가 비어 있다 — 공개 리졸버를 최소 하나 지정해야 한다(기본 '1.1.1.1 8.8.8.8', 노드 A 와 같은 값)"
+  for ns in "${RESOLV_NS[@]}"; do
+    is_public_nameserver "$ns" || die "K3S_RESOLV_NAMESERVERS 항목 '$ns' 가 공개 리졸버가 아니다 — 루프백·링크로컬(169.254/16: OCI VCN 리졸버·IMDS)·사설(10/8·172.16/12·192.168/16)·멀티캐스트는 파드 업스트림으로 쓸 수 없다(kube-system deny-imds 가 IMDS egress 를 막아 클러스터 이름 해석이 끊긴다)"
+  done
   # 노드 B 전용 가드 1: IMDS 대신 로컬 인터페이스에서 확인한다(변수로 받아 herestring 으로 검사 — pipefail 하 grep -q 조기 종료 SIGPIPE 회피)
   addrs=$(ip -4 -o addr show scope global | awk '{ split($4, a, "/"); print a[1] }')
   grep -qxF -- "$NODE_PRIVATE_IP" <<< "$addrs" || die "NODE_PRIVATE_IP $NODE_PRIVATE_IP 가 이 호스트의 인터페이스에 없다(있는 IP: $(tr '\n' ' ' <<< "$addrs")) — 노드 B 전용 스크립트다"
@@ -137,7 +187,7 @@ preflight() {
   # 노드 B 전용 가드 3: K3S_URL 이 자기 자신을 가리키면 조인이 아니다
   server_host=${K3S_URL#https://}; server_host=${server_host%:*}
   [ "$server_host" != "$NODE_PRIVATE_IP" ] || die "K3S_URL($K3S_URL)이 NODE_PRIVATE_IP 자신을 가리킨다 — server 는 노드 A(10.0.7.78)여야 한다"
-  log "preflight OK: $(hostname) ubuntu=$VERSION_ID arch=$(uname -m) kernel=$(uname -r) ip=$NODE_PRIVATE_IP k3s=$K3S_VERSION server=$K3S_URL"
+  log "preflight OK: $(hostname) ubuntu=$VERSION_ID arch=$(uname -m) kernel=$(uname -r) ip=$NODE_PRIVATE_IP k3s=$K3S_VERSION server=$K3S_URL resolv=[${RESOLV_NS[*]}]"
 }
 
 # ---------- 1. host-prep 결과 검증(재구성하지 않는다) ----------
@@ -206,8 +256,25 @@ check_ca_hash() {
   fi
 }
 
-# ---------- 4. config.yaml ----------
+# ---------- 4. resolv.conf(파드 DNS 업스트림) ----------
+# config.yaml 의 resolv-conf 가 가리키는 파일(노드 A 와 같은 내용). kubelet 이 dnsPolicy: Default 파드에 그대로 물려주므로 config.yaml 보다 먼저 렌더한다.
+# 0644: 비밀이 없고 kubelet·컨테이너 런타임이 읽는다(config.yaml 0600 과 다른 이유). nameserver 줄만 — search·options 는 두지 않는다(머리 주석).
+render_resolv_conf() {
+  local content ns before
+  [ "${#RESOLV_NS[@]}" -ge 1 ] || die "RESOLV_NS 가 비어 있다 — preflight 가 먼저 돌아야 한다"
+  content="# $K3S_RESOLV_CONF — managed by infra/bootstrap/k3s-agent.sh. Edit the script, not this file."
+  content+=$'\n'"# Kubelet --resolv-conf (config.yaml key resolv-conf): upstream for pods with dnsPolicy: Default (bundled CoreDNS)."
+  content+=$'\n'"# Public resolvers only. The OCI VCN resolver is the IMDS address, which kube-system/deny-imds blocks (T041)."
+  content+=$'\n'"# The node's own resolution (systemd-resolved) is untouched. No search domain: pods use service DNS or public FQDNs."
+  for ns in "${RESOLV_NS[@]}"; do content+=$'\n'"nameserver $ns"; done
+  before=${#CHANGES[@]}
+  write_if_changed "$K3S_RESOLV_CONF" "$content" 644
+  [ "${#CHANGES[@]}" -eq "$before" ] || CONFIG_CHANGED=1
+}
+
+# ---------- 5. config.yaml ----------
 # 모든 agent 플래그는 이 파일 한 곳(K3S-D1). 항목은 tasks T036 문면 + research 노드 B 스니펫에 있는 것만: server, token-file, node-label [role=data].
+# resolv-conf 는 T036 문면 밖의 후속 추가다(사용자 결정 2026-09-08 옵션 B — 머리 주석 "파드 DNS"; T041 PR-B2 선행 게이트).
 # 외부 IP 지정 없음(K3S-D3), 서버 전용 키(tls-san·secrets-encryption·flannel-backend·write-kubeconfig-mode) 없음 — agent 는 server 의 flannel 설정을 따른다.
 render_config() {
   local content
@@ -216,6 +283,7 @@ render_config() {
 # All K3s agent flags live here (K3S-D1); the installer receives only INSTALL_K3S_VERSION + INSTALL_K3S_EXEC=agent.
 server: "$K3S_URL"
 token-file: $K3S_TOKEN_FILE
+resolv-conf: $K3S_RESOLV_CONF
 node-label:
   - "role=data"
 EOF
@@ -225,7 +293,7 @@ EOF
   [ "${#CHANGES[@]}" -eq "$before" ] || CONFIG_CHANGED=1
 }
 
-# ---------- 5. 설치 ----------
+# ---------- 6. 설치 ----------
 check_install_script() {
   local f=$INSTALL_SCRIPT have want
   [ -f "$f" ] || die "설치 스크립트 사본 $f 가 없다 — 운영자 절차 2(T035 절차 2 의 get.k3s.io 사본을 scp)"
@@ -263,7 +331,7 @@ install_k3s() {
   mark_changed "k3s $K3S_VERSION installed (agent)"
 }
 
-# ---------- 6. 서비스 상태 ----------
+# ---------- 7. 서비스 상태 ----------
 ensure_service() {
   local enabled active
   enabled=$(systemctl is-enabled k3s-agent 2>/dev/null || true)
@@ -276,11 +344,11 @@ ensure_service() {
   fi
   systemctl is-active --quiet k3s-agent || die "k3s-agent.service 가 active 가 아니다 — journalctl -u k3s-agent -n 100"
   if [ "$CONFIG_CHANGED" = 1 ] && [ "$INSTALLED_THIS_RUN" != 1 ]; then
-    warn "$K3S_CONFIG 가 바뀌었지만 실행 중인 k3s-agent 는 건드리지 않는다 — 반영(k3s-agent.service 재시작)은 운영자 판단(node-label 은 등록 시 1회만 적용)"
+    warn "$K3S_CONFIG 또는 $K3S_RESOLV_CONF 가 바뀌었지만 실행 중인 k3s-agent 는 건드리지 않는다 — 반영(k3s-agent.service 재시작)은 운영자 판단(node-label 은 등록 시 1회만 적용, resolv-conf 는 재시작 뒤 이 노드에서 도는 dnsPolicy: Default 파드의 재생성까지 필요: docs/runbooks/bootstrap.md §3 '파드 DNS 업스트림 전환')"
   fi
 }
 
-# ---------- 7. 등록 로그 대기 ----------
+# ---------- 8. 등록 로그 대기 ----------
 # 이 노드에는 kubectl 이 없다. 이 부팅의 k3s-agent 저널에서 kubelet 의 등록 메시지("Successfully registered node" — 첫 등록, 또는
 # "Node was previously registered" — 재부팅/재실행)를 기다린다. 없으면 die 하지 않고 warn 한다: Ready 판정의 권위는 운영자 절차 4 의 kubectl 이다.
 # 등록 판정은 3단계다(2026-09-04 T036 실행 실측):
@@ -318,6 +386,7 @@ summary() {
   for rule in "${CHANGES[@]:-}"; do [ -n "$rule" ] && printf '  - %s\n' "$rule"; done
   printf 'k3s: installed=%s want=%s  service: enabled=%s active=%s\n' "$(installed_k3s_version)" "$K3S_VERSION" "$(systemctl is-enabled k3s-agent 2>/dev/null || true)" "$(systemctl is-active k3s-agent 2>/dev/null || true)"
   printf 'config: %s changed=%s mode=%s\n' "$K3S_CONFIG" "$([ "$CONFIG_CHANGED" = 1 ] && printf yes || printf no)" "$(stat -c %a "$K3S_CONFIG")"
+  printf 'resolv-conf: %s mode=%s nameservers=[%s] (pods only; node resolver untouched)\n' "$K3S_RESOLV_CONF" "$(stat -c %a "$K3S_RESOLV_CONF")" "${RESOLV_NS[*]}"
   printf 'server: %s  registration=%s  label=role=data (verify from the workstation: kubectl get nodes -L role -> 2 Ready)\n' "$K3S_URL" "$REGISTERED"
   printf 'flannel-wg iface: %s  token-file: %s (mode %s, secure format, contents never printed)\n' "$(ip link show flannel-wg >/dev/null 2>&1 && printf present || printf absent)" "$K3S_TOKEN_FILE" "$(stat -c %a "$K3S_TOKEN_FILE")"
   printf '==== end ====\n'
@@ -329,6 +398,7 @@ main() {
   check_server_reachable
   check_token_file
   check_ca_hash
+  render_resolv_conf
   render_config
   install_k3s
   ensure_service

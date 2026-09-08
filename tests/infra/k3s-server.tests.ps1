@@ -12,7 +12,13 @@
 #          cfg-4 tls-san 2개 = "$NODE_PRIVATE_IP"(기본 10.0.7.78) + "$TLS_SAN_HOST"(기본 k8s.joshuatech.dev)
 #          cfg-5 node-label 2개 = role=platform + svccontroller.k3s.cattle.io/enablelb=true  cfg-6 secrets-encryption: true
 #          cfg-7 secrets-encryption-provider: secretbox  cfg-8 flannel-backend: wireguard-native  cfg-9 write_if_changed ... 600
-#          cfg-10 렌더된 최상위 키가 허용 집합(7개)과 정확히 같다(그 외 키 없음)  cfg-11 main 순서 render_config < install_k3s < ensure_service < wait_node_ready
+#          cfg-10 렌더된 최상위 키가 허용 집합(8개)과 정확히 같다(그 외 키 없음)  cfg-11 main 순서 render_config < install_k3s < ensure_service < wait_node_ready
+#          cfg-12 resolv-conf: $K3S_RESOLV_CONF(= $K3S_CONFIG_DIR/resolv.conf)
+#   DNS    dns-1 render_resolv_conf 가 write_if_changed … 644 로 렌더  dns-2 기본 K3S_RESOLV_NAMESERVERS 목록이 전부 공개 주소
+#          dns-3 렌더 본문은 주석 + nameserver 줄뿐(search·options·domain 없음)  dns-4 코드에 링크로컬 169.254/16 리터럴 없음
+#          dns-5 preflight 가 목록을 배열로 읽어 is_public_nameserver 로 검사·die + 헬퍼가 루프백·사설·링크로컬·멀티캐스트 거부
+#          dns-6 main 순서 preflight < render_resolv_conf < render_config  dns-7 resolv.conf 변경이 CHANGES·CONFIG_CHANGED 에 반영(재시작 없음)
+#          dns-8 summary 에 resolv-conf 경로·mode·nameservers
 #   FORBID forbid-1 외부 IP 키 없음  forbid-2 번들 컴포넌트 끄기 키/플래그 없음  forbid-3 vxlan 없음  forbid-4 구 호스트명 k3s.joshuatech.dev 없음(파일 전체)
 #          forbid-5 채널 설치 없음(INSTALL_K3S_CHANNEL)  forbid-6 curl 파이프 sh 없음  forbid-7 IMDS 조회 없음  forbid-8 클러스터 변경 명령 없음(kubectl은 get만,
 #          systemctl restart/stop·k3s-uninstall·tofu 없음)  forbid-9 host-prep 재구성 없음(iptables -A/-I·netfilter-persistent reload·modprobe·set-timezone·apt-get install)
@@ -72,8 +78,24 @@ function Get-FunctionBody([string]$text, [string]$name) {
 # 주석(#로 시작) 아닌 줄만
 function Get-CodeLines([string[]]$lines) { return @($lines | Where-Object { $_ -cnotmatch '^\s*#' }) }
 
+# 파드 DNS 업스트림으로 쓸 수 있는 주소인가 — 스크립트의 is_public_nameserver 와 같은 판정을 PowerShell 쪽에서 독립 구현한다
+# (0/8·127/8·10/8·172.16/12·192.168/16·169.254/16(OCI VCN 리졸버·IMDS)·224+ 거부). 기본값 목록을 문자열 비교가 아니라 의미로 검사하기 위한 것.
+function Test-PublicIPv4([string]$ip) {
+    $m = [regex]::Match($ip, '^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$')
+    if (-not $m.Success) { return $false }
+    $o = @(1, 2, 3, 4 | ForEach-Object { [int]$m.Groups[$_].Value })
+    if (@($o | Where-Object { $_ -gt 255 }).Count -gt 0) { return $false }
+    if (@(0, 10, 127) -contains $o[0]) { return $false }
+    if ($o[0] -eq 169 -and $o[1] -eq 254) { return $false }
+    if ($o[0] -eq 172 -and $o[1] -ge 16 -and $o[1] -le 31) { return $false }
+    if ($o[0] -eq 192 -and $o[1] -eq 168) { return $false }
+    if ($o[0] -ge 224) { return $false }
+    return $true
+}
+
 $allNames = @('file-1', 'file-2', 'file-3', 'file-4',
-    'cfg-1', 'cfg-2', 'cfg-3', 'cfg-4', 'cfg-5', 'cfg-6', 'cfg-7', 'cfg-8', 'cfg-9', 'cfg-10', 'cfg-11',
+    'cfg-1', 'cfg-2', 'cfg-3', 'cfg-4', 'cfg-5', 'cfg-6', 'cfg-7', 'cfg-8', 'cfg-9', 'cfg-10', 'cfg-11', 'cfg-12',
+    'dns-1', 'dns-2', 'dns-3', 'dns-4', 'dns-5', 'dns-6', 'dns-7', 'dns-8',
     'forbid-1', 'forbid-2', 'forbid-3', 'forbid-4', 'forbid-5', 'forbid-6', 'forbid-7', 'forbid-8', 'forbid-9', 'forbid-10',
     'tok-1', 'tok-2', 'tok-3', 'tok-4', 'tok-5', 'tok-6', 'tok-7', 'tok-8', 'tok-9',
     'ver-1', 'ver-2', 'ver-3', 'ver-4', 'ver-5', 'ver-6',
@@ -112,6 +134,22 @@ foreach ($l in $cfgLines) {
 }
 function CfgVal([string]$k) { if ($cfgKeys.Contains($k)) { return @($cfgKeys[$k]) } else { return @() } }
 
+# render_resolv_conf 가 실제로 파일에 쓰는 줄들 — 'content=' / 'content+=' 오른쪽의 큰따옴표 문자열만 모은다(루프 줄의 "nameserver $ns" 포함).
+# 없으면 빈 배열(dns 단언이 FAIL 되게).
+$resolvBody = Get-FunctionBody $text 'render_resolv_conf'
+$resolvRendered = @()
+if ($null -ne $resolvBody) {
+    foreach ($l in @($resolvBody -split "`n")) {
+        $rhs = [regex]::Match($l, 'content\+?=(.*)$')
+        if (-not $rhs.Success) { continue }
+        foreach ($q in [regex]::Matches($rhs.Groups[1].Value, '"([^"]*)"')) { $resolvRendered += $q.Groups[1].Value }
+    }
+}
+# 기본 nameserver 목록(상수 줄에서 뽑는다)
+$resolvDefaults = @()
+$mDef = [regex]::Match($codeText, '(?m)^K3S_RESOLV_NAMESERVERS="\$\{K3S_RESOLV_NAMESERVERS:-([^}"]*)\}"$')
+if ($mDef.Success) { $resolvDefaults = @($mDef.Groups[1].Value -split '\s+' | Where-Object { $_.Length -gt 0 }) }
+
 # ---------- FILE ----------
 Test-Group 'file' {
     Assert 'file-1: infra/bootstrap/k3s-server.sh exists' $true ''
@@ -133,13 +171,36 @@ Test-Group 'cfg' {
     Assert 'cfg-7: secrets-encryption-provider: secretbox' ((CfgVal 'secrets-encryption-provider') -contains 'secretbox') "provider = $((CfgVal 'secrets-encryption-provider') -join ',')"
     Assert 'cfg-8: flannel-backend: wireguard-native' ((CfgVal 'flannel-backend') -contains 'wireguard-native') "flannel-backend = $((CfgVal 'flannel-backend') -join ',')"
     Assert 'cfg-9: rendered with write_if_changed "$K3S_CONFIG" "$content" 600' ($null -ne $renderBody -and (Has $renderBody 'write_if_changed "$K3S_CONFIG" "$content" 600')) 'write_if_changed ... 600 call missing'
-    $allowed = @('write-kubeconfig-mode', 'token-file', 'tls-san', 'node-label', 'secrets-encryption', 'secrets-encryption-provider', 'flannel-backend')
+    $allowed = @('write-kubeconfig-mode', 'token-file', 'tls-san', 'node-label', 'secrets-encryption', 'secrets-encryption-provider', 'flannel-backend', 'resolv-conf')
     $keys = @($cfgKeys.Keys)
     $extra = @($keys | Where-Object { $allowed -notcontains $_ })
     $missing = @($allowed | Where-Object { $keys -notcontains $_ })
-    Assert 'cfg-10: rendered top-level keys are exactly the allowed 7 (no extra keys, no unparsed lines)' ($extra.Count -eq 0 -and $missing.Count -eq 0) "extra=[$($extra -join ',')] missing=[$($missing -join ',')]"
+    Assert 'cfg-10: rendered top-level keys are exactly the allowed 8 (no extra keys, no unparsed lines)' ($extra.Count -eq 0 -and $missing.Count -eq 0) "extra=[$($extra -join ',')] missing=[$($missing -join ',')]"
     $mb = Get-FunctionBody $text 'main'
     Assert 'cfg-11: main order render_config < install_k3s < ensure_service < wait_node_ready' ($null -ne $mb -and (Idx $mb 'render_config') -ge 0 -and (Idx $mb 'render_config') -lt (Idx $mb 'install_k3s') -and (Idx $mb 'install_k3s') -lt (Idx $mb 'ensure_service') -and (Idx $mb 'ensure_service') -lt (Idx $mb 'wait_node_ready')) 'main missing or order wrong (config must exist before the installer starts k3s)'
+    Assert 'cfg-12: resolv-conf: $K3S_RESOLV_CONF (= $K3S_CONFIG_DIR/resolv.conf) — kubelet --resolv-conf, valid server flag (pkg/cli/cmds/server.go ServerFlags)' (((CfgVal 'resolv-conf') -contains '$K3S_RESOLV_CONF') -and (Has $codeText 'K3S_RESOLV_CONF="$K3S_CONFIG_DIR/resolv.conf"')) "resolv-conf = $((CfgVal 'resolv-conf') -join ',')"
+}
+
+# ---------- DNS(파드 DNS 업스트림, 2026-09-08 결정 B — T041 kube-system/deny-imds 선행 게이트) ----------
+Test-Group 'dns' {
+    $pb = Get-FunctionBody $text 'preflight'
+    $hb = Get-FunctionBody $text 'is_public_nameserver'
+    $sb = Get-FunctionBody $text 'ensure_service'
+    Assert 'dns-1: render_resolv_conf renders $K3S_RESOLV_CONF with write_if_changed ... 644 (root:root via the helper)' ($null -ne $resolvBody -and (Has $resolvBody 'write_if_changed "$K3S_RESOLV_CONF" "$content" 644')) 'render_resolv_conf missing or not rendered through write_if_changed with mode 644'
+    $badDefault = @($resolvDefaults | Where-Object { -not (Test-PublicIPv4 $_) })
+    Assert 'dns-2: K3S_RESOLV_NAMESERVERS default is a non-empty list of public resolvers (no VCN/IMDS link-local, loopback, private or multicast address)' ($resolvDefaults.Count -ge 1 -and $badDefault.Count -eq 0) "defaults=[$($resolvDefaults -join ' ')] rejected=[$($badDefault -join ' ')]"
+    $bad = @($resolvRendered | Where-Object { $_ -cnotmatch '^#' -and $_ -cnotmatch '^nameserver \S+$' })
+    $hasNs = @($resolvRendered | Where-Object { $_ -cmatch '^nameserver ' }).Count -ge 1
+    Assert 'dns-3: the rendered resolv.conf holds only comments and "nameserver <x>" lines (no search/options/domain — pods never use oraclevcn.com names)' ($resolvRendered.Count -ge 1 -and $hasNs -and $bad.Count -eq 0) "rendered=[$($resolvRendered -join ' | ')] offending=[$($bad -join ' | ')]"
+    Assert 'dns-4: no 169.254/16 literal in code lines (the VCN resolver = IMDS address must never be a rendered or default nameserver)' (-not (Has $codeText '169.254.')) 'a link-local nameserver would be blocked by kube-system/deny-imds and break cluster DNS'
+    $helperOk = ($null -ne $hb) -and (Has $hb '0 | 10 | 127) return 1') -and (Has $hb '169) [ "$b" -ne 254 ] || return 1') -and (Has $hb '172)') -and (Has $hb '-lt 16') -and (Has $hb '-gt 31') -and (Has $hb '192) [ "$b" -ne 168 ] || return 1') -and (Has $hb '[ "$a" -lt 224 ] || return 1')
+    $preOk = ($null -ne $pb) -and (Has $pb 'read -r -a RESOLV_NS <<< "$K3S_RESOLV_NAMESERVERS"') -and (Has $pb 'is_public_nameserver "$ns" || die')
+    Assert 'dns-5: preflight reads the list into RESOLV_NS and dies on a non-public entry; is_public_nameserver rejects 0/8,10/8,127/8,169.254/16,172.16/12,192.168/16,224+' ($helperOk -and $preOk) "helper ok=$helperOk preflight ok=$preOk"
+    $mb = Get-FunctionBody $text 'main'
+    Assert 'dns-6: main order preflight < render_resolv_conf < render_config (the file must exist before config.yaml points at it)' ($null -ne $mb -and (Idx $mb 'render_resolv_conf') -gt (Idx $mb 'preflight') -and (Idx $mb 'render_resolv_conf') -lt (Idx $mb 'render_config')) 'render_resolv_conf missing from main or in the wrong place'
+    Assert 'dns-7: a resolv.conf change counts as a change and only warns (CONFIG_CHANGED wiring, no restart)' ($null -ne $resolvBody -and (Has $resolvBody 'before=${#CHANGES[@]}') -and (Has $resolvBody '[ "${#CHANGES[@]}" -eq "$before" ] || CONFIG_CHANGED=1') -and ($null -ne $sb) -and (Has $sb '$K3S_RESOLV_CONF') -and (-not (Has $codeText 'systemctl restart'))) 'idempotency counter or the warn-only branch is missing'
+    $sm = Get-FunctionBody $text 'summary'
+    Assert 'dns-8: summary prints the resolv-conf path, mode and nameservers' ($null -ne $sm -and (Has $sm 'resolv-conf: %s mode=%s nameservers=[%s]') -and (Has $sm '"$K3S_RESOLV_CONF"') -and (Has $sm '"${RESOLV_NS[*]}"')) 'summary line missing'
 }
 
 # ---------- FORBID ----------
