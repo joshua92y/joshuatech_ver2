@@ -34,7 +34,7 @@
 | `allow-dns` | egress → `kube-system` `k8s-app=kube-dns` 53/UDP·53/TCP | `kube-system` 제외 13 ns |
 | `allow-same-namespace` | ingress·egress 모두 `podSelector: {}` ← / → 같은 ns(`namespaceSelector`로 자기 ns 라벨) | `argocd` · `data` · `cnpg-system` · `external-secrets` · `cert-manager` · `monitoring` · `identity` (7) |
 | `allow-kube-api` | egress → `ipBlock <노드 A private IP>/32` 6443 | `argocd` · `vault` · `external-secrets` · `cert-manager` · `cnpg-system` · `data` · `monitoring` · `system-upgrade` · `reloader` · `cloudflared` (10) |
-| `allow-apiserver-webhook` | ingress ← `ipBlock <노드 A private IP>/32`, ns마다 포트 지정 | `cert-manager` 10250 · `external-secrets` 10250 · `cnpg-system` 9443 · `vault` 8200 |
+| `allow-apiserver-webhook` | ingress ← `ipBlock <노드 A private IP>/32` **및**(webhook 행 한정) `ipBlock <노드 A flannel 터널 장치 주소>/32`, ns마다 포트 지정 | `cert-manager` 10250 · `external-secrets` 10250 · `cnpg-system` 9443 · `vault` 8200 |
 
 조건부 2종:
 
@@ -45,7 +45,12 @@
 
 - `kube-system`에는 default-deny를 걸지 않는다(K3s 번들 컴포넌트). 그래서 IMDS 차단만 `deny-imds` 한 장으로 표현한다 — allow-only 모델에서 `except`가 있는 egress 규칙은 그 규칙 안에서만 의미가 있으므로, **default-deny가 있는 나머지 13 ns에서는 `deny-imds` 같은 별도 정책이 아무것도 막지 못한다**. 따라서 그 13 ns의 IMDS 차단은 아래 "외부 egress 규칙 형식"으로 규칙마다 표현한다.
 - `allow-same-namespace`가 필요한 이유: Strimzi operator ↔ broker ↔ entity-operator, CNPG operator ↔ instance, Argo server ↔ repo-server ↔ redis ↔ controller, Alloy 내부, Authentik server ↔ worker는 전부 같은 ns 안 통신인데 default-deny가 이를 끊는다.
-- `allow-apiserver-webhook`의 `vault` 8200 행은 admission webhook이 아니라 `kubectl port-forward svc/vault 8200`(운영자 seal 확인, `platform-backup.sh`의 Vault 스냅샷)의 도착 경로다 — port-forward는 API 서버·kubelet을 거치므로 출발 IP가 노드 A private IP다. `platform-backup.sh`는 **반드시 port-forward를 경유**하고 공개 호스트(`vault.joshuatech.dev`)나 pod IP를 직접 쓰지 않는다.
+- `allow-apiserver-webhook`의 `vault` 8200 행은 admission webhook이 아니라 `kubectl port-forward svc/vault 8200`(운영자 seal 확인, `platform-backup.sh`의 Vault 스냅샷)의 도착 경로다. `platform-backup.sh`는 **반드시 port-forward를 경유**하고 공개 호스트(`vault.joshuatech.dev`)나 pod IP를 직접 쓰지 않는다.
+- **이 정책의 두 행은 메커니즘이 다르다**(2026-09-09 VD-W 실측으로 확인, T042):
+  - **webhook 행**(`cert-manager` · `external-secrets` · `cnpg-system`) — API 서버가 **엔드포인트 pod IP로 직접 dial** 한다. K3s 기본 `--egress-selector-mode: agent`에서 터널에 등록되는 것은 노드 IP와 kubelet 포트뿐이라 pod IP는 터널 대상이 아니고, 연결은 API 서버가 도는 노드의 호스트 네임스페이스에서 나간다. `flannel-backend: wireguard-native`에서는 pod CIDR이 `dev flannel-wg scope link` 라우트이고 그 장치의 유일한 주소가 **그 노드 pod CIDR의 네트워크 주소(/32)**이므로, 출발 IP는 노드 private IP가 **아니다**. 따라서 노드 B에 배치된 webhook에는 flannel 터널 장치 주소를 함께 허용해야 한다. `flannel-backend: host-gw`였다면 노드 private IP가 정확히 옳다 — 이 항목은 백엔드 선택에 딸린 것이지 주소를 잘못 적은 것이 아니다.
+  - **`vault` port-forward 행** — API 서버·kubelet을 거쳐 CRI 스트리밍 서버가 **pod 네임스페이스 안에서 loopback으로** 접속하므로 호스트의 NetworkPolicy 체인을 통과하지 않는다. 즉 이 행은 실효가 없으나, ns 집합의 완결성(정책 4장이 네 ns에 존재)을 위해 유지한다.
+  - 같은 이유로 `kubectl get --raw /api/v1/namespaces/<ns>/pods/<pod>:<port>/proxy`(에이전트 진단 경로)도 pod IP 직접 dial이라 default-deny ns의 다른 노드 pod에 대해서는 같은 허용이 필요하다.
+  - 허용 대상 주소는 pod CIDR의 **네트워크 주소**라 어떤 pod에도 할당되지 않는다 — 실질 허용 범위는 그 노드의 호스트 네임스페이스뿐이다. 노드 재조인·재이미지로 flannel 리스가 바뀌면 `.spec.podCIDR`과 재대조한다.
 
 ## 외부 egress 규칙 형식 (default-deny가 있는 13 ns 공통)
 
@@ -118,7 +123,7 @@ egress:
 | `cloudflared` | 노드 A private IP | 22 | `ssh-a.joshuatech.dev` 터널 |
 | `cloudflared` | 노드 B private IP | 22 | `ssh-b.joshuatech.dev` 터널 |
 | 노드 A private IP | `vault` | 8200 | `kubectl port-forward`(운영자 seal 확인 · `platform-backup.sh` Raft 스냅샷) — `allow-apiserver-webhook` |
-| 노드 A private IP | `cert-manager` · `external-secrets` · `cnpg-system` | 10250 · 10250 · 9443 | API 서버 → admission webhook — `allow-apiserver-webhook` |
+| 노드 A private IP **및** 노드 A flannel 터널 장치 주소 | `cert-manager` · `external-secrets` · `cnpg-system` | 10250 · 10250 · 9443 | API 서버 → admission webhook(pod IP 직접 dial — 위 각주) — `allow-apiserver-webhook` |
 | 위 10 ns | 노드 A private IP | 6443 | K8s API — `allow-kube-api` |
 
 - **`identity`의 메일(SMTP 587/465) egress는 없다** — SP-1은 recovery 이메일을 쓰지 않고 enrollment 흐름도 없어 Authentik이 이메일을 발송하지 않는다(T081). 메일 발송이 생기는 SP에서 이 매트릭스에 행을 먼저 추가한다.
