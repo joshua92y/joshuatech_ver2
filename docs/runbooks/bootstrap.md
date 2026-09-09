@@ -217,6 +217,24 @@
 - **실행(운영자, 2026-09-08 KST)**: **PR-A** `kubectl apply -k clusters/oci-k3s/projects`(AppProject 5, `default`는 봉인 patch) → `apply -f bootstrap/root-app.yaml` → root `project=platform` Synced/Healthy. **PR-B1** root가 child를 생성 → `platform-argocd` Synced/Healthy, **파드 5개 AGE 20h/19h·RESTARTS 0 불변**(SSA 항상 force라 conflict 없이 소유권만 이동), CRD 어노테이션 `Delete=false,Prune=false` 확인. **PR-B2(유일한 위험 구간)** 머지 전에 `patch app root … automated:null`로 트리거 회수 → 머지 → `apply -f root-app.yaml`로 적용. 적용 후 판정 전건 통과: **NetworkPolicy 93** · **Namespace 14 + PSA 라벨**(restricted 8 · baseline 3 · privileged 3, `kube-system`은 라벨만 SSA 인수) · cloudflared 27h·RESTARTS 0 불변 · **새 터널 세션 연결 성공**(`kubectl get nodes` 2 Ready · `ssh ssh-a`·`ssh ssh-b`) · CoreDNS `i/o timeout`/`SERVFAIL` 0 · `FailedCreate` 0 · `agent-view` 토큰 발급 성공. **PR-C** 같은 방식 → **root + 19 Application 전부 Synced/Healthy**(뼈대 15개도 리소스 0으로 Healthy = VD-E), cloudflared 파드 **이름·AGE 28h·RESTARTS 0 완전 불변**(순수 인수), SUC 컨트롤러 1/1 Running·`read-only file system` 0, **Plan 2개 `LATEST=v1.36.4-k3s1` · 조건 `LatestResolved=True`·`Validated=True`**(= 정책 아래서 `update.k3s.io` 443 도달 증명) · `Complete=False` 메시지 `current time is not within configured window`(화요일, 창은 일 03:00–05:00) · `APPLYING` 비어 있음.
 - **절차 메모**: **머지 직후에는 Argo가 `main`의 새 SHA를 아직 못 볼 수 있다** — PR-B2에서 `apply -f root-app.yaml` 뒤에도 `platform-policies`가 생기지 않았고 repo-server 로그의 캐시 키가 옛 SHA였다. `kubectl -n argocd annotate app root argocd.argoproj.io/refresh=hard --overwrite`로 당기면 즉시 반영된다(이후 절차에 포함). 채널 기반 Plan은 `get plans -o wide`의 VERSION 열(=`spec.version`)이 **항상 비어 있고** 해석 버전은 `.status.latestVersion`에만 있으며 `-k3s1`↔노드의 `+k3s1`은 같은 버전이다. PowerShell에서는 `-o custom-columns=…'.status.conditions[?(@.type=="LatestResolved")].status'`의 큰따옴표가 먹지 않아 `<none>`이 나온다 — 조건은 `-o jsonpath='{range .status.conditions[*]}{.type}={.status} {end}'`로 확인한다(실측: `Complete=False Validated=True LatestResolved=True`). 정지 스위치는 `kubectl -n argocd scale sts argocd-application-controller --replicas=0` 하나뿐(child만 `automated: null`로 패치하면 root의 selfHeal이 되돌린다). 1차 break-glass는 노드 A 대화형 SSH + `sudo k3s kubectl`(kubectl은 호출마다 새 dial이라 "열어 둔 터널 세션"은 안전망이 아니다), 2차는 NSG 22 임시 규칙.
 
+### T042 PR-2 (staging) 머지 — 기대 실패 **사전** 고지 (2026-09-09)
+
+`platform/cert-manager-issuers/`가 staging 발급자로 먼저 들어간다(설계 D4 = 각색 D). 이 구간(PR-2 머지 ~ PR-3 prod 승격)에는
+Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-dev-tls-staging`이므로 **아래 실패가 기대 상태**다.
+운영자·tester(T049)는 이것을 "알려진 기대 실패"로 보고하고, 근거로 staging Certificate가 `Ready=True`라는 확인 출력을 함께 남긴다.
+
+- `tests/platform/ingress.tests.ps1`
+  - `FAIL cert-1: Secret kube-system/wildcard-joshuatech-dev-tls exists (cert-manager Certificate spec.secretName match, Ready=True) -- expected exactly 1 cert-manager Certificate in kube-system with spec.secretName=wildcard-joshuatech-dev-tls, found 0`
+  - `FAIL cert-2: wildcard certificate status.notAfter is more than 30 days away (TotalDays > 30) -- no certificate source`
+- `tests/platform/cluster.tests.ps1`
+  - `FAIL argo-1 -- not Synced/Healthy: platform-cert-manager-issuers=Synced/Progressing, root=Synced/Progressing`
+    — Certificate가 `Ready=True`가 되기 전까지 Argo CD 내장 Certificate health가 Progressing이고 `argocd-cm`의 Application health Lua가 `root`까지 전파한다(설계 R13). `$argoExcludedApps`는 빈 배열이다.
+  - `tests/platform/reboot.tests.ps1`의 `reboot-3`(argocd ns Application 전부 Healthy)도 같은 이유로 FAIL하며, 러너에 기대 실패 allowlist가 없어 `run-platform-tests.ps1`은 이 구간에 **통째로 exit 1**이다.
+
+**해소 조건**: `argo-1`·`reboot-3`은 발급이 끝나면(§2 `kubectl -n kube-system wait --for=condition=Ready certificate/wildcard-joshuatech-dev`, 기대 2–5분) 자동 회복된다 —
+**회복되지 않으면 진짜 실패다.** `cert-1`·`cert-2`는 PR-3 승격 뒤 `Ready=True`까지 통과해야 PASS로 돌아온다(승격 직후 과도 상태는 `Ready != True (reason=[...])` / `certificate not Ready`라는 **세 번째 문면**으로 나온다).
+**정본 절차·문면 전문은 platform-gitops `platform/cert-manager-issuers/README.md` §6**(기대 실패)·**§1**(운영자 수동 Secret과 그 실패 증상)·**§4**(승격 게이트 4층).
+
 (T042 이후 기록은 이하에 추가)
 
 ## §4 Vault init·시크릿 시드
