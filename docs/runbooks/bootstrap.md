@@ -227,11 +227,13 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
   - `FAIL cert-1: Secret kube-system/wildcard-joshuatech-dev-tls exists (cert-manager Certificate spec.secretName match, Ready=True) -- expected exactly 1 cert-manager Certificate in kube-system with spec.secretName=wildcard-joshuatech-dev-tls, found 0`
   - `FAIL cert-2: wildcard certificate status.notAfter is more than 30 days away (TotalDays > 30) -- no certificate source`
 - `tests/platform/cluster.tests.ps1`
-  - `FAIL argo-1 -- not Synced/Healthy: platform-cert-manager-issuers=Synced/Progressing, root=Synced/Progressing`
+  - `FAIL argo-1: not Synced/Healthy: platform-cert-manager-issuers=Synced/Progressing, root=Synced/Progressing`
     — Certificate가 `Ready=True`가 되기 전까지 Argo CD 내장 Certificate health가 Progressing이고 `argocd-cm`의 Application health Lua가 `root`까지 전파한다(설계 R13). `$argoExcludedApps`는 빈 배열이다.
-  - `tests/platform/reboot.tests.ps1`의 `reboot-3`(argocd ns Application 전부 Healthy)도 같은 이유로 FAIL하며, 러너에 기대 실패 allowlist가 없어 `run-platform-tests.ps1`은 이 구간에 **통째로 exit 1**이다.
+  - 러너에 기대 실패 allowlist가 없어 `run-platform-tests.ps1`은 이 구간에 **통째로 exit 1**이다(원인은 cert-1·cert-2·argo-1 셋).
+- `tests/platform/reboot.tests.ps1`의 `reboot-3`(argocd ns Application 전부 Healthy)은 같은 조건을 보지만 **`-AfterReboot`로 돌릴 때만** 평가된다 —
+  평상시 러너 실행에서는 `SKIP reboot-3: manual trigger only (-AfterReboot) -- argocd applications all Healthy`다. 이 구간에 재부팅 검증을 겹쳐 돌리지 않는다.
 
-**해소 조건**: `argo-1`·`reboot-3`은 발급이 끝나면(§2 `kubectl -n kube-system wait --for=condition=Ready certificate/wildcard-joshuatech-dev`, 기대 2–5분) 자동 회복된다 —
+**해소 조건**: `argo-1`(그리고 `-AfterReboot` 실행 시의 `reboot-3`)은 발급이 끝나면(§2 `kubectl -n kube-system wait --for=condition=Ready certificate/wildcard-joshuatech-dev`, 기대 2–5분) 자동 회복된다 —
 **회복되지 않으면 진짜 실패다.** `cert-1`·`cert-2`는 PR-3 승격 뒤 `Ready=True`까지 통과해야 PASS로 돌아온다(승격 직후 과도 상태는 `Ready != True (reason=[...])` / `certificate not Ready`라는 **세 번째 문면**으로 나온다).
 **정본 절차·문면 전문은 platform-gitops `platform/cert-manager-issuers/README.md` §6**(기대 실패)·**§1**(운영자 수동 Secret과 그 실패 증상)·**§4**(승격 게이트 4층).
 
