@@ -85,7 +85,16 @@
 #          ("수십 초 순단"이라고 적었던 종전 문면은 실측 근거가 없었다 — 런북에도 측정치가 없다. 다음 롤아웃에서 재어 런북에 남긴다.)
 #      (b) `tlsOptions` 만 바꾸는 값(= sniStrict 투입/제거) → **롤아웃이 나지 않는다.** 차트는 이 값을 `templates/tlsoption.yaml` 하나에서
 #          `TLSOption` CR 로만 렌더하고, Deployment 의 `checksum/traefik-dynamic-conf` 는 `providers.file.enabled`(기본 false) 가드 안이라 파드 템플릿이 바뀌지 않는다.
-#          변경은 CRD provider 가 CR 을 다시 읽는 **초 단위**에 전역 반영된다. → **파드 AGE 가 그대로인 것이 정상이다**(실패 신호가 아니다).
+#          변경은 helm upgrade 가 `TLSOption` CR 을 갱신하고 CRD provider 가 그것을 다시 읽는 것으로 끝난다.
+#          → **파드 AGE 가 그대로인 것이 정상이다**(실패 신호가 아니다).
+#          실측(2026-09-10 sniStrict 투입): 파드 `traefik-84ff6ff49d-tk8c2` creationTimestamp `2026-09-04T09:58:33Z`·RESTARTS 0 **불변**,
+#          443 순단 0초, 엣지 무영향(auth 404 · traefik 302 · argo 302 유지).
+#      ⚠ **반영에 즉시성을 기대하지 말 것 — 절차 2 직후 조회하면 옛 값이 보인다.** 설치 → deploy 컨트롤러가 매니페스트를 집기까지
+#        약 **15 초**가 걸리고(2026-09-10 실측: 파일 mtime 17:24:20 → journal "Applied manifest" 17:24:34), 그 뒤 helm Job 이 5 초쯤 돈다.
+#        그동안 `get tlsoption default` 는 **갱신 전 spec** 을 보여준다 — 이것을 "적용 실패"로 오독하지 않는다.
+#        판정은 아래 절차 4 를 **설치 30 초 뒤에** 한 번에 하고, 그래도 옛 값이면
+#        `sudo journalctl -u k3s --since '5 min ago' | grep -E 'Applied manifest|helm-controller'` 로 컨트롤러가 집었는지부터 본다.
+#        (Job 교체 중 한 번 나오는 `error syncing … DesiredSet - Replace Wait … requeuing` 은 정상이고 곧 해소된다.)
 #          그래서 이 경우 유지보수 창의 목적은 순단 흡수가 아니라, 선행 조건이 어긋났을 때 위 :53 의 **역순 되돌리기를 즉시 실행할 사람이 붙어 있는 것**이다.
 #          ⚠ 예외: 같은 창에서 K3s 패치가 번들 차트 버전을 함께 올렸다면 그때는 (a) 처럼 롤아웃이 난다(런북 §6 사후 확인).
 #   4. 확인(읽기 전용 조회 + 1회성 요청). 2026-09-04 실행에서 얻은 정정이 반영돼 있다:
