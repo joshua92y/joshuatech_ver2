@@ -33,7 +33,11 @@
 - [x] **운영자 `age` 키쌍** — §0에서는 키쌍 생성만: `age-keygen -o <오프라인 보관 파일>`. 공개키의 노드 배치는 T036 시점에 한다(노드 A는 T014 재이미지로 초기화되므로 §0에서 미리 두지 않는다). 개인키는 Vault recovery key와 같은 오프라인 보관 — 노드·저장소·클라우드에 두지 않는다. 완료(2026-09-04): 파일 `joshuatech-age.key`(운영자 워크스테이션 `.vault` 디렉터리 + 비밀번호 관리자 사본), 공개키 `age1…`는 T036에서 노드 배치.
 - [x] **SSH 키 `jt-ops`** — FIDO2 `ssh-keygen -t ed25519-sk -f ~/.ssh/jt-ops` 또는 passphrase 키 + `ssh-add -c`(사용마다 확인). T014에서 두 노드 `~ubuntu/.ssh/authorized_keys`를 이 키로 교체한다(구 v1 키 제거 — 개인키 파기 순서는 토큰 표 ⑦). 완료(2026-09-04): **이름 예외 — 실명 `joshuatech-ops`**(`~/.ssh/joshuatech-ops`, ed25519, passphrase 방식 — 사용 시 `ssh-add -c`), 지문 `SHA256:v/7xRAduTWKs1v+v08YIM0n1UncIVeuL5ypdEzl6Tkw`. tasks·contracts의 `jt-ops` 표기는 이 실명으로 읽는다.
 - [x] **GitHub secret scanning + push protection 활성** — `joshua92y/joshuatech_ver2`(모노레포)와 `joshua92y/platform-gitops` 각각 Settings → Advanced Security → Secret Protection에서 Secret scanning **Enable** + Push protection **Enable**(T116이 재확인). 완료(API 확인 2026-09-03): **두 저장소 모두 secret_scanning·push_protection enabled** ✅.
-- [x] **토큰 ① Cloudflare 배포 토큰(OpenTofu용) 발급** — Cloudflare 대시보드 → My Profile → API Tokens → Create Token(스코프는 표 ① 그대로). 완료(2026-09-03): 토큰명 **`joshuatech-tofu-deploy`** — Account: Workers Scripts:Edit / Zone `joshuatech.dev` 한정: Zone:Read·DNS:Edit·Zone Settings:Edit·Access Apps and Policies:Edit·Workers Routes:Edit(표 ① 스코프와 일치), 비밀번호 관리자 보관. 참고: 별도 목적의 DNS 토큰 2종 추가 발급됨 — `joshuatech-cert-manager-dns01`·`joshuatech-ddns-dns-edit`(각 DNS:Edit + Zone:Read, 존 한정); cert-manager 토큰은 Vault kv 시드(T043)에서 소비 예정, ddns 토큰 용도·회전은 secret-rotation(T084)에서 기록.
+- [x] **토큰 ① Cloudflare 배포 토큰(OpenTofu용) 발급** — Cloudflare 대시보드 → My Profile → API Tokens → Create Token(스코프는 표 ① 그대로). 완료(2026-09-03): 토큰명 **`joshuatech-tofu-deploy`** — Account: Workers Scripts:Edit / Zone `joshuatech.dev` 한정: Zone:Read·DNS:Edit·Zone Settings:Edit·Access Apps and Policies:Edit·Workers Routes:Edit(표 ① 스코프와 일치), 비밀번호 관리자 보관. 참고: 별도 목적의 DNS 토큰 2종 추가 발급됨 — `joshuatech-cert-manager-dns01`·`joshuatech-ddns-dns-edit`(각 DNS:Edit + Zone:Read, 존 한정); ddns 토큰 용도·회전은 secret-rotation(T084)에서 기록.
+  **정정(2026-09-10)**: 이 줄은 "cert-manager 토큰은 Vault kv 시드(**T043**)에서 소비 예정"이라고 적고 있었으나 두 곳이 틀렸다 —
+  ⓐ kv 시드·ExternalSecret 전환은 **T045**다(T043은 AOP 강제). ⓑ "예정"도 낡았다: **T042에서 이미 소비했다** —
+  운영자가 `cloudflare-dns-token`(ns `cert-manager`, key `api-token`)을 **수동 Secret**으로 만들어 넣었고(§3 T042), T045가 그것을 ExternalSecret으로 교체한다.
+  ⚠ 이 토큰은 존 `joshuatech.dev`의 **모든** DNS 레코드를 쓰기·삭제할 수 있다(v1 매출 레코드·MX/SPF·터널 CNAME 포함) — 폭발 반경을 T084 회전 항목에 반영한다.
 - [x] **토큰 ② Cloudflare `Account Analytics:Read` 발급** — 같은 경로(My Profile → API Tokens → Create Token, 스코프는 표 ②). 완료(2026-09-03): 토큰명 **`joshuatech-analytics-read`**(Account Analytics:Read, 쓰기 0), 비밀번호 관리자 보관.
 - [x] **③ `svc-verify` 세션 인증 확인** — 상주 토큰 없음: `oci session authenticate --profile-name svc-verify`(1 h) 동작 확인(사용자·그룹 생성은 위 항목, 스코프는 표 ③). 완료(2026-09-03): 브라우저 인증 성공, `C:\Users\2401\.oci\config`에 프로파일 `svc-verify` 기록(스모크: `oci iam region list --profile svc-verify --auth security_token`).
 - [x] **토큰 ④ Grafana Cloud Viewer 서비스 계정 토큰 발급** — Grafana Cloud → Administration → Service accounts → Viewer 계정 → Add service account token. 완료(2026-09-04): 서비스 계정 **`joshuatech-grafana-viewer`**(`sa-1-joshuatech-grafana-viewer`, 역할 Viewer), 토큰 만료 Never(회전은 secret-rotation 매트릭스), 값은 비밀번호 관리자. **§0 체크리스트 전 항목 완료 → T005 마감.**
@@ -215,7 +219,11 @@
 - **코드**: platform-gitops PR **#7**(`7efb1da` AppProject 5 + root 이관 + bootstrap base) · **#8**(`3dc2a4c` `platform-argocd` 자기 관리) · **#9**(`f1631d9` `platform/policies` 123객체 + `platform-policies`) · **#10**(`e9b5116` 나머지 Application 17). 정책 93장 = 공통 49(`default-deny` 13·`allow-dns` 13·`allow-same-namespace` 7·`allow-kube-api` 10·`allow-apiserver-webhook` 4·`deny-imds` 1·`allow-imds` 1) + 내부 매트릭스 31(도착 ingress 21 + 출발 egress 10) + 외부·노드 13. 되돌리기 라벨 `app.kubernetes.io/part-of=platform-policies`는 정책·쿼터 97개에만 부여하고 Namespace·RBAC에는 붙이지 않는다(라벨 일괄 삭제가 tester 경로를 지우지 않도록) — Argo는 `resourceTrackingMethod: annotation`이라 `argocd.argoproj.io/instance` 라벨은 **존재하지 않는다**. `platform-argocd`·`platform-policies`만 finalizer 없음(cascade가 Argo CD 자신·Namespace 14개를 지우는 경로 차단). `allow-egress-tunnel`은 `UDP 7844 + TCP 7844 + TCP 443` — 계약 :117 용도 열 "QUIC/HTTP2"의 구현이며 이 매트릭스에는 프로토콜 열이 없고 프로토콜은 용도 열에 적는 관례(:109 "…, UDP·TCP")를 따랐다(사용자 결정 2026-09-08 A).
 - **적용 전 게이트 3건(실측)**: **VD-EP** — `kubernetes` 엔드포인트 `10.0.7.78:6443`·svc `443→6443`·Traefik 라벨 `app.kubernetes.io/name=traefik`(정책 selector와 일치). **VD-DNS(중대)** — CoreDNS 업스트림이 `169.254.169.254`(OCI VCN 리졸버 = IMDS 주소)임을 sandbox resolv.conf로 확인. `deny-imds`는 `ports` 없이 IMDS만 제외해 허용하는 규칙이라 **포트 53까지 막혀 클러스터 전체의 외부 이름 해석이 끊길 상태**였다(원인: K3s `isValidNameserver`가 그 주소를 클라우드 예외로 허용 — `pkg/agent/config/config.go:405-436`). 해결은 §3 아래 "파드 DNS 업스트림 전환"(k3s `resolv-conf` 도입, 계약·정책 무변경). **VD-P** — 일회성 ns `np-probe`(정책 4장 + 파드 2개)로: 두 노드 파드 `2/2 READY` = `default-deny` 아래 kubelet 프로브 통과 · kube-api **401** = `allow-kube-api`가 **DNAT 뒤** 노드 IP:6443으로 매칭 · `1.1.1.1:443` 301 성공 · `1.1.1.1:53`·`10.0.7.78:443`·IMDS:80 전부 차단(계약 ⑤ 프로브 조합 = 사용자 결정 2026-09-04 A 그대로) · **역검증** `allow-kube-api` 삭제 시 즉시 000(exit 7), 복원 시 재통과. ns 삭제 확인.
 - **실행(운영자, 2026-09-08 KST)**: **PR-A** `kubectl apply -k clusters/oci-k3s/projects`(AppProject 5, `default`는 봉인 patch) → `apply -f bootstrap/root-app.yaml` → root `project=platform` Synced/Healthy. **PR-B1** root가 child를 생성 → `platform-argocd` Synced/Healthy, **파드 5개 AGE 20h/19h·RESTARTS 0 불변**(SSA 항상 force라 conflict 없이 소유권만 이동), CRD 어노테이션 `Delete=false,Prune=false` 확인. **PR-B2(유일한 위험 구간)** 머지 전에 `patch app root … automated:null`로 트리거 회수 → 머지 → `apply -f root-app.yaml`로 적용. 적용 후 판정 전건 통과: **NetworkPolicy 93** · **Namespace 14 + PSA 라벨**(restricted 8 · baseline 3 · privileged 3, `kube-system`은 라벨만 SSA 인수) · cloudflared 27h·RESTARTS 0 불변 · **새 터널 세션 연결 성공**(`kubectl get nodes` 2 Ready · `ssh ssh-a`·`ssh ssh-b`) · CoreDNS `i/o timeout`/`SERVFAIL` 0 · `FailedCreate` 0 · `agent-view` 토큰 발급 성공. **PR-C** 같은 방식 → **root + 19 Application 전부 Synced/Healthy**(뼈대 15개도 리소스 0으로 Healthy = VD-E), cloudflared 파드 **이름·AGE 28h·RESTARTS 0 완전 불변**(순수 인수), SUC 컨트롤러 1/1 Running·`read-only file system` 0, **Plan 2개 `LATEST=v1.36.4-k3s1` · 조건 `LatestResolved=True`·`Validated=True`**(= 정책 아래서 `update.k3s.io` 443 도달 증명) · `Complete=False` 메시지 `current time is not within configured window`(화요일, 창은 일 03:00–05:00) · `APPLYING` 비어 있음.
-- **절차 메모**: **머지 직후에는 Argo가 `main`의 새 SHA를 아직 못 볼 수 있다** — PR-B2에서 `apply -f root-app.yaml` 뒤에도 `platform-policies`가 생기지 않았고 repo-server 로그의 캐시 키가 옛 SHA였다. `kubectl -n argocd annotate app root argocd.argoproj.io/refresh=hard --overwrite`로 당기면 즉시 반영된다(이후 절차에 포함). 채널 기반 Plan은 `get plans -o wide`의 VERSION 열(=`spec.version`)이 **항상 비어 있고** 해석 버전은 `.status.latestVersion`에만 있으며 `-k3s1`↔노드의 `+k3s1`은 같은 버전이다. PowerShell에서는 `-o custom-columns=…'.status.conditions[?(@.type=="LatestResolved")].status'`의 큰따옴표가 먹지 않아 `<none>`이 나온다 — 조건은 `-o jsonpath='{range .status.conditions[*]}{.type}={.status} {end}'`로 확인한다(실측: `Complete=False Validated=True LatestResolved=True`). 정지 스위치는 `kubectl -n argocd scale sts argocd-application-controller --replicas=0` 하나뿐(child만 `automated: null`로 패치하면 root의 selfHeal이 되돌린다). 1차 break-glass는 노드 A 대화형 SSH + `sudo k3s kubectl`(kubectl은 호출마다 새 dial이라 "열어 둔 터널 세션"은 안전망이 아니다), 2차는 NSG 22 임시 규칙.
+- **절차 메모**: **머지 직후에는 Argo가 `main`의 새 SHA를 아직 못 볼 수 있다** — PR-B2에서 `apply -f root-app.yaml` 뒤에도 `platform-policies`가 생기지 않았고 repo-server 로그의 캐시 키가 옛 SHA였다. `kubectl -n argocd annotate app root argocd.argoproj.io/refresh=hard --overwrite`로 당기면 즉시 반영된다(이후 절차에 포함).
+  ⚠ **정정(2026-09-09 실측)**: `root`가 정답인 것은 **root 자신의 source(`clusters/oci-k3s/apps/`)가 바뀔 때**뿐이다 — 이 PR-B2 사례가 그랬다(새 child 생성).
+  이미 있는 child의 `platform/<comp>/` 내용만 바뀐 PR에서는 **root에 걸어도 자식에 전파되지 않는다**(root만 갱신했을 때 `platform-cert-manager`가 옛 리비전에서 Synced/Healthy로 보였다).
+  그때는 `annotate app platform-<comp> …`로 자식에 직접 건다. 다만 평소에는 reconciliation 주기(`argocd-cm` `timeout.reconciliation: 180s`) 안에 저절로 반영되므로
+  **먼저 기다려 보고 안 될 때만** 당긴다(T042 PR-4 머지 때는 명령 없이 수 초 만에 sync됐다). 채널 기반 Plan은 `get plans -o wide`의 VERSION 열(=`spec.version`)이 **항상 비어 있고** 해석 버전은 `.status.latestVersion`에만 있으며 `-k3s1`↔노드의 `+k3s1`은 같은 버전이다. PowerShell에서는 `-o custom-columns=…'.status.conditions[?(@.type=="LatestResolved")].status'`의 큰따옴표가 먹지 않아 `<none>`이 나온다 — 조건은 `-o jsonpath='{range .status.conditions[*]}{.type}={.status} {end}'`로 확인한다(실측: `Complete=False Validated=True LatestResolved=True`). 정지 스위치는 `kubectl -n argocd scale sts argocd-application-controller --replicas=0` 하나뿐(child만 `automated: null`로 패치하면 root의 selfHeal이 되돌린다). 1차 break-glass는 노드 A 대화형 SSH + `sudo k3s kubectl`(kubectl은 호출마다 새 dial이라 "열어 둔 터널 세션"은 안전망이 아니다), 2차는 NSG 22 임시 규칙.
 
 ### T042 PR-2 (staging) 머지 — 기대 실패 **사전** 고지 (2026-09-09)
 
@@ -237,7 +245,80 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
 **회복되지 않으면 진짜 실패다.** `cert-1`·`cert-2`는 PR-3 승격 뒤 `Ready=True`까지 통과해야 PASS로 돌아온다(승격 직후 과도 상태는 `Ready != True (reason=[...])` / `certificate not Ready`라는 **세 번째 문면**으로 나온다).
 **정본 절차·문면 전문은 platform-gitops `platform/cert-manager-issuers/README.md` §6**(기대 실패)·**§1**(운영자 수동 Secret과 그 실패 증상)·**§4**(승격 게이트 4층).
 
-(T042 이후 기록은 이하에 추가)
+> **해소(2026-09-09 18:54 KST)**: PR-3(#15 `32a1022`)이 prod로 승격하고 Certificate가 `Ready=True`가 되면서 위 기대 실패는 전부 끝났다.
+> 현재 기대값은 `cert-1`·`cert-2`·`argo-1` **PASS**다. 이 절은 그 구간의 기록으로만 남긴다 —
+> **지금 이 문면을 읽고 FAIL을 기대 상태로 보고하면 오독이다.** 남은 FAIL 2건은 미래 태스크 몫이다(`argo-2` = T043, `vault-2` = T044).
+
+### T042 — cert-manager · ClusterIssuer · 와일드카드 인증서 · TLSStore · sniStrict (2026-09-09 ~ 09-10)
+
+- **설계**: scratchpad `t042-design.md`(13-에이전트 워크플로). T042 = gitops PR 6개 + 모노레포 2건 + 라이브 게이트 3개.
+  Application 3개(wave 0/20/60)는 T041이 이미 배포했으므로 **건드리지 않는다**.
+- **코드(gitops, 전부 squash 머지)**: **#11** `8f2b943`(03:50Z, `argocd-cm` `kustomize.buildOptions: --enable-helm` + `.gitignore charts/`) ·
+  **#12** `8cb1149`(03:59Z, cert-manager v1.21.1 kustomize `helmCharts` OCI 인플레이트) · **#13** `cad608a`(06:21Z, `allow-apiserver-webhook` add-only) ·
+  **#14** `c9be2f8`(07:52Z, ClusterIssuer 2종 + Certificate staging) · **#15** `32a1022`(09:54Z, prod 승격 2줄) ·
+  **#16** `4f23abd`(**2026-09-10** 07:44Z, Traefik TLSStore `default`).
+  **코드(모노레포)**: `d5f8a82`(계약 정정) · `0bdc621`+`829226d`(sniStrict).
+- **사용자 결정**: **D1**=A(kustomize `helmCharts` 인플레이트) · **D2**=A(`dns01RecursiveNameservers` **1.1.1.1 단독**) ·
+  **D3**=A(`renewBeforePercentage: 33` 문면 유지) · **D4**=각색 D(`issuerRef`+`secretName`을 **한 커밋**으로 승격, 전이 구간 전용 Secret 이름) ·
+  **D5**=A(sniStrict를 T042 끝에서 단독 투입) · **D6**=A1(webhook 출발지 add-only). 그 밖에:
+  ACME 계정 키는 cert-manager 자동 생성 그대로 두고(운영자가 값을 모르는 것을 수용), 계약(`contracts/`)은 동결 대상이 아니므로 **모노레포 단독 커밋으로 먼저 고친 뒤** gitops를 머지한다.
+- **문면 편차 7건**(전부 `/speckit-converge` 인계): ① 설치 방식 helm OCI → kustomize `helmCharts` ② 리졸버에서 8.8.8.8 삭제
+  ③ "wave +1" → 단일 표의 wave 20 ④ `global.nodeSelector` ⑤ 토큰이 ExternalSecret이 아니라 **운영자 수동 Secret**(T045에서 교체)
+  ⑥ TLSStore가 `defaultCertificate`가 아니라 `certificates:` 목록 ⑦ staging 구간 전용 Secret 이름.
+- **게이트·사건(실측)**:
+  - **VD-W(중대)** — 노드 A apiserver가 노드 B cert-manager webhook에 **502**. 원인은 K3s 기본 `--egress-selector-mode: agent`가
+    pod IP를 **apiserver 노드의 호스트 netns에서 직접 dial**하는데, `flannel-backend: wireguard-native`라 그 출발 IP가 노드 private IP가 아니라
+    `flannel-wg` 장치 주소 **`10.42.0.0`**(노드 A podCIDR의 네트워크 주소)라는 것. `host-gw`였다면 `10.0.7.78/32`가 맞았다.
+    **kube-router가 각 파드 방화벽 체인 머리에 `--src-type LOCAL -j ACCEPT`를 넣어 kubelet 프로브는 구조적으로 항상 통과**하므로
+    이 실패는 Argo Healthy·Pod Ready 아래에서 **100% 무증상**이다. 조치: 계약을 먼저 고치고(`d5f8a82`, 15:17:57 — PR #13 머지 4분 전)
+    `10.42.0.0/32`를 **add-only**로 추가(cert-manager 10250 · cnpg-system 9443). `10.0.7.78/32`는 지웠다가 되돌릴 일이 없도록 남겼다.
+  - **DNS-01 107분 정체** — staging 발급이 `pending`에서 멈췄다. 원인은 **v1 잔재 `_acme-challenge.joshuatech.dev` CNAME → fly.dev**이고,
+    cert-manager가 TXT 조회 **전에** `followCNAMEs`로 그 CNAME을 따라가 남의 존에서 TXT를 찾고 있었다. 사용자가 CNAME을 직접 조회해 발견,
+    Cloudflare 대시보드에서 삭제하자 즉시 풀렸다. `infra/cloudflare/dns.tf:4`가 `_acme-challenge`를 **관리 대상에서 영구 제외**하므로
+    `tofu plan`은 이 잔재를 영원히 보지 못한다 — **런북이 유일한 기록 매체다.**
+    → **규칙: DNS-01이 pending이면 TXT보다 CNAME을 먼저 조회한다.** 이 결함은 방치했으면 **모든 미래 갱신을 조용히 막았을 것**이다.
+  - 오진 기록(내 것): 정체 원인을 컨트롤러 정지로 읽었으나 둘 다 정상 동작이었다 — 고정된 `resourceVersion`은 `Semantic.DeepEqual` 조기 반환이고,
+    로그 침묵은 자기검사 재시도 로그가 `V(4)`인데 차트 기본이 `--v=2`이기 때문이다. `certmanager_controller_sync_call_count{controller="challenges"}`가
+    90초에 273→282로 증가하는 것이 컨트롤러 생존의 증거였다.
+- **git 밖 라이브 상태(재부트스트랩 시 재현 필요)**: 운영자 수동 Secret `cloudflare-dns-token`(ns `cert-manager`, key `api-token`) ·
+  cert-manager 자동 생성 `letsencrypt-staging-account-key`·`letsencrypt-prod-account-key`·`cert-manager-webhook-ca` ·
+  Cloudflare 존에서 **수동 삭제한 `_acme-challenge` CNAME**(IaC 밖) · 승격 뒤 고아가 된 `wildcard-joshuatech-dev-tls-staging`은 운영자가 수동 삭제(PR-4 머지 전).
+- **발급 결과**: prod 와일드카드 `rev 2` · issuer `C=US, O=Let's Encrypt, CN=YE2` · SAN `*.joshuatech.dev` + `joshuatech.dev` ·
+  `notAfter 2026-12-08` · **첫 갱신 ≈2026-11-08**(`renewBeforePercentage: 33` → 잔여 29.7일). prod 중복 한도는 **1슬롯만** 소비했다.
+  `cert-2`(잔여 30일)와 60일마다 **7.2시간** 겹친다. ⚠ **2027-02-10 LE classic이 64일로 바뀌면** 33%는 잔여 21.1일이 되어 43일 중 9일(≈21%) 상시 FAIL하므로
+  그 전에 값을 올린다 — **대응값은 40이 아니라 ≥47%(실용 50)**다(64×0.40 = 25.6일 < 30).
+- **머지 전 기준선(2026-09-10, 재측정 불가)**: `auth` **526** · `traefik` 302 · `argo` 302 · `www` 522(v1) · 오리진 직결 000(NSG 차단).
+  `auth`가 이미 526이었으므로 PR-4 머지에는 **회귀 경로가 없었다** — 개선 아니면 현상 유지.
+- **PR-4 머지 게이트를 공개 CT로 독립 확인**: certspotter에 `2026-09-09 → 2026-12-08 · Let's Encrypt CN=YE2 · SAN 2`.
+  **staging 인증서는 공개 CT에 오르지 않으므로 이 한 줄이 체인 진위를 확정한다** — kubectl 없이 쓸 수 있는 게이트다.
+  (crt.sh는 같은 인증서를 하루 넘게 보여주지 않았다. 집계기 한 곳만 믿지 않는다.)
+- **PR-4 적용 결과(07:45Z)**: `platform-traefik` Synced/Healthy · TLSStore `kube-system/default` 1개 · `spec.certificates[0].secretName` 일치(CRD 프루닝 없음) ·
+  Traefik 오류 로그 0건 · **`auth` 526 → 404** · 전 v2 호스트 526 0건 · v1 무영향.
+- **단계 9 sniStrict(2026-09-10 17:24 KST)**: 판별 실험 ①② 통과 뒤 투입.
+  ① SNI 일치 → `issuer C=US; O=Let's Encrypt; CN=YE2` · `expire date Dec  8 08:59:09 2026 GMT`
+  ② SNI 불일치 → `subject`·`issuer` 모두 `CN=TRAEFIK DEFAULT CERT` = **`defaultCertificate` 미설정의 증거**(sniStrict가 가릴 폴백이 없다).
+  적용 뒤 SNI 불일치가 **`000`**(핸드셰이크 거절)으로 바뀌었고 SNI 일치는 302 그대로, 엣지 무영향.
+- **절차 메모(다음 사람이 반드시 읽을 것)**:
+  1. **`tlsOptions` 변경은 파드 롤아웃을 일으키지 않는다.** 차트가 그 값을 `templates/tlsoption.yaml` 하나에서 `TLSOption` CR로만 렌더하고
+     Deployment의 `checksum/traefik-dynamic-conf`는 `providers.file.enabled`(기본 false) 가드 안이기 때문이다.
+     실측: 파드 `traefik-84ff6ff49d-tk8c2` creationTimestamp `2026-09-04T09:58:33Z`·RESTARTS 0 **불변**, **443 순단 0초**.
+     → **파드 AGE가 그대로인 것이 정상**이고, T038 절이 말하는 "새 파드 확인"은 파드 템플릿을 바꾸는 값일 때만 판정 기준이다.
+     T043 `clientAuth`도 같은 CR이라 롤아웃은 없다(다만 CA Secret이 없으면 TLSOption 등록이 깨져 443이 전면 중단되므로 위험의 성격이 다르다).
+  2. **manifests 설치 → 반영까지 약 15초 걸린다.** 실측: 파일 mtime `17:24:20.878` → journal `Applied manifest` `17:24:34` → helm Job 5초.
+     그 창에서 조회하면 갱신 전 spec·`generation: 1`·옛 helm Job 로그가 보여 **"적용 실패"로 읽기 딱 좋다**(실제로 그렇게 오독하고 진단을 한 바퀴 돌았다).
+     **판정은 설치 30초 뒤 한 번에** 하고, 그래도 옛 값이면 `sudo journalctl -u k3s --since '5 min ago' | grep 'Applied manifest'`부터 본다.
+     Job 교체 중 한 번 나오는 `error syncing … DesiredSet - Replace Wait … requeuing`은 정상이다.
+  3. **머지 직후 hard refresh는 자식 앱에 건다.** root의 source는 `clusters/oci-k3s/apps`라 `platform/<comp>/`만 바뀐 PR에는 **구조적으로 no-op**다.
+     root가 정답인 경우는 `apps/`가 바뀌어 **새 child가 생길 때**뿐이다(T041 PR-B2). 다만 평소에는 reconciliation 주기(180s) 안에 저절로 반영된다 —
+     PR-4 머지 때는 명령 없이 수 초 만에 sync됐다. 먼저 기다려 보고, 안 되면 자식에 건다.
+  4. 차트 함정: `{{- with $config.sniStrict }}`라 **`false`는 키 자체가 렌더되지 않는다** — `sniStrict: false`는 "끔"이 아니라 "미지정"이고 결과가 같아 조용하다.
+     helm 스키마도 못 잡는다(`tlsOptions`는 free-form object). 그래서 `tests/infra/traefik-config.tests.ps1`의 `v-24`가 리터럴 `true`를 따로 본다.
+- **미확인·인계**: VD-H3(`argocd-repo-server` 재시작이 필요했는지)는 기록이 없다 — `kubectl -n argocd rollout history deploy/argocd-repo-server`로 확인.
+  포트 53 egress가 목적지 무관하게 통과하는 것처럼 보인 관측은 kube-router 코드·정책 YAML로는 성립하지 않는다(연결 없는 UDP 프로브의 위양성일 가능성) —
+  응답을 요구하는 프로브(`dig @8.8.8.8 +time=2 +tries=1`)로 재측정하고, 판별자는 `cluster.tests.ps1`의 `np-5-live`(T031 → T102)다.
+  53 누수 실측에 쓴 프로브 파드(`10.42.1.23`)의 정의·이미지·삭제 확인이 기록되지 않았다.
+
+(T043 이후 기록은 이하에 추가)
 
 ## §4 Vault init·시크릿 시드
 
