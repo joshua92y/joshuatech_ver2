@@ -24,9 +24,10 @@
 #   K8S    k8s-1 문서 1개  k8s-2 apiVersion helm.cattle.io/v1  k8s-3 kind HelmChartConfig  k8s-4 metadata.name traefik
 #          k8s-5 metadata.namespace kube-system  k8s-6 spec.valuesContent 블록 스칼라 '|-'
 #   PARSE  parse-1 valuesContent 전 줄 파싱  parse-2 최상위 키 집합 정확히 6개
-#   V      v-1..v-23 필수 키·정확한 값(chart 40.1.x 철자) — v-20 은 tlsOptions.default 가 minVersion 하나뿐임을 고정한다
+#   V      v-1..v-24 필수 키·정확한 값(chart 40.1.x 철자) — v-20 은 tlsOptions.default 의 키 집합을 minVersion + sniStrict 로 고정하고
+#          v-24 는 sniStrict 의 값이 true 임을 따로 본다(키만 보면 sniStrict: false 도 통과하므로)
 #   X      x-1 10.42.0.0/16 없음(파일 전체)  x-2 accessLog: 없음  x-3 defaultMode 없음  x-4 최상위 log: 없음
-#          x-5 RequireAndVerifyClientCert 없음  x-6 clientAuth 계열 키 없음(T043)  x-7 sniStrict 없음(T042)
+#          x-5 RequireAndVerifyClientCert 없음  x-6 clientAuth 계열 키 없음(T043)  x-7 sniStrict 는 정확히 1회(T042 단계 9에서 투입)
 #          x-8 비밀 패턴 없음  x-9 URL 스킴 없음  x-10 image 오버라이드 없음  x-11 insecure: true 는 tracing.otlp.grpc 하나뿐
 #          x-12 proxyProtocol 경로 없음  x-13 모든 *.trustedIPs 에 사설·예약 대역 없음  x-14 제로폭·비가시 문자 없음
 $ErrorActionPreference = 'Stop'
@@ -55,7 +56,7 @@ $allNames = @('file-1', 'file-2', 'file-3', 'file-4', 'file-5', 'file-6',
     'k8s-1', 'k8s-2', 'k8s-3', 'k8s-4', 'k8s-5', 'k8s-6',
     'parse-1', 'parse-2',
     'v-1', 'v-2', 'v-3', 'v-4', 'v-5', 'v-6', 'v-7', 'v-8', 'v-9', 'v-10', 'v-11', 'v-12',
-    'v-13', 'v-14', 'v-15', 'v-16', 'v-17', 'v-18', 'v-19', 'v-20', 'v-21', 'v-22', 'v-23',
+    'v-13', 'v-14', 'v-15', 'v-16', 'v-17', 'v-18', 'v-19', 'v-20', 'v-21', 'v-22', 'v-23', 'v-24',
     'x-1', 'x-2', 'x-3', 'x-4', 'x-5', 'x-6', 'x-7', 'x-8', 'x-9', 'x-10', 'x-11', 'x-12', 'x-13', 'x-14')
 
 if (-not (Test-Path -LiteralPath $target -PathType Leaf)) {
@@ -297,10 +298,15 @@ Test-Group 'values' {
 
     Assert 'v-19: tlsOptions.default.minVersion = VersionTLS12' (Eq (Scalar $vals 'tlsOptions.default.minVersion') 'VersionTLS12') "= '$(Scalar $vals 'tlsOptions.default.minVersion')'"
     $tlsKeys = @($vals.Keys.Keys | Where-Object { $_.StartsWith('tlsOptions.', [StringComparison]::Ordinal) }) | Sort-Object
-    $wantTls = @('tlsOptions.default', 'tlsOptions.default.minVersion')
-    Assert 'v-20: tlsOptions.default carries minVersion only (sniStrict -> T042, clientAuth -> T043)' (
+    $wantTls = @('tlsOptions.default', 'tlsOptions.default.minVersion', 'tlsOptions.default.sniStrict')
+    Assert 'v-20: tlsOptions.default carries exactly minVersion + sniStrict (clientAuth -> T043)' (
         Eq ($tlsKeys -join ',') ($wantTls -join ',')
     ) "tlsOptions keys = $($tlsKeys -join ', ')"
+    # sniStrict 는 값까지 본다 — v-20 은 키 집합만 보므로 `sniStrict: false` 도 통과한다.
+    # false 면 SNI 불일치 요청이 다시 자체 서명으로 폴백해 T042 단계 9 가 조용히 무효가 된다.
+    Assert 'v-24: tlsOptions.default.sniStrict = true (SNI 불일치는 폴백 없이 끊는다 — T042 단계 9)' (
+        Eq (Scalar $vals 'tlsOptions.default.sniStrict') 'true'
+    ) "= '$(Scalar $vals 'tlsOptions.default.sniStrict')'"
     Assert 'v-21: ingressRoute.dashboard.enabled = true' (Eq (Scalar $vals 'ingressRoute.dashboard.enabled') 'true') "= '$(Scalar $vals 'ingressRoute.dashboard.enabled')'"
     Assert 'v-22: ingressRoute.dashboard.matchRule pins the traefik.joshuatech.dev host' (
         Eq (Scalar $vals 'ingressRoute.dashboard.matchRule') 'Host(`traefik.joshuatech.dev`)'
@@ -326,9 +332,13 @@ Test-Group 'forbidden' {
     Assert 'x-6: no clientAuth keys in valuesContent yet (the CA Secret arrives in T043)' (
         (-not (Has $valuesText 'clientAuth')) -and (-not (Has $valuesText 'secretNames'))
     ) 'a clientAuth block without its Secret registers a TLSOption without CAFiles and breaks every websecure handshake'
-    Assert 'x-7: no sniStrict in valuesContent yet (the wildcard becomes a dynamic cert in T042)' (
-        -not (Has $valuesText 'sniStrict')
-    ) 'sniStrict skips the default-certificate fallback, so it must wait for a dynamic certificate'
+    # T042 단계 9 이전에는 "sniStrict 없음"이 단언이었다(동적 인증서 선행 조건). PR-4(gitops main 4f23abd)로 와일드카드가
+    # 동적 인증서가 되고 노드 A 판별 실험 ①②를 통과해 투입했으므로, 이제는 **정확히 1회 존재**를 고정해
+    # 조용한 삭제(= 폴백 부활)와 중복 선언을 둘 다 막는다.
+    $sniCount = ([regex]::Matches($valuesText, 'sniStrict')).Count
+    Assert 'x-7: sniStrict appears exactly once in valuesContent (T042 단계 9에서 투입 — 삭제·중복 금지)' (
+        $sniCount -eq 1
+    ) "sniStrict occurrences = $sniCount"
     $secretPatterns = @('BEGIN [A-Z ]*PRIVATE KEY', 'BEGIN CERTIFICATE', '(?i)\bpassword\s*:', '(?i)\bapi[_-]?key\s*:', '(?i)\bsecret[_-]?key\s*:', '(?i)\btoken\s*:', 'eyJ[A-Za-z0-9_-]{10,}', '(?i)\bcloudflare_api_token\b')
     $hits = @()
     foreach ($p in $secretPatterns) { if ($raw -cmatch $p) { $hits += $p } }
