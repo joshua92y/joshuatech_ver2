@@ -11,7 +11,7 @@
 # 검사 계약(이 스위트가 곧 계약이다):
 #   FILE   file-1 존재  file-2 CR 없음  file-3 끝 개행  file-4 BOM 없음  file-5 탭 없음  file-6 첫 줄이 경로 주석
 #   DOC    doc-1 정본 선언 + platform/traefik/ 는 Middleware·TLSOption·TLSStore 만  doc-2 traefik.yaml 편집 금지
-#          doc-3 chart 40.1.x ↔ upstream 41.x 키 차이  doc-4 T043 에서 더할 clientAuth 조각 + Secret 선행
+#          doc-3 chart 40.1.x ↔ upstream 41.x 키 차이  doc-4 T043 관찰 단계 투입 clientAuth 조각 + Secret 선행
 #          doc-5 T042 에서 더할 sniStrict + 동적 인증서 선행  doc-6 적용 순서(T042 → T043) + 문면과의 의도적 편차 명시
 #          doc-7 설치 절차(scp + sudo install -m 644 -o root -g root → server/manifests/traefik-config.yaml)
 #          doc-8 확인 명령(helmchartconfig · rollout status · pods -o wide + 새 파드 재확인 · logs --since=10m · 노드 내부 443 curl;
@@ -21,13 +21,14 @@
 #          doc-12 롤아웃 순단 경고(replica 1, 443)  doc-13 HelmChart spec.set 우선 함정  doc-14 T084 forward-auth 재수정 예고
 #          doc-15 klipper-lb 소스 IP 실측 방법(4xx 유발 `/__probe-404` → ClientHost ↔ request_CF-Connecting-IP)  doc-16 T098 전 tracing 잡음
 #          doc-17 Cloudflare 목록 근거(data.cloudflare_ip_ranges + infra/oci/network.tf) + 드리프트 재검토 주기
+#          doc-18 CA 지문·CN·만료 + 되돌리기 순서(clientAuth 블록 제거 → Secret 삭제)
 #   K8S    k8s-1 문서 1개  k8s-2 apiVersion helm.cattle.io/v1  k8s-3 kind HelmChartConfig  k8s-4 metadata.name traefik
 #          k8s-5 metadata.namespace kube-system  k8s-6 spec.valuesContent 블록 스칼라 '|-'
 #   PARSE  parse-1 valuesContent 전 줄 파싱  parse-2 최상위 키 집합 정확히 6개
-#   V      v-1..v-24 필수 키·정확한 값(chart 40.1.x 철자) — v-20 은 tlsOptions.default 의 키 집합을 minVersion + sniStrict 로 고정하고
-#          v-24 는 sniStrict 의 값이 true 임을 따로 본다(키만 보면 sniStrict: false 도 통과하므로)
+#   V      v-1..v-26 필수 키·정확한 값(chart 40.1.x 철자) — v-20 은 tlsOptions.default 키 집합을 minVersion + sniStrict + clientAuth{secretNames,clientAuthType} 로 고정
+#          · v-24 는 sniStrict 의 값이 true 임을 따로 본다(키만 보면 sniStrict: false 도 통과하므로) · v-25 clientAuthType 리터럴 · v-26 secretNames 1개
 #   X      x-1 10.42.0.0/16 없음(파일 전체)  x-2 accessLog: 없음  x-3 defaultMode 없음  x-4 최상위 log: 없음
-#          x-5 RequireAndVerifyClientCert 없음  x-6 clientAuth 계열 키 없음(T043)  x-7 sniStrict 는 정확히 1회(T042 단계 9에서 투입)
+#          x-5 RequireAndVerifyClientCert 없음  x-6 clientAuth 블록 정확히 1회(T043)  x-7 sniStrict 는 정확히 1회(T042 단계 9에서 투입)
 #          x-8 비밀 패턴 없음  x-9 URL 스킴 없음  x-10 image 오버라이드 없음  x-11 insecure: true 는 tracing.otlp.grpc 하나뿐
 #          x-12 proxyProtocol 경로 없음  x-13 모든 *.trustedIPs 에 사설·예약 대역 없음  x-14 제로폭·비가시 문자 없음
 $ErrorActionPreference = 'Stop'
@@ -52,11 +53,11 @@ function Eq([string]$a, [string]$b) { return [string]::Equals($a, $b, [StringCom
 
 $allNames = @('file-1', 'file-2', 'file-3', 'file-4', 'file-5', 'file-6',
     'doc-1', 'doc-2', 'doc-3', 'doc-4', 'doc-5', 'doc-6', 'doc-7', 'doc-8', 'doc-9',
-    'doc-10', 'doc-11', 'doc-12', 'doc-13', 'doc-14', 'doc-15', 'doc-16', 'doc-17',
+    'doc-10', 'doc-11', 'doc-12', 'doc-13', 'doc-14', 'doc-15', 'doc-16', 'doc-17', 'doc-18',
     'k8s-1', 'k8s-2', 'k8s-3', 'k8s-4', 'k8s-5', 'k8s-6',
     'parse-1', 'parse-2',
     'v-1', 'v-2', 'v-3', 'v-4', 'v-5', 'v-6', 'v-7', 'v-8', 'v-9', 'v-10', 'v-11', 'v-12',
-    'v-13', 'v-14', 'v-15', 'v-16', 'v-17', 'v-18', 'v-19', 'v-20', 'v-21', 'v-22', 'v-23', 'v-24',
+    'v-13', 'v-14', 'v-15', 'v-16', 'v-17', 'v-18', 'v-19', 'v-20', 'v-21', 'v-22', 'v-23', 'v-24', 'v-25', 'v-26',
     'x-1', 'x-2', 'x-3', 'x-4', 'x-5', 'x-6', 'x-7', 'x-8', 'x-9', 'x-10', 'x-11', 'x-12', 'x-13', 'x-14')
 
 if (-not (Test-Path -LiteralPath $target -PathType Leaf)) {
@@ -180,11 +181,11 @@ Test-Group 'doc' {
     Assert 'doc-3: header records the chart 40.1.x vs upstream 41.x key difference' (
         (Has $header '40.1.x') -and (Has $header '41.x') -and (Has $header 'defaultmode') -and (Has $header 'statuscodes')
     ) 'header must carry the 40.1.x/41.x key table'
-    Assert 'doc-4: header carries the exact clientAuth block to add in T043 plus its Secret precondition' (
+    Assert 'doc-4: header records the T043 clientAuth block as installed in the observe stage plus its Secret precondition' (
         (Has $header 'T043') -and (Has $header 'clientAuth:') -and (Has $header 'secretNames:') -and
         (Has $header 'cloudflare-origin-pull-ca') -and (Has $header 'clientAuthType: VerifyClientCertIfGiven') -and
-        (Has $header 'CAFiles')
-    ) 'header must show the T043 clientAuth snippet and why it cannot ship now (missing CA Secret breaks websecure)'
+        (Has $header 'CAFiles') -and (Has $header '관찰 단계 투입') -and (Has $header '무해한 단계')
+    ) 'header must show the T043 clientAuth snippet, mark it as installed in the observe stage, keep the Secret precondition (a missing CA Secret breaks websecure), and warn that VerifyClientCertIfGiven is not a harmless stage (CA mismatch fails like Require)'
     Assert 'doc-5: header carries the sniStrict step for T042 plus the dynamic-certificate precondition' (
         (Has $header 'T042') -and (Has $header 'sniStrict: true') -and (Has $header '동적 인증서')
     ) 'header must show the T042 sniStrict snippet and the dynamic cert precondition'
@@ -238,6 +239,18 @@ Test-Group 'doc' {
         (Has $header 'data.cloudflare_ip_ranges') -and (Has $header 'infra/oci/network.tf') -and
         (Has $header 'api.cloudflare.com/client/v4/ips') -and (Has $header '재검토 주기')
     ) 'header must name the data source, the compare command and how often the literal copy is re-checked'
+    # T043 M3: clientAuth 가 참조하는 CA 의 정체(지문·CN·만료)와 되돌리기 순서(clientAuth 블록 제거 → Secret 삭제)를 헤더에 고정한다.
+    # 순서를 뒤집으면 Secret 부재 + CAFiles 없는 TLSOption 등록 실패로 443 전면 중단이다.
+    # 순서 자체를 본다: 두 리터럴이 각각 정확히 1회 있고, 'clientAuth 블록 제거' 가 'Secret 삭제' 보다 **앞에** 나와야 한다(역순 문장은 FAIL).
+    $iRemove = $header.IndexOf('clientAuth 블록 제거', [StringComparison]::Ordinal)
+    $iDelete = $header.IndexOf('Secret 삭제', [StringComparison]::Ordinal)
+    $nRemove = ([regex]::Matches($header, 'clientAuth 블록 제거')).Count
+    $nDelete = ([regex]::Matches($header, 'Secret 삭제')).Count
+    Assert 'doc-18: header pins the CA identity (fingerprint · CN · notAfter) and the rollback ORDER (clientAuth 블록 제거 appears once and before Secret 삭제)' (
+        (Has $header '9A:1A:C2:B4:BE:15:F9:F2:7E:EE:20:A7:34:CB:A4:E9:89:8F:61:00:1B:3B:D7:C8:4B:69:B5:6A:3E:25:A2:B9') -and
+        (Has $header '2029-11-01') -and (Has $header 'origin-pull.cloudflare.net') -and
+        ($nRemove -eq 1) -and ($nDelete -eq 1) -and ($iRemove -ge 0) -and ($iDelete -ge 0) -and ($iRemove -lt $iDelete)
+    ) "header must carry the CA fingerprint/CN/expiry and state the rollback order clientAuth 블록 제거 → Secret 삭제 exactly once (remove@$iRemove x$nRemove, delete@$iDelete x$nDelete)"
 }
 
 # ---------- K8S 문서 형태 ----------
@@ -298,8 +311,9 @@ Test-Group 'values' {
 
     Assert 'v-19: tlsOptions.default.minVersion = VersionTLS12' (Eq (Scalar $vals 'tlsOptions.default.minVersion') 'VersionTLS12') "= '$(Scalar $vals 'tlsOptions.default.minVersion')'"
     $tlsKeys = @($vals.Keys.Keys | Where-Object { $_.StartsWith('tlsOptions.', [StringComparison]::Ordinal) }) | Sort-Object
-    $wantTls = @('tlsOptions.default', 'tlsOptions.default.minVersion', 'tlsOptions.default.sniStrict')
-    Assert 'v-20: tlsOptions.default carries exactly minVersion + sniStrict (clientAuth -> T043)' (
+    $wantTls = @('tlsOptions.default', 'tlsOptions.default.clientAuth', 'tlsOptions.default.clientAuth.clientAuthType',
+        'tlsOptions.default.clientAuth.secretNames', 'tlsOptions.default.minVersion', 'tlsOptions.default.sniStrict')
+    Assert 'v-20: tlsOptions.default carries exactly minVersion + sniStrict + clientAuth{secretNames,clientAuthType} (T043)' (
         Eq ($tlsKeys -join ',') ($wantTls -join ',')
     ) "tlsOptions keys = $($tlsKeys -join ', ')"
     # sniStrict 는 값까지 본다 — v-20 은 키 집합만 보므로 `sniStrict: false` 도 통과한다.
@@ -307,6 +321,16 @@ Test-Group 'values' {
     Assert 'v-24: tlsOptions.default.sniStrict = true (SNI 불일치는 폴백 없이 끊는다 — T042 단계 9)' (
         Eq (Scalar $vals 'tlsOptions.default.sniStrict') 'true'
     ) "= '$(Scalar $vals 'tlsOptions.default.sniStrict')'"
+    # T043 M3 관찰 단계: clientAuthType 은 리터럴 완전 일치(승격 RequireAndVerifyClientCert 는 M4 — 그때 이 단언과 x-5 를 함께 바꾼다).
+    Assert 'v-25: tlsOptions.default.clientAuth.clientAuthType = VerifyClientCertIfGiven (T043 관찰 단계 — 리터럴 완전 일치)' (
+        Eq (Scalar $vals 'tlsOptions.default.clientAuth.clientAuthType') 'VerifyClientCertIfGiven'
+    ) "= '$(Scalar $vals 'tlsOptions.default.clientAuth.clientAuthType')'"
+    # secretNames 는 블록 리스트 1개여야 한다 — 플로우 리스트([a])는 소형 파서가 Scalar 로 읽어 Seq 가 비므로 FAIL 한다(의도).
+    # Seq 는 이미 배열을 돌려준다(위 단항 쉼표 주석). @(Seq …) 로 감싸면 배열이 한 겹 더 싸여 Count 가 항상 1 이 되므로 v-18·v-23 처럼 그대로 받는다.
+    $sn = Seq $vals 'tlsOptions.default.clientAuth.secretNames'
+    Assert 'v-26: tlsOptions.default.clientAuth.secretNames = [cloudflare-origin-pull-ca] (블록 리스트 1개 — 플로우 리스트는 Scalar 로 읽혀 FAIL)' (
+        ($sn.Count -eq 1) -and (Eq $sn[0] 'cloudflare-origin-pull-ca')
+    ) "= $($sn -join ', ')"
     Assert 'v-21: ingressRoute.dashboard.enabled = true' (Eq (Scalar $vals 'ingressRoute.dashboard.enabled') 'true') "= '$(Scalar $vals 'ingressRoute.dashboard.enabled')'"
     Assert 'v-22: ingressRoute.dashboard.matchRule pins the traefik.joshuatech.dev host' (
         Eq (Scalar $vals 'ingressRoute.dashboard.matchRule') 'Host(`traefik.joshuatech.dev`)'
@@ -328,10 +352,15 @@ Test-Group 'forbidden' {
     Assert 'x-4: no top-level log: key (upstream 41.x)' (@($valuesRaw | Where-Object { $_ -cmatch '^log\s*:' }).Count -eq 0) 'chart 40.1.x uses logs.general'
     Assert 'x-5: RequireAndVerifyClientCert is not in valuesContent (T043 owns the step-up)' (
         -not (Has $valuesText 'RequireAndVerifyClientCert')
-    ) 'enforcing mTLS before the CA Secret exists locks out every TLS client'
-    Assert 'x-6: no clientAuth keys in valuesContent yet (the CA Secret arrives in T043)' (
-        (-not (Has $valuesText 'clientAuth')) -and (-not (Has $valuesText 'secretNames'))
-    ) 'a clientAuth block without its Secret registers a TLSOption without CAFiles and breaks every websecure handshake'
+    ) 'Require 승격은 M4 — 관찰 단계의 TLSClientSubject 증거(hostname 매트릭스·자체 서명 음성) 전에 강제하면 검증 없이 오리진을 잠근다'
+    # T043 M3 이전에는 "clientAuth 없음"이 단언이었다(CA Secret 선행 조건). M2(infra/bootstrap/cloudflare-origin-pull-ca.yaml)로 Secret 정본이
+    # 생겼으므로 이제는 **정확히 1회 존재**를 고정해 조용한 삭제(= AOP 검증 소실)와 중복 선언(TLSOption 폐기)을 둘 다 막는다.
+    # 'clientAuth:' 는 'clientAuthType:' 과 겹치지 않는다(뒤에 오는 글자가 ':' 이 아니다).
+    $caCount = ([regex]::Matches($valuesText, 'clientAuth:')).Count
+    $snCount = ([regex]::Matches($valuesText, 'secretNames:')).Count
+    Assert 'x-6: clientAuth block appears exactly once in valuesContent (T043 관찰 단계 투입 — 삭제·중복 금지)' (
+        ($caCount -eq 1) -and ($snCount -eq 1)
+    ) "clientAuth: $caCount, secretNames: $snCount"
     # T042 단계 9 이전에는 "sniStrict 없음"이 단언이었다(동적 인증서 선행 조건). PR-4(gitops main 4f23abd)로 와일드카드가
     # 동적 인증서가 되고 노드 A 판별 실험 ①②를 통과해 투입했으므로, 이제는 **정확히 1회 존재**를 고정해
     # 조용한 삭제(= 폴백 부활)와 중복 선언을 둘 다 막는다.
