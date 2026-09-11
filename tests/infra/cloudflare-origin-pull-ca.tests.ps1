@@ -52,6 +52,8 @@ function Eq([string]$a, [string]$b) { return [string]::Equals($a, $b, [StringCom
 # 계약 값(contracts/hostnames-and-access.md §오리진 보호 3중 2., 커밋 d9b5662). Cloudflare 가 CA 를 교체하면 계약을 먼저 고친 뒤 이 값을 갱신한다.
 # $expectedSha256 = 현행 정본 지문(회전 창에도 반드시 남아 있어야 한다). $allowed = 허용 목록(지문 → notAfter UTC); 회전 시 새 항목을 추가한다.
 $expectedSha256 = '9A1AC2B4BE15F9F27EEE20A734CBA4E9898F61001B3BD7C84B69B56A3E25A2B9'
+# 허용 목록(지문 → notAfter, UTC). 키는 GetCertHashString 출력 그대로 **대문자**이고 대조는 Ordinal(대소문자 구분)이다 — PowerShell 해시테이블
+# 인덱서는 대소문자를 무시하므로 조회는 Get-AllowedKey 로만 한다. 회전(옛+새 병기) 시 새 항목을 추가하고 옛 항목은 옛 블록을 제거할 때 같이 지운다.
 $allowed = @{ '9A1AC2B4BE15F9F27EEE20A734CBA4E9898F61001B3BD7C84B69B56A3E25A2B9' = [datetime]::new(2029, 11, 1, 17, 0, 0, [DateTimeKind]::Utc) }
 $expectedCn = 'CN=origin-pull.cloudflare.net'
 
@@ -139,7 +141,8 @@ Test-Group 'k8s' {
 
     $ownerLines = @($lines | Where-Object { $_ -cmatch '^\s*owner\s*:' }).Count
     $labelsLines = @($bodyLines | Where-Object { $_ -cmatch '^\s*labels\s*:' }).Count
-    $bodyHasOwner = Has $bodyText 'owner'
+    # 'owner' 부분 문자열 검사는 PEM(4칸 들여쓰기 base64) 줄을 제외한 본문 줄만 본다 — base64 우연 일치로 인한 오탐 방지.
+    $bodyHasOwner = (@($bodyLines | Where-Object { -not $_.StartsWith('    ', [StringComparison]::Ordinal) } | Where-Object { Has $_ 'owner' })).Count -gt 0
     Assert 'k-3: no owner key, no labels key in the body, and the body never contains "owner" (label owner=helm — flow style included — would make Traefik''s Secret informer skip this Secret)' (
         $ownerLines -eq 0 -and $labelsLines -eq 0 -and (-not $bodyHasOwner)
     ) "owner key lines = $ownerLines; labels lines in body = $labelsLines; body contains 'owner' = $bodyHasOwner"
@@ -173,6 +176,8 @@ Test-Group 'pem' {
     if ($caIndex -ge 0) {
         for ($i = $caIndex + 1; $i -lt $lines.Count; $i++) {
             $l = $lines[$i]
+            # 빈 줄은 블록 스칼라의 일부(옛+새 병기 사이의 빈 줄)이므로 종료 조건이 아니다 — k-2 루프와 같은 규칙. 최상위 키는 4칸 들여쓰기가 아니므로 종료는 그대로.
+            if ($l.Trim().Length -eq 0) { continue }
             if ($l.StartsWith('    ', [StringComparison]::Ordinal)) { $pemLines += $l.Substring(4) } else { break }
         }
     }
@@ -220,7 +225,7 @@ Test-Group 'pem' {
         ) ("bad: " + ($badSubject -join ' ; '))
         Assert 'p-4: every SHA-256 fingerprint is in the allow list $allowed and the current contract fingerprint is present' (
             ($notAllowed.Count -eq 0) -and $hasCurrent
-        ) "fingerprints=[$($fps -join ',')] notAllowed=[$($notAllowed -join ',')] hasCurrent=$hasCurrent expected=$expectedSha256"
+        ) "fingerprints=[$($fps -join ',')] notAllowed=[$($notAllowed -join ',')] hasCurrent=$hasCurrent expected=$expectedSha256 allowKeys=[$($allowed.Keys -join ',')] (대조는 Ordinal — 허용 목록 키는 대문자)"
         Assert 'p-5: every notAfter equals the allow-list value for its fingerprint (current: 2029-11-01T17:00:00Z)' (
             ($badExpiry.Count -eq 0) -and ($notAllowed.Count -eq 0)
         ) ("bad: " + (($badExpiry + ($notAllowed | ForEach-Object { "$_ not in allow list" })) -join ' ; '))
