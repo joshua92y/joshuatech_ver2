@@ -21,7 +21,7 @@
 #          doc-12 롤아웃 순단 경고(replica 1, 443)  doc-13 HelmChart spec.set 우선 함정  doc-14 T084 forward-auth 재수정 예고
 #          doc-15 klipper-lb 소스 IP 실측 방법(4xx 유발 `/__probe-404` → ClientHost ↔ request_CF-Connecting-IP)  doc-16 T098 전 tracing 잡음
 #          doc-17 Cloudflare 목록 근거(data.cloudflare_ip_ranges + infra/oci/network.tf) + 드리프트 재검토 주기
-#          doc-18 CA 지문·CN·만료 + 되돌리기 순서(clientAuth 블록 제거 → Secret 삭제)
+#          doc-18 CA 지문·CN·만료 + 되돌리기 순서(clientAuth 블록 제거 → Secret 삭제)  doc-19 절차 4 승격 뒤 기대값(무인증서 = 거절, 옛 '숫자' 문구 없음) + s_client·__probe-404
 #   K8S    k8s-1 문서 1개  k8s-2 apiVersion helm.cattle.io/v1  k8s-3 kind HelmChartConfig  k8s-4 metadata.name traefik
 #          k8s-5 metadata.namespace kube-system  k8s-6 spec.valuesContent 블록 스칼라 '|-'
 #   PARSE  parse-1 valuesContent 전 줄 파싱  parse-2 최상위 키 집합 정확히 6개
@@ -53,7 +53,7 @@ function Eq([string]$a, [string]$b) { return [string]::Equals($a, $b, [StringCom
 
 $allNames = @('file-1', 'file-2', 'file-3', 'file-4', 'file-5', 'file-6',
     'doc-1', 'doc-2', 'doc-3', 'doc-4', 'doc-5', 'doc-6', 'doc-7', 'doc-8', 'doc-9',
-    'doc-10', 'doc-11', 'doc-12', 'doc-13', 'doc-14', 'doc-15', 'doc-16', 'doc-17', 'doc-18',
+    'doc-10', 'doc-11', 'doc-12', 'doc-13', 'doc-14', 'doc-15', 'doc-16', 'doc-17', 'doc-18', 'doc-19',
     'k8s-1', 'k8s-2', 'k8s-3', 'k8s-4', 'k8s-5', 'k8s-6',
     'parse-1', 'parse-2',
     'v-1', 'v-2', 'v-3', 'v-4', 'v-5', 'v-6', 'v-7', 'v-8', 'v-9', 'v-10', 'v-11', 'v-12',
@@ -185,7 +185,9 @@ Test-Group 'doc' {
     # '관찰 단계 투입')는 이력으로 남아야 하며, '무해한 단계' 가 아니었다는 경고도 유지한다(CA 불일치는 Verify 도 Require 와 같은 443 전면 실패).
     Assert 'doc-4: header records the T043 clientAuth block as promoted to RequireAndVerifyClientCert (observe-stage history kept) plus its Secret precondition' (
         (Has $header 'T043') -and (Has $header 'clientAuth:') -and (Has $header 'secretNames:') -and
-        (Has $header 'cloudflare-origin-pull-ca') -and (Has $header 'clientAuthType: RequireAndVerifyClientCert') -and
+        (Has $header 'cloudflare-origin-pull-ca') -and
+        # 조각은 연속 4줄로 앵커한다 — 'clientAuthType: RequireAndVerifyClientCert' 낱말은 절차 4 줄에도 있어 낱개 needle 로는 조각 삭제를 못 잡는다.
+        ([regex]::IsMatch($header, '(?m)^#\s+clientAuth:\s*\r?\n#\s+secretNames:\s*\r?\n#\s+- cloudflare-origin-pull-ca\s*\r?\n#\s+clientAuthType: RequireAndVerifyClientCert\s*$')) -and
         (Has $header 'CAFiles') -and (Has $header '승격 완료') -and (Has $header '관찰 단계 투입') -and
         (Has $header 'VerifyClientCertIfGiven') -and (Has $header '무해한 단계')
     ) 'header must show the T043 clientAuth snippet with clientAuthType: RequireAndVerifyClientCert, state the promotion is complete, keep the observe-stage history (VerifyClientCertIfGiven), keep the Secret precondition (a missing CA Secret breaks websecure), and keep the warning that the observe stage was never harmless (CA mismatch fails like Require)'
@@ -254,6 +256,11 @@ Test-Group 'doc' {
         (Has $header '2029-11-01') -and (Has $header 'origin-pull.cloudflare.net') -and
         ($nRemove -eq 1) -and ($nDelete -eq 1) -and ($iRemove -ge 0) -and ($iDelete -ge 0) -and ($iRemove -lt $iDelete)
     ) "header must carry the CA fingerprint/CN/expiry and state the rollback order clientAuth 블록 제거 → Secret 삭제 exactly once (remove@$iRemove x$nRemove, delete@$iDelete x$nDelete)"
+    # T043 승격: 절차 4 의 노드 내부 무인증서 curl 기대값이 '거절' 로 반전됐다 — 옛 문구('기대값은 숫자(302 등)')가 되살아나면 강제 창의 go/no-go 가 뒤집힌다.
+    Assert 'doc-19: header pins the post-promotion 절차 4 expectation (node-internal no-cert curl = 거절, old numeric wording gone) plus the s_client and __probe-404 checks' (
+        (Has $header 'T043 승격 뒤 기대값은 **거절**') -and (-not (Has $header '기대값은 숫자(302 등)')) -and
+        (Has $header 'openssl s_client -connect 10.0.7.78:443 -servername traefik.joshuatech.dev') -and (Has $header '__probe-404')
+    ) 'header must state the reversed expectation (rejection), drop the old numeric expectation, and keep the openssl s_client server-cert check and the __probe-404 positive check'
 }
 
 # ---------- K8S 문서 형태 ----------
@@ -366,7 +373,7 @@ Test-Group 'forbidden' {
     # 'clientAuth:' 는 'clientAuthType:' 과 겹치지 않는다(뒤에 오는 글자가 ':' 이 아니다).
     $caCount = ([regex]::Matches($valuesText, 'clientAuth:')).Count
     $snCount = ([regex]::Matches($valuesText, 'secretNames:')).Count
-    Assert 'x-6: clientAuth block appears exactly once in valuesContent (T043 관찰 단계 투입 — 삭제·중복 금지)' (
+    Assert 'x-6: clientAuth block appears exactly once in valuesContent (T043 — 삭제·중복 금지)' (
         ($caCount -eq 1) -and ($snCount -eq 1)
     ) "clientAuth: $caCount, secretNames: $snCount"
     # T042 단계 9 이전에는 "sniStrict 없음"이 단언이었다(동적 인증서 선행 조건). PR-4(gitops main 4f23abd)로 와일드카드가

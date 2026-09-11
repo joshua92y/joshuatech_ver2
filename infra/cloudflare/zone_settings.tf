@@ -24,7 +24,8 @@ resource "cloudflare_zone_setting" "min_tls_version" {
 }
 
 # Authenticated Origin Pulls(global, zone 단위 mTLS). edge 가 오리진에 클라이언트 인증서를 제시한다;
-# 오리진(Traefik TLSOption default)은 T043 에서 RequireAndVerifyClientCert 로 전환 완료(2026-09-11) — 이 설정을 끄면 오리진이 edge 를 거절해 플랫폼 호스트 전부 525/520 이다(끄지 말 것).
+# 오리진(Traefik TLSOption default)은 T043 에서 RequireAndVerifyClientCert 로 전환(2026-09-11 M4 커밋 · 설치 시각은 런북 §3 T043) — 이 설정을 끄면
+# 오리진이 edge 를 거절해 플랫폼 호스트 전부가 525 또는 520(어느 쪽인지 미실측 — 런북 VD-7)이 된다(끄지 말 것).
 resource "cloudflare_zone_setting" "tls_client_auth" {
   zone_id    = local.zone_id
   setting_id = "tls_client_auth"
