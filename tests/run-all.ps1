@@ -111,6 +111,14 @@ $c = $LASTEXITCODE
 Write-Host ($o.TrimEnd())
 Check 'traefik-config' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see traefik-config test output above"
 
+# 1l. cloudflare-origin-pull-ca (T043) — tests/infra/cloudflare-origin-pull-ca.tests.ps1: infra/bootstrap/cloudflare-origin-pull-ca.yaml(공개 AOP 루트 CA Secret)
+#     정적 검사(ns·키·PEM 1블록·개인키 없음·sha256 지문·notAfter 2029-11-01). 1k와 같은 규율: SKIP 없이 fail closed,
+#     exit 0 이면서 'N passed, 0 failed'가 있어야 PASS. 잔여일은 WARN 출력만(시한 FAIL 없음) — 교체 감시는 T114 월간 점검·분기 지문 대조.
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/infra/cloudflare-origin-pull-ca.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'cloudflare-origin-pull-ca' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see cloudflare-origin-pull-ca test output above"
+
 # 2. CLAUDE.md <= 200 lines
 $n = if (Test-Path CLAUDE.md) { (Get-Content CLAUDE.md).Count } else { -1 }
 Check "CLAUDE.md lines ($n) <= 200" ($n -ge 0 -and $n -le 200) 'missing or too long'

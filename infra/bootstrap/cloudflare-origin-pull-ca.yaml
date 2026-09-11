@@ -1,0 +1,73 @@
+# infra/bootstrap/cloudflare-origin-pull-ca.yaml — Cloudflare Global AOP 루트 CA(공개 인증서) → kube-system Secret cloudflare-origin-pull-ca — 003-platform-foundation T043
+#
+# ⚠ 이 파일의 `kind: Secret` 은 비밀이 아니다. 값은 Cloudflare 가 공개 배포하는 **루트 CA 인증서**(개인키 없음)이고 원본은
+#   https://developers.cloudflare.com/ssl/static/authenticated_origin_pull_ca.pem (2026-09-11 조회: 2154 바이트 · ETag b0b28c5a814263fa93aebdb1a3803323).
+#   AGENTS.md "Secrets never enter the repository" 의 예외가 아니라 대상이 아니다(contracts/hostnames-and-access.md §오리진 보호 3중 2.).
+#   Secret kind 인 이유: Traefik v3.7.8 TLSOption.clientAuth 는 `secretNames` 만 받는다(ConfigMap 불가 — kubernetes.go getCABlocks 가 Secret 의
+#   키 `tls.ca` → `ca.crt` 순으로 읽는다; ConfigMap 경로는 ServersTransport 전용). type 은 무관(Opaque).
+#   subject = issuer: C=US, O=CloudFlare, Inc., OU=Origin Pull, L=San Francisco, ST=California, CN=origin-pull.cloudflare.net
+#   notBefore 2019-10-10 18:45 GMT · **notAfter 2029-11-01 17:00 GMT**(운영 캘린더 — docs/runbooks/secret-rotation.md, T084 작성)
+#   sha256 지문 9A:1A:C2:B4:BE:15:F9:F2:7E:EE:20:A7:34:CB:A4:E9:89:8F:61:00:1B:3B:D7:C8:4B:69:B5:6A:3E:25:A2:B9
+#   → tests/infra/cloudflare-origin-pull-ca.tests.ps1 이 ns·키·PEM 1블록·개인키 없음·지문·만료를 고정한다(run-all 슬롯 1l; 잔여일은 WARN 만).
+# 보증 범위: 이 CA 는 모든 Cloudflare 계정이 공유한다 — "Cloudflare 망에서 왔다" 만 보증하고 "우리 존에서 왔다" 는 보증하지 않는다.
+#   계정 교차 우회의 오리진 측 통제는 Access 앱 + T084 forward-auth + 앱 계층 JWT 검증(contracts/hostnames-and-access.md §오리진 보호 3중).
+# 설치: traefik-config.yaml 과 같은 위치·같은 절차(노드 A /var/lib/rancher/k3s/server/manifests/, 그 파일 헤더 절차 1~2: scp → sudo install).
+#   K3s deploy 컨트롤러가 AddOn `cloudflare-origin-pull-ca` 로 적용한다(시작 시 · 파일 변경 시, 반영 ≈15 초). 파일을 지워도 객체는 남는다
+#   (완전 제거 = 파일 rm → `kubectl -n kube-system delete addon cloudflare-origin-pull-ca` → Secret 삭제 — 아래 순서 규율 뒤에만).
+#   운영자가 kubectl 로 먼저 만들지 않는다 — 부트스트랩 창에서도 이 파일을 manifests 디렉터리에 두는 한 경로만 쓴다(소유권 충돌 방지).
+# ⚠ 순서 규율(둘 다 websecure 443 전면 중단 경로):
+#   투입 = 이 Secret 먼저 → 지문·notAfter 대조(kubectl get secret … | base64 -d | openssl x509 -noout -fingerprint -sha256 -enddate)
+#        → 그다음에 traefik-config.yaml 의 tlsOptions.default.clientAuth.
+#   제거 = traefik-config.yaml 에서 clientAuth 블록 제거·재설치 → `kubectl -n kube-system get tlsoption default -o jsonpath='{.spec.clientAuth}'` 가
+#        빈 값인 것을 확인 → 그다음에야 이 파일 삭제 + addon 삭제 + `kubectl -n kube-system delete secret cloudflare-origin-pull-ca`.
+#   clientAuth 가 실린 상태에서 Secret 이 없거나 키가 ca.crt/tls.ca 가 아니면 Traefik 이 "invalid clientAuthType: …, CAFiles is required" 로
+#   TLSOption 등록에 실패하고 websecure 전 호스트가 brokenTLSRouter 가 된다(파드는 Ready 유지 · INFO 로그 조용 — 능동 확인 필수).
+# 교체(2029-11-01 만료 전 또는 Cloudflare 조기 교체 — 공지 채널 없음): 새 PEM 을 아래 ca.crt 값으로 바꾸고(옛+새 두 블록 병기 가능 —
+#   Traefik 은 문자열 전체를 CA 풀에 넣는다) 테스트의 허용 지문을 갱신한 뒤 절차 1~2 재실행. CRD provider 가 Secret 변경 이벤트로 재빌드하므로
+#   롤아웃·TLSOption 변경 없이 반영된다. 분기 1회 원본 지문 대조(traefik-config.yaml 헤더 "재검토 주기" 와 같은 주기):
+#     curl -s https://developers.cloudflare.com/ssl/static/authenticated_origin_pull_ca.pem | openssl x509 -noout -fingerprint -sha256
+# 라벨 `owner=helm` 을 붙이지 않는다 — Traefik 의 Secret informer 가 그 라벨을 제외해 "없는 Secret" 으로 취급한다.
+# Argo CD UI 에는 고아 리소스 경고로 보인다(platform-traefik destination = kube-system) — 정상이며 지우지 않는다(gitops platform/traefik/README).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cloudflare-origin-pull-ca
+  namespace: kube-system
+type: Opaque
+stringData:
+  ca.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIIGCjCCA/KgAwIBAgIIV5G6lVbCLmEwDQYJKoZIhvcNAQENBQAwgZAxCzAJBgNV
+    BAYTAlVTMRkwFwYDVQQKExBDbG91ZEZsYXJlLCBJbmMuMRQwEgYDVQQLEwtPcmln
+    aW4gUHVsbDEWMBQGA1UEBxMNU2FuIEZyYW5jaXNjbzETMBEGA1UECBMKQ2FsaWZv
+    cm5pYTEjMCEGA1UEAxMab3JpZ2luLXB1bGwuY2xvdWRmbGFyZS5uZXQwHhcNMTkx
+    MDEwMTg0NTAwWhcNMjkxMTAxMTcwMDAwWjCBkDELMAkGA1UEBhMCVVMxGTAXBgNV
+    BAoTEENsb3VkRmxhcmUsIEluYy4xFDASBgNVBAsTC09yaWdpbiBQdWxsMRYwFAYD
+    VQQHEw1TYW4gRnJhbmNpc2NvMRMwEQYDVQQIEwpDYWxpZm9ybmlhMSMwIQYDVQQD
+    ExpvcmlnaW4tcHVsbC5jbG91ZGZsYXJlLm5ldDCCAiIwDQYJKoZIhvcNAQEBBQAD
+    ggIPADCCAgoCggIBAN2y2zojYfl0bKfhp0AJBFeV+jQqbCw3sHmvEPwLmqDLqynI
+    42tZXR5y914ZB9ZrwbL/K5O46exd/LujJnV2b3dzcx5rtiQzso0xzljqbnbQT20e
+    ihx/WrF4OkZKydZzsdaJsWAPuplDH5P7J82q3re88jQdgE5hqjqFZ3clCG7lxoBw
+    hLaazm3NJJlUfzdk97ouRvnFGAuXd5cQVx8jYOOeU60sWqmMe4QHdOvpqB91bJoY
+    QSKVFjUgHeTpN8tNpKJfb9LIn3pun3bC9NKNHtRKMNX3Kl/sAPq7q/AlndvA2Kw3
+    Dkum2mHQUGdzVHqcOgea9BGjLK2h7SuX93zTWL02u799dr6Xkrad/WShHchfjjRn
+    aL35niJUDr02YJtPgxWObsrfOU63B8juLUphW/4BOjjJyAG5l9j1//aUGEi/sEe5
+    lqVv0P78QrxoxR+MMXiJwQab5FB8TG/ac6mRHgF9CmkX90uaRh+OC07XjTdfSKGR
+    PpM9hB2ZhLol/nf8qmoLdoD5HvODZuKu2+muKeVHXgw2/A6wM7OwrinxZiyBk5Hh
+    CvaADH7PZpU6z/zv5NU5HSvXiKtCzFuDu4/Zfi34RfHXeCUfHAb4KfNRXJwMsxUa
+    +4ZpSAX2G6RnGU5meuXpU5/V+DQJp/e69XyyY6RXDoMywaEFlIlXBqjRRA2pAgMB
+    AAGjZjBkMA4GA1UdDwEB/wQEAwIBBjASBgNVHRMBAf8ECDAGAQH/AgECMB0GA1Ud
+    DgQWBBRDWUsraYuA4REzalfNVzjann3F6zAfBgNVHSMEGDAWgBRDWUsraYuA4REz
+    alfNVzjann3F6zANBgkqhkiG9w0BAQ0FAAOCAgEAkQ+T9nqcSlAuW/90DeYmQOW1
+    QhqOor5psBEGvxbNGV2hdLJY8h6QUq48BCevcMChg/L1CkznBNI40i3/6heDn3IS
+    zVEwXKf34pPFCACWVMZxbQjkNRTiH8iRur9EsaNQ5oXCPJkhwg2+IFyoPAAYURoX
+    VcI9SCDUa45clmYHJ/XYwV1icGVI8/9b2JUqklnOTa5tugwIUi5sTfipNcJXHhgz
+    6BKYDl0/UP0lLKbsUETXeTGDiDpxZYIgbcFrRDDkHC6BSvdWVEiH5b9mH2BON60z
+    0O0j8EEKTwi9jnafVtZQXP/D8yoVowdFDjXcKkOPF/1gIh9qrFR6GdoPVgB3SkLc
+    5ulBqZaCHm563jsvWb/kXJnlFxW+1bsO9BDD6DweBcGdNurgmH625wBXksSdD7y/
+    fakk8DagjbjKShYlPEFOAqEcliwjF45eabL0t27MJV61O/jHzHL3dknXeE4BDa2j
+    bA+JbyJeUMtU7KMsxvx82RmhqBEJJDBCJ3scVptvhDMRrtqDBW5JShxoAOcpFQGm
+    iYWicn46nPDjgTU0bX1ZPpTpryXbvciVL5RkVBuyX2ntcOLDPlZWgxZCBp96x07F
+    AnOzKgZk4RzZPNAxCXERVxajn/FLcOhglVAKo5H0ac+AitlQ0ip55D2/mf8o72tM
+    fVQ6VpyjEXdiIXWUq/o=
+    -----END CERTIFICATE-----

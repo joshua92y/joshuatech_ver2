@@ -4,6 +4,7 @@
 # 컨트롤러가 HelmChartConfig 를 읽어 번들 차트(traefik-40.1.4+up40.1.0, 이미지 Traefik v3.7.8)에 추가 values 파일로 넘긴다.
 # GitOps 저장소의 platform/traefik/ 에는 Middleware·TLSOption·TLSStore 만 둔다(contracts/gitops-repo.md) — 차트 값은 이곳에만 있다.
 # 비밀은 담지 않는다(참조하는 Secret 이름만 적는다).
+#   같은 디렉터리의 cloudflare-origin-pull-ca.yaml 은 공개 AOP 루트 CA Secret(비밀 아님) 의 정본 — T043 에서 tlsOptions.default.clientAuth.secretNames 가 참조한다. 설치 순서: 그 파일 먼저(그 파일 머리 "순서 규율").
 #
 # 편집 금지: 같은 디렉터리의 traefik.yaml 은 K3s 패키지 매니페스트라 k3s 가 시작할 때마다 원본으로 다시 쓴다 — 거기에 값을 넣으면 재시작 때
 #   사라진다. 커스터마이즈는 반드시 이 별도 파일로 한다. <https://docs.k3s.io/helm#customizing-packaged-components-with-helmchartconfig>
