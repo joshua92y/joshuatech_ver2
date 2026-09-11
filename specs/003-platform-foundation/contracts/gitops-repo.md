@@ -8,6 +8,7 @@
 platform-gitops/
 ├── bootstrap/
 │   ├── argocd/                     # kustomization: remote base(install.yaml, `?ref=<commit sha>`로 핀 — 태그 금지) + patches(dex·applicationset 비활성, requests, ServerSideApply)
+│   │                               #   + ingress.yaml(Ingress `argo.joshuatech.dev` → argocd-server:http, websecure, grpc-web — T043; platform/argocd/ 는 자기 관리 Application 자리표시 유지)
 │   └── root-app.yaml               # Application "root" → clusters/oci-k3s/apps (유일한 수동 apply)
 ├── clusters/oci-k3s/
 │   ├── projects/{platform,dev,prod,tests}.yaml   # AppProject
@@ -17,6 +18,7 @@ platform-gitops/
 │   │                               #        authentik openfga monitoring cloudflared reloader system-upgrade
 │   ├── kustomization.yaml          # helmCharts(values 인라인) 또는 순수 매니페스트
 │   └── …                           # traefik/ 은 Middleware·TLSOption·TLSStore만 — Traefik 자체 설정(HelmChartConfig)의 정본은 노드 A `server/manifests/traefik-config.yaml`
+│                                   #   (노드 A `server/manifests/` 에는 `cloudflare-origin-pull-ca.yaml`(공개 AOP 루트 CA Secret `kube-system/cloudflare-origin-pull-ca` — T043)도 함께 둔다; 정본은 모노레포 `infra/bootstrap/`, 이 저장소에는 두지 않는다)
 │                                   # argocd/ 는 Argo CD 자기 관리 Application(bootstrap/argocd/ 를 소스로), system-upgrade/ 는 SUC + Plan
 ├── apps/<pod>/
 │   ├── base/{deployment,service,ingress,configmap,externalsecret-env,externalsecret-migrate,migrate-job,kustomization}.yaml   # Ingress host = PLACEHOLDER.joshuatech.dev
