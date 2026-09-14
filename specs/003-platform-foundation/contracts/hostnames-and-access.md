@@ -76,7 +76,7 @@ Job은 prod 자격을 절대 받지 않는다. tester가 얻는 것은 로그 �
 
 - **OCI**: 사용자 `svc-verify`(그룹 `jt-verify`) — `inspect`/`read objects` on `jt-backup`·`jt-backup-platform`, `read usage-reports`·`budgets`·`instance-family`. **`manage` 권한 0.** 접속은 `oci session authenticate`(세션 토큰 1 h).
 - **Grafana Cloud**: Viewer 서비스 계정 토큰. **Sentry**: 읽기 전용 토큰. **Cloudflare**: `Analytics:Read` 토큰. 셋 다 quickstart 사전 조건으로 운영자가 준비한다.
-- **Vault**: role `e2e-reader`(bound `kube-system/agent-view`, 정책 = `kv/data/platform/authentik/e2e` read, `token_ttl` 1h) — Playwright가 E2E 사용자 비밀번호·TOTP 시드를 읽는 유일한 경로.
+- **Vault**: role `e2e-reader`(bound `kube-system/agent-view`, 정책 = `kv/data/platform/authentik/e2e` read, `token_ttl` 1h) — Playwright가 E2E 사용자 비밀번호·TOTP 시드를 읽는 유일한 경로. 로그인용 토큰은 운영자가 E2E 세션 직전 `kubectl create token agent-view -n kube-system --audience vault --duration=1h`로 발급해 tester에 env로만 전달한다(`agent-view` ClusterRole에는 `serviceaccounts/token` create가 없다 — 쓰기 동사는 `pods/portforward` create뿐, T044); 읽기는 `vault read kv/data/platform/authentik/e2e`다(`vault kv get`은 `sys/internal/ui/mounts/kv` preflight가 정책 밖이라 403).
 - `argocd --sso` 로그인 확인과 Authentik 관리 API 확인은 **운영자 수동 + 스크린샷**이다(비대화형 자동화 없음).
 - **tester Access 서비스 토큰 2개**(둘 다 T011 `access.tf`가 생성, 회전 매트릭스 T084 등재; secret은 `kv/platform/access/*` 보관 — tester는 실행 시 env로만 받고 파일에 저장하지 않는다):
   - `tester-m2m` — **dev·prod m2m 앱** include(Service Auth): tester의 m2m E2E 호출이 Service Auth를 지나는 경로. 보관 `kv/platform/access/tester-m2m`.
