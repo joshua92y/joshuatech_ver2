@@ -31,7 +31,7 @@
 #     curl -s https://developers.cloudflare.com/ssl/static/authenticated_origin_pull_ca.pem | openssl x509 -noout -fingerprint -sha256
 # 라벨 `owner=helm` 을 붙이지 않는다 — Traefik 의 Secret informer 가 그 라벨을 제외해 "없는 Secret" 으로 취급한다.
 # Argo CD UI 에는 고아 리소스 경고로 보인다(platform-traefik destination = kube-system) — 정상이며 지우지 않는다(선례: gitops
-#   platform/cert-manager-issuers/README.md · platform/cert-manager/README.md; platform/traefik/README 에는 T043 G2 에서 기록).
+#   platform/cert-manager-issuers/README.md · platform/cert-manager/README.md; platform/traefik/README §10 "Argo UI 고아 경고 정상 목록" — T043 G2, gitops main fa6d838).
 apiVersion: v1
 kind: Secret
 metadata:

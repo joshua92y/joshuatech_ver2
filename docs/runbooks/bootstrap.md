@@ -247,7 +247,7 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
 
 > **해소(2026-09-09 18:54 KST)**: PR-3(#15 `32a1022`)이 prod로 승격하고 Certificate가 `Ready=True`가 되면서 위 기대 실패는 전부 끝났다.
 > 현재 기대값은 `cert-1`·`cert-2`·`argo-1` **PASS**다. 이 절은 그 구간의 기록으로만 남긴다 —
-> **지금 이 문면을 읽고 FAIL을 기대 상태로 보고하면 오독이다.** 남은 FAIL 2건은 미래 태스크 몫이다(`argo-2` = T043, `vault-2` = T044).
+> **지금 이 문면을 읽고 FAIL을 기대 상태로 보고하면 오독이다.** 남은 FAIL 1건은 미래 태스크 몫이다(`vault-2` = T044; `argo-2`는 T043 PR #18 머지로 2026-09-11 PASS 전환).
 
 ### T042 — cert-manager · ClusterIssuer · 와일드카드 인증서 · TLSStore · sniStrict (2026-09-09 ~ 09-10)
 
@@ -318,11 +318,39 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
   응답을 요구하는 프로브(`dig @8.8.8.8 +time=2 +tries=1`)로 재측정하고, 판별자는 `cluster.tests.ps1`의 `np-5-live`(T031 → T102)다.
   53 누수 실측에 쓴 프로브 파드(`10.42.1.23`)의 정의·이미지·삭제 확인이 기록되지 않았다.
 
-(T043 이후 기록은 이하에 추가)
+### T043 — AOP 강제 · CA Secret · clientAuth 관찰 → 승격 · Argo CD Ingress (2026-09-11)
+
+- **설계**: scratchpad `t043-design.md`(13단계 운영자 절차 · VD 24항목). T043 = 모노레포 커밋 5(+리뷰 반영 4) + gitops PR 2 + 라이브 창 4(Ingress · Secret · Verify · Require). 매 커밋을 3렌즈 검토 워크플로(사실·정합·정책/테스트) + 반박 검증에 올렸다.
+- **코드(gitops, squash)**: **#18** `54fdb59`(Ingress `argocd/argocd-server` — `argo.joshuatech.dev`, websecure, `router.tls`, `spec.tls` 없음, 백엔드 포트 `http`, grpc-web) · **#19** `fa6d838`(문서 정합 — traefik README §5/§6/§9/§10 · kustomization·tlsstore 주석 · apps/README·platform-argocd 열거).
+  **코드(모노레포)**: `d9b5662`(계약 §오리진 보호 3중 2. 하위 5항목 + gitops-repo.md 트리) · `8613630`+`35664fb`+`c5a098c`(CA Secret 매니페스트 `infra/bootstrap/cloudflare-origin-pull-ca.yaml` + 17단언 스위트 + run-all 1l) · `6141baa`(Verify 관찰 단계 값 + 스위트 72/0) · `a6f2cae`+`7e48409`(Require 승격 + doc-19 등 73/0 + `zone_settings.tf` 주석).
+- **사용자 결정**: **D1**=C(CA Secret 정본 = 모노레포 `infra/bootstrap/` K3s manifests — gitops 아님, kubectl 선생성 아님) · **D2**=(b′)(`VerifyClientCertIfGiven` 관찰 게이트: hostname 매트릭스 9 + 자체 서명 음성, PASS/FAIL/INCONCLUSIVE 3상태 → `RequireAndVerifyClientCert`) · **D3**=`bootstrap/argocd/ingress.yaml`(platform-argocd selfHeal이 생성) · **D4**=`argocd-cm url` T084(IngressRoute HTTP+h2c 2-route는 기각 — Access가 gRPC 미지원, CLI는 `--grpc-web`, argo-2가 kind Ingress 요구) · **D5**=(ii)+(iii)(인증서 없는 판별로 교체, 판별 실험 ①②는 "승격 전 마지막 점검·재투입 전용") · **D6**=7건 분리, 계약 먼저.
+- **문면 편차·정정 후보(`/speckit-converge` 인계)**: ① tasks T043 "RequireAndVerifyClientCert 전환" = 관찰 → 승격으로 실행(편차 없음, 기록) ② research ARGOCD-D11 IngressRoute 2-rule+h2c vs spec FR-011 표준 Ingress ③ research :534 `argocd.joshuatech.dev` → `argo.` ④ hostnames-and-access.md:43 include 이메일 vs access.tf 주석(결정 B) ⑤ bootstrap.md:118 'Vault 투입은 T043' → T045(정정 완료, :37-38) ⑥ gitops README '526' 문맥 — AOP 실패는 525/520 계열 ⑦ ADR 0010:33 'T043–T045' 순서 표기(본문 편집 금지 → 기록만) ⑧ 설계 단계 7 "`grep -c clientAuth` = 0" 기대값 오기(헤더 주석 8줄 — valuesContent 기준 0이 맞음).
+- **게이트·실측**:
+  - **단계 0**: `tls_client_auth` value=on · editable=True · **modified_on 2026-09-03 10:42:46 KST** · Zone-level/Per-hostname AOP 없음(`origin_tls_client_auth/settings` API는 `joshuatech-tofu-deploy` 토큰 권한 부족(10000) → 대시보드 SSL/TLS → Origin Server 카드로 확인) · cloudflare plan No changes · `auth can-i list ingresses --as=system:serviceaccount:kube-system:agent-view` yes(VD-15) · TLSOption default 1개 · Secret NotFound · idleTimeout 인자 없음(기본 180s, VD-5).
+  - **단계 3(Ingress, PR #18 머지)**: `status.loadBalancer.ingress=[{"ip":"10.0.7.78"}]`(VD-13) · Synced/Healthy · 노드 A 내부 `--resolve argo.` → `HTTP/2 200`, issuer LE YE2 · 8080 Host 프로브 **404**(VD-12) · edge 302 · 브라우저(기존 Access 세션 SSO) Applications 목록 ✔ · 러너(agent-view) **argo-2 PASS** `ingress=[argocd/argocd-server]`, aop-1 PASS(28), 남은 FAIL = vault-2(T044). **VD-11**(2026-09-14 대시보드 스크린샷): 라우터 `argocd-argocd-server-argo-joshuatech-dev@kubernetes` = 엔트리포인트 **websecure(:8443)만** · Rule `Host("argo.joshuatech.dev") && PathPrefix("/")` · 서비스 `argocd-argocd-server-http` · **TLS Options `default`** · Passthrough False ✔. **VD-14**(SSE 3분): 별도 관찰 안 함 — Applications 목록 정상 로딩만 확인(기능 저하 보고 없음, T084 UI 작업 때 재관찰).
+  - **단계 4(M2)**: 다운로드 PEM 2154B · ETag `b0b28c5a814263fa93aebdb1a3803323` · 지문 `9A:1A:C2:B4:BE:15:F9:F2:7E:EE:20:A7:34:CB:A4:E9:89:8F:61:00:1B:3B:D7:C8:4B:69:B5:6A:3E:25:A2:B9` · notAfter 2029-11-01T17:00Z — 원본과 바이트 동일. **VD-16**: 로컬 gitleaks 8.30.1 no leaks · push protection 차단 없음 · 모노레포 이 브랜치에 CI 워크플로 없음.
+  - **단계 5(Secret 설치 06:39:01Z)**: AddOn `cloudflare-origin-pull-ca`(checksum 24d0e174…) · Opaque · 라벨 `objectset.rio.cattle.io/hash`만(`owner` 없음) · 키 `ca.crt` · subject/notAfter/지문 일치(VD-3) · journal `Applied manifest` 15:39:08 KST(+7초) · **rv 477630 5분 불변(VD-18 — `stringData` 유지)** · 로그 0줄 · auth 404.
+  - **단계 7(Verify 설치 06:49:41Z)**: 30초 게이트 전부 기대값(spec Verify+minVersion+sniStrict · default 1 · Job 1 · 패턴 0줄 · 파드 `2026-09-04T09:58:33Z`/0 불변 · 내부 traefik 302·argo 200 · edge 404/302). **VD-6(핵심)**: 매트릭스 9 중 액세스 로그가 남는 **8 호스트**(auth·api·mcp 공개 404 · argo·vault·admin `cloudflared access curl` · identity-m2m-prod/dev tester-m2m 서비스 토큰) 전부 `"TLSClientSubject":"CN=origin-pull.cloudflare.net,O=Cloudflare Inc.,L=San Francisco,ST=CA,C=US"` · `TLSVersion 1.3` · cf-ray 콜로 LAX(기록만). **`traefik` 호스트는 로그 0줄(20분, 오리진 404 2회)** — 대시보드 IngressRoute → `api@internal`, Traefik v3는 내부 리소스 액세스 로그 기본 제외(`accesslog.addInternals` false) → 구조적 제외(TLSOption default는 라우터 무관 전역). D2 규칙 실적용: INCONCLUSIVE → 재프로브 1회 + 구조 진단 → 종결. **자체 서명 음성**(노드 A /tmp EC, CN=origin-pull.cloudflare.net): exit 56/000 + `TLSv1.3 (IN), TLS alert, unknown CA (560)` → 거절 · **무인증서 양성**: 404 → Verify가 제시된 인증서를 검증함.
+  - **단계 11(Require 설치 07:48:23Z)**: clientAuthType `RequireAndVerifyClientCert` · default 1 · Job 1 · 패턴 0줄 · 파드 불변 · **무인증서 TLS1.3: exit 56 + `tlsv13 alert certificate required`(curl 표기 `TLS alert, unknown (628)`)** · **TLS1.2: exit 35 + `handshake failure (552)`** · **SNI 불일치: `unrecognized name (624)`** · s_client issuer LE YE2 / Dec 8 2026(VD-10) · handshake 로그 0건(VD-9: INFO 레벨엔 안 남음) · edge auth **404**(VD-7: 525/520 미발생) · argo 302. **양성 재확인(2026-09-14 04:47~48Z, 승격 +3일)**: `auth`·`api`·`mcp`(공개)·`argo`(Access) 전부 edge 404 + 액세스 로그 `TLSClientSubject=CN=origin-pull.cloudflare.net,O=Cloudflare Inc.,L=San Francisco,ST=CA,C=US` · TLS 1.3 · cf-ray 콜로 **SJC**(09-11은 LAX — 콜로가 바뀌어도 통과). **브라우저(2026-09-14)**: Argo UI Applications 20 Synced/Healthy 로딩 ✔ · Traefik 대시보드(엔트리포인트 4 · 라우터 5 · 서비스 6 · 미들웨어 1 · 인증서 1) ✔ · argocd 라우터 TLS Options `default` ✔. **러너**: 09-14 재실행은 새 셸의 `TF_VAR_budget_alert_email` 부재로 0b infra 그룹에서 중단(platform 미실행) — `aop-1`(NSG 28)·`argo-2`(Ingress 존재)는 승격과 무관한 항목이라 **09-11 PASS 결과로 갈음**(FAIL = vault-2, T044).
+- **판별표(승격 뒤 노드 내부 `curl -v` stderr)**: `certificate required` = 인증서 부재 · `unknown CA`/`bad certificate` = 인증서 불일치(우리 CA 체인 실패) · `unrecognized name` = SNI 불일치 · `handshake failure` = TLS1.2 무인증서. exit 56/35/35는 참고값. 서버 인증서는 `openssl s_client -servername`으로(승격 뒤에도 읽힘) · 443 생존 = edge `auth` 404 · AOP 양성 = `/__probe-404` 액세스 로그 `TLSClientSubject`(반영 +180초 뒤, `traefik.` 호스트 제외).
+- **git 밖 라이브 상태(재부트스트랩 시 재현 필요)**: 노드 A `/var/lib/rancher/k3s/server/manifests/cloudflare-origin-pull-ca.yaml`(= 모노레포 정본) + `traefik-config.yaml`(= `7e48409`) · 운영자 사본 `/home/ubuntu/traefik-config.pre-t043.yaml`(clientAuth 없음, 장애 되돌리기 목표)·`traefik-config.t043-verify.yaml`(Verify본) · Argo UI 고아 경고 `kube-system/Secret cloudflare-origin-pull-ca`(정상, 지우지 않는다).
+- **절차 메모(다음 사람이 반드시 읽을 것)**:
+  1. **투입 = Secret → 지문 게이트 → clientAuth. 되돌리기 = clientAuth 제거(사본 재설치) → spec에서 빈 값 확인 → 그다음에야 Secret 삭제.** 역순은 443 전면 중단. `kubectl delete helmchartconfig traefik`은 T038 전량 소실 경로라 되돌리기에 쓰지 않는다.
+  2. **관찰 판정은 TLSOption 반영 + idleTimeout 180초 이후 프로브만**(옛 keep-alive 연결은 옛 TLS 설정으로 산다). edge `auth` 404는 "장애 없음" 판정에만 쓴다.
+  3. **`traefik.` 호스트는 액세스 로그에 안 남는다**(api@internal). AOP 양성 증거는 다른 호스트로.
+  4. **노드 내부 kubectl은 항상 `sudo`**(k3s.yaml 권한). 검증 블록은 터널(`cloudflared access tcp` k8s 리스너, ssh-a와 별개 Access 앱)에 의존하지 않게 노드 안에서 완결시킨다. agent-view kubeconfig 조립 전 `$env:KUBECONFIG`를 admin 파일로 명시하고 `kubectl config current-context`를 확인한다(빈 컨텍스트면 `create token`이 localhost:8080 404, `config view --minify`가 "current-context must exist").
+  5. **PowerShell 함정**: `"$pod:8080"`은 스코프 변수로 읽힘 → `${pod}`; 큰따옴표 안 `\"\n\"`·`\$p`는 원격 jsonpath/sed를 깨뜨림 → 원격 명령은 리터럴 here-string(`@'…'@`)으로. 첫 실행은 셸에 `CLOUDFLARE_API_TOKEN`·`TF_VAR_*`·터널이 없어 전부 실패했다 — `Read-Host -AsSecureString | ConvertFrom-SecureString -AsPlainText`로 채운다. `TF_VAR_budget_alert_email`은 run-platform-tests 0b infra 그룹에도 필요하다.
+  6. **builder는 커밋하지 않는다** — 파일째 `git add`가 미커밋 Codex hunk를 T043 커밋에 섞었다(재커밋 `8613630`). 컨트롤러가 파일 이름으로 스테이징하고, 부분 hunk는 `git apply --cached`.
+  7. `origin_tls_client_auth/settings` API는 tofu 토큰 범위 밖(SSL and Certificates:Read 필요) — Zone-level AOP 확인은 대시보드 카드로.
+- **미확인·인계**: VD-19(Secret 값 교체 무중단 반영)·VD-20(분기 지문 대조)·VD-21(Worker fetch에 AOP 제시 여부 — BFF 착수 전)·VD-22(CLI Access 통과 헤더 — T084)·VD-24(argocd-cm url 재시작 — T084) · Argo 세션 쿠키 `Secure`/HSTS(T084) · validate.sh Ingress 전용 검사·helm 설치(T047) · 테넌트 AppProject `cert-manager.io` blacklist(별도 PR) · OCI CLI `svc-verify` 세션 만료로 backup-1~3 미측정(재인증 뒤 재실행).
+
+(T044 이후 기록은 이하에 추가)
 
 ## §4 Vault init·시크릿 시드
 
-(T044–T045에서 작성 + T043의 kv 플레이스홀더 투입 절차 — AOP 전환 본체는 §3 범위)
+(T044–T045에서 작성 — AOP 전환 본체는 §3 T043 범위)
+
+- **T043 절차 한 줄(US6 준비, tasks T043 문면)**: T044 Vault 가동 뒤 US6 배포 전에 운영자가 `kv/{env}/authentik/*`·`kv/{env}/openfga/*`에 플레이스홀더 값을 `vault kv put`으로 투입해 둔다(실값 교체는 US4 T081·T082 — T075 참조). 투입 시각·경로 목록은 T044 절에 기록한다.
 
 ## §5 v1 삭제 기록
 
