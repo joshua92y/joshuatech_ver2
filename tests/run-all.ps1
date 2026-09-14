@@ -12,9 +12,28 @@ function Check([string]$name, [bool]$ok, [string]$detail) {
 pwsh -NoProfile -ExecutionPolicy Bypass -File tests/hooks/run-hook-tests.ps1 | Out-Host
 Check 'hooks' ($LASTEXITCODE -eq 0) 'see hook test output'
 
+# 1a2. Codex-native hook contract (separate from the preserved Claude harness).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/hooks/run-codex-hook-tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'codex-hooks' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see Codex hook test output above"
+
+# 1a3. Codex destructive-command handler contract, including wrapper and option-placement cases.
+#       This direct harness does not prove that a given OS/runtime dispatches PreToolUse.
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/hooks/run-codex-command-policy-tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'codex-command-policy-handler' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see Codex command-policy handler test output above"
+
 # 1b. scripts tests
 pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/update-specs-index.tests.ps1 | Out-Host
 Check 'scripts' ($LASTEXITCODE -eq 0) 'see scripts test output'
+
+# 1b1. Codex Spec Kit policy-sidecar synchronizer harness.
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/sync-codex-skill-policies.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'codex-skill-policy-sync' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see Codex skill policy test output above"
 
 # 1b2. platform runner harness tests (tests/platform/run-platform-tests.ps1 단위 테스트)
 pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/run-platform-tests.tests.ps1 | Out-Host
@@ -71,6 +90,12 @@ $o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/agents/codex-integratio
 $c = $LASTEXITCODE
 Write-Host ($o.TrimEnd())
 Check 'codex-integration' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see Codex integration test output above"
+
+# 1f3. Codex project-layer parity: policies, argument shim, project skills, agents, and rules.
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/agents/codex-parity.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'codex-parity' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see Codex parity test output above"
 
 # 1g. host-prep (T014) — tests/infra/host-prep.tests.ps1: infra/bootstrap/host-prep.sh 정적 검사(원문만; 노드 실행 없음).
 #     SKIP 없이 fail closed(스크립트 부재 = 전 단언 FAIL; 유일한 SKIP 줄은 bash 부재 시 syntax-1 뿐이며 합계에 들어가지 않는다).
