@@ -24,6 +24,8 @@
 #     heredoc(`<<EOT`/`<<-EOT`)과 블록 주석(`/*`)은 infra/oci 디렉터리 전체에서 금지다(주석 안이라도): 하나라도 있으면 local.* 전부
 #     해석 불가(마커)가 되어 plan 시점 unknown 문장의 tf-text 검사가 FAIL한다 — 이 파서는 둘을 모르므로 그 본문의 `}`·`"`가 locals
 #     블록을 조기 종료해 뒤 항목을 숨기거나 그 안의 가짜 `locals { … }`가 진짜로 수집될 수 있어 fail closed로 막는다.
+#   - infra/vault는 [tf-text] + 무자격 validate만 — plan 단언 없음(.claude/rules/infra.md의 하네스 예외는 infra/oci 읽기 전용 plan 하나뿐이며 넓히지 않는다)
+#   - infra/vault 단언은 정규식 텍스트 검사만 쓴다 — 중괄호 파서 기반 단언을 추가하지 않으므로 그 디렉터리의 heredoc은 허용
 #
 # 구성 계약(T007+ 구현자가 따라야 하는 형태 — 이 스위트가 곧 계약이다):
 #   - 리소스는 루트 모듈에 평면 선언(모듈 호출 없음; 이 스위트는 root_module만 순회한다 — iam-7이 planned child_modules·configuration
@@ -95,12 +97,13 @@
 #     있던 동안 TF_VAR_operator_email 없는 셸의 apply 가 admin-github·admin-github-ssh 의 include 이메일을 T011 값(GitHub 기본 이메일)
 #     에서 기본값으로 조용히 바꿨다(운영자 잠금 위험) — validate 는 이를 잡지 못하므로 원문으로 고정한다(cf-vars-1, 블록 부재도 FAIL).
 #
-# 단언 수: 41 (tool 1, enc 1, dir 2, validate 4, plan 2, nsg 4, sl 1, inst 3, bucket 4, iam 7, dg 2, kms 3, lc 2, budget 1, access 1, cf-vars 1, tunnel 2)
+# 단언 수: 61 (tool 1, enc 1, dir 3, validate 6, plan 2, nsg 4, sl 1, inst 3, bucket 4, iam 7, dg 2, kms 3, lc 2, budget 1, access 1, cf-vars 1, tunnel 2, vt 17)
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $ociDir = Join-Path $repo 'infra/oci'
 $cfDir = Join-Path $repo 'infra/cloudflare'
+$vaultDir = Join-Path $repo 'infra/vault'
 $script:pass = 0
 $script:fail = 0
 $script:planJson = $null
@@ -388,6 +391,8 @@ try {
     $cfTf = if (Test-Path -LiteralPath $cfDir -PathType Container) { @(Get-ChildItem -LiteralPath $cfDir -File -Filter '*.tf').Count } else { 0 }
     Assert 'dir-1: infra/oci contains *.tf' ($ociTf -gt 0) "missing or empty: $ociDir (written in T007+)"
     Assert 'dir-2: infra/cloudflare contains *.tf' ($cfTf -gt 0) "missing or empty: $cfDir (written in T008+)"
+    $vaultTf = if (Test-Path -LiteralPath $vaultDir -PathType Container) { @(Get-ChildItem -LiteralPath $vaultDir -File -Filter '*.tf').Count } else { 0 }
+    Assert 'dir-3: infra/vault contains *.tf' ($vaultTf -gt 0) "missing or empty: $vaultDir (written in T044)"
 
     # ---------- 1. validate (자격 증명 불필요 — 임시 사본에서 init -backend=false + validate) ----------
     # 실제 디렉터리는 S3 백엔드가 초기화된 뒤(.terraform/terraform.tfstate)라 `init -backend=false`조차 백엔드 프로파일(~/.aws)을 읽고
@@ -427,6 +432,37 @@ try {
             $valid = $false
             try { $vj = $v.out | ConvertFrom-Json; $valid = ($v.code -eq 0 -and $vj.valid -eq $true) } catch { $valid = $false }
             Assert $valName $valid (Clip "copy=$copy exit=$($v.code) out=$($v.out) err=$($v.err)")
+        }
+    }
+
+    # ---------- 1b. validate infra/vault (T044) — 같은 New-TfValidateCopy 사본에서, VAULT_ADDR·VAULT_TOKEN 없이 ----------
+    # provider "vault"의 address는 문서상 Required지만 5.11.0 스키마는 address·token 모두 Optional이고 validate는 Configure를 건너뛰므로 무자격으로 통과해야 한다.
+    # 셸에 VAULT_ADDR·VAULT_TOKEN이 있으면 사본 실행 동안만 프로세스 env에서 지우고 finally에서 복원한다(값은 어디에도 출력하지 않는다).
+    # plan 단언은 없다 — .claude/rules/infra.md의 하네스 예외(infra/oci 읽기 전용 plan)를 넓히지 않는다.
+    $vaultInitName = 'validate-vault-1: tofu init -backend=false succeeds in a credential-free temp copy of infra/vault (no backend.tf, no backend state)'
+    $vaultValName = 'validate-vault-2: tofu validate -json reports valid for infra/vault (same temp copy; VAULT_ADDR/VAULT_TOKEN absent from the process env)'
+    if (-not $tofuOk -or $vaultTf -eq 0) {
+        Assert $vaultInitName $false 'precondition failed (needs tofu on PATH + infra/vault/*.tf present)'
+        Assert $vaultValName $false 'precondition failed (needs tofu on PATH + infra/vault/*.tf present)'
+    } else {
+        Test-Group $vaultInitName {
+            $savedVaultEnv = @{}
+            foreach ($n in @('VAULT_ADDR', 'VAULT_TOKEN')) {
+                $cur = [Environment]::GetEnvironmentVariable($n, 'Process')
+                if ($null -ne $cur) { $savedVaultEnv[$n] = $cur; [Environment]::SetEnvironmentVariable($n, $null, 'Process') }
+            }
+            $cleared = @($savedVaultEnv.Keys) -join ','   # 이름만 — 값은 절대 출력하지 않는다
+            try {
+                $copy = New-TfValidateCopy $vaultDir
+                $r = Invoke-Tofu $copy @('init', '-backend=false', '-input=false', '-no-color')
+                Assert $vaultInitName ($r.code -eq 0) (Clip "copy=$copy exit=$($r.code) cleared-env=[$cleared] err=$($r.err)")
+                $v = Invoke-Tofu $copy @('validate', '-json', '-no-color')
+                $valid = $false
+                try { $vj = $v.out | ConvertFrom-Json; $valid = ($v.code -eq 0 -and $vj.valid -eq $true) } catch { $valid = $false }
+                Assert $vaultValName $valid (Clip "copy=$copy exit=$($v.code) cleared-env=[$cleared] out=$($v.out) err=$($v.err)")
+            } finally {
+                foreach ($k in @($savedVaultEnv.Keys)) { [Environment]::SetEnvironmentVariable($k, $savedVaultEnv[$k], 'Process') }
+            }
         }
     }
 
@@ -1234,6 +1270,364 @@ try {
         foreach ($t in $tuns) { if ($t.body -notmatch 'config_src\s*=\s*"cloudflare"') { $bad += "$($t.file):$($t.name) config_src != cloudflare (remote-managed)" } }
         foreach ($c in $cfgs) { if ($c.body -notmatch '(?m)^\s*source\s*=\s*"cloudflare"') { $bad += "$($c.file):$($c.name) source != cloudflare (remote-managed)" } }
         Assert 'tunnel-2: exactly one tunnel resource with config_src = "cloudflare" and its config block with source = "cloudflare" (remote-managed; cloudflared pod carries only the token) [tf-text]' ($bad.Count -eq 0) "tunnels=$($tuns.Count) configs=$($cfgs.Count); bad: $($bad -join ' | ')"
+    }
+
+    # ---------- 12. infra/vault [tf-text] (T044) — 정규식 텍스트 검사만(중괄호 파서 미사용; policies.tf의 heredoc 허용) ----------
+    # 원문은 -Raw로 읽고 전체 행 주석(`#`/`//`)만 지운 "코드 텍스트"에 정규식을 건다 — 헤더 주석이 금지어(token_reviewer_jwt 등)를 설명
+    # 목적으로 언급하므로 주석을 지우지 않으면 0회 단언이 성립할 수 없다. 리소스 "영역"은 `resource "<type>" "<label>" {` 행부터 다음 열 0
+    # 최상위 블록 키워드 행 직전까지다(tofu fmt 정렬 전제 — fmt -check와 validate-vault-1이 그 전제를 지킨다). 중괄호 균형은 세지 않는다.
+    # 0회 단언은 파일이 비어 있으면 공허해지므로 양성 앵커(해당 리소스 블록이 정확히 1개)를 함께 요구한다(fail closed).
+    # 계약: contracts/gitops-repo.md §ClusterSecretStore(마운트 kv · role 이름 = SA 이름 · audience vault · TTL 1h/4h) + 설계 D4(role 6)·
+    #       D5(vault_audit 0)·D8(kv 값 리소스 0). 비교는 전부 ordinal.
+    $vaultExpectedRoles = @('eso-platform', 'eso-dev', 'eso-prod', 'eso-data', 'vault-backup', 'e2e-reader')
+    $vaultEsoDataPaths = @(
+        'kv/data/dev/db/*', 'kv/data/dev/kafka/*', 'kv/data/dev/dragonfly/*', 'kv/data/dev/openfga/*', 'kv/data/dev/authentik/webhooks/*',
+        'kv/data/prod/db/*', 'kv/data/prod/kafka/*', 'kv/data/prod/dragonfly/*', 'kv/data/prod/openfga/*', 'kv/data/prod/authentik/webhooks/*',
+        'kv/metadata/dev/db/*', 'kv/metadata/dev/kafka/*', 'kv/metadata/dev/dragonfly/*', 'kv/metadata/dev/openfga/*', 'kv/metadata/dev/authentik/webhooks/*',
+        'kv/metadata/prod/db/*', 'kv/metadata/prod/kafka/*', 'kv/metadata/prod/dragonfly/*', 'kv/metadata/prod/openfga/*', 'kv/metadata/prod/authentik/webhooks/*'
+    )
+    function Get-VaultRaw([string]$name) {
+        $p = Join-Path $vaultDir $name
+        if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { return '' }
+        return ([string](Get-Content -LiteralPath $p -Raw -Encoding utf8)) -replace "`r`n", "`n"
+    }
+    function Get-VaultCode([string]$name) { return ((Get-VaultRaw $name) -replace '(?m)^[ \t]*(#|//).*$', '') }
+    function Get-RxCount([string]$text, [string]$pattern) { return ([regex]::Matches([string]$text, $pattern)).Count }
+    # 집합 비교(ordinal): expected/actual 양쪽의 누락·잉여를 돌려준다.
+    function Get-SetDiff([string[]]$expected, [string[]]$actual) {
+        $he = [Collections.Generic.HashSet[string]]::new([string[]]@($expected), [StringComparer]::Ordinal)
+        $ha = [Collections.Generic.HashSet[string]]::new([string[]]@($actual), [StringComparer]::Ordinal)
+        $missing = @(@($expected) | Where-Object { -not $ha.Contains($_) })
+        $extra = @(@($actual) | Where-Object { -not $he.Contains($_) })
+        return @{ equal = ($missing.Count -eq 0 -and $extra.Count -eq 0); missing = $missing; extra = $extra }
+    }
+    # resource "<type>" 영역 — 열 0 `resource` 행부터 다음 열 0 최상위 블록 키워드 직전까지(중괄호를 세지 않는다).
+    # 이 절의 두 헬퍼(Get-VaultBlockRegions·Get-VaultPolicyPaths)는 comma 래퍼 **없이** 돌려주고 호출부가 `@(호출)`로 감싼다 —
+    # 163행 규칙의 반대 형태다(comma 래퍼 반환을 `@(호출)`로 감싸면 원소 수와 무관하게 Count 1 중첩 배열이 되어 "정확히 1개" 검사가 공허해진다).
+    function Get-VaultBlockRegions([string]$code, [string]$type) {
+        $regions = @()
+        $tops = @(([regex]'(?m)^(resource|data|ephemeral|locals|output|variable|provider|terraform|module|moved|import|removed|check)\b').Matches([string]$code) | ForEach-Object { $_.Index })
+        $rx = [regex]('(?m)^resource[ \t]+"' + [regex]::Escape($type) + '"[ \t]+"([A-Za-z0-9_-]+)"[ \t]*\{')
+        foreach ($m in $rx.Matches([string]$code)) {
+            $end = $code.Length
+            foreach ($t in $tops) { if ($t -gt $m.Index -and $t -lt $end) { $end = $t } }
+            $regions += @{ name = $m.Groups[1].Value; body = $code.Substring($m.Index, $end - $m.Index) }
+        }
+        return $regions
+    }
+    # locals 의 `<map> = { … }` 영역(정확히 1개일 때만; 아니면 $null). 첫 `^\s*}` 단독 행이 맵 닫기다 — 엔트리는 한 줄 `{ … }` 또는
+    # heredoc(`path "…" { … }` 행은 단독 `}`가 아니다)이라 그 꼴이 먼저 나오지 않는다.
+    function Get-VaultLocalMap([string]$code, [string]$mapName) {
+        $ms = [regex]::Matches([string]$code, '(?ms)^[ \t]*' + [regex]::Escape($mapName) + '[ \t]*=[ \t]*\{[ \t]*$(.*?)^[ \t]*\}[ \t]*$')
+        if ($ms.Count -ne 1) { return $null }
+        return $ms[0].Groups[1].Value
+    }
+    function Get-VaultPolicyPaths([string]$pbody) {
+        return @(([regex]'(?m)^[ \t]*path[ \t]+"([^"]*)"').Matches([string]$pbody) | ForEach-Object { $_.Groups[1].Value })
+    }
+
+    $vaultTfFiles = if (Test-Path -LiteralPath $vaultDir -PathType Container) { @(Get-ChildItem -LiteralPath $vaultDir -File -Filter '*.tf' | Sort-Object Name) } else { @() }
+    $vaultAllCode = (@($vaultTfFiles | ForEach-Object { Get-VaultCode $_.Name }) -join "`n")
+    $vaultRolesCode = Get-VaultCode 'roles.tf'
+    $vaultPoliciesCode = Get-VaultCode 'policies.tf'
+
+    # local.roles 엔트리 파싱: `"name" = { k = "v", … }` 한 줄 꼴만. 속성은 큰따옴표 문자열 리터럴만 받고, 남는 텍스트는 leftover(= 해석 불가).
+    $vaultRolesMap = Get-VaultLocalMap $vaultRolesCode 'roles'
+    $vaultRoleEntries = @()
+    $vaultRolesDeclared = 0
+    if ($null -ne $vaultRolesMap) {
+        $vaultRolesDeclared = Get-RxCount $vaultRolesMap '(?m)^[ \t]*"[^"]+"[ \t]*='
+        $attrRx = [regex]'([A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*"([^"]*)"'
+        foreach ($m in ([regex]'(?m)^[ \t]*"([^"]+)"[ \t]*=[ \t]*\{([^{}\n]*)\}[ \t]*$').Matches($vaultRolesMap)) {
+            $attrs = [hashtable]::new([StringComparer]::Ordinal)
+            $inner = $m.Groups[2].Value
+            foreach ($a in $attrRx.Matches($inner)) { $attrs[$a.Groups[1].Value] = $a.Groups[2].Value }
+            $leftover = ($attrRx.Replace($inner, '') -replace '[,\s]', '')
+            $vaultRoleEntries += @{ name = $m.Groups[1].Value; attrs = $attrs; leftover = $leftover }
+        }
+    }
+    $vaultRoleNames = @($vaultRoleEntries | ForEach-Object { $_.name })
+
+    # local.policies 엔트리 파싱: `"name" = <<-EOT … EOT` heredoc 꼴만(키 ordinal). 다른 꼴(file()·리터럴)은 declared 수와 어긋나 FAIL.
+    $vaultPoliciesMap = Get-VaultLocalMap $vaultPoliciesCode 'policies'
+    $vaultPolicyBodies = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
+    $vaultPolicyDups = @()
+    $vaultPoliciesDeclared = 0
+    if ($null -ne $vaultPoliciesMap) {
+        $vaultPoliciesDeclared = Get-RxCount $vaultPoliciesMap '(?m)^[ \t]*"[^"]+"[ \t]*='
+        foreach ($m in ([regex]'(?ms)^[ \t]*"([^"]+)"[ \t]*=[ \t]*<<-?EOT[ \t]*$(.*?)^[ \t]*EOT[ \t]*$').Matches($vaultPoliciesMap)) {
+            $k = $m.Groups[1].Value
+            if ($vaultPolicyBodies.ContainsKey($k)) { $vaultPolicyDups += $k } else { $vaultPolicyBodies[$k] = $m.Groups[2].Value }
+        }
+    }
+    $vaultPolicyNames = @($vaultPolicyBodies.Keys)
+
+    Test-Group 'vt-1' {
+        $code = Get-VaultCode 'versions.tf'
+        $lock = Get-VaultRaw '.terraform.lock.hcl'
+        $bad = @()
+        if ((Get-RxCount $code '(?m)^[ \t]*source[ \t]*=[ \t]*"hashicorp/vault"[ \t]*$') -ne 1) { $bad += 'versions.tf: source = "hashicorp/vault" lines != 1' }
+        if ((Get-RxCount $code '(?m)^[ \t]*version[ \t]*=[ \t]*"~> 5\.11\.0"[ \t]*$') -ne 1) { $bad += 'versions.tf: version = "~> 5.11.0" lines != 1' }
+        if ($lock -eq '') { $bad += '.terraform.lock.hcl missing (commit it -- provider pin)' }
+        else {
+            $provBlocks = Get-RxCount $lock '(?m)^provider "'
+            if ($provBlocks -ne 1) { $bad += "lock: provider blocks=$provBlocks (want exactly 1 -- vault only)" }
+            if ((Get-RxCount $lock '(?m)^provider "registry\.opentofu\.org/hashicorp/vault" \{') -ne 1) { $bad += 'lock: provider "registry.opentofu.org/hashicorp/vault" block != 1' }
+            if ((Get-RxCount $lock '(?m)^[ \t]*version[ \t]*=[ \t]*"5\.11\.0"[ \t]*$') -ne 1) { $bad += 'lock: version = "5.11.0" lines != 1' }
+            if ((Get-RxCount $lock '(?m)^[ \t]*constraints[ \t]*=[ \t]*"~> 5\.11\.0"[ \t]*$') -ne 1) { $bad += 'lock: constraints = "~> 5.11.0" lines != 1' }
+        }
+        Assert 'vt-1: infra/vault/versions.tf pins source "hashicorp/vault" with version "~> 5.11.0", and .terraform.lock.hcl holds exactly one provider (registry.opentofu.org/hashicorp/vault) at version = "5.11.0" with constraints = "~> 5.11.0" [tf-text]' ($bad.Count -eq 0) "bad: $($bad -join ' | ')"
+    }
+
+    Test-Group 'vt-2' {
+        $code = Get-VaultCode 'backend.tf'
+        $bad = @()
+        if ((Get-RxCount $code '(?m)^[ \t]*backend[ \t]+"s3"[ \t]*\{') -ne 1) { $bad += 'backend "s3" blocks != 1' }
+        if ((Get-RxCount $code '(?m)^[ \t]*key[ \t]*=[ \t]*"vault/terraform\.tfstate"[ \t]*$') -ne 1) { $bad += 'key = "vault/terraform.tfstate" lines != 1' }
+        if ((Get-RxCount $code '(?m)^[ \t]*use_lockfile[ \t]*=[ \t]*false[ \t]*$') -ne 1) { $bad += 'use_lockfile = false lines != 1' }
+        if ((Get-RxCount $code '(?m)^[ \t]*profile[ \t]*=[ \t]*"joshuatech-tfstate"[ \t]*$') -ne 1) { $bad += 'profile = "joshuatech-tfstate" lines != 1' }
+        Assert 'vt-2: infra/vault/backend.tf declares one backend "s3" with key = "vault/terraform.tfstate", use_lockfile = false, profile = "joshuatech-tfstate" [tf-text]' ($bad.Count -eq 0) "bad: $($bad -join ' | ')"
+    }
+
+    Test-Group 'vt-3' {
+        $mounts = @(Get-VaultBlockRegions $vaultAllCode 'vault_mount')
+        $bad = @()
+        if ($mounts.Count -ne 1) { $bad += "vault_mount blocks=$($mounts.Count) (want exactly 1)" }
+        else {
+            if ((Get-RxCount $mounts[0].body '(?m)^[ \t]*path[ \t]*=[ \t]*"kv"[ \t]*$') -ne 1) { $bad += 'vault_mount: path = "kv" lines != 1' }
+            if ((Get-RxCount $mounts[0].body '(?m)^[ \t]*type[ \t]*=[ \t]*"kv-v2"[ \t]*$') -ne 1) { $bad += 'vault_mount: type = "kv-v2" lines != 1' }
+        }
+        Assert 'vt-3: exactly one vault_mount, with path = "kv" and type = "kv-v2" [tf-text]' ($bad.Count -eq 0) "mounts=$($mounts.Count); bad: $($bad -join ' | ')"
+    }
+
+    Test-Group 'vt-4' {
+        $cfgs = @(Get-VaultBlockRegions $vaultAllCode 'vault_kubernetes_auth_backend_config')
+        $total = Get-RxCount $vaultAllCode '(?m)^[ \t]*disable_iss_validation[ \t]*=[ \t]*true[ \t]*$'
+        $inCfg = if ($cfgs.Count -eq 1) { Get-RxCount $cfgs[0].body '(?m)^[ \t]*disable_iss_validation[ \t]*=[ \t]*true[ \t]*$' } else { 0 }
+        $bad = @()
+        if ($cfgs.Count -ne 1) { $bad += "vault_kubernetes_auth_backend_config blocks=$($cfgs.Count) (want exactly 1)" }
+        if ($total -ne 1 -or $inCfg -ne 1) { $bad += "disable_iss_validation = true lines: total=$total in-config=$inCfg (want exactly 1 -- the provider always sends this field; omitting it records false and every role login fails)" }
+        Assert 'vt-4: exactly one vault_kubernetes_auth_backend_config and disable_iss_validation = true exactly once, inside it [tf-text]' ($bad.Count -eq 0) "bad: $($bad -join ' | ')"
+    }
+
+    Test-Group 'vt-5' {
+        $cfgs = @(Get-VaultBlockRegions $vaultAllCode 'vault_kubernetes_auth_backend_config')
+        $jwt = Get-RxCount $vaultAllCode '\btoken_reviewer_jwt\b'
+        $jwtWo = Get-RxCount $vaultAllCode '\btoken_reviewer_jwt_wo\b'
+        $ca = Get-RxCount $vaultAllCode '\bkubernetes_ca_cert\b'
+        $bad = @()
+        if ($cfgs.Count -ne 1) { $bad += "vault_kubernetes_auth_backend_config blocks=$($cfgs.Count) (want exactly 1 -- anchor)" }
+        if ($jwt -ne 0 -or $jwtWo -ne 0 -or $ca -ne 0) { $bad += "token_reviewer_jwt=$jwt token_reviewer_jwt_wo=$jwtWo kubernetes_ca_cert=$ca (want 0 -- Vault reuses its pod SA token/CA; a long-lived JWT would land in state)" }
+        Assert 'vt-5: token_reviewer_jwt / token_reviewer_jwt_wo / kubernetes_ca_cert appear 0 times in code (comments stripped) [tf-text]' ($bad.Count -eq 0) "bad: $($bad -join ' | ')"
+    }
+
+    Test-Group 'vt-6' {
+        $cfgs = @(Get-VaultBlockRegions $vaultAllCode 'vault_kubernetes_auth_backend_config')
+        $hostLines = Get-RxCount $vaultAllCode '(?m)^[ \t]*kubernetes_host[ \t]*='
+        $exact = Get-RxCount $vaultAllCode '(?m)^[ \t]*kubernetes_host[ \t]*=[ \t]*"https://kubernetes\.default\.svc:443"[ \t]*$'
+        $inCfg = if ($cfgs.Count -eq 1) { Get-RxCount $cfgs[0].body '(?m)^[ \t]*kubernetes_host[ \t]*=[ \t]*"https://kubernetes\.default\.svc:443"[ \t]*$' } else { 0 }
+        $bad = @()
+        if ($cfgs.Count -ne 1) { $bad += "vault_kubernetes_auth_backend_config blocks=$($cfgs.Count) (want exactly 1)" }
+        if ($hostLines -ne 1 -or $exact -ne 1 -or $inCfg -ne 1) { $bad += "kubernetes_host lines=$hostLines exact-match=$exact in-config=$inCfg (want 1/1/1: `"https://kubernetes.default.svc:443`")" }
+        Assert 'vt-6: kubernetes_host = "https://kubernetes.default.svc:443" exactly once, inside the auth backend config [tf-text]' ($bad.Count -eq 0) "bad: $($bad -join ' | ')"
+    }
+
+    Test-Group 'vt-7' {
+        $bad = @()
+        if ($null -eq $vaultRolesMap) { $bad += 'local.roles map not found exactly once in roles.tf' }
+        if ($vaultRolesDeclared -ne $vaultRoleNames.Count) { $bad += "local.roles entries declared=$vaultRolesDeclared parsed=$($vaultRoleNames.Count) (an entry is not the one-line { … } form)" }
+        $dups = @($vaultRoleNames | Group-Object -CaseSensitive | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
+        if ($dups.Count -gt 0) { $bad += "duplicate role keys: $($dups -join ', ')" }
+        $d = Get-SetDiff $vaultExpectedRoles $vaultRoleNames
+        if (-not $d.equal) { $bad += "key set mismatch: missing=[$($d.missing -join ', ')] extra=[$($d.extra -join ', ')]" }
+        if ($vaultRoleNames.Count -ne 6) { $bad += "role keys=$($vaultRoleNames.Count) (want exactly 6 -- design D4)" }
+        Assert 'vt-7: local.roles key set is exactly {eso-platform, eso-dev, eso-prod, eso-data, vault-backup, e2e-reader} (6, no extras, ordinal) [tf-text]' ($bad.Count -eq 0) "keys=[$($vaultRoleNames -join ', ')]; bad: $($bad -join ' | ')"
+    }
+
+    Test-Group 'vt-8' {
+        $roles = @(Get-VaultBlockRegions $vaultRolesCode 'vault_kubernetes_auth_backend_role')
+        $bad = @()
+        if ($roles.Count -ne 1) { $bad += "vault_kubernetes_auth_backend_role blocks=$($roles.Count) (want exactly 1)" }
+        else {
+            $b = $roles[0].body
+            $want = @(
+                @{ k = 'audience'; rx = '(?m)^[ \t]*audience[ \t]*=[ \t]*"vault"[ \t]*$'; d = 'audience = "vault"' },
+                @{ k = 'token_ttl'; rx = '(?m)^[ \t]*token_ttl[ \t]*=[ \t]*3600[ \t]*$'; d = 'token_ttl = 3600' },
+                @{ k = 'token_max_ttl'; rx = '(?m)^[ \t]*token_max_ttl[ \t]*=[ \t]*14400[ \t]*$'; d = 'token_max_ttl = 14400' },
+                @{ k = 'token_type'; rx = '(?m)^[ \t]*token_type[ \t]*=[ \t]*"service"[ \t]*$'; d = 'token_type = "service"' },
+                @{ k = 'token_policies'; rx = '(?m)^[ \t]*token_policies[ \t]*=[ \t]*\[each\.key\][ \t]*$'; d = 'token_policies = [each.key]' }
+            )
+            foreach ($w in $want) {
+                $lines = Get-RxCount $b ('(?m)^[ \t]*' + $w.k + '[ \t]*=')
+                $exact = Get-RxCount $b $w.rx
+                if ($lines -ne 1 -or $exact -ne 1) { $bad += "$($w.k): lines=$lines exact=$exact (want exactly one line `"$($w.d)`")" }
+            }
+        }
+        Assert 'vt-8: the single role block sets audience = "vault", token_ttl = 3600, token_max_ttl = 14400, token_type = "service", token_policies = [each.key] (each exactly once) [tf-text]' ($bad.Count -eq 0) "bad: $($bad -join ' | ')"
+    }
+
+    Test-Group 'vt-9' {
+        $bad = @()
+        if ($vaultRoleEntries.Count -eq 0) { $bad += 'no local.roles entries parsed (fail closed)' }
+        $saCount = 0
+        foreach ($e in $vaultRoleEntries) {
+            $n = $e.name; $a = $e.attrs
+            if ($e.leftover -ne '') { $bad += "${n}: unparsed attribute text '$($e.leftover)' (only k = `"v`" literals are accepted)"; continue }
+            foreach ($k in @($a.Keys)) { if (-not ([string]::Equals($k, 'ns', [StringComparison]::Ordinal) -or [string]::Equals($k, 'sa', [StringComparison]::Ordinal))) { $bad += "${n}: unexpected attribute '$k'" } }
+            $ns = if ($a.ContainsKey('ns')) { [string]$a['ns'] } else { '' }
+            $hasSa = $a.ContainsKey('sa')
+            if ($hasSa) { $saCount++ }
+            if ($n -cmatch '^eso-') {
+                if (-not [string]::Equals($ns, 'external-secrets', [StringComparison]::Ordinal)) { $bad += "${n}: ns='$ns' (want external-secrets)" }
+                if ($hasSa) { $bad += "${n}: declares sa (role name must equal the SA name)" }
+            }
+            elseif ([string]::Equals($n, 'vault-backup', [StringComparison]::Ordinal)) {
+                if (-not [string]::Equals($ns, 'vault', [StringComparison]::Ordinal)) { $bad += "${n}: ns='$ns' (want vault)" }
+                if ($hasSa) { $bad += "${n}: declares sa (role name must equal the SA name)" }
+            }
+            elseif ([string]::Equals($n, 'e2e-reader', [StringComparison]::Ordinal)) {
+                if (-not [string]::Equals($ns, 'kube-system', [StringComparison]::Ordinal)) { $bad += "${n}: ns='$ns' (want kube-system)" }
+                if (-not $hasSa -or -not [string]::Equals([string]$a['sa'], 'agent-view', [StringComparison]::Ordinal)) { $bad += "${n}: sa='$(if ($hasSa) { $a['sa'] } else { '<none>' })' (want agent-view)" }
+            }
+            else { $bad += "${n}: unexpected role entry (not eso-*, vault-backup, e2e-reader)" }
+        }
+        if ($saCount -ne 1) { $bad += "entries with an sa key=$saCount (want exactly 1: e2e-reader)" }
+        # 배선: bound_* 가 그 맵을 그대로 쓴다(맵이 맞아도 배선이 다르면 무의미)
+        $roles = @(Get-VaultBlockRegions $vaultRolesCode 'vault_kubernetes_auth_backend_role')
+        if ($roles.Count -ne 1) { $bad += "vault_kubernetes_auth_backend_role blocks=$($roles.Count) (want exactly 1)" }
+        else {
+            $b = $roles[0].body
+            if ((Get-RxCount $b '(?m)^[ \t]*for_each[ \t]*=[ \t]*local\.roles[ \t]*$') -ne 1) { $bad += 'role block: for_each = local.roles missing' }
+            if ((Get-RxCount $b '(?m)^[ \t]*role_name[ \t]*=[ \t]*each\.key[ \t]*$') -ne 1) { $bad += 'role block: role_name = each.key missing' }
+            if ((Get-RxCount $b '(?m)^[ \t]*bound_service_account_names[ \t]*=[ \t]*\[try\(each\.value\.sa,[ \t]*each\.key\)\][ \t]*$') -ne 1) { $bad += 'role block: bound_service_account_names = [try(each.value.sa, each.key)] missing' }
+            if ((Get-RxCount $b '(?m)^[ \t]*bound_service_account_namespaces[ \t]*=[ \t]*\[each\.value\.ns\][ \t]*$') -ne 1) { $bad += 'role block: bound_service_account_namespaces = [each.value.ns] missing' }
+        }
+        $seen = @($vaultRoleEntries | ForEach-Object { "$($_.name)->$(if ($_.attrs.ContainsKey('sa')) { $_.attrs['sa'] } else { $_.name })@$($_.attrs['ns'])" })
+        Assert 'vt-9: bound SA/namespace map is exhaustive -- eso-* x4 ns external-secrets without sa, vault-backup ns vault without sa, e2e-reader sa agent-view ns kube-system; no other sa key; role block wires bound_* from local.roles (role_name = each.key, names = [try(each.value.sa, each.key)], namespaces = [each.value.ns]) [tf-text]' ($bad.Count -eq 0) "map: $($seen -join ' | '); bad: $($bad -join ' | ')"
+    }
+
+    Test-Group 'vt-10' {
+        $roles = @(Get-VaultBlockRegions $vaultRolesCode 'vault_kubernetes_auth_backend_role')
+        $noDefault = Get-RxCount $vaultAllCode '\btoken_no_default_policy\b'
+        $starBound = if ($roles.Count -eq 1) { Get-RxCount $roles[0].body '(?m)^[ \t]*bound_service_account_(names|namespaces)[ \t]*=.*"\*"' } else { 0 }
+        $starMap = @($vaultRoleEntries | Where-Object { @($_.attrs.Values | Where-Object { "$_" -match '\*' }).Count -gt 0 } | ForEach-Object { $_.name })
+        $bad = @()
+        if ($roles.Count -ne 1) { $bad += "vault_kubernetes_auth_backend_role blocks=$($roles.Count) (want exactly 1 -- anchor)" }
+        if ($noDefault -ne 0) { $bad += "token_no_default_policy occurrences=$noDefault (want 0 -- ESO/backup need default's lookup-self/revoke-self)" }
+        if ($starBound -ne 0) { $bad += "bound_* lines containing `"*`"=$starBound (want 0)" }
+        if ($starMap.Count -gt 0) { $bad += "local.roles entries with a '*' value: $($starMap -join ', ') (want none)" }
+        Assert 'vt-10: token_no_default_policy appears 0 times; no "*" in bound_service_account_names/namespaces or in local.roles values [tf-text]' ($bad.Count -eq 0) "bad: $($bad -join ' | ')"
+    }
+
+    Test-Group 'vt-11' {
+        $roles = @(Get-VaultBlockRegions $vaultRolesCode 'vault_kubernetes_auth_backend_role')
+        $pols = @(Get-VaultBlockRegions $vaultPoliciesCode 'vault_policy')
+        $bad = @()
+        if ($roles.Count -ne 1) { $bad += "vault_kubernetes_auth_backend_role blocks=$($roles.Count) (want exactly 1 -- anchor)" }
+        if ($pols.Count -ne 1) { $bad += "vault_policy blocks=$($pols.Count) (want exactly 1 -- anchor)" }
+        else {
+            $b = $pols[0].body
+            if ((Get-RxCount $b '(?m)^[ \t]*for_each[ \t]*=[ \t]*local\.policies[ \t]*$') -ne 1) { $bad += 'vault_policy: for_each = local.policies missing' }
+            if ((Get-RxCount $b '(?m)^[ \t]*name[ \t]*=[ \t]*each\.key[ \t]*$') -ne 1) { $bad += 'vault_policy: name = each.key missing' }
+        }
+        $hitKeys = @(@($vaultRoleNames) + @($vaultPolicyNames) | Where-Object { $_ -cmatch 'identity-admin' })
+        if ($hitKeys.Count -gt 0) { $bad += "local.roles/local.policies keys containing identity-admin: $($hitKeys -join ', ')" }
+        $roleLit = Get-RxCount $vaultAllCode '(?m)^[ \t]*role_name[ \t]*=[ \t]*"[^"]*identity-admin'
+        $nameLit = Get-RxCount $vaultAllCode '(?m)^[ \t]*name[ \t]*=[ \t]*"[^"]*identity-admin'
+        $podIa = Get-RxCount $vaultAllCode 'pod-identity-admin'
+        if ($roleLit -ne 0 -or $nameLit -ne 0) { $bad += "literal role_name/name containing identity-admin: role_name=$roleLit name=$nameLit (want 0)" }
+        if ($podIa -ne 0) { $bad += "pod-identity-admin occurrences in code=$podIa (want 0 -- US4 owns it)" }
+        Assert 'vt-11: no identity-admin role/policy (keys, role_name, vault_policy name) and no pod-identity-admin in code (comments stripped; US4 scope) [tf-text]' ($bad.Count -eq 0) "bad: $($bad -join ' | ')"
+    }
+
+    Test-Group 'vt-12' {
+        $bad = @()
+        if ($null -eq $vaultPoliciesMap) { $bad += 'local.policies map not found exactly once in policies.tf' }
+        if ($vaultPoliciesDeclared -ne $vaultPolicyNames.Count + $vaultPolicyDups.Count) { $bad += "local.policies entries declared=$vaultPoliciesDeclared parsed(heredoc)=$($vaultPolicyNames.Count + $vaultPolicyDups.Count) (an entry is not a <<-EOT heredoc)" }
+        if ($vaultPolicyDups.Count -gt 0) { $bad += "duplicate policy keys: $($vaultPolicyDups -join ', ')" }
+        if ($vaultPolicyNames.Count -eq 0 -or $vaultRoleNames.Count -eq 0) { $bad += "empty key set: policies=$($vaultPolicyNames.Count) roles=$($vaultRoleNames.Count) (fail closed)" }
+        $d = Get-SetDiff $vaultRoleNames $vaultPolicyNames
+        if (-not $d.equal) { $bad += "policies vs roles: missing-in-policies=[$($d.missing -join ', ')] extra-in-policies=[$($d.extra -join ', ')]" }
+        Assert 'vt-12: local.policies key set == local.roles key set (ordinal, both non-empty, no duplicates) [tf-text]' ($bad.Count -eq 0) "policies=[$($vaultPolicyNames -join ', ')] roles=[$($vaultRoleNames -join ', ')]; bad: $($bad -join ' | ')"
+    }
+
+    Test-Group 'vt-13' {
+        $bad = @()
+        if (-not $vaultPolicyBodies.ContainsKey('eso-data')) { $bad += 'policy eso-data heredoc not found' }
+        else {
+            $pbody = $vaultPolicyBodies['eso-data']   # `$body`는 Test-Group의 [scriptblock] 매개변수라 dot-source 안에서 쓰면 형 변환 예외
+            $pathLines = Get-RxCount $pbody '(?m)^[ \t]*path[ \t]+"'
+            $paths = @(Get-VaultPolicyPaths $pbody)
+            if ($pathLines -ne 20) { $bad += "path lines=$pathLines (want exactly 20 = data 10 + metadata 10)" }
+            $distinct = [Collections.Generic.HashSet[string]]::new([string[]]@($paths), [StringComparer]::Ordinal)
+            if ($distinct.Count -ne $paths.Count) { $bad += "duplicate paths: $($paths.Count - $distinct.Count)" }
+            $d = Get-SetDiff $vaultEsoDataPaths $paths
+            if (-not $d.equal) { $bad += "path set mismatch: missing=[$($d.missing -join ', ')] extra=[$($d.extra -join ', ')]" }
+            foreach ($f in @('kv/data/dev/\*', 'kv/data/prod/\*', 'kv/metadata/dev/\*', 'kv/metadata/prod/\*', 'kv/(data|metadata)/\+/')) {
+                $c = Get-RxCount $pbody $f
+                if ($c -ne 0) { $bad += "forbidden wildcard '$f' occurrences=$c (env/segment wildcards would open future envs/components)" }
+            }
+            $plus = @($paths | Where-Object { $_ -match '(^|/)\+(/|$)' })
+            if ($plus.Count -gt 0) { $bad += "paths with a '+' segment: $($plus -join ', ')" }
+        }
+        Assert 'vt-13: eso-data heredoc lists exactly 20 path lines whose set equals the 10 kv/data + 10 kv/metadata enumerated paths (dev|prod x db, kafka, dragonfly, openfga, authentik/webhooks); no kv/data/dev/*, kv/data/prod/*, or kv/(data|metadata)/+/ wildcard [tf-text]' ($bad.Count -eq 0) "bad: $($bad -join ' | ')"
+    }
+
+    Test-Group 'vt-14' {
+        $bad = @()
+        $capRx = [regex]'capabilities[ \t]*=[ \t]*\[([^\]]*)\]'
+        $seen = @()
+        foreach ($n in $vaultExpectedRoles) {
+            if (-not $vaultPolicyBodies.ContainsKey($n)) { $bad += "policy '$n' heredoc not found"; continue }
+            $pbody = $vaultPolicyBodies[$n]
+            $pathLines = Get-RxCount $pbody '(?m)^[ \t]*path[ \t]+"'
+            $caps = @($capRx.Matches($pbody) | ForEach-Object { $_.Groups[1].Value.Trim() })
+            if ($caps.Count -eq 0) { $bad += "policy '$n': no capabilities = [...] (fail closed)" }
+            if ($caps.Count -ne $pathLines) { $bad += "policy '$n': capabilities=$($caps.Count) path lines=$pathLines (every path block must carry exactly one capabilities list)" }
+            $notRead = @($caps | Where-Object { -not [string]::Equals($_, '"read"', [StringComparison]::Ordinal) })
+            if ($notRead.Count -gt 0) { $bad += "policy '$n': capabilities not exactly [`"read`"]: $($notRead -join ' ; ')" }
+            $seen += "$n=$($caps.Count)"
+        }
+        Assert 'vt-14: every capabilities list in eso-platform, eso-dev, eso-prod, eso-data, e2e-reader, vault-backup is exactly ["read"] (ordinal on the bracket content -- not a subset check), one per path block [tf-text]' ($bad.Count -eq 0) "lists: $($seen -join ', '); bad: $($bad -join ' | ')"
+    }
+
+    Test-Group 'vt-15' {
+        $anchor = Get-RxCount $vaultAllCode '(?m)^resource[ \t]+"vault_'
+        $forbidden = @(([regex]'(?m)^[ \t]*(resource|data|ephemeral)[ \t]+"(vault_generic_secret|vault_kv_secret[A-Za-z0-9_]*|vault_audit[A-Za-z0-9_]*)"[ \t]+"([A-Za-z0-9_-]+)"').Matches($vaultAllCode) | ForEach-Object { "$($_.Groups[1].Value) $($_.Groups[2].Value).$($_.Groups[3].Value)" })
+        $types = @(([regex]'(?m)^resource[ \t]+"([A-Za-z0-9_]+)"').Matches($vaultAllCode) | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+        $bad = @()
+        if ($anchor -lt 1) { $bad += 'no resource "vault_*" block found (fail closed)' }
+        if ($forbidden.Count -gt 0) { $bad += "forbidden blocks: $($forbidden -join ', ') (kv values stay outside tofu -- D8; audit is CLI -- D5)" }
+        Assert 'vt-15: no vault_generic_secret / vault_kv_secret* / vault_audit* resource / data / ephemeral block (any nesting) -- kv values and the audit device are not managed here [tf-text]' ($bad.Count -eq 0) "resource types=[$($types -join ', ')]; bad: $($bad -join ' | ')"
+    }
+
+    Test-Group 'vt-16' {
+        $bad = @()
+        if (-not $vaultPolicyBodies.ContainsKey('e2e-reader')) { $bad += 'policy e2e-reader heredoc not found' }
+        else {
+            $pbody = $vaultPolicyBodies['e2e-reader']
+            $pathLines = Get-RxCount $pbody '(?m)^[ \t]*path[ \t]+"'
+            $paths = @(Get-VaultPolicyPaths $pbody)
+            if ($pathLines -ne 1 -or $paths.Count -ne 1) { $bad += "path lines=$pathLines (want exactly 1)" }
+            elseif (-not [string]::Equals($paths[0], 'kv/data/platform/authentik/e2e', [StringComparison]::Ordinal)) { $bad += "path='$($paths[0])' (want kv/data/platform/authentik/e2e)" }
+            if (@($paths | Where-Object { $_ -match '[*+]' }).Count -gt 0) { $bad += 'wildcard (* or +) in e2e-reader path' }
+        }
+        Assert 'vt-16: e2e-reader policy has exactly one path, literally kv/data/platform/authentik/e2e (no wildcard) [tf-text]' ($bad.Count -eq 0) "bad: $($bad -join ' | ')"
+    }
+
+    Test-Group 'vt-17' {
+        $bad = @()
+        if (-not $vaultPolicyBodies.ContainsKey('vault-backup')) { $bad += 'policy vault-backup heredoc not found' }
+        else {
+            $pbody = $vaultPolicyBodies['vault-backup']
+            $pathLines = Get-RxCount $pbody '(?m)^[ \t]*path[ \t]+"'
+            $paths = @(Get-VaultPolicyPaths $pbody)
+            if ($pathLines -ne 1 -or $paths.Count -ne 1) { $bad += "path lines=$pathLines (want exactly 1)" }
+            elseif (-not [string]::Equals($paths[0], 'sys/storage/raft/snapshot', [StringComparison]::Ordinal)) { $bad += "path='$($paths[0])' (want sys/storage/raft/snapshot)" }
+        }
+        $force = Get-RxCount $vaultPoliciesCode 'snapshot-force'
+        if ($force -ne 0) { $bad += "snapshot-force occurrences in policies.tf code=$force (want 0 -- the backup identity must not be able to restore)" }
+        Assert 'vt-17: vault-backup policy has exactly one path, literally sys/storage/raft/snapshot; snapshot-force appears 0 times in policies.tf code [tf-text]' ($bad.Count -eq 0) "bad: $($bad -join ' | ')"
     }
 } finally {
     Remove-Item -LiteralPath $planFile -Force -ErrorAction SilentlyContinue
