@@ -13,17 +13,20 @@ platform-gitops/
 ├── clusters/oci-k3s/
 │   ├── projects/{platform,dev,prod,tests}.yaml   # AppProject
 │   └── apps/                       # Application 1개/컴포넌트 (app-of-apps)
-├── platform/<component>/           # 19개: argocd policies cert-manager cert-manager-issuers traefik vault external-secrets
+├── platform/<component>/           # 21개: argocd policies cert-manager cert-manager-issuers traefik vault external-secrets secret-stores secrets
 │   │                               #        cnpg cnpg-cluster cnpg-databases kafka kafka-topics dragonfly
 │   │                               #        authentik openfga monitoring cloudflared reloader system-upgrade
 │   ├── kustomization.yaml          # helmCharts(values 인라인) 또는 순수 매니페스트
 │   └── …                           # traefik/ 은 Middleware·TLSOption·TLSStore만 — Traefik 자체 설정(HelmChartConfig)의 정본은 노드 A `server/manifests/traefik-config.yaml`
 │                                   #   (노드 A `server/manifests/` 에는 `cloudflare-origin-pull-ca.yaml`(공개 AOP 루트 CA Secret `kube-system/cloudflare-origin-pull-ca` — T043)도 함께 둔다; 정본은 모노레포 `infra/bootstrap/`, 이 저장소에는 두지 않는다)
 │                                   # argocd/ 는 Argo CD 자기 관리 Application(bootstrap/argocd/ 를 소스로), system-upgrade/ 는 SUC + Plan
+│                                   # secret-stores/ 는 ClusterSecretStore 5개(ESO CRD·Vault 뒤 — T045), secrets/ 는 아래 `secrets/<ns>/` 를 base 로 묶어 클러스터에 적용하는 전용 컴포넌트(T045)
 ├── apps/<pod>/
 │   ├── base/{deployment,service,ingress,configmap,externalsecret-env,externalsecret-migrate,migrate-job,kustomization}.yaml   # Ingress host = PLACEHOLDER.joshuatech.dev
 │   └── overlays/{dev,prod}/kustomization.yaml   # namespace, images[].digest, Ingress host JSON6902, replicas, admin Ingress(prod)
 ├── secrets/<ns>/                   # 플랫폼 네임스페이스별 ExternalSecret(`platform/` 경로만, store `vault-platform`)
+│                                   #   적용 주체 = `platform/secrets/`(kustomization 이 `../../secrets/<ns>` 를 base 로 포함) → Application `platform-secrets` **하나뿐**이다.
+│                                   #   소비자 컴포넌트(cert-manager-issuers · cloudflared …)는 이 디렉터리를 base 로 포함하지 않는다(단일 소유 — 소비자 배포와 ExternalSecret 적용의 분리)
 └── .github/workflows/{validate,promote}.yml
 ```
 
@@ -44,7 +47,7 @@ platform-gitops/
 | syncPolicy | 플랫폼: `automated: { prune: false, selfHeal: true }`, syncOptions `ServerSideApply=true`, `CreateNamespace=true`, `Prune=confirm`, `Delete=confirm`, `SkipDryRunOnMissingResource=true`. dev 앱: prune·selfHeal true. prod 앱: automated이되 변경은 PR로만 |
 | AppProject | `platform`: sourceRepos [gitops, 차트 저장소], destinations = 플랫폼 네임스페이스(network-policy.md 표), clusterResourceWhitelist(CRD·Namespace·ClusterRole…). `dev`/`prod`: 자기 네임스페이스만, cluster 리소스 금지, **`namespaceResourceBlacklist`: NetworkPolicy · ResourceQuota · LimitRange · Role · RoleBinding · ServiceAccount**(정책 객체는 `platform/policies/`만 쓴다). **`tests`**: sourceRepos = [gitops]만, destination = `jt-dev`만, cluster 리소스 금지 — `platform/policies/tests/`의 검증 Job 3종 전용(destination을 Application 한정으로 좁힐 수 없어 `platform`에 `jt-dev`를 넣지 않는다). `default`: sourceRepos·destinations 비움 |
 | 삭제 보호 | `Cluster pg-main` · `Kafka jt-kafka` · `KafkaNodePool` · Vault/Dragonfly PVC · 모든 오퍼레이터 CRD(CNPG·Strimzi·cert-manager·ESO)에 `argocd.argoproj.io/sync-options: Delete=false,Prune=false` |
-| 워크로드 강화 | 템플릿 pod·cloudflared·dragonfly Deployment: `automountServiceAccountToken: false` + securityContext(`runAsNonRoot`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `seccompProfile: RuntimeDefault`, `readOnlyRootFilesystem: true` + `/tmp` emptyDir). helm 차트 컴포넌트(Vault·Authentik·OpenFGA·Reloader)는 values에 securityContext 4항목(`runAsNonRoot`·`allowPrivilegeEscalation`·`capabilities.drop`·`seccompProfile`)을 명시한다 |
+| 워크로드 강화 | 템플릿 pod·cloudflared·dragonfly Deployment: `automountServiceAccountToken: false` + securityContext(`runAsNonRoot`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `seccompProfile: RuntimeDefault`, `readOnlyRootFilesystem: true` + `/tmp` emptyDir). helm 차트 컴포넌트(Vault·External Secrets·Authentik·OpenFGA·Reloader)는 values에 securityContext 4항목(`runAsNonRoot`·`allowPrivilegeEscalation`·`capabilities.drop`·`seccompProfile`)을 명시한다 |
 
 ## sync-wave 단일 표
 
@@ -56,6 +59,8 @@ FR-010의 순서를 이 표 하나로만 표현한다. Argo CD는 wave N의 리�
 | `-10` | `policies` | CRD·namespaces·policies |
 | `0` | `cert-manager` · `external-secrets` | cert-manager·ESO(둘 다 CRD 제공) |
 | `10` | `vault` | Vault(시크릿 원천) |
+| `15` | `secret-stores` | `ClusterSecretStore` 5개 — ESO CRD(0)와 Vault(10) 뒤. Vault·ESO가 불가하면 이 Application이 Degraded가 되고 root는 이 wave에서 기다린다(wave 0의 ESO Application은 Healthy 유지) |
+| `18` | `secrets` | `secrets/<ns>/`의 플랫폼 ExternalSecret(T045 현재 범위 = cert-manager DNS 토큰 · cloudflared 터널 토큰 2장). 소비자(`cert-manager-issuers` 20 · `cloudflared` 60)보다 앞. **CA 미러 ExternalSecret은 여기 두지 않는다** — 원본 CA가 생긴 뒤인 40번 행 소유 |
 | `20` | `cert-manager-issuers` · `cnpg` · `system-upgrade` | ClusterIssuer·와일드카드 인증서(ExternalSecret 소비) · CNPG operator + barman-cloud plugin · SUC |
 | `30` | `cnpg-cluster` · `kafka` · `dragonfly` | pg-main · Strimzi operator + `Kafka`/`KafkaNodePool` · Dragonfly |
 | `40` | `cnpg-databases` · `kafka-topics` | `Database`·`DatabaseRole` · `KafkaTopic`·`KafkaUser` · CA 미러 ExternalSecret |
@@ -99,7 +104,9 @@ spec:
 | `vault-dev` | vault | `jt-dev` | `eso-dev` | role `eso-dev`: `kv/data/dev/*` · `kv/metadata/dev/*` read |
 | `vault-prod` | vault | `jt-prod` | `eso-prod` | role `eso-prod`: `kv/data/prod/*` · `kv/metadata/prod/*` read |
 | `vault-data` | vault | `data` · `identity` | `eso-data` | role `eso-data`: **열거 경로만**(env 와일드카드 금지) — `kv/data/{dev,prod}/db/*` · `kv/data/{dev,prod}/kafka/*` · `kv/data/{dev,prod}/dragonfly/*` · `kv/data/{dev,prod}/openfga/*` · `kv/data/{dev,prod}/authentik/webhooks/*` + 같은 `kv/metadata/…` read |
-| `k8s-data-ca` | **kubernetes** | `identity` · `jt-dev` · `jt-prod` | `eso-ca-reader` | `remoteNamespace: data`. Role(ns `data`): `secrets` `get/list/watch` `resourceNames: [pg-main-ca, jt-kafka-cluster-ca-cert]` + `selfsubjectrulesreviews` `create`(ESO 권한 자가 점검) |
+| `k8s-data-ca` | **kubernetes** | `identity` · `jt-dev` · `jt-prod` | `eso-ca-reader` | `remoteNamespace: data`. Role(ns `data`): `secrets` `get/list/watch` `resourceNames: [pg-main-ca, jt-kafka-cluster-ca-cert]` + `selfsubjectrulesreviews` `create`(ESO 권한 자가 점검) ※ |
+
+※ 이 Role 문면에는 실효가 없는 규칙이 섞여 있다(T045 설계 확인): `list`·`watch`는 `resourceNames`와 함께 쓰면 이름 없는 목록 요청에 매칭되지 않고, `selfsubjectrulesreviews`는 클러스터 스코프 리소스라 ns Role로 부여되지 않는다(`system:basic-user`가 이미 허용한다). 실효 권한은 두 Secret의 `get`뿐이다. 문면은 유지하고 매니페스트에 무효 근거를 주석으로 남기며, 정리는 실측(T045 VD) 뒤 converge에서 한다.
 
 `data`·`identity` 네임스페이스에는 `vault-platform`과 `vault-data`가 **둘 다** 걸린다: 환경 무관 공유 비밀은 `vault-platform`(`platform/` 접두), env 스코프 비밀은 `vault-data`(위 열거 접두)로 읽는다. 어느 쪽도 `kv/{env}/*` 전체를 열지 않는다.
 
@@ -127,7 +134,10 @@ Authentik·OpenFGA는 pod가 아니라 환경 공유 컴포넌트이므로 env �
 ### 공통 규칙
 
 - 경로 형식·키·소비자 전체 목록은 `data-model.md` §8.
-- `refreshInterval: 5m`(전 ExternalSecret 공통).
+- `refreshInterval: 5m`(전 ExternalSecret 공통). `refreshPolicy: Periodic`을 함께 명시한다(ESO 2.10.0 CRD 기본값과 같지만 의도를 코드에 남긴다).
+- `target.creationPolicy` 기본은 위 예시의 `Owner`다. **예외 — 운영자가 수동으로 만든 기존 Secret을 인수하는 ExternalSecret은 `creationPolicy: Orphan` + `deletionPolicy: Retain`**(T045: `cert-manager/cloudflare-dns-token` · `cloudflared/cloudflared-tunnel`). `Owner`는 Secret에 controller ownerReference를 심어 ExternalSecret이 지워지면 Secret이 가비지 컬렉션되고, `Retain`은 그 GC를 막지 못한다 — 소비자 중단이 운영자 잠금(터널)이나 조용한 갱신 실패(DNS-01)로 이어지는 Secret에는 쓰지 않는다. `Retain`·`Orphan`은 **잘못된 값의 덮어쓰기는 막지 않는다** — 값 동일성은 시드·되읽기·인수 전후 비교로 지킨다. Secret이 지워졌을 때의 재생성은 ESO·Vault가 정상일 때 다음 성공한 갱신에서 일어난다.
+- 인수형 ExternalSecret은 `target.template.metadata: {}`를 선언한다(선언이 없으면 ESO가 ExternalSecret의 라벨·어노테이션 — Argo CD tracking 포함 — 을 Secret으로 복사한다). ExternalSecret에 붙이는 `argocd.argoproj.io/sync-options: Delete=false,Prune=false`는 **Argo CD의 삭제·prune만** 막는다(kubectl 삭제·ESO 동작과 무관).
+- 인수 해제 절차(플랫폼 Application은 `prune: false`라 파일 revert만으로는 해제되지 않는다): revert PR 머지 → Git 제거가 Argo에 반영됐는지 확인 → `kubectl delete externalsecret` → Secret 잔존·UID·값 확인. 정본은 런북 `bootstrap.md` §3 T045 절.
 - pod마다 ExternalSecret 2개: **`<pod>-env`**(app DB · kafka · dragonfly · authentik · openfga · sentry — Deployment·celery `envFrom`) / **`<pod>-migrate`**(owner DB만 — PreSync migrate Job 전용). Deployment `envFrom`에 `-migrate`가 있으면 validate 실패(T033).
 - 비밀이 아닌 값(`ACCESS_AUD_M2M`·`ACCESS_AUD_ADMIN`·`ADMIN_HOST`·`ALLOWED_HOSTS`·`IDENTITY_M2M_URL` 류)은 ConfigMap.
 - **CA 미러**(`k8s-data-ca`): `pg-main-ca`(CNPG CA)와 `jt-kafka-cluster-ca-cert`(Strimzi CA)를 `identity`·`jt-dev`·`jt-prod`에 복제한다(값은 Vault를 거치지 않는다). CNPG의 `<cluster>-ca` Secret에는 **`ca.key`가 함께 들어 있으므로** ExternalSecret은 `remoteRef.property: ca.crt`만 쓰고 `dataFrom`(전체 복사)을 쓰지 않는다. 미러된 Secret에 `ca.key`가 있으면 T031 FAIL — CA 개인키가 앱 ns에 있으면 서버 인증서와 `streaming_replica` 인증서를 위조할 수 있어 `sslmode=verify-full`이 무력화된다.
