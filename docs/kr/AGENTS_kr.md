@@ -65,6 +65,7 @@ e2e/             앱 경계를 가로지르는 엔드투엔드 테스트
 specs/           기능(NNN-slug)마다 하나씩 존재하는 불변 디렉터리 + README.md 색인
 docs/            README.md 색인, decisions/ (MADR), runbooks/, kr/ (한국어 미러)
 content/study/   사이트가 사용하는 학습 노트(.mdx)
+content/tmp/     task별 학습 로그(노트의 준비 단계; 게시하지 않으며 증류되면 삭제)
 tests/           훅 테스트 및 저장소 점검
 ```
 
@@ -74,6 +75,7 @@ tests/           훅 테스트 및 저장소 점검
 - 파일: UTF-8, LF, ASCII kebab-case 이름. spec, docs, 노트에는 한국어 산문; 에이전트 파일과 코드 식별자에는 영어.
 - 테스트 우선(constitution II). 테스트 파일은 `tests/`, `e2e/`, `__tests__/` 아래에 두거나 `*.test.*` / `*.spec.*`로 명명한다.
 - 비밀 정보(secrets)는 저장소에 절대 포함하지 않는다.
+- 학습 로그: task가 닫힐 때(여러 날에 걸친 task는 세션이 끝날 때마다) `.claude/rules/content.md`에 따라 그날의 항목을 `content/tmp/<NNN>-t<NNN>/<YYYY-MM-DD>.md`에 덧붙인다; task 단위 설계 문서는 `specs/<feature>/design/` 아래에 보존한다.
 
 ## Workflow (short form)
 specify → clarify → plan → checklist → tasks → approval-review → build (TDD, subagent-driven) → converge → E2E (tester) → finish → finishing branch → merge → archive. 세부 사항: `CLAUDE.md`와 constitution 참고.

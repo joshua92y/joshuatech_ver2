@@ -65,6 +65,7 @@ e2e/             cross-app end-to-end tests
 specs/           one immutable directory per feature (NNN-slug) + README.md index
 docs/            README.md index, decisions/ (MADR), runbooks/, kr/ (Korean mirrors)
 content/study/   learning notes (.mdx) consumed by the site
+content/tmp/     per-task learning logs (staging for notes; never published, deleted once distilled)
 tests/           hook tests and repository checks
 ```
 
@@ -74,6 +75,7 @@ tests/           hook tests and repository checks
 - Files: UTF-8, LF, ASCII kebab-case names. Korean prose in specs, docs, and notes; English in agent files and code identifiers.
 - Tests first (constitution II). Test files live under `tests/`, `e2e/`, `__tests__/`, or are named `*.test.*` / `*.spec.*`.
 - Secrets never enter the repository.
+- Learning logs: when a task closes (and at the end of each session of a multi-day task), append the day's entry to `content/tmp/<NNN>-t<NNN>/<YYYY-MM-DD>.md` per `.claude/rules/content.md`; task-level design documents are preserved under `specs/<feature>/design/`.
 
 ## Workflow (short form)
 specify → clarify → plan → checklist → tasks → approval-review → build (TDD, subagent-driven) → converge → E2E (tester) → finish → finishing branch → merge → archive. Details: `CLAUDE.md` and the constitution.

@@ -45,7 +45,7 @@ Do not claim tests or changes that the evidence does not show.
 
 ## 2. Draft the learning note
 
-Explicitly read `.claude/rules/content.md`; Codex does not inherit that path rule automatically. Write `content/study/<feature>.mdx` with its required frontmatter, `draft: true`, `change: "<feature>"`, sources for the spec, plan, report, and relevant decisions, followed by the five required Korean sections in order. Draw substantive material from the spec decision table, plan Complexity Tracking, approval findings, and report. If a note already exists, use `request_user_input` when available to ask before creating a numbered second note; otherwise ask in the normal response and stop.
+Explicitly read `.claude/rules/content.md`; Codex does not inherit that path rule automatically. Write `content/study/<feature>.mdx` with its required frontmatter, `draft: true`, `change: "<feature>"`, sources for the spec, plan, report, and relevant decisions, followed by the five required Korean sections in order. Draw substantive material from the spec decision table, plan Complexity Tracking, approval findings, the report, and the per-task learning logs under `content/tmp/<NNN>-*/` (see the `content/tmp/` section of `.claude/rules/content.md`). After the Study contract boundary of the finish review is ✅, delete the consumed `content/tmp/<NNN>-*/` directories in the same commit as the note. If a note already exists, use `request_user_input` when available to ask before creating a numbered second note; otherwise ask in the normal response and stop.
 
 ## 3. Update the changelog
 
