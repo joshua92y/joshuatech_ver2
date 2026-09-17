@@ -52,7 +52,7 @@ G1   gitops: platform/external-secrets = 차트 2.10.0 + SA 5 + eso-ca-reader Ro
        └ VD-5 · VD-7 · VD-9 · VD-18  (VD-1은 G1 직후와 G1p 직후 두 번)
 M1   모노레포: np-set-5 강화 커밋(G1p 머지 **전** — 머지 전에는 external-secrets 행이 FAIL, 머지 후 PASS가 기대 동작)
 G1p  gitops: policies — external-secrets allow-apiserver-webhook에 노드 A flannel 출발 주소 /32 add-only (D6 = A 확정)
-       └ 머지 전: 노드 A 실측(`ip -4 -o addr show flannel-wg` · `ip route get <webhook 파드 IP>`의 src · 가능하면 conntrack)으로
+       └ 머지 전: 노드 A 실측(`ip -4 -o addr show flannel-wg` · `ip route get <노드 B 파드 IP>`의 src = 노드 간 경로의 출발 주소 · 가능하면 conntrack)으로
          추가할 /32를 확정 · 비상 접속 확인 · `kustomize build platform/policies | kubectl diff -f -`로 전체 대기 diff 확인
        └ ⚠ platform-policies는 automated(selfHeal) — **머지 = 자동 적용**이다(운영자 트리거 sync가 아니다)
 G2   gitops: platform/secret-stores(store 5) + Application platform-secret-stores
@@ -357,6 +357,7 @@ G0에 README ⑨ 정정을 앞당겨 넣은 이유는 다음과 같습니다. "�
 **D6 = A — 기존 private IP `/32` + TCP 10250 유지, 노드 A의 실제 flannel 출발 주소 `/32`를 add-only로 추가(G1p) + 사용자 조건 5개(저장소 현 상태와 대조해 적용 가능 판정):**
 
 - **D6-①** 머지 전 운영자가 노드 A에서 `ip -4 -o addr show flannel-wg`(장치 주소)와 `ip route get <webhook 파드 IP>`의 `src`(라우팅 출발 주소)를 재실측하고(conntrack이 있으면 실제 dial 출발 주소도), 추가할 `/32`를 그 값으로 확정한다 — podCIDR 대조(VD-19)만으로 끝내지 않는다. T042 기록 = `flannel-wg` 장치 주소가 노드 A podCIDR의 네트워크 주소.
+  - **실행 메모(2026-09-17, G1p 리뷰에서 발견)**: 위 문면의 "`<webhook 파드 IP>`"를 ESO webhook 파드로 읽으면 안 된다. ESO webhook은 API 서버와 **같은 노드 A**에 있어 그 경로는 flannel 터널 장치를 타지 않는다(같은 노드 경로의 `src`는 실측 전까지 단정하지 않는다). 정책의 flannel `/32`가 대표하는 것은 **노드 간** 경로의 출발 주소이므로, 값 확정용 `ip route get`의 대상은 **노드 B에 있는 파드**(cert-manager webhook — T042 VD-W와 같은 대상)다. ESO webhook 파드 쪽 `ip route get`과 파드 방화벽 체인의 `--src-type LOCAL` 행은 "왜 G1p 없이도 동일 노드 admission이 PASS했는가"의 참고 기록으로만 함께 측정한다. 사용자 조건의 취지(실제 flannel 장치·라우트 출발 주소 비교)는 그대로다.
 - **D6-②** **설계 전제 정정**: `platform-policies` Application은 `automated: {prune: false, selfHeal: true}`다 — "운영자 트리거 sync 1회"가 아니라 **머지 = 자동 적용**이다. 자동 동기화는 유지하고, 머지는 운영자 창에서 (a) 비상 접속 경로 확인 (b) `kustomize build platform/policies | kubectl diff -f -`로 전체 적용 대기 diff가 "external-secrets `allow-apiserver-webhook`에 ipBlock 1줄 추가"뿐임을 확인한 뒤에만 한다.
 - **D6-③** 검증 보강: 모노레포 `tests/platform/cluster.tests.ps1` `np-set-5`를 webhook 3개 ns(cert-manager·external-secrets·cnpg-system)에 대해 **정확한 두 출발 주소(노드 A private IP `/32` · 노드 A podCIDR 네트워크 주소 `/32`)와 포트**를 요구하도록 강화한다(현재는 "아무 `/32` + 포트"만 검사; vault 8200 행은 private IP만). gitops validate 5.x에도 같은 정적 검사를 둔다. webhook admission 검사는 "오류 문자열 부재"가 아니라 **유효한 ESO CR의 `kubectl apply --dry-run=server` 종료 코드 0 + `created (server dry run)` 출력**을 요구한다(VD-1 판정 기준 교체).
 - **D6-④** 노드 A에서의 성공을 노드 간 통신 검증으로 기록하지 않는다. ESO 3개 Deployment(`role=platform`)와 API 서버가 모두 노드 A라 실측되는 것은 동일 노드 경로뿐이다 — 런북 §3 T045 절과 `platform/external-secrets/README.md`에 "ESO의 노드 간 webhook 경로는 미실측" 한계를 명시한다.
@@ -1114,11 +1115,14 @@ bash tests/validate.sh
 - **사전 ①(값 확정 — 운영자, 노드 A):** 추가할 `/32`를 **실측으로** 정합니다. podCIDR 대조만으로 끝내지 않습니다.
   ```
   ip -4 -o addr show flannel-wg                      # 장치 주소
-  ip route get <webhook 파드 IP>                      # 출력의 `src` = 라우팅이 고른 출발 주소
-  sudo conntrack -L 2>/dev/null | grep <webhook 파드 IP>   # (있으면) 실제 dial의 출발 주소
+  ip route get <노드 B의 파드 IP>                     # 출력의 `src` = **노드 간** 경로에서 라우팅이 고른 출발 주소(대상 = cert-manager webhook 파드, T042 VD-W와 동일)
+  ip route get <ESO webhook 파드 IP>                  # 참고 기록: 같은 노드 경로의 src(flannel 터널을 타지 않는다 — 값 확정에 쓰지 않는다)
+  sudo iptables -S | grep -- '--src-type LOCAL' | grep <ESO webhook 파드 IP>   # 참고 기록: 동일 노드 예외 행 실물
+  sudo conntrack -L 2>/dev/null | grep <ESO webhook 파드 IP>   # (있으면) 실제 dial의 출발 주소
   kubectl get node <A> -o jsonpath='{.spec.podCIDR}'  # VD-19 보조 대조(기대 10.42.0.0/24)
   ```
-  - `flannel-wg` 장치 주소와 `ip route get`의 `src` **두 값**(conntrack을 쓸 수 있으면 실제 dial 출발 주소까지 세 값)이 일치하면 그 주소로 확정합니다. conntrack 사용 여부를 기록합니다. 엇갈리면 **중단하고 사용자에게 보고**합니다.
+  - `flannel-wg` 장치 주소와 **노드 B 파드로 가는** `ip route get`의 `src` **두 값**이 일치하면 그 주소로 확정합니다. conntrack 사용 여부를 기록합니다. 엇갈리면 **중단하고 사용자에게 보고**합니다.
+  - ESO webhook 파드(같은 노드) 쪽 `src`와 conntrack 값은 flannel 주소와 **다를 수 있고 그것은 중단 사유가 아닙니다** — 같은 노드 경로는 터널을 타지 않습니다. 이 값들은 "G1p 이전에도 동일 노드 admission이 PASS한 이유"의 기록입니다(2026-09-17 G1p 리뷰에서 정정: 원래 문면은 ESO webhook 파드 IP로 값을 확정하게 돼 있어 가짜 중단이 날 수 있었다).
   - T042 기록(`flannel-wg` 장치 주소 = 노드 A podCIDR의 네트워크 주소 `10.42.0.0`)은 기대값일 뿐이고, 정본은 이번 실측입니다.
 - **사전 ②(비상 접속):** 노드 A 대화형 SSH 세션을 열어 유지합니다(1차 break-glass = 그 세션의 `sudo k3s kubectl`). OCI 자격도 사용 가능해야 합니다(§5 단계 10의 2번 블록과 같은 확인).
 - **사전 ③(대기 diff 전체 확인):** 이 PR 하나만 들어가는지 확인합니다. 정책 컴포넌트에는 **다른 미적용 변경이 함께 밀려 들어갈 수 있습니다.**
@@ -1807,7 +1811,7 @@ Remove-Variable pre, post, preUid, postUid -ErrorAction SilentlyContinue   # ⚠
 | VD-16 | G2r + 5분 | store 5장이 `Valid`를 유지합니다 | VD-2와 같은 명령 | 하나라도 실패하면 revert합니다 |
 | VD-17 | G3 직후, 2026-11-01 이전 | prod 와일드카드가 Ready이고 renewalTime이 ≈2026-11-08입니다 | `kubectl -n <ns> get certificate <wildcard> -o jsonpath='{.status.conditions[0].status} {.status.renewalTime} {.status.notAfter}'`. 기한 전에 staging 프로브를 1회 다시 돌립니다 | 기준값을 기록합니다. 재프로브가 실패하면 kv와 ES를 점검합니다 |
 | VD-18 | G1 직후 | 3개 파드가 노드 A에 있고 PSA 위반이 0입니다 | `get pod -o wide`, `get events --field-selector reason=FailedCreate`, `kubectl top pod` | 위반이 0이어야 합니다. 리소스 실측값은 T097 입력으로 씁니다 |
-| VD-19 | G1p 머지 전 | 노드 A의 flannel 출발 주소가 podCIDR의 네트워크 주소(`10.42.0.0`)이고 podCIDR이 `10.42.0.0/24`입니다 | (운영자, 노드 A) `ip -4 -o addr show flannel-wg` · `ip route get <webhook 파드 IP>`의 `src` · (있으면) `sudo conntrack -L \| grep <webhook 파드 IP>` · `kubectl get node <A> -o jsonpath='{.spec.podCIDR}'` | **`flannel-wg` 장치 주소와 `ip route get`의 `src` 두 값(conntrack을 쓸 수 있으면 실제 dial 출발 주소까지 세 값)이 일치해야 그 주소로 `/32`를 확정합니다**(D6-① · conntrack 사용 여부를 기록). 엇갈리거나 podCIDR이 다르면 중단하고 사용자에게 보고합니다. podCIDR 대조만으로 끝내지 않습니다 |
+| VD-19 | G1p 머지 전 | 노드 A의 flannel 출발 주소가 podCIDR의 네트워크 주소(`10.42.0.0`)이고 podCIDR이 `10.42.0.0/24`입니다 | (운영자, 노드 A) `ip -4 -o addr show flannel-wg` · `ip route get <노드 B 파드 IP>`의 `src`(노드 간 경로) · `kubectl get node <A> -o jsonpath='{.spec.podCIDR}'` · 참고 기록: `ip route get <ESO webhook 파드 IP>` · `--src-type LOCAL` 행 · (있으면) conntrack | **`flannel-wg` 장치 주소와 노드 B 파드로 가는 `ip route get`의 `src` 두 값이 일치해야 그 주소로 `/32`를 확정합니다**(같은 노드 경로의 값은 다를 수 있고 중단 사유가 아닙니다)(D6-① · conntrack 사용 여부를 기록). 엇갈리거나 podCIDR이 다르면 중단하고 사용자에게 보고합니다. podCIDR 대조만으로 끝내지 않습니다 |
 | VD-20 | DR1(§5 단계 8b) | Secret이 삭제되면 다음 주기(≤5분)에 재생성됩니다. 관리 Secret watch로 **즉시** 재조정될 가능성도 있습니다(미확인) | 드릴 5) 단계: ES 재적용 → `kubectl -n external-secrets delete secret t045-probe` → `kubectl -n external-secrets get secret t045-probe -w` | 재생성이 관측되고 **그 시점**(즉시 / ≤5분)이 기록되어야 합니다. 결과를 런북과 `platform/secrets/README.md`의 재생성 문구에 반영합니다 |
 | VD-21 | G3 직후·G4 직후 | 각 ExternalSecret을 관리하는 Application은 `platform-secrets` 하나뿐입니다 | ES의 `argocd.argoproj.io/tracking-id` · `kubectl -n argocd get app platform-cloudflared\|platform-cert-manager-issuers -o jsonpath='{range .status.resources[*]}…'` | tracking-id가 `platform-secrets`이고, 소비자 Application의 `status.resources`에 `external-secrets.io` kind가 **0건**이어야 합니다(D3 조건 2 · R-22) |
 | VD-22 | G1p 머지 직전 | `platform/policies`에 대기 중인 다른 변경이 없습니다 | `kustomize build platform/policies \| kubectl diff -f -` | diff가 **external-secrets `allow-apiserver-webhook`의 ipBlock 1줄 추가뿐**이어야 합니다. 다른 diff가 있으면 머지하지 않습니다(D6-② — 머지 = 자동 적용) |
