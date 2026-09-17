@@ -46,7 +46,11 @@
 #               templateFrom 없음·mergePolicy 미사용·store k8s-data-ca)으로 증명한다.
 #   ns-1..2     네임스페이스 14개 전부 존재, observability 없음
 #   psa-1..2    pod-security.kubernetes.io/enforce = 표(14, kube-system 포함), warn·audit = enforce와 같은 레벨
-#   np-set-1..5 default-deny(13)·allow-dns(13)·allow-same-namespace(정확히 7)·allow-kube-api(정확히 10)·allow-apiserver-webhook(정확히 4, 포트)
+#   np-set-1..5 default-deny(13)·allow-dns(13)·allow-same-namespace(정확히 7)·allow-kube-api(정확히 10)·allow-apiserver-webhook(정확히 4 ns,
+#               ns별로 ① 계약 포트 규칙의 ports 집합 = {그 포트} 정확 일치(여분 포트·endPort 포트 범위 FAIL) ② 계약 포트를 갖지 않은 ingress 규칙 0개
+#               (ports 없는 규칙 = 전 포트 개방도 FAIL) ③ 출발 ipBlock cidr 집합이 노드 A에서 유도한 기대 집합과 정확 일치 —
+#               webhook 3 ns는 {private/32, flannel/32}, vault 8200은 {private/32}. protocol은 계약에 없어 검사하지 않는다.
+#               주소는 상수가 아니라 노드 객체에서 유도한다(§6 Resolve-NodeAWebhookSources 주석)
 #   np-cond-1..2 deny-imds는 kube-system 전용(클러스터 전체 1개), allow-imds는 vault 전용
 #   np-1        kube-system의 NetworkPolicy 집합 = {deny-imds}(default-deny 없음)
 #   np-2        ② 매트릭스 행 도달 — assert Job 성공(status.succeeded ≥ 1) + logs 읽기 가능; 나머지 행은 운영자 수동
@@ -107,6 +111,9 @@ $ns13 = @($ns14 | Where-Object { -not [string]::Equals($_, 'kube-system', [Strin
 $sameNs7 = @('argocd', 'data', 'cnpg-system', 'external-secrets', 'cert-manager', 'monitoring', 'identity')
 $kubeApi10 = @('argocd', 'vault', 'external-secrets', 'cert-manager', 'cnpg-system', 'data', 'monitoring', 'system-upgrade', 'reloader', 'cloudflared')
 $webhook4 = [ordered]@{ 'cert-manager' = 10250; 'external-secrets' = 10250; 'cnpg-system' = 9443; 'vault' = 8200 }
+# 그중 진짜 admission webhook 행(API 서버가 엔드포인트 pod IP로 직접 dial) — 출발 집합에 노드 A flannel 터널 장치 주소가 더 붙는다.
+# vault 8200 행은 webhook이 아니라 port-forward 도착 경로라 출발이 노드 A private IP 하나뿐이다(계약 §기본 5종 각주).
+$webhookFlannelNs = @('cert-manager', 'external-secrets', 'cnpg-system')
 $imdsIp = '169.254.169.254'
 $except4 = @('169.254.169.254/32', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')
 $storeNames5 = @('vault-platform', 'vault-dev', 'vault-prod', 'vault-data', 'k8s-data-ca')
@@ -688,6 +695,100 @@ ClusterAssert 'psa-2' {
 
 # ---------- 6. NetworkPolicy 정책 세트 ----------
 function Get-NsWithPolicy([string]$name) { return @(Get-NetworkPolicies | Where-Object { Eq (Name $_) $name } | ForEach-Object { Ns $_ }) }
+
+# ---- np-set-5(allow-apiserver-webhook)의 출발 주소: 상수로 적지 않고 라이브 노드 객체에서 유도한다 ----
+# 왜 상수가 아닌가: (1) 공개 저장소에 주소 상수를 더 늘리지 않고, 실행 로그·문서에 그대로 붙는 PASS/FAIL 문구에
+#   주소가 찍히지 않게 한다(이 파일에는 2026-09-04부터 np-5 설명·np-5-live 안내문에 운영자 수동 프로브 목적지로
+#   노드 A 사설 IP 리터럴 1종이 이미 있다 — 이번 변경 범위 밖의 별도 정리 대상이다),
+#   (2) 노드 재이미지·재조인으로 flannel 리스나 private IP가 바뀌면 하네스가 저절로 따라가고 정책만 어긋나면 FAIL이 된다.
+# 기대 집합(contracts/network-policy.md §기본 5종 표 + 각주, §매트릭스 노드 출발 행):
+#   | ns                                        | 포트             | 허용 출발 cidr 집합(정확 일치)                      |
+#   | cert-manager · external-secrets · cnpg-system | 10250·10250·9443 | { 노드 A private/32, 노드 A flannel 터널 장치/32 } |
+#   | vault                                     | 8200             | { 노드 A private/32 }                               |
+# 전제: flannel 터널 장치(flannel-wg) 주소 = 그 노드 `.spec.podCIDR`의 네트워크 주소(/ 앞부분).
+#   출처 = T042 VD-W 운영자 실측(2026-09-09, 계약 각주에 기록) · T045 VD-19 재실측. 하네스는 podCIDR 유도값을 쓴다.
+# 노드 A 식별은 기존 단언 nodes-2·nodes-3과 같은 라벨 role=platform이며, control-plane 라벨로 한 번 더 대조한다.
+# 순수 함수(입력 = `kubectl get nodes` items): 유도 실패는 error 문자열 — SKIP·PASS 없이 fail closed.
+function Resolve-NodeAWebhookSources($nodes) {
+    $cands = @(@($nodes) | Where-Object { Eq ([string](Label $_ 'role')) 'platform' })
+    if ($cands.Count -ne 1) { return @{ error = "expected exactly 1 node labelled role=platform, got $($cands.Count)" } }
+    $a = $cands[0]
+    if (-not (Contains (PropNames (PropPath $a @('metadata', 'labels'))) 'node-role.kubernetes.io/control-plane')) {
+        return @{ error = 'the role=platform node has no node-role.kubernetes.io/control-plane label (node A must be the API server node)' }
+    }
+    $ips = @(@(PropArr $a @('status', 'addresses')) | Where-Object { Eq ([string](Prop $_ 'type')) 'InternalIP' } | ForEach-Object { [string](Prop $_ 'address') })
+    if ($ips.Count -ne 1) { return @{ error = "node A has $($ips.Count) status.addresses[type=InternalIP] entr(y|ies), expected exactly 1" } }
+    if ($null -eq (ConvertTo-IpUInt $ips[0])) { return @{ error = 'node A InternalIP is not an IPv4 address' } }
+    $cidr = [string](PropPath $a @('spec', 'podCIDR'))
+    $parts = if ([string]::IsNullOrWhiteSpace($cidr)) { @() } else { @($cidr.Split('/')) }
+    if ($parts.Count -ne 2) { return @{ error = "node A .spec.podCIDR is absent or malformed (expected '<IPv4>/<1..32>')" } }
+    $net = ConvertTo-IpUInt $parts[0]; $bits = 0
+    if ($null -eq $net -or -not [int]::TryParse($parts[1], [ref]$bits) -or $bits -lt 1 -or $bits -gt 32) {
+        return @{ error = "node A .spec.podCIDR is not '<IPv4>/<1..32>'" }
+    }
+    # 0xFFFFFFFF 리터럴은 int32 -1로 파싱되므로 10진수(Test-CidrContains와 같은 방식)
+    $mask = ([uint64]4294967295 -shl (32 - $bits)) -band [uint64]4294967295
+    if (($net -band $mask) -ne $net) { return @{ error = 'node A .spec.podCIDR has host bits set (not a network address) -- flannel device address cannot be derived' } }
+    $private = "$($ips[0])/32"; $flannel = "$($parts[0])/32"
+    if (Eq $private $flannel) { return @{ error = 'node A InternalIP equals its podCIDR network address -- the two expected sources collapse into one' } }
+    return @{ error = $null; private = $private; flannel = $flannel }
+}
+# 순수 함수: allow-apiserver-webhook 정책 1장이 계약(ns마다 포트 1개 + ipBlock 출발지)을 지키는가. 검사 4가지:
+#   (a) 계약 포트를 가진 ingress 규칙이 있어야 한다(없으면 FAIL).
+#   (b) 그 규칙의 `ports[].port` 집합이 정확히 {계약 포트} — 여분 포트가 붙으면 그만큼 노드 A에 더 열리므로 FAIL.
+#       `endPort`(포트 범위)를 가진 항목이 하나라도 있으면 FAIL: `{port: 10250, endPort: 65535}`는 port 값만 보면
+#       계약 포트 하나로 보이지만 실제로는 10250~65535를 연다. 계약은 ns마다 단일 포트다.
+#   (c) 계약 포트를 갖지 않은 ingress 규칙이 그 정책에 하나라도 있으면 FAIL(`ports` 자체가 없는 규칙 = 전 포트 개방도 여기서 걸린다).
+#   (d) 그 규칙의 `from[]`은 ipBlock 전용(except 없음)이고 cidr 집합이 기대 집합과 정확히 같아야 한다.
+#   포트가 맞는 규칙이 둘 이상이면 각각 검사한다(넓은 규칙이 곁에 붙는 것을 막는다 — 하나라도 어긋나면 FAIL).
+#   protocol은 계약이 명시하지 않으므로 검사하지 않는다.
+# $expected = [ordered]@{ '<자리표시자>' = '<실제 cidr>' } — 키는 출력용 자리표시자, 값은 비교용 실제 주소.
+# 반환 @{ ok; reason } — reason에 실제 주소는 절대 넣지 않는다(자리표시자 + 개수만: 실행 로그가 문서에 붙는다).
+#   포트 번호는 비밀이 아니므로 값을 적는다. 규칙 번호 #N은 `spec.ingress[]`의 1-기반 위치다.
+function Test-WebhookIngressRules($pol, [string]$port, $expected) {
+    $labels = @(PropNames $expected)
+    $wantCidrs = @($labels | ForEach-Object { [string](Prop $expected $_) })
+    $wantText = '{' + ((SortOrd $labels) -join ', ') + '}'
+    $all = @(PropArr $pol @('spec', 'ingress'))
+    $problems = @(); $offContract = @(); $matched = 0
+    for ($idx = 0; $idx -lt $all.Count; $idx++) {
+        $rule = $all[$idx]; $n = $idx + 1
+        $ports = @(@(PropArr $rule @('ports')) | ForEach-Object { "$(Prop $_ 'port')" })
+        if (-not (Contains $ports $port)) {
+            # (c) 계약 포트와 무관한 규칙 — ports 없음(전 포트 개방)도 포함
+            $offContract += if ($ports.Count -eq 0) { "rule #${n} has no ports (every port open)" } else { "rule #${n} ports [$((SortOrd $ports) -join ', ')]" }
+            continue
+        }
+        $matched++
+        # (b) 포트 집합 정확 일치 + endPort(포트 범위) 금지 — port 값만 보면 단일 포트처럼 보이지만 범위를 연다
+        if (-not (SetEq $ports @($port))) { $problems += "rule #${n}: ports [$((SortOrd $ports) -join ', ')], expected exactly [$port]" }
+        $ranges = @(@(PropArr $rule @('ports')) | Where-Object { $null -ne (Prop $_ 'endPort') })
+        if ($ranges.Count -gt 0) { $problems += "rule #${n}: $($ranges.Count) ports entr(y|ies) carry 'endPort' (port range; contract: single port)" }
+        # (d) 출발지
+        $from = @(PropArr $rule @('from'))
+        if ($from.Count -eq 0) { $problems += "rule #${n}: no 'from' (every source allowed)"; continue }
+        # 계약상 이 규칙의 peer는 ipBlock 전용이다(podSelector·namespaceSelector가 섞이면 출발 집합이 넓어진다)
+        $badPeers = @($from | Where-Object { ($null -eq (Prop $_ 'ipBlock')) -or ($null -ne (Prop $_ 'podSelector')) -or ($null -ne (Prop $_ 'namespaceSelector')) })
+        if ($badPeers.Count -gt 0) { $problems += "rule #${n}: $($badPeers.Count) of $($from.Count) peer(s) are not ipBlock-only (contract: ipBlock only)"; continue }
+        $blocks = @($from | ForEach-Object { Prop $_ 'ipBlock' })
+        $withExcept = @($blocks | Where-Object { @(PropArr $_ @('except')).Count -gt 0 })
+        if ($withExcept.Count -gt 0) { $problems += "rule #${n}: $($withExcept.Count) ipBlock(s) carry 'except' (contract: bare /32)"; continue }
+        $got = @($blocks | ForEach-Object { [string](Prop $_ 'cidr') })
+        if (-not (SetEq $got $wantCidrs)) {
+            $missing = @($labels | Where-Object { -not (Contains $got ([string](Prop $expected $_))) })
+            $missText = if ($missing.Count -eq 0) { 'none' } else { (SortOrd $missing) -join ', ' }
+            # 중복 cidr을 따로 센다(SetEq는 다중집합 비교라 같은 cidr이 두 번이면 missing·unexpected가 0이어도 FAIL이다)
+            $seen = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal); $dups = 0
+            foreach ($c in $got) { if (-not $seen.Add($c)) { $dups++ } }
+            $problems += "rule #${n}: from has $($got.Count) cidr(s), expected exactly $wantText -- missing: $missText, unexpected cidrs: $(@(Except $got $wantCidrs).Count), duplicate cidr(s): $dups"
+        }
+    }
+    if ($offContract.Count -gt 0) { $problems += "$($offContract.Count) ingress rule(s) outside the contract port ${port}: $($offContract -join ', ')" }
+    # (a) 계약 포트 규칙 부재
+    if ($matched -eq 0) { return @{ ok = $false; reason = "port ${port}: no ingress rule with that port$(if ($problems.Count -gt 0) { ' -- ' + ($problems -join '; ') })" } }
+    if ($problems.Count -gt 0) { return @{ ok = $false; reason = "port ${port}: $($problems -join '; ')" } }
+    return @{ ok = $true; reason = "$matched ingress rule(s), port [$port] only, from exactly $wantText" }
+}
 ClusterAssert 'np-set-1' {
     $have = @(Get-NsWithPolicy 'default-deny'); $missing = @(Except $ns13 $have); $bad = @()
     if ($missing.Count -gt 0) { $bad += "missing in: $($missing -join ', ')" }
@@ -747,18 +848,18 @@ ClusterAssert 'np-set-4' {
 ClusterAssert 'np-set-5' {
     $have = @(Get-NsWithPolicy 'allow-apiserver-webhook'); $want = @($webhook4.Keys | ForEach-Object { "$_" })
     if (-not (SetEq $have $want)) { return @('FAIL', "allow-apiserver-webhook in [$((SortOrd $have) -join ', ')], expected exactly [$((SortOrd $want) -join ', ')]") }
-    $bad = @()
+    $srcs = Resolve-NodeAWebhookSources (@(Items (Get-KubeList @('get', 'nodes'))))
+    if ($null -ne $srcs.error) { return @('FAIL', "node A source addresses not derivable from the node objects: $($srcs.error)") }
+    $bad = @(); $badNs = @()
     foreach ($ns in $want) {
-        $p = Get-Policy $ns 'allow-apiserver-webhook'; $ok = $false; $port = "$($webhook4[$ns])"
-        foreach ($rule in @(PropArr $p @('spec', 'ingress'))) {
-            $hasPort = @(PropArr $rule @('ports') | Where-Object { Eq "$(Prop $_ 'port')" $port }).Count -gt 0
-            $has32 = @(PropArr $rule @('from') | Where-Object { EndsOrd ([string](PropPath $_ @('ipBlock', 'cidr'))) '/32' }).Count -gt 0
-            if ($hasPort -and $has32) { $ok = $true }
-        }
-        if (-not $ok) { $bad += "${ns}: no ingress rule from <node A>/32 :$port" }
+        $expected = [ordered]@{ '<node A private>/32' = $srcs.private }
+        if (Contains $webhookFlannelNs $ns) { $expected['<node A flannel>/32'] = $srcs.flannel }
+        $r = Test-WebhookIngressRules (Get-Policy $ns 'allow-apiserver-webhook') "$($webhook4[$ns])" $expected
+        if (-not $r.ok) { $bad += "${ns}: $($r.reason)"; $badNs += $ns }
     }
-    if ($bad.Count -gt 0) { return @('FAIL', ($bad -join '; ')) }
-    return @('PASS', 'allow-apiserver-webhook (ingress <node A>/32, ports 10250/10250/9443/8200) in exactly the 4 contract ns')
+    # 어긋난 ns 목록을 맨 앞에 둔다 — Clip(400)에 뒤쪽 ns 상세가 잘려도 "어느 ns가 걸렸는가"는 항상 남는다
+    if ($bad.Count -gt 0) { return @('FAIL', "$($badNs.Count) ns failing [$((SortOrd $badNs) -join ', ')]: $($bad -join '; ')") }
+    return @('PASS', 'allow-apiserver-webhook in exactly the 4 contract ns: cert-manager/external-secrets 10250 + cnpg-system 9443 ingress from exactly {<node A private>/32, <node A flannel>/32}, vault 8200 from exactly {<node A private>/32}')
 }
 ClusterAssert 'np-cond-1' {
     $have = @(Get-NsWithPolicy 'deny-imds')
