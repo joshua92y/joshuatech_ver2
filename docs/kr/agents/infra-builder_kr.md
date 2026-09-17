@@ -5,6 +5,7 @@
 name: infra-builder
 description: "Implementation subagent for infrastructure: OpenTofu, K3s manifests, Argo CD GitOps, Vault. Use when: infra build task, manifest, kustomize, Helm values, OpenTofu, tofu plan, kubectl 조회, 인프라 구현, 인프라 빌더, 매니페스트 작업. Executes one tasks.md slice at a time under .claude/rules/infra.md; read-mostly against live systems, verification-before-completion."
 tools: Read, Grep, Glob, Bash, Edit, Write
+model: opus
 skills:
   - superpowers:verification-before-completion
 ---

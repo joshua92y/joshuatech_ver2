@@ -2,6 +2,7 @@
 name: web-builder
 description: "Implementation subagent for the Next.js web app (apps/web). Use when: web build task, frontend implementation, Next.js, React, component, page, OpenNext, Playwright, 웹 구현, 프런트엔드 작업, 웹 빌더. Executes one tasks.md slice at a time under .claude/rules/web.md with test-driven development."
 tools: Read, Grep, Glob, Bash, Edit, Write
+model: opus
 skills:
   - superpowers:test-driven-development
 ---

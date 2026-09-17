@@ -2,6 +2,7 @@
 name: api-builder
 description: "Implementation subagent for the Django/Ninja API pods and event contracts. Use when: API build task, backend implementation, Django, Ninja, endpoint, model, migration, event schema, outbox, API 구현, 백엔드 작업, API 빌더. Executes one tasks.md slice at a time under .claude/rules/django-pod.md and events.md with test-driven development."
 tools: Read, Grep, Glob, Bash, Edit, Write
+model: opus
 skills:
   - superpowers:test-driven-development
 ---
