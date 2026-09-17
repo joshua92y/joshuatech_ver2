@@ -37,12 +37,14 @@
 #   또 --pre-upgrade 는 --components 와 병용을 거부한다(인자로 게이트 범위를 좁히지 못하게).
 #
 # 입력(환경 변수 — 전부 선택; 자격은 instance principal 뿐이며 어떤 자격도 파일·환경에 두지 않는다):
-#   BACKUP_COMPONENTS   기본 k3s,vault. T044(Vault) 전에는 /etc/platform-backup/env 에 BACKUP_COMPONENTS=k3s 를 두면 timer 도 k3s 만 백업한다(service 의 EnvironmentFile=-).
+#   BACKUP_COMPONENTS   기본 k3s,vault. T044 이전에는 /etc/platform-backup/env 에 BACKUP_COMPONENTS=k3s 를 두었다(service 의 EnvironmentFile=- 로 timer 가 k3s 만 백업 —
+#                       2026-09-17 T044 에서 삭제, 기본 k3s,vault 로 복귀).
 #   AGE_RECIPIENT_FILE  기본 /etc/platform-backup/age-recipient — 운영자 age 공개키(age1…) 한 줄. 노드에는 공개키만; 개인키는 오프라인(§0 키쌍, recovery key 와 같은 곳).
 #                       없으면 중단(암호화 없는 업로드는 없다).
 #   OCI_BUCKET          기본 joshuatech-backup-platform(이름 예외: 설계 표기 jt-backup-platform).   OCI_NAMESPACE  기본 axvjykgvo2m1(테넌시 Object Storage 네임스페이스, storage.tf).
-#   VAULT_ADDR_SCHEME   기본 http — helm 차트 기본(global.tlsDisable=true, Ingress 가 TLS 종단)에 맞춘 가정이며 T044 가 리스너를 TLS 로 확정하면 https 로 바꾸고
-#   VAULT_CACERT        (그때) CA 파일 경로를 준다. 두 값은 /etc/platform-backup/env 로 timer 에도 전달된다.
+#   VAULT_ADDR_SCHEME   기본 http — T044 확정(2026-09-17): `global.tlsDisable=true` 유지 → 스킴 http 고정(리스너 8200 에 TLS 없음, TLS 종단은 Traefik websecure + Cloudflare AOP).
+#   VAULT_CACERT        미사용(리스너가 평문이라 CA 파일이 없다 — 코드 경로는 리스너를 TLS 로 바꾸는 날을 위해 남긴다). 두 값은 /etc/platform-backup/env 로 timer 에도
+#                       전달할 수 있으나 T044 뒤 그 파일은 없다(기본값으로 동작).
 #
 # 운영자 절차(워크스테이션 PowerShell 7; ssh/scp 공통 옵션 -i ~/.ssh/joshuatech-ops -o IdentitiesOnly=yes 는 "…" 로 줄인다; 노드 A 144.24.85.118):
 #   1. age 공개키 배치(§0 에서 만든 키쌍 joshuatech-age.key 의 공개키만 — 개인키 파일은 워크스테이션 오프라인 보관 위치를 벗어나지 않는다):
@@ -54,10 +56,11 @@
 #   2. 스크립트·unit 설치(재실행해도 같은 결과):
 #        scp … infra/bootstrap/platform-backup.sh infra/bootstrap/platform-backup.service infra/bootstrap/platform-backup.timer ubuntu@144.24.85.118:/home/ubuntu/
 #        ssh … ubuntu@144.24.85.118 "sudo install -m 755 -o root -g root /home/ubuntu/platform-backup.sh /usr/local/bin/platform-backup.sh && sudo install -m 644 -o root -g root /home/ubuntu/platform-backup.service /home/ubuntu/platform-backup.timer /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now platform-backup.timer && rm -f /home/ubuntu/platform-backup.sh /home/ubuntu/platform-backup.service /home/ubuntu/platform-backup.timer"
-#      T044 전(Vault 없음)에는 timer 가 k3s 만 백업하도록: ssh … "printf 'BACKUP_COMPONENTS=k3s\n' | sudo install -m 644 -o root -g root /dev/stdin /etc/platform-backup/env"
-#      T044 뒤에는 그 파일을 지운다(sudo rm /etc/platform-backup/env) — 기본 k3s,vault 로 돌아간다.
+#      T044 전(Vault 없음)에는 timer 가 k3s 만 백업하도록 env 파일을 두었다: ssh … "printf 'BACKUP_COMPONENTS=k3s\n' | sudo install -m 644 -o root -g root /dev/stdin /etc/platform-backup/env"
+#      T044 뒤 그 파일을 지웠다(2026-09-17 완료: sudo rm -f /etc/platform-backup/env → 기본 k3s,vault). 재부트스트랩 시 같은 순서(T044 전 env 생성 → Vault role vault-backup 이 생긴 뒤 삭제)를 반복한다.
 #   3. 첫 실행(수동 2회 — 2회차도 exit 0 이고 새 오브젝트가 하나씩 더 생기면 멱등): ssh … "sudo /usr/local/bin/platform-backup.sh --components k3s"(T044 전) /
-#      ssh … "sudo /usr/local/bin/platform-backup.sh"(T044 뒤) / ssh … "sudo /usr/local/bin/platform-backup.sh --pre-upgrade"(T037 prepare 와 같은 경로 리허설).
+#      ssh … "sudo /usr/local/bin/platform-backup.sh --components vault"(T044 뒤 첫 vault 백업 — 2026-09-17 완료: vault OK, 오브젝트 vault/vault-20260917T022021Z.snap.age 36,642 B, textfile 갱신) /
+#      ssh … "sudo /usr/local/bin/platform-backup.sh --pre-upgrade"(T037 prepare 와 같은 경로 리허설 — 2026-09-17 완료: pre-upgrade gate PASS(k3s + vault) exit 0).
 #   4. 확인: ssh … "systemctl list-timers platform-backup.timer --no-pager; systemd-analyze calendar '*-*-* 02:30:00 Asia/Seoul'; cat /var/lib/node_exporter/textfile_collector/platform_backup_k3s.prom"
 #      워크스테이션(svc-verify 세션): oci --profile svc-verify --auth security_token os object list --bucket-name joshuatech-backup-platform --prefix k3s/ (vault/ 도)
 #   5. 복원 가능성 검증은 T048(오브젝트 get → age -d -i <개인키> → sqlite3 'PRAGMA integrity_check' / vault operator raft snapshot inspect) — 이 스크립트의 일이 아니다.
