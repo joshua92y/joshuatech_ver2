@@ -97,7 +97,7 @@ gitops PR은 8건, 운영자 창은 3회(OP1 · DR1 · G4)입니다. OP1과 DR1�
 1. **fail-open 시드.** `kubectl get secret … jsonpath`가 실패하면 빈 문자열이 나옵니다. `FromBase64String('')`은 예외 없이 빈 값을 돌려주고, 그 빈 토큰이 kv에 기록됩니다. 되읽기 비교는 빈 값끼리 같아서 통과합니다. 그러면 ESO가 라이브 터널 Secret을 빈 값으로 덮고, 다음 파드 교체에서 잠깁니다. 그래서 §5 OP1 블록의 모든 취득, put, 비교가 `throw`합니다.
 2. **복구가 5분 안에 되돌려집니다.** `prune: false`이므로 revert 뒤에도 ES 객체가 남습니다. ESO는 kv 값으로 Secret을 다시 씁니다. `Orphan`은 GC만 없앨 뿐 데이터 덮어쓰기는 그대로입니다(D4-③). 컨트롤러를 `scale 0`으로 내려도 `platform-external-secrets`의 `selfHeal: true`가 곧 되돌립니다. 그래서 복구의 1순위는 kv 값 정정이고, ESO 개입 자체를 멈추려면 **revert 머지 → Argo 반영 확인 → `kubectl delete externalsecret`** 순서를 지켜야 합니다(D4-④ · §5 G4 되돌리기). 이 절차는 두 ES 공통입니다.
 3. **webhook 전면 거부.** `failurePolicy: Fail`이고 `scope: Cluster`이며 CREATE·UPDATE·**DELETE**를 모두 가로챕니다. dial이 막히면 store와 ES의 적용은 물론 삭제도 막힙니다. ns `external-secrets` 정책에 flannel 주소가 없는 것은 T041이 T045로 미룬 미결 항목이고 계약 위반입니다(D6 = A 확정). 그래서 G1p 반영과 admission dry-run PASS가 G2의 선행조건입니다.
-4. **가짜 PASS.** `serviceAccountRef.namespace`를 빠뜨린 store는 Vault에 한 번도 로그인하지 않았는데 `Ready=True/ValidationUnknown`이 됩니다. 판정 기준은 `reason=Valid`입니다. 같은 성격의 가짜 PASS가 admission 검증에도 있습니다 — "오류 문자열이 없다"가 아니라 `--dry-run=server`의 **종료 코드 0 + `created (server dry run)`**이 판정 기준입니다(D6-③).
+4. **가짜 PASS.** `serviceAccountRef.namespace`를 빠뜨린 store는 Vault에 한 번도 로그인하지 않았는데 Ready=True가 됩니다. **정정(2026-09-18 G2 리뷰, ESO 2.10.0 소스)**: 그때의 reason은 `ValidationUnknown`이 아니라 **`Valid`**(message `store validated`)라서 상태로는 구분할 수 없습니다. 판정 기준은 `Ready=True` 그리고 `reason=Valid`(k8s-data-ca의 SSRR 실패 = `ValidationUnknown`을 잡는다) **에 더해** vault store 4장의 spec `serviceAccountRef.namespace == external-secrets` 전수 확인입니다. 같은 성격의 가짜 PASS가 admission 검증에도 있습니다 — "오류 문자열이 없다"가 아니라 `--dry-run=server`의 **종료 코드 0 + `created (server dry run)`**이 판정 기준입니다(D6-③).
 5. **자동 적용되는 정책 머지.** `platform-policies` Application은 `automated: {prune: false, selfHeal: true}`입니다. G1p는 "운영자가 따로 sync를 트리거하는" 단계가 아니라 **머지하는 순간 적용되는** 단계입니다(D6-②). 그래서 비상 접속 확인과 전체 대기 diff 확인이 머지 **전에** 끝나야 합니다.
 
 ---
@@ -145,7 +145,7 @@ gitops PR은 8건, 운영자 창은 3회(OP1 · DR1 · G4)입니다. OP1과 DR1�
 
 **근거:** task 문면의 `platform/external-secrets/`는 ESO Application의 경로 지정으로 읽었습니다. store 5개는 `+`로 병렬 나열된 산출물입니다. 계약 표를 고치는 결정이므로 사용자 확인 대상입니다.
 
-**남는 한계:** 콜드 부트스트랩에서는 Vault가 init과 시드를 마칠 때까지 이 Application이 Degraded이고 root가 그 wave에서 기다립니다. 이것은 자연스러운 수동 게이트입니다. 런북에 명시합니다(VD-11 · R-21).
+**남는 한계:** 콜드 부트스트랩에서는 Vault가 init과 시드를 마칠 때까지 이 Application이 Degraded입니다. **정정(2026-09-18 G2 리뷰, Argo CD v3.5.2 소스 판독)**: root는 이 wave에서 **기다리지 않습니다** — 첫 sync operation에서만 실패하고 retry부터 `ApplyOutOfSyncOnly`가 이미 만들어진 CR을 건너뛰어 진행하며 root health만 Degraded로 남습니다. 실제 대기 지점은 wave 10(Vault init 전 Progressing)이고, 시드 순서는 Argo가 아니라 런북 절차가 보장합니다(VD-11 · R-21).
 
 → 확정: **B**(§2.14) — `platform/secret-stores/` + Application `platform-secret-stores`(Vault 뒤 wave). 계약 §sync-wave 표와 `tests/validate.sh` WAVE_TABLE에 각각 한 줄을 추가하며, M0 계약 커밋이 선행입니다. 설계 대비 변경은 없습니다.
 
@@ -346,6 +346,8 @@ G0에 README ⑨ 정정을 앞당겨 넣은 이유는 다음과 같습니다. "�
 4. **인수 해제 절차**: `prune: false`라 파일 revert만으로는 ES가 남아 인수가 해제되지 않는다. 기존 Secret을 보존한 채 해당 ES의 조정을 멈추는 절차(revert PR 머지 → `kubectl delete externalsecret` → Secret 잔존 확인 → 필요 시 stdin JSON 복구 → 파드 1개씩 교체; 컨트롤러 scale 0은 selfHeal이 되돌리는 임시 수단)를 터널(G4 R2)뿐 아니라 **DNS ES에도** 명시한다. `Owner`는 ES 삭제 시 Secret이 GC되므로 DNS ES의 정책은 D4에서 이 조건을 기준으로 다시 정한다.
 5. **검증 추가**: (a) Application별 단일 소유 확인(조건 2의 정적·라이브 검사) (b) "ESO webhook 장애 중에도 터널 Deployment를 독립적으로 변경할 수 있다"의 확인 — 게이트 = 구조 검증 2건(`platform-cloudflared`의 `status.resources`에 `external-secrets.io` kind 0건 · `ValidatingWebhookConfiguration`의 `rules`가 `secretstores`·`clustersecretstores`·`externalsecrets`만) + cloudflared Deployment server-side dry-run 통과. webhook을 실제로 내리는 라이브 드릴은 selfHeal 때문에 PR로만 가능하므로 T048(계획된 교란 창)의 선택 항목으로 인계한다.
 
+- **실행 메모(2026-09-18, G2 리뷰에서 발견 — D2·D3의 전제 정정)**: 확정 조건에 적힌 "Vault·ESO가 불가하면 Degraded → root는 이 wave에서 기다린다"는 Argo CD v3.5.2 소스 판독으로 **틀렸다**. root sync는 이 Application CR을 처음 만드는 operation에서만 실패하고 retry부터는 `ApplyOutOfSyncOnly`가 이미 만들어진 CR을 건너뛰어 다음 wave로 진행하며, root **health**만 Degraded로 남는다. D2(store 분리)의 근거는 그대로 성립한다 — 분리하지 않으면 ESO Application 자체가 Degraded가 되고, 분리하면 Healthy로 남는다(health 격리). D3 조건 ③의 "Degraded·root 대기는 남는다"는 "Degraded·root health Degraded는 남는다"로 읽는다. 시드 순서는 Argo가 아니라 런북 절차가 보장한다. 계약 §sync-wave 15행은 `contracts/` 별도 커밋으로 정정했다. 또 D3 게이트 "Ready=True AND reason=Valid"는 유지하되, namespace 생략 store는 `Valid`로 나오므로 vault store 4장의 spec `serviceAccountRef.namespace` 전수 확인을 더한다(ESO 2.10.0 소스).
+
 **D4 = B′ — DNS·터널 모두 `creationPolicy: Orphan` / `deletionPolicy: Retain`**(설계 원안 B에서 변경 — D3 조건 4 때문) **+ 사용자 조건 5개(ESO 2.10.0 CRD·소스와 대조해 적용 가능 판정):**
 
 - **D4-①** 두 ES에 `refreshPolicy: Periodic` · `refreshInterval: 5m`를 명시한다(2.10.0 CRD enum = CreatedOnce·Periodic·OnChange). Secret이 지워졌을 때의 재생성은 "**ESO·Vault가 정상일 때 다음 성공한 갱신에서** 수행된다"로만 적는다 — "Owner와 복구 시점이 같다"는 문구는 삭제한다. 실제 시점(즉시 재조정 여부 — 관리 Secret의 `reconcile.external-secrets.io/managed` 라벨 watch)은 D4-⑤ 드릴로 실측한다(VD 추가).
@@ -402,7 +404,7 @@ G0에 README ⑨ 정정을 앞당겨 넣은 이유는 다음과 같습니다. "�
 
 | 사실 | 신뢰 | VD |
 |---|---|---|
-| `serviceAccountRef.namespace`를 생략하면 webhook은 통과시킵니다. store는 referent auth가 되어 로그인을 하지 않고 `Ready=True/ValidationUnknown`이 됩니다 | verified | VD-2 |
+| `serviceAccountRef.namespace`를 생략하면 webhook은 통과시킵니다. store는 referent auth가 되어 로그인을 하지 않고 **`Ready=True/Valid`(message `store validated`)** 가 됩니다 — `ValidationUnknown`이 아닙니다(정정 2026-09-18: vault provider의 validate는 referent에 `(Unknown, nil)`을 돌려주고 컨트롤러는 err=nil이면 Valid로 찍는다. `ValidationUnknown`은 kubernetes provider의 SSRR/SSAR 호출 실패 때만) | verified(소스) | VD-2 |
 | namespace를 명시한 store는 검증 시 실제 로그인을 합니다(TokenRequest → `auth/kubernetes/login` → `lookup-self`). `reason=Valid`가 실동작의 증거입니다 | verified | VD-2 |
 | TokenRequest의 audience는 `audiences` 값 그대로이고 만료는 600초입니다. Vault role의 `audience="vault"`와 일치해야 합니다 | verified | VD-2 |
 | TokenReview는 Vault 파드 SA가 수행합니다. `authDelegator.enabled: true`는 이미 라이브입니다 | verified | — |
@@ -780,7 +782,8 @@ resources:
 ```yaml
 # clustersecretstore-vault-platform.yaml — 플랫폼 ns 12개(network-policy.md 표 14개 − jt-dev − jt-prod, kube-system 포함)
 # ⚠ `serviceAccountRef.namespace`를 **반드시** 적는다. 생략해도 스키마·webhook은 통과하지만 'referent auth'가 되어 ESO가 로그인을
-#   한 번도 하지 않은 채 Ready=True / reason=`ValidationUnknown`이 된다(가짜 PASS). 판정 기준은 reason=`Valid`.
+#   한 번도 하지 않은 채 Ready=True / reason=`Valid` / message `store validated`가 된다(가짜 PASS — 상태로는 구분 불가; 정정 2026-09-18).
+#   판정 기준은 `Ready=True` + `reason=Valid`(k8s-data-ca의 ValidationUnknown을 잡는다) + spec의 `serviceAccountRef.namespace == external-secrets` 4장 전수.
 # ⚠ `audiences: [vault]` = Vault role `audience="vault"`(infra/vault/roles.tf). 불일치 시 'jwt valid for audience(s) … but wanted …'.
 # `path: kv` + `version: v2` → `kv/data/<remoteRef.key>`. ES의 key에 `kv/` 접두를 붙이지 않는다(validate 3.1).
 # `conditions.namespaces`는 Ready 판정과 무관하다 — ES가 store를 쓸 때만 평가된다('denied by spec.condition').
@@ -818,7 +821,7 @@ spec:
 # ⚠ CA 기본값 없음 — 비우면 시스템 루트로 떨어져 x509 실패(webhook은 경고만). CSS에서는 `caProvider.namespace` 필수.
 # ⚠ `auth`는 cert|serviceAccount|token 중 정확히 하나. 이 토큰은 apiserver에 bearer로 제시되므로 **audiences를 넣지 않는다**(401).
 # Ready 판정 = SelfSubjectRulesReview(ns data) 1회, ESO는 resourceNames를 보지 않는다 → 대상 Secret이 없어도(T056 전) Valid다.
-#   즉 이 store의 Ready는 'CA 미러 동작'의 증거가 아니다. 하네스 ca-1은 T056까지 FAIL이 정상.
+#   즉 이 store의 Ready는 'CA 미러 동작'의 증거가 아니다. 하네스 ca-1은 T056까지 SKIP(`until T056` — 세 ns에 pg-main-ca가 없으면 SKIP을 돌려준다; 2026-09-18 G2 빌더가 실제 코드로 확인)이 정상.
 apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata: { name: k8s-data-ca }
@@ -1157,7 +1160,7 @@ bash tests/validate.sh
   kubectl get clustersecretstore -o custom-columns=N:.metadata.name,R:'.status.conditions[?(@.type=="Ready")].status',RE:'.status.conditions[?(@.type=="Ready")].reason',M:'.status.conditions[?(@.type=="Ready")].message'
   ```
   - **5행 모두 `True Valid`**여야 합니다.
-  - `ValidationUnknown`은 불합격입니다.
+  - `ValidationUnknown`은 불합격입니다(k8s-data-ca의 SSRR/SSAR 호출 실패 신호). 그리고 vault store 4장의 spec `serviceAccountRef.namespace`가 `external-secrets`인지 라이브에서 확인합니다(namespace 생략 store는 `Valid`로 나와 reason으로는 못 잡는다 — 정정 2026-09-18).
   - `platform-secret-stores`가 Synced/Healthy여야 합니다.
   - 아래 명령의 결과가 0행이어야 합니다.
     ```
@@ -1751,7 +1754,7 @@ Remove-Variable pre, post, preUid, postUid -ErrorAction SilentlyContinue   # ⚠
   - `pwsh -NoProfile -File tests/run-all.ps1`이 PASS합니다.
   - agent-view로 `run-platform-tests.ps1`을 돌립니다.
     - eso-1(강화판), eso-2, eso-3, eso-4(두 ES 모두 `Orphan`), np-set-5(강화판), argo-1, argo-4가 PASS합니다.
-    - ca-1은 T056까지 FAIL이 예상됩니다.
+    - ca-1은 T056까지 SKIP(`until T056`)이 예상됩니다(설계 초안의 "FAIL"은 오류 — 하네스는 미러 Secret이 없으면 SKIP).
 - **완료 보고(D10-④):** report.md · 런북 · 체크박스 커밋 메시지에 **이연 범위**를 명시합니다 — Access 4경로(T077·T092), `grafana-cloud`(T098), 그리고 건너뛴 경우 `oci/s3`(T053 전 별도 발급·교체).
 - **tasks.md:** T045 체크박스만 `[X]`로 바꿉니다.
 
@@ -1794,7 +1797,7 @@ Remove-Variable pre, post, preUid, postUid -ErrorAction SilentlyContinue   # ⚠
 | # | 시점 | 기본 가정 | 명령(누가) | 판정 |
 |---|---|---|---|---|
 | VD-1 | G1 직후와 G1p 직후 | 노드 A에 배치되어 있으면 kube-router LOCAL 예외로 통과합니다 | (운영자) `kubectl -n external-secrets get pod -o wide`. `kubectl apply --dry-run=server -f platform/secret-stores/clustersecretstore-vault-platform.yaml; echo $LASTEXITCODE`. 노드 A에서 `sudo iptables -S \| grep -c 'src-type LOCAL'` | **판정 기준(D6-③ 교체): 종료 코드 0 + `created (server dry run)` 출력.** "오류 문자열이 없다"는 기준이 아닙니다. G1p 직후의 PASS가 G2의 선행조건입니다(D6-⑤). 두 시점의 결과를 policies 주석과 런북에 기록합니다 |
-| VD-2 | G2 직후 | namespace를 명시했으므로 실제 로그인을 합니다 | §5 단계 6의 custom-columns 명령과 로그 grep | 5행 모두 `True Valid`여야 합니다. `ValidationUnknown`은 불합격입니다. 메시지별 원인: audience, 토큰 발급 권한, Vault 도달 |
+| VD-2 | G2 직후 | namespace를 명시했으므로 실제 로그인을 합니다 | §5 단계 6의 custom-columns 명령과 로그 grep + spec namespace 4장 조회 | 5행 모두 `True Valid`여야 합니다. `ValidationUnknown`은 불합격입니다(k8s provider 신호). namespace 생략은 `Valid`로 나오므로 spec 조회로 잡습니다(정정 2026-09-18). 메시지별 원인: `invalid audience (aud) claim`(audiences 오기), `cannot find secrets bound to service account`(vault store의 TokenRequest 실패 → 레거시 폴백 — G2r 게이트 신호), `Vault is sealed`(503), 연결 오류(Vault 미기동·egress) |
 | VD-3 | G3 직후 | ownerRef 없는 Secret을 제자리에서 인수하고 값·UID가 불변입니다 | §5 단계 9의 블록 | `SecretSynced` · **값 불변 · UID 불변 · ownerReferences 부재**(D4-② — G4와 같은 세 검사). 모두 PASS해야 G4로 갑니다 |
 | VD-4 | G4 | Orphan이므로 ownerRef가 없고 값·UID·파드가 불변입니다 | §5 단계 10의 블록 | 모든 `throw`를 통과하고 파드 1개 교체 드릴이 성공해야 합니다 |
 | VD-5 | G1 이후 15분 간격 2회 | 희망 상태에 없는 필드이므로 드리프트가 없습니다 | `kubectl -n argocd get app platform-external-secrets -o jsonpath='{.status.sync.status} {.status.health.status}'`. `status.resources` 중 Synced가 아닌 것. (운영자) `external-secrets-webhook`의 `tls.crt` 길이가 0보다 큰지 | 유지되면 ignoreDifferences가 필요 없습니다. 반복해서 OutOfSync가 나면 별도 PR(`/data`, `/webhooks/*/clientConfig/caBundle`)을 엽니다 |
@@ -1803,7 +1806,7 @@ Remove-Variable pre, post, preUid, postUid -ErrorAction SilentlyContinue   # ⚠
 | VD-8 | G3 + 1시간, 2회 | 로그인이 시간당 약 72회(±20)입니다 | (운영자) Vault 파드의 감사 파일 크기와 `auth/kubernetes/login` 건수 | 하루 증가량이 50 MB를 넘으면 캐시 채택이나 회전을 T098과 함께 결정합니다 |
 | VD-9 | G1 직후 | kubelet 프로브가 정책을 우회합니다 | webhook 파드의 Ready 조건 | `True`이면 8081 정책이 필요 없습니다. 아니면 정책·계약·PORT 표를 고치는 별도 PR을 엽니다 |
 | VD-10 | G2 직후 | `k8s-data-ca`가 `Valid`입니다 | 같은 custom-columns 명령 | 아니면 순서대로 확인합니다: url → caProvider → audiences 없음. 401이면 audiences, x509이면 CA가 원인입니다 |
-| VD-11 | 라이브에서는 불가 | 콜드 부트스트랩은 Vault init·`infra/vault` apply·시드 전까지 store wave에서 기다립니다 | 오늘 확인 가능한 것은 `platform-secret-stores`가 Healthy인지뿐입니다 | 런북 §3 T045 절에 수동 게이트로 명시합니다. T048 기록에는 "이 리허설은 콜드 부트스트랩을 재현하지 않는다"고 적습니다 |
+| VD-11 | 라이브에서는 불가 | ~~콜드 부트스트랩은 … store wave에서 기다립니다~~ **정정(2026-09-18, Argo v3.5.2 소스 판독)**: root는 store wave에서 기다리지 않는다 — 첫 operation만 실패, retry부터 진행, root health만 Degraded. 대기 지점은 wave 10 | 오늘 확인 가능한 것은 `platform-secret-stores`가 Healthy인지뿐입니다 | 런북 §3 T045 절에 "시드 순서는 Argo가 보장하지 않으며 런북 절차로 보장한다"로 명시합니다. T048 기록에는 "이 리허설은 콜드 부트스트랩을 재현하지 않는다"고 적습니다 |
 | VD-12 | G1 빌드, bump 때마다 | digest 3줄, CRD 어노테이션 25건 | §5 단계 3. bump 시 ghcr manifests API의 `docker-content-digest` | 기대값과 일치하고 arm64를 포함해야 합니다 |
 | VD-13 | G3 빌드 | `platform/secrets`의 교차 base가 렌더됩니다(1개, 2개 모두) | `kustomize build platform/secrets` | rc=0이고 ES의 ns와 creationPolicy가 기대대로여야 합니다. 실패하면 D3의 A로 폴백하고 계약 문면을 다시 고칩니다 |
 | VD-14 | OP1 직후(선택) | 구 버전이 읽힙니다. `destroy`는 `current_version`을 0으로 되돌리지 않으므로 그 뒤 `-cas=0` 재투입은 실패합니다(미확인) | 오투입이 있었을 때만 `vault kv get "-version=<N>"`을 실행하고 키 이름만 확인합니다. 이어서 `vault kv metadata get <path>`로 `current_version`을 봅니다 | 읽히면 `kv destroy`까지가 정정 절차입니다. 재투입 방법(`-cas=<current_version>` 또는 `metadata delete` 후 재실행)을 실측 결과에 맞춰 런북에 적습니다 |
@@ -1885,7 +1888,7 @@ Remove-Variable pre, post, preUid, postUid -ErrorAction SilentlyContinue   # ⚠
   - store와 Role은 이미 Ready입니다. 대상 Secret이 없어도 Valid입니다.
   - 미러 ES는 `property: ca.crt`만 쓰고 `dataFrom`은 금지입니다.
   - 미러 ES는 `platform/secrets`가 **아니라** 계약 §sync-wave 표 40번 행(`cnpg-databases`·`kafka-topics`) 소유입니다(D3 조건 1). 원본 CA가 생긴 뒤에 놓입니다. `platform/secrets`로 옮기려면 **원본과 소비자의 wave를 먼저 확인**하고 계약 표를 고친 뒤에 합니다.
-  - ca-1은 그때까지 FAIL이 정상입니다.
+  - ca-1은 그때까지 SKIP(`until T056`)이 정상입니다.
 - **T072·T075.**
   - `vault-dev`와 `vault-prod` store, `refreshInterval: 5m`, `template.metadata` 규약이 확정되었습니다.
   - 앱 ES는 `apps/<pod>/overlays/<env>`에 둡니다. `secrets/` 규칙은 플랫폼 ns에만 적용됩니다.
