@@ -59,7 +59,7 @@ FR-010의 순서를 이 표 하나로만 표현한다. Argo CD는 wave N의 리�
 | `-10` | `policies` | CRD·namespaces·policies |
 | `0` | `cert-manager` · `external-secrets` | cert-manager·ESO(둘 다 CRD 제공) |
 | `10` | `vault` | Vault(시크릿 원천) |
-| `15` | `secret-stores` | `ClusterSecretStore` 5개 — ESO CRD(0)와 Vault(10) 뒤. Vault·ESO가 불가하면 이 Application이 Degraded가 되고 root는 이 wave에서 기다린다(wave 0의 ESO Application은 Healthy 유지) |
+| `15` | `secret-stores` | `ClusterSecretStore` 5개 — ESO CRD(0)와 Vault(10) 뒤. Vault·ESO가 불가하면 이 Application이 Degraded가 된다(wave 0의 ESO Application은 Healthy 유지 — health 격리가 분리의 효과). **root는 이 wave에서 기다리지 않는다**: root sync는 이 Application CR을 처음 만드는 operation에서만 실패하고 retry부터 `ApplyOutOfSyncOnly`가 이미 만들어진 CR을 건너뛰어 다음 wave로 진행하며, root **health**만 Degraded로 남는다(Argo CD v3.5.2 소스 판독, 2026-09-18 T045 G2 리뷰 — 라이브 미실측). 콜드 부트스트랩의 실제 대기 지점은 wave 10(Vault init 전 Progressing)이고 시드 순서는 런북 절차로 보장한다 |
 | `18` | `secrets` | `secrets/<ns>/`의 플랫폼 ExternalSecret(T045 현재 범위 = cert-manager DNS 토큰 · cloudflared 터널 토큰 2장). 소비자(`cert-manager-issuers` 20 · `cloudflared` 60)보다 앞. **CA 미러 ExternalSecret은 여기 두지 않는다** — 원본 CA가 생긴 뒤인 40번 행 소유 |
 | `20` | `cert-manager-issuers` · `cnpg` · `system-upgrade` | ClusterIssuer·와일드카드 인증서(ExternalSecret 소비) · CNPG operator + barman-cloud plugin · SUC |
 | `30` | `cnpg-cluster` · `kafka` · `dragonfly` | pg-main · Strimzi operator + `Kafka`/`KafkaNodePool` · Dragonfly |
