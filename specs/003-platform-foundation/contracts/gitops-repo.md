@@ -158,6 +158,8 @@ Authentik·OpenFGA는 pod가 아니라 환경 공유 컴포넌트이므로 env �
 2. `helm template`(helmCharts 사용 컴포넌트).
 3. 시크릿·경계 검사: `gitleaks`, 위 **§validate.yml ExternalSecret 검사** 7항목, `images[].newTag` 금지, `platform/**` `image:` digest 부재 경고.
 4. 정책 검사: `platform/policies` Namespace 목록 = contracts/network-policy.md 표(14개); ns마다 해당 공통 정책 세트 존재; 모든 egress `ipBlock` 규칙에 `ports` + `except` 4개(IMDS·RFC 1918 3종); helm values의 포트 ↔ 정책 포트 일치; LimitRange에 `default.cpu`·`max.cpu` 없음.
+   - (T045 G1p) `allow-apiserver-webhook` 4장의 출발 ipBlock cidr 집합·포트가 §정책 세트의 webhook 행과 정확 일치(원본 파일 + kustomize 렌더 둘 다 — 렌더에서만 넓어지거나 나타나거나 사라지는 경우 포함).
+   - (T045 G2) `ClusterSecretStore`: `platform/secret-stores/`에만 · `metadata.namespace` 없음 · 이름·provider 집합 = **§ClusterSecretStore 5개 표** · vault store는 `serviceAccountRef.namespace`(referent auth 금지 — 생략하면 로그인 없이 Ready=True/Valid가 되는 가짜 PASS)·`audiences: [vault]`·마운트·서버·kv 경로·store↔SA/role 매핑 · kubernetes store는 `auth.serviceAccount` 하나(audiences 없음)·`remoteNamespace: data`·`server.url`·`caProvider.namespace` 명시 · `conditions.namespaces` 집합 = 표(원본 + 렌더).
 5. 작성자 검사: PR 작성자가 `jt-ci[bot]`이면 변경 파일 = `apps/*/overlays/dev/kustomization.yaml`, 변경 줄 = `images[].digest`뿐.
 6. sync-wave 검사: 모든 Application의 `argocd.argoproj.io/sync-wave` 값이 **§sync-wave 단일 표**와 일치하고, 표에 없는 `platform/<component>/` 디렉터리가 없다.
 7. 렌더링 diff 코멘트: `kustomize build` 결과를 main과 PR에서 비교해 PR 코멘트로 남긴다(Argo CD 접근 불필요; `argocd app diff`는 쓰지 않음).
