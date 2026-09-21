@@ -12,7 +12,7 @@ $blocks = [ordered]@{
   kvcl = Join-Path $here 'dr1-kv-cleanup.ps1'
 }
 # 원본(수정 전) 블록 — 대조군으로만 실행한다. 지적이 실재함을 하네스가 스스로 증명한다.
-$orig = Split-Path -Parent $here
+$orig = Join-Path $here 'original'   # 검수 전 원본 블록(대조군 REG-*) — 설계 §5 단계 8·8b 에서 추출한 그대로
 $blocks['orig-fix'] = Join-Path $orig 't045-op1dr1-block2.ps1'
 # 원본 block1 은 L46 파서 오류로 실행 자체가 불가능하므로, 그 줄만 고친 사본을 대조군으로 쓴다.
 $blocks['orig-op1'] = Join-Path $orig 'lens-ps-block1-fixed-L46.ps1'
