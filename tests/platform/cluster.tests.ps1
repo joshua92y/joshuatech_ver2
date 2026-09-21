@@ -39,8 +39,14 @@
 #               Cluster pg-main · Kafka jt-kafka · KafkaNodePool · Vault/Dragonfly PVC · 오퍼레이터 CRD(그룹 접미 cnpg.io·strimzi.io·cert-manager.io·external-secrets.io)에
 #               argocd.argoproj.io/sync-options = "Delete=false,Prune=false"(정확 일치)
 #   vault-1..2  seal-status sealed=false · type=ocikms
-#   eso-1..3    clustersecretstore 정확히 5개(vault-platform·vault-dev·vault-prod·vault-data·k8s-data-ca) Ready, externalsecret -A 전부
-#               SecretSynced, secretStoreRef(kind ClusterSecretStore)가 ns scope·remoteRef.key 접두와 일치
+#   eso-1..4    clustersecretstore 정확히 5개(vault-platform·vault-dev·vault-prod·vault-data·k8s-data-ca)가 Ready=True + reason=Valid이고,
+#               vault store 4장은 spec provider.vault.auth.kubernetes.serviceAccountRef의 namespace=external-secrets·audiences=[vault],
+#               k8s-data-ca는 provider.kubernetes.auth.serviceAccount.namespace=external-secrets — namespace를 생략하면 ESO가 referent
+#               인증으로 해석해 로그인 한 번 없이 Ready/Valid를 주므로(ESO 2.10.0) 상태만으로는 가짜 PASS가 된다. externalsecret -A 전부
+#               SecretSynced, secretStoreRef(kind ClusterSecretStore)가 ns scope·remoteRef.key 접두와 일치. 인수형 ExternalSecret 2장
+#               (cert-manager/cloudflare-dns-token · cloudflared/cloudflared-tunnel)은 target.creationPolicy=Orphan(생략 = 기본값 Owner →
+#               ownerReference GC로 Secret 소실; 터널 쪽은 운영자 잠금)·target.deletionPolicy=Retain·refreshPolicy=Periodic·
+#               target.template.metadata 존재하고 비어 있음·메타데이터 sync-options=Delete=false,Prune=false
 #   ca-1        CA 미러 Secret 키 = ["ca.crt"](ca.key 있으면 FAIL). agent-view는 Secret get이 없으므로 `auth can-i`가 no면
 #               같은 이름의 ExternalSecret spec(dataFrom 없음·remoteRef.property=ca.crt·secretKey=ca.crt·template data 키 없음·
 #               templateFrom 없음·mergePolicy 미사용·store k8s-data-ca)으로 증명한다.
@@ -68,9 +74,9 @@
 #   reloader-1  deployment reloader(ns reloader) Available=True
 #   backup-1..3 joshuatech-backup-platform k3s/ · vault/ 에 24h 내 .age 오브젝트 ≥ 1, 비-.age(평문) 오브젝트 0
 #
-# 단언 수: 48 = gate 3 + nodes 3 + argo 4 + vault 2 + eso 3 + ca 1 + ns 2 + psa 2 + np-set 5 + np-cond 2 + np 14 + mon 1 + limits 2 +
+# 단언 수: 49 = gate 3 + nodes 3 + argo 4 + vault 2 + eso 4 + ca 1 + ns 2 + psa 2 + np-set 5 + np-cond 2 + np 14 + mon 1 + limits 2 +
 #          reloader 1 + backup 3 (np 14 = np-1, np-2-data-assert, np-2-kafka-assert, np-2-authz-assert, np-2-manual, np-3, np-3-live,
-#          np-4, np-4-live, np-5, np-5-live, np-6, np-6-live, np-7). live/manual 5개는 항상 SKIP이므로 PASS 후보는 43, 그중 단계별
+#          np-4, np-4-live, np-5, np-5-live, np-6, np-6-live, np-7). live/manual 5개는 항상 SKIP이므로 PASS 후보는 44, 그중 단계별
 #          SKIP 게이트는 ca-1 · np-2-* 3 · limits-* 2 · mon-1 의 7개.
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false   # 자식 프로세스의 0이 아닌 종료 코드를 예외로 바꾸지 않는다
@@ -117,6 +123,11 @@ $webhookFlannelNs = @('cert-manager', 'external-secrets', 'cnpg-system')
 $imdsIp = '169.254.169.254'
 $except4 = @('169.254.169.254/32', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')
 $storeNames5 = @('vault-platform', 'vault-dev', 'vault-prod', 'vault-data', 'k8s-data-ca')
+$storeSaNamespace = 'external-secrets'   # 모든 store의 serviceAccountRef/serviceAccount namespace(생략 = referent 인증 → 가짜 Ready/Valid)
+$storeVaultAudience = 'vault'            # vault store의 serviceAccountRef.audiences = 정확히 이 1개(Vault role audience="vault")
+# 운영자 수동 Secret을 인수하는 ExternalSecret(`<ns>/<name>`) — creationPolicy가 Owner로 회귀하면 ES 삭제 경로에서 Secret이 GC된다
+# (터널 자격은 SSH·K8s API의 유일한 경로라 운영자 잠금). 목록 자체가 계약이다: gitops `secrets/<ns>/externalsecret-<name>.yaml`.
+$adoptedExternalSecrets = @('cert-manager/cloudflare-dns-token', 'cloudflared/cloudflared-tunnel')
 $caMirrorKeys = @('pg-main-ca', 'jt-kafka-cluster-ca-cert')
 $blacklistKinds = @('NetworkPolicy', 'ResourceQuota', 'LimitRange', 'Role', 'RoleBinding', 'ServiceAccount')
 # namespaceResourceBlacklist 항목의 group(정확 일치; '*'도 허용). core 그룹은 "" (JSON에 group 키가 없으면 ""로 본다)
@@ -566,13 +577,51 @@ ClusterAssert 'eso-1' {
     $stores = @(Items (Get-KubeList @('get', 'clustersecretstores.external-secrets.io')))
     $names = @($stores | ForEach-Object { Name $_ })
     if (-not (SetEq $names $storeNames5)) { return @('FAIL', "ClusterSecretStore set is [$((SortOrd $names) -join ', ')], expected exactly [$((SortOrd $storeNames5) -join ', ')]") }
-    $notReady = @()
+    # 상태(Ready=True + reason=Valid)와 spec을 함께 본다: namespace를 생략한 store는 ESO가 referent 인증으로 읽어 로그인 없이
+    # Ready/Valid가 되므로 상태만으로는 진짜와 구분되지 않는다(ESO 2.10.0 소스 판독, 2026-09-18). 실패는 전부 모아 한 번에 보고한다.
+    $notReady = @(); $bad = @()
     foreach ($s in $stores) {
+        $n = Name $s
         $c = Condition $s 'Ready'
-        if ($null -eq $c -or -not (Eq ([string](Prop $c 'status')) 'True')) { $notReady += (Name $s) }
+        $status = if ($null -ne $c) { [string](Prop $c 'status') } else { '' }
+        $reason = if ($null -ne $c) { [string](Prop $c 'reason') } else { '' }
+        if (-not (Eq $status 'True') -or -not (Eq $reason 'Valid')) { $notReady += "$n=$status/$reason" }
+
+        $vault = PropPath $s @('spec', 'provider', 'vault')
+        $k8s = PropPath $s @('spec', 'provider', 'kubernetes')
+        if ($null -ne $vault) {
+            $sa = PropPath $vault @('auth', 'kubernetes', 'serviceAccountRef')
+            if ($null -eq $sa) { $bad += "${n}: provider.vault.auth.kubernetes.serviceAccountRef missing (expected name/namespace/audiences)" }
+            else {
+                $saNs = [string](Prop $sa 'namespace')
+                if ([string]::IsNullOrEmpty($saNs)) {
+                    $bad += "${n}: serviceAccountRef.namespace missing -- referent auth (namespace omitted) -- Ready/Valid without login"
+                } elseif (-not (Eq $saNs $storeSaNamespace)) {
+                    $bad += "${n}: serviceAccountRef.namespace='$saNs' (expected $storeSaNamespace)"
+                }
+                $auds = @(PropArr $sa @('audiences'))
+                if ($auds.Count -ne 1 -or -not (Eq ([string]$auds[0]) $storeVaultAudience)) {
+                    $bad += "${n}: serviceAccountRef.audiences=[$(($auds | ForEach-Object { "$_" }) -join ', ')] (expected exactly [$storeVaultAudience])"
+                }
+            }
+        } elseif ($null -ne $k8s) {
+            $sa = PropPath $k8s @('auth', 'serviceAccount')
+            if ($null -eq $sa) { $bad += "${n}: provider.kubernetes.auth.serviceAccount missing (expected name/namespace)" }
+            else {
+                $saNs = [string](Prop $sa 'namespace')
+                if ([string]::IsNullOrEmpty($saNs)) {
+                    $bad += "${n}: serviceAccount.namespace missing -- referent auth (namespace omitted) -- Ready/Valid without login"
+                } elseif (-not (Eq $saNs $storeSaNamespace)) {
+                    $bad += "${n}: serviceAccount.namespace='$saNs' (expected $storeSaNamespace)"
+                }
+            }
+        } else {
+            $bad += "${n}: provider is neither vault nor kubernetes (unexpected provider: $(@(PropNames (PropPath $s @('spec', 'provider'))) -join ', '))"
+        }
     }
-    if ($notReady.Count -gt 0) { return @('FAIL', "not Ready: $($notReady -join ', ')") }
-    return @('PASS', '5 ClusterSecretStores present and Ready')
+    if ($notReady.Count -gt 0) { $bad = @("not Ready/Valid: $($notReady -join ', ')") + $bad }
+    if ($bad.Count -gt 0) { return @('FAIL', ($bad -join '; ')) }
+    return @('PASS', "$($stores.Count) ClusterSecretStores Ready/Valid; serviceAccountRef namespace=$storeSaNamespace, audiences=[$storeVaultAudience]")
 }
 ClusterAssert 'eso-2' {
     $ess = @(Items (Get-KubeList @('get', 'externalsecrets.external-secrets.io', '-A')))
@@ -618,6 +667,39 @@ ClusterAssert 'eso-3' {
     }
     if ($bad.Count -gt 0) { return @('FAIL', "store/scope mismatch: $($bad -join '; ')") }
     return @('PASS', "$($ess.Count) ExternalSecrets: secretStoreRef matches namespace scope and key prefix")
+}
+# 인수형 ExternalSecret(운영자 수동 Secret을 인수한 2장)의 정책 필드 — 생략을 PASS로 읽지 않는다(생략 = ESO 기본값 Owner).
+# 2장이 아직 없으면 FAIL이다(test-first: G4 머지 전에는 cloudflared/cloudflared-tunnel이 없어 FAIL이 기대값이며 SKIP이 아니다).
+ClusterAssert 'eso-4' {
+    $ess = @(Items (Get-KubeList @('get', 'externalsecrets.external-secrets.io', '-A')))
+    $bad = @()
+    foreach ($id in $adoptedExternalSecrets) {
+        $parts = @("$id".Split('/'))
+        if ($parts.Count -ne 2) { $bad += "${id}: malformed expected id (want '<namespace>/<name>')"; continue }
+        $ns = [string]$parts[0]; $nm = [string]$parts[1]
+        $e = @($ess | Where-Object { (Eq (Ns $_) $ns) -and (Eq (Name $_) $nm) }) | Select-Object -First 1
+        if ($null -eq $e) { $bad += "${id}: missing"; continue }
+        $cp = [string](PropPath $e @('spec', 'target', 'creationPolicy'))
+        if (-not (Eq $cp 'Orphan')) { $bad += "${id}: target.creationPolicy='$cp' (expected Orphan; absent = ESO default Owner -> ownerReference -> Secret GC'd with the ExternalSecret)" }
+        $dp = [string](PropPath $e @('spec', 'target', 'deletionPolicy'))
+        if (-not (Eq $dp 'Retain')) { $bad += "${id}: target.deletionPolicy='$dp' (expected Retain)" }
+        $rp = [string](PropPath $e @('spec', 'refreshPolicy'))
+        if (-not (Eq $rp 'Periodic')) { $bad += "${id}: refreshPolicy='$rp' (expected Periodic)" }
+        $tmpl = PropPath $e @('spec', 'target', 'template')
+        $meta = if ($null -ne $tmpl) { Prop $tmpl 'metadata' } else { $null }
+        if ($null -eq $meta) {
+            $bad += "${id}: template.metadata missing -- ES labels/annotations (incl. Argo tracking) get copied onto the Secret"
+        } else {
+            $metaLabels = @(PropNames (Prop $meta 'labels')); $metaAnns = @(PropNames (Prop $meta 'annotations'))
+            if ($metaLabels.Count -gt 0 -or $metaAnns.Count -gt 0) {
+                $bad += "${id}: template.metadata is not empty (labels=[$($metaLabels -join ', ')], annotations=[$($metaAnns -join ', ')]) -- it must stay {} so nothing is copied onto the Secret"
+            }
+        }
+        $so = Annotation $e 'argocd.argoproj.io/sync-options'
+        if (-not (Eq $so $syncOptions)) { $bad += "${id}: sync-options='$so' (expected $syncOptions)" }
+    }
+    if ($bad.Count -gt 0) { return @('FAIL', ($bad -join '; ')) }
+    return @('PASS', "$($adoptedExternalSecrets.Count) adopted ExternalSecrets ($($adoptedExternalSecrets -join ', ')): creationPolicy=Orphan, deletionPolicy=Retain, refreshPolicy=Periodic, empty template.metadata, sync-options=$syncOptions")
 }
 ClusterAssert 'ca-1' {
     $nsList = @('identity', 'jt-dev', 'jt-prod')
