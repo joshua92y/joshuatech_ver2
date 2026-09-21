@@ -14,7 +14,7 @@
 
 T045에서 ESO 설치 자체는 부차적입니다. 실제 위험은 세 가지입니다.
 
-- **잠금.** `cloudflared-tunnel` Secret은 SSH(노드 A·B)와 K8s API의 유일한 경로입니다(22 포트가 닫혀 있습니다). 이 Secret의 소유권을 ESO로 넘기는 동안 값이 바뀌면, 증상은 그 순간이 아니라 다음 파드 교체 때(T048 재부팅, SUC, drain) 나타납니다.
+- **잠금.** `cloudflared-tunnel` Secret은 SSH(노드 A·B)와 K8s API의 유일한 경로입니다(22 포트가 닫혀 있습니다). 이 Secret의 소유권을 ESO로 넘기는 동안 값이 바뀌면, 증상은 그 순간이 아니라 **다음 컨테이너 시작 때** 나타납니다 — 파드 교체(T048 재부팅, SUC, drain)뿐 아니라 **제자리 재시작**(liveness 실패 · OOMKill · 노드 재부팅)도 포함입니다(2026-09-21 정정, §2.2 표). 그래서 안전망에는 시한이 있고, 값이 틀린 상태는 **시한 상태**입니다.
 - **조용한 실패.** dns 토큰이 틀려도 와일드카드 첫 갱신(≈2026-11-08)까지 약 7주 동안 증상이 없습니다.
 - **오늘은 보이지 않는 순서 결함.** ClusterSecretStore를 wave 0 Application에 두면 Vault(wave 10)가 불가한 동안 그 Application이 Degraded가 됩니다. 이 상태가 root로 전파되어 뒤 wave 전체가 멈춥니다.
 
@@ -428,7 +428,8 @@ G0에 README ⑨ 정정을 앞당겨 넣은 이유는 다음과 같습니다. "�
 | provider 조회가 실패하면 Secret을 변경하지 않습니다(`SecretSyncedError` 후 return) | verified | — |
 | template이 없으면 ES의 라벨·어노테이션이 전부 복사됩니다. Argo 3.5.2의 self-ref 가드 때문에 sync·prune에는 영향이 없습니다 | verified | — |
 | 인수는 첫 조정에서 즉시 일어납니다(managed 라벨과 data-hash가 없기 때문입니다) | verified | VD-3 |
-| cert-manager는 챌린지 순간에만 Secret을 읽습니다. cloudflared는 env를 시작 시 1회만 읽습니다 | verified | — |
+| cert-manager는 챌린지 순간에만 Secret을 읽습니다. cloudflared는 env를 시작 시 1회만 읽습니다 | ~~verified~~ **정정 2026-09-21(G4 리뷰 ML-3)** — env(`secretKeyRef`)는 파드가 아니라 **컨테이너가 시작할 때마다** kubelet이 다시 읽습니다. 파드 교체뿐 아니라 제자리 재시작(liveness 실패 · OOMKill · 크래시 · 노드 재부팅 = 파드 이름·UID 그대로, `restartCount`만 증가)도 포함입니다. cloudflared의 liveness는 `/ready` 10s × 6이라 **edge 단절이 약 60초 이어지면 두 커넥터가 파드 교체 없이 거의 동시에 재시작**할 수 있습니다. | — |
+| **따라서 "실행 중 파드가 옛 값을 들고 있다"는 안전망은 컨테이너가 재시작되지 않는 동안만 유효합니다** — 값이 틀린 상태는 안전 상태가 아니라 **시한 상태**입니다(복구를 미루지 않고, 그동안 노드 재부팅·SUC Plan·drain을 하지 않습니다). 아래 §의 "증상은 다음 파드 교체 때 나타난다"류 서술은 전부 이 문장으로 읽습니다 | 정정 2026-09-21 | — |
 | cloudflared는 `maxSurge 0`, `maxUnavailable 1`, required antiAffinity, replicas 2입니다. 그래서 파드 1개를 교체해도 안전합니다 | verified | VD-4 |
 | break-glass의 실체는 OCI CLI 수동 NSG 규칙입니다(`infra/oci/instances.tf`의 5·8단계). tofu 변수가 아닙니다 | verified | — |
 | gitops `platform/cloudflared/README.md` ⑨ 2단계의 "수동 Secret을 지운다"는 사실과 반대입니다 | verified | — |
