@@ -871,6 +871,7 @@ spec:
 
 - `name: platform-secrets`
 - `path: platform/secrets`
+- `destination.namespace: kube-system` — **정정(2026-09-21 G3 빌드)**: 저장소 관례는 "`WAVE_TABLE` 3열이 `-`이면 destination은 `kube-system`"이다(`platform-policies.yaml` 머리 주석 · `clusters/oci-k3s/apps/README.md` 「Application 추가 절차」). 초안의 `external-secrets`가 아니다. validate는 이 필드를 검사하지 않고, ES는 전부 자기 `metadata.namespace`를 명시하므로 동작 차이는 없다.
 - `sync-wave: "18"` (표의 값)
 - `destination.namespace: external-secrets` (형식상의 값입니다. ES는 각자 `metadata.namespace`를 명시합니다. AppProject destinations에 `cert-manager`와 `cloudflared`가 들어 있습니다.)
 
