@@ -50,3 +50,17 @@
 ## 5. 되돌리기
 
 Reloader 자체의 되돌리기 = revert PR + (`prune: false`) 운영자가 Deployment·SA·Role·RoleBinding(4 ns)을 지운다. Reloader가 없어도 소비자 파드는 멈추지 않는다 — Secret 변경 시 재시작만 일어나지 않을 뿐이다(지금과 같은 상태).
+
+## 6. 진행 상태(2026-09-22 세션 종료 시점 — 재개 지점)
+
+| 단계 | 상태 |
+|---|---|
+| M0 계약 + 설계 | 완료 — `378f7f6`, F5 정정 `73e47a8` |
+| M1 하네스 `reloader-2` | 완료 — `42f3cd5`(shim 19경우 RED→GREEN · 라이브는 배포 전이라 기대 FAIL) |
+| G1 gitops 빌드 | 완료 — 렌더 13개 · ClusterRole 0 · validate PASS 25 · 자기검사 49/0 · gitleaks 0 · AppProject stakater 줄 삭제 포함 |
+| G1 독립 리뷰 | **APPROVED** + low 5건(① 10 REL이 다른 이름의 Deployment·두 번째 컨테이너·`command`를 안 봄 ② 인자 안 개행 뒤를 안 읽음 ③ "뒤 값이 이긴다" 오기 — pflag StringSlice는 **합친다** ④ README 판정 ⑥이 빈 출력을 PASS로 읽음 ⑤ Secret 없이 머지하면 약 10분 뒤 root health까지 Degraded인데 "파드만 멈춘다"로 서술) |
+| low 5건 반영 | **도중 중단(19:20)** — 부정 픽스처 4종(`tests/fixtures/rel-scoped/{second-deploy,command,second-container,args-newline}`) · positive `rbac.yaml` · README·주석 일부까지. **남은 것**: `tests/validate.sh` 10.4(렌더 전체 Role·RoleBinding ns 집합 = 목록 + `reloader` · Reloader 이미지 컨테이너 정확히 1개 · `command` 없음) · 개행 처리 · 메시지 정정 · `validate.tests.sh` 등록 · README ⑥·Secret 부재 서술 완성 · 적대적 검증 |
+| 체크포인트 | gitops 브랜치 **`t046-reloader` = `dbd7651`(WIP, 원격 푸시 · PR 없음 · 머지 금지)** — 렌더는 리뷰 시점과 바이트 동일 |
+| 운영자 선행 | 시험 Secret `jt-dev/vd9-probe`(키 `probe=v1`) **생성 완료** 2026-09-22 09:51:42Z — 다음 단계까지 그대로 둔다 |
+
+**재개 순서**: 브랜치 `t046-reloader`에서 low 5건의 남은 부분 반영(리뷰 산출물: 세션 스크래치패드 `t046-review/` — 세션이 바뀌면 없으므로 이 표의 요약으로 재현) → validate PASS · 자기검사 전체 · 렌더 바이트 동일 · gitleaks → squash 대상 PR 생성 → 사용자 머지 → 판정 ①·⑥(agent-view) → 사용자 Secret 값 변경(`kubectl -n jt-dev patch secret vd9-probe --type merge -p '{"stringData":{"probe":"v2"}}'`) → 5분 관찰 판정 ③④⑤ → 제거 PR + 운영자가 Deployment·Secret `vd9-probe` 삭제 → 런북·학습 로그 → T046 체크.
