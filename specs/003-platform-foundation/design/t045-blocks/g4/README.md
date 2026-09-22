@@ -1,6 +1,6 @@
 # T045 G4 운영자 블록 — 인계 상태 (2026-09-22)
 
-> **G4 운영자 블록의 오프라인 준비를 완료했다.** 하네스 122/122, 변이 223/223, 독립 코드 검토 Approved / Approved다. **라이브 인수·드릴과 G5는 아직 미완**이며 PR #29도 미머지다. 다음은 사용자 입회에서 기준값을 캡처한 뒤 머지하는 단계다. 전체 저장소 검사의 OpenTofu 슬롯은 필수 환경 변수 부재로 실패해 G5 확인 항목으로 남는다.
+> **G4 라이브 완료(2026-09-22).** PR #29 머지 뒤 adopt 인수 게이트 PASS(클러스터 변경 0건), 이어서 drill 1회로 파드 1개 교체 — 새 파드 Ready · `Registered tunnel connection` · 남은 파드 불변 · 접근 경로 정상(클러스터 변경 1건). **G5는 미완**이다. 드릴 중 발견한 블록 결함 1건(아래 「알려진 결함」)은 T084에서 drill을 다시 쓰기 전에 고친다. 전체 저장소 검사는 `TF_VAR_budget_alert_email`을 지정해야 OpenTofu 슬롯이 통과한다.
 
 ## 이 디렉터리
 
@@ -44,8 +44,9 @@
 2. **반영 완료**: 5라운드 지적의 실제 수정과 구조 삭제에 의한 해소를 `NOTES.md` §11.5에 구별해 기록했다. EOF·R3 복구 조각 전문·namespace 권한·runtime 허용 동사 목록을 검사한다.
 3. **검증 완료**: adopt의 AST 동사는 `get`·`auth`·`logs`만 허용한다. 모의 kubectl은 adopt 변경 동사를 즉시 거부하고, 모든 adopt 시나리오는 변경 로그가 비었는지 검사한다. drill은 게이트별 거부·이름 오타·`second`·새 파드 Ready 타임아웃·지속 조회 실패·회계 선행을 검사한다. 기존 잠금·규약 변이를 포함한 223개가 모두 CAUGHT이며, ANCHOR-ERR·NO-OP는 0이다. 프로세스 오류만 있는 결과도 성공으로 세지 않도록 분류를 보강했다.
 4. **적대적 검토 완료**: 검토에서 찾은 5건과 완전 단절 복구 인계의 잔여 갈래를 수정했다. 독립 검토 최종 판정은 Approved / Approved, 잔여 0건이다(`reviews/split-review3.md`). 기존 안전장치 대응표로 분리에서 빠진 보호를 확인했고 변이별 실패 근거도 전부 감사했다.
-5. **문서 커밋·로컬 검증 완료**: GitOps PR #29 브랜치의 README 3곳에 세 블록 체계를 반영했다(문서 커밋 `6882d47`). `validate.sh`는 24 PASS / 0 FAIL / 기존 WARN 4, `validate.tests.sh`는 44/44다. 파일 이름으로 한정해 스테이징했다. 머지는 사용자 단계다.
-6. **사용자 입회·미실행**: 준비 완료 뒤 캡처 → 사용자 머지 → 인수 판정 → 별도 입회에서 drill. 실행 결과가 확인된 뒤에만 런북 `docs/runbooks/bootstrap.md` §3 T045 절에 기록한다.
+5. **문서·로컬 검증·머지 완료**: GitOps PR #29의 head `6882d47`을 운영자 승인 뒤 squash 머지했다(`06eb8584e2b9618ddd17175c91ebdafb057776ba`, 2026-09-22 04:59:02Z = 13:59:02 KST). 브랜치 검증은 `validate.sh` 24 PASS / 0 FAIL / 기존 WARN 4, `validate.tests.sh` 44/44다.
+6. **사용자 입회·인수 판정 완료**: 사전 캡처와 PM 해시 일치, 열린 SSH 창 A 대조 OK, OCI DEFAULT 자격 프로브 True를 확인했다(OCI 변경 권한의 증명은 아니다). 머지 뒤 198초에 SecretSynced, 값·UID 불변·ownerRef 없음·managed 라벨·data-hash·Argo tracking 미복사·ES 단일 소유·파드 불변 PASS, adopt 변경 0건. 컨트롤러 agent-view 조회에서도 root/platform-secrets/platform-cloudflared가 `06eb858`의 Synced/Healthy, DNS·터널 ES Ready=True/SecretSynced, 터널 ES Orphan/Retain/Periodic 5m, 터널 파드 2개 Ready·재시작 0을 확인했다. 런북 `docs/runbooks/bootstrap.md` §3 T045에 같은 범위를 기록했다.
+6a. **드릴 완료(05:25Z = 14:25 KST)**: 실행 전 컨트롤러(Claude)가 drill 전문·하네스 122/122·라이브 상태를 독립 확인했다. 두 파드의 `startTime`이 같아 이름 Ordinal로 노드 B 파드가 대상이 됐다. 게이트 전부 통과 → 삭제 1건 → 새 파드 Ready(옛 파드 종료 동안 anti-affinity로 약 30초 스케줄 대기) · 로그 `Registered tunnel connection` · 남은 파드 서명 불변 · `kubectl get nodes` Ready 2 · `ssh ssh-a` 새 연결 성공. 드릴 뒤 하네스 cluster의 `eso-1`~`eso-4` 전부 PASS. 두 번째 파드는 교체하지 않았다.
 7. **미완**: G5의 문서·전체 검사·라이브 하네스 확인 뒤 T045를 체크한다. 현재 50/119이며 G4 모의 검증 통과만으로 완료하지 않는다.
 
 ## 작업 규약(v2 블록 — 이 저장소 확정)
@@ -54,4 +55,10 @@
 
 ## 라이브 미확인(블록이 기대는 전제)
 
-실물 `kubectl`의 jsonpath 표기(4필드 단일 GET · `creationTimestamp` · `containerStatuses[0].restartCount`) · ESO 2.10.0이 터널 Secret에도 `data-hash`를 같은 키로 남기는가(G3의 DNS 토큰에서만 확인) · `kubectl delete --wait=false`의 실제 왕복 · Argo가 Missing 상태 ES를 `status.resources`에 싣는가 · 노드 sudo NOPASSWD · 운영자 터미널의 bracketed-paste 실동작 · Ctrl+C 중 finally 절단과 `FlushInputBuffer()`의 실제 제거율. 상세는 `NOTES.md` §4.
+터널 Secret의 `data-hash`, adopt 인수 판정 경로, drill의 실물 `kubectl` 조회·`delete --wait=false` 왕복·교체 후 접근 경로는 이번 라이브에서 확인했다. 남은 것은 Argo가 Missing 상태 ES를 `status.resources`에 싣는가, 노드 sudo NOPASSWD, 운영자 터미널의 bracketed-paste 실동작, Ctrl+C 중 finally 절단과 `FlushInputBuffer()`의 실제 제거율이다. 기존 미확인 항목의 상세는 `NOTES.md` §4를 참고하되 위 인수 확인 범위를 반영해 읽는다.
+
+## 알려진 결함(2026-09-22 드릴에서 발견 — T084에서 drill 재사용 전 수정)
+
+- **Pending 파드 행을 "조회 실패"로 분류한다.** 새 파드가 스케줄 대기(Pending)인 동안 `$pods`의 jsonpath 행은 `이름|||`(재시작 수·시작 시각·Ready 조건이 비어 있음)로 나온다. 행 형식 검사가 이를 형식 오류로 throw하고, 드릴 대기 루프는 그것을 잡아 "조회 실패 — **터널 순단일 수 있다**" 경고로 출력한다(이번 실행에서 2회). 처리 자체는 안전 쪽(남은 파드 미접촉 · 기한까지 계속 대기 · 결과 정상)이지만 문면이 운영자를 오도한다.
+- 원인: 모의 kubectl이 항상 네 필드가 채워진 행만 돌려줘서 하네스가 이 상태를 재현하지 못했다. 이번 드릴에서는 옛 파드가 종료되는 동안 required anti-affinity로 새 파드가 약 30초 `FailedScheduling`이었다.
+- 수정 방향: `$pods`에서 `이름|||` 형태(이름만 있고 나머지 세 필드가 모두 빈 값)를 "Pending — 아직 Ready 아님"으로 분류해 대기 루프가 경고 없이 계속 기다리게 한다(다른 형식 오류는 지금처럼 throw). 하네스에 "삭제 뒤 Pending 행이 몇 회 나온 다음 Ready" 시나리오와, 그 분류를 되돌리는 변이를 추가한다.
