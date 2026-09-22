@@ -325,6 +325,19 @@ Remove-Variable j
 - 검증: role 6 = `vault list auth/kubernetes/role` · 정책 6(+내장) = `vault policy list` · 정례 plan `No changes` · 게이트 1 = `read=8/8 hits=0`.
 - 되돌리기: 잘못된 role/정책은 코드 수정 → 재apply(0 destroy 원칙). kv 마운트 삭제 금지. 플레이스홀더 경로 되돌리기 = `vault kv metadata delete kv/<path>`.
 
+### T045 실값 시드(2026-09-21 — 요약 · 실행 기록 정본은 `bootstrap.md` §3 T045 절과 §4)
+| 경로 | 필드 | 버전 · 시각(Z) | 출처 | 상태 |
+|---|---|---|---|---|
+| `kv/platform/cloudflare/dns-token` | `token` | v1 · 03:20:12 | 라이브 Secret `cert-manager/cloudflare-dns-token` 키 `api-token`(파이프 복사) | 완료 — G3에서 ES가 인수(2026-09-21) |
+| `kv/platform/cloudflare/tunnel` | `token` | v1 · 03:20:19 | 라이브 Secret `cloudflared/cloudflared-tunnel` 키 `TUNNEL_TOKEN`(파이프 복사) | 완료 — G4에서 ES가 인수 + 파드 1개 드릴(2026-09-22) |
+| `kv/platform/oci/s3` | `access_key` · `secret_key` | v1 · 03:25:45 | 운영자 보관분(비밀번호 관리자) | 완료 — **키 쌍 정합은 미증명**(첫 증명 = T053 백업 복원) |
+| Access 서비스 토큰 4경로(`web-bff` dev·prod · tester 2종) | — | — | — | **이연**(T077 · T092 — `web-bff`는 Workers Secrets 전용이라 T092가 복사) |
+| `kv/platform/grafana-cloud` | — | — | — | **이연**(T098) |
+- 값은 화면·파일·argv·클립보드에 나오지 않는다 — 판정은 되읽기 SHA-256 Ordinal 대조뿐이다. 블록 정본: `specs/003-platform-foundation/design/t045-blocks/op1-seed.ps1`(시드) · `kv-correct.ps1`(정정 — 인수 뒤 회전의 1단계).
+- kv 입력 규칙: 값은 **JSON stdin**으로만 넣는다(`vault kv put <path> -` + `{"token":"…"}`) — `key=-`는 쓰지 않는다(stdin 끝 개행이 값에 들어간다). 첫 쓰기는 `"-cas=0"`(이미 있으면 거부 = 덮어쓰기 사고 방지), 정정은 현재 버전 번호로 `"-cas=<n>"`(PowerShell에서는 `-flag=value`를 따옴표로 묶는다). kv v2는 10버전을 보존한다 — `vault kv delete`는 최신 버전을 soft-delete할 뿐이고, 되돌릴 수 없게 지우려면 `destroy`(버전 단위) 또는 `metadata delete`(경로 전체)다.
+- 시드 주체는 root 토큰이다(§4 위 · D4 — revoke는 T084 뒤). 재실행은 안전하다 — 블록이 경로별로 `완료(신규)` · `이미 시드됨(값 동일)` · `보류(…)` · `중단(존재하지만 값이 다름)`을 판정하고, 값이 다르면 **덮어쓰지 않고 멈춘다**(값 교체는 `kv-correct.ps1`이 현재 버전 번호로 `"-cas=<n>"`을 걸어 한다).
+- ⚠ **인수 뒤 회전은 kv가 먼저다.** Secret만 새 값으로 바꾸면 ESO가 ≤5분 안에 kv 값으로 되돌린다(`bootstrap.md` §3 T045 · gitops `platform/cloudflared/README.md` ⑨).
+
 ---
 
 ## §5 break-glass

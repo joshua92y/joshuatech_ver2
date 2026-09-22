@@ -1632,6 +1632,9 @@ finally {
 
 ### 단계 10 — G4: 터널 토큰 인수 🔒 ✋ (사용자 입회 필수. G3 게이트를 전부 PASS한 뒤에만)
 
+> **실행 기록(2026-09-22) — 아래 블록은 원설계다. 실제로 실행한 블록은 다르다.** 이 절의 단일 블록(판정 + 파드 1개 드릴)은 v2 규약으로 다시 쓴 뒤 적대적 검증 5라운드를 거쳤다. 매 라운드 같은 계열의 high가 새로 나왔는데, 원인은 "이전 실행이 이미 파드를 지웠다"는 사실을 운영자가 옮겨 적는 `drilled:` 접두어로 이어가는 구조였다. 사용자 결정(2026-09-22)으로 **판정과 드릴을 분리**했다 — `g4-adopt.ps1`(캡처 → 머지 대기 → 판정 · **클러스터 쓰기 0건**) · `g4-drill.ps1`(파드 1개 교체 · 지울 파드 이름을 운영자가 타자) · `g4-restore.ps1`(값 복구). 정본·검증 보고는 `design/t045-blocks/g4/`이고 실행 기록은 런북 `bootstrap.md` §3 T045 절이다. 결과: 인수 판정 PASS(변경 0) · 드릴 1회(변경 1 — 새 파드 Ready · 터널 등록 · 남은 파드 불변) · 드릴 중 블록 결함 1건(스케줄 대기 파드 행의 오분류 — 안전 영향 없음, T084 재사용 전 수정).
+> **이 절의 전제 정정**: "cloudflared는 env를 시작 시 1회만 읽는다"는 틀렸다(§2.2 표 정정) — env는 **컨테이너가 시작할 때마다** 다시 읽힌다. 아래 본문의 "파드를 재시작하지 않는 한 안전" 류 문장은 "컨테이너가 재시작되지 않는 동안만"으로 읽는다.
+
 **사전 조건 블록.** 하나라도 실패하면 머지하지 않습니다. 이 창은 G4가 끝날 때까지 닫지 않습니다.
 
 ```powershell
@@ -1756,6 +1759,7 @@ Remove-Variable pre, post, preUid, postUid -ErrorAction SilentlyContinue   # ⚠
   - `pwsh -NoProfile -File tests/run-all.ps1`이 PASS합니다.
   - agent-view로 `run-platform-tests.ps1`을 돌립니다.
     - eso-1(강화판), eso-2, eso-3, eso-4(두 ES 모두 `Orphan`), np-set-5(강화판), argo-1, argo-4가 PASS합니다.
+    - **정정(2026-09-22 실측)**: `argo-4`는 T045에서 PASS할 수 없다 — CNPG `Cluster pg-main`·Kafka·KafkaNodePool 등 T056 이후 리소스의 삭제 보호 어노테이션을 보는 검사라, 그 CRD가 없는 지금은 `the server doesn't have a resource type "clusters"`로 FAIL한다(T045 전 기간 같은 사유). 나머지 게이트는 전부 PASS했다: cluster 32 PASS / 5 FAIL(argo-4 · reloader-1(T046) · backup-1~3(OCI 조회 세션 만료)) / 12 SKIP(ca-1 `until T056` 포함).
     - ca-1은 T056까지 SKIP(`until T056`)이 예상됩니다(설계 초안의 "FAIL"은 오류 — 하네스는 미러 Secret이 없으면 SKIP).
 - **완료 보고(D10-④):** report.md · 런북 · 체크박스 커밋 메시지에 **이연 범위**를 명시합니다 — Access 4경로(T077·T092), `grafana-cloud`(T098), 그리고 건너뛴 경우 `oci/s3`(T053 전 별도 발급·교체).
 - **tasks.md:** T045 체크박스만 `[X]`로 바꿉니다.

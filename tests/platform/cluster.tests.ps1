@@ -41,7 +41,7 @@
 #   vault-1..2  seal-status sealed=false · type=ocikms
 #   eso-1..4    clustersecretstore 정확히 5개(vault-platform·vault-dev·vault-prod·vault-data·k8s-data-ca)가 Ready=True + reason=Valid이고,
 #               vault store 4장은 spec provider.vault.auth.kubernetes.serviceAccountRef의 namespace=external-secrets·audiences=[vault],
-#               k8s-data-ca는 provider.kubernetes.auth.serviceAccount.namespace=external-secrets — namespace를 생략하면 ESO가 referent
+#               k8s-data-ca는 provider.kubernetes.remoteNamespace=data · auth.serviceAccount.namespace=external-secrets — namespace를 생략하면 ESO가 referent
 #               인증으로 해석해 로그인 한 번 없이 Ready/Valid를 주므로(ESO 2.10.0) 상태만으로는 가짜 PASS가 된다. externalsecret -A 전부
 #               SecretSynced, secretStoreRef(kind ClusterSecretStore)가 ns scope·remoteRef.key 접두와 일치. 인수형 ExternalSecret 2장
 #               (cert-manager/cloudflare-dns-token · cloudflared/cloudflared-tunnel)은 target.creationPolicy=Orphan(생략 = 기본값 Owner →
@@ -605,6 +605,9 @@ ClusterAssert 'eso-1' {
                 }
             }
         } elseif ($null -ne $k8s) {
+            # remoteNamespace = CA 미러의 원본 ns. 비어 있으면 ESO는 ExternalSecret의 ns에서 찾는다 — 계약은 `data` 고정이다.
+            $rns = [string](Prop $k8s 'remoteNamespace')
+            if (-not (Eq $rns 'data')) { $bad += "${n}: provider.kubernetes.remoteNamespace='$rns' (expected data)" }
             $sa = PropPath $k8s @('auth', 'serviceAccount')
             if ($null -eq $sa) { $bad += "${n}: provider.kubernetes.auth.serviceAccount missing (expected name/namespace)" }
             else {
