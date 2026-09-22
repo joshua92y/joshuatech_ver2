@@ -71,12 +71,12 @@
 #   mon-1       alloy-metrics 워크로드(ds/sts/deploy, 이름 접미 또는 라벨) 각각 logs --tail=300 --all-containers에 connection refused ·
 #               context deadline exceeded 0
 #   limits-1..2 jt-dev·jt-prod Running pod 컨테이너: limits.cpu 없음 · limits.memory 있음
-#   reloader-1  deployment reloader(ns reloader) Available=True
+#   reloader-1..2 deployment reloader(ns reloader) Available=True · scoped 모드: Application platform-reloader status.resources에 ClusterRole·ClusterRoleBinding 0, Role reloader-role ns 집합 = $reloaderWatchNs + reloader(정확), 첫 컨테이너 args --namespaces= 집합 동일 + --reload-strategy=annotations
 #   backup-1..3 joshuatech-backup-platform k3s/ · vault/ 에 24h 내 .age 오브젝트 ≥ 1, 비-.age(평문) 오브젝트 0
 #
-# 단언 수: 49 = gate 3 + nodes 3 + argo 4 + vault 2 + eso 4 + ca 1 + ns 2 + psa 2 + np-set 5 + np-cond 2 + np 14 + mon 1 + limits 2 +
-#          reloader 1 + backup 3 (np 14 = np-1, np-2-data-assert, np-2-kafka-assert, np-2-authz-assert, np-2-manual, np-3, np-3-live,
-#          np-4, np-4-live, np-5, np-5-live, np-6, np-6-live, np-7). live/manual 5개는 항상 SKIP이므로 PASS 후보는 44, 그중 단계별
+# 단언 수: 50 = gate 3 + nodes 3 + argo 4 + vault 2 + eso 4 + ca 1 + ns 2 + psa 2 + np-set 5 + np-cond 2 + np 14 + mon 1 + limits 2 +
+#          reloader 2 + backup 3 (np 14 = np-1, np-2-data-assert, np-2-kafka-assert, np-2-authz-assert, np-2-manual, np-3, np-3-live,
+#          np-4, np-4-live, np-5, np-5-live, np-6, np-6-live, np-7). live/manual 5개는 항상 SKIP이므로 PASS 후보는 45, 그중 단계별
 #          SKIP 게이트는 ca-1 · np-2-* 3 · limits-* 2 · mon-1 의 7개.
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false   # 자식 프로세스의 0이 아닌 종료 코드를 예외로 바꾸지 않는다
@@ -138,6 +138,9 @@ $assertJobs = @('data-assert', 'kafka-assert', 'authz-assert')
 # assert Job이 실제로 증명하는 매트릭스 범위(np-2-* PASS 문구)
 $assertJobScope = @{ 'data-assert' = 'jt-dev -> data 5432 (pg-main) and 6379 (Dragonfly)'; 'kafka-assert' = 'jt-dev -> data 9093 (Kafka SCRAM/TLS)'; 'authz-assert' = 'jt-dev -> identity 8080 (OpenFGA)' }
 $vaultIngressNs = @('kube-system', 'monitoring', 'external-secrets')   # 매트릭스의 vault 8200 도착 행(노드 A ipBlock은 별도) — vault 자기 ns 없음(allow-same-namespace 대상 아님)
+# Reloader scoped 모드 감시 ns(contracts/gitops-repo.md §디렉터리 platform/reloader/ 목록) — 릴리스 ns reloader는 차트가 자동 포함하므로
+# reloader-2가 코드에서 더한다. cloudflared는 넣지 않는다(터널 커넥터는 수동 1개씩 교체가 안전장치). 새 소비자 ns는 계약에 먼저 추가한다.
+$reloaderWatchNs = @('identity', 'jt-dev', 'jt-prod')
 
 # ---------- 결과 헬퍼 ----------
 function Clip([string]$s, [int]$max = 400) {
@@ -1145,6 +1148,63 @@ ClusterAssert 'reloader-1' {
     $ready = PropPath $d @('status', 'readyReplicas')
     if ($null -ne $c -and (Eq ([string](Prop $c 'status')) 'True') -and $null -ne $ready -and [int]$ready -ge 1) { return @('PASS', "deployment reloader Available (readyReplicas=$ready)") }
     return @('FAIL', "deployment reloader not Available (readyReplicas='$ready')")
+}
+ClusterAssert 'reloader-2' {
+    # scoped 모드 라이브 가드(설계 t046 D6 · F5): 차트 기본값이 watchGlobally=true라 values 키 오타 하나가 조용히 전역 모드(ClusterRole)로
+    # 되돌린다. agent-view는 ClusterRole·Role을 읽지 못하므로(F10) RBAC는 Argo Application status.resources로, 인자는 Deployment spec으로
+    # 판정한다. 빈 status.resources는 "ClusterRole 0"의 증거가 아니다(FAIL). 실패는 모아서 한 번에 보고한다.
+    $want = @($reloaderWatchNs) + @('reloader')
+    $wantText = (SortOrd $want) -join ', '
+    $cfNote = ' -- cloudflared must not be watched (tunnel connectors are replaced by hand)'
+    $bad = @(); $resCount = 0; $nsArg = ''
+    $app = Get-KubeOne 'argocd' 'applications.argoproj.io' 'platform-reloader'
+    if ($null -eq $app) { $bad += 'Application platform-reloader (ns argocd) not found' }
+    else {
+        $res = @(PropArr $app @('status', 'resources'))
+        $resCount = $res.Count
+        if ($resCount -eq 0) { $bad += 'Application platform-reloader status.resources is empty (not evidence of 0 ClusterRoles)' }
+        else {
+            $clusterRbac = @($res | Where-Object { (Eq ([string](Prop $_ 'kind')) 'ClusterRole') -or (Eq ([string](Prop $_ 'kind')) 'ClusterRoleBinding') } |
+                ForEach-Object { "$(Prop $_ 'kind')/$(Prop $_ 'name')" })
+            if ($clusterRbac.Count -gt 0) { $bad += "cluster-scoped RBAC in status.resources (scoped mode renders none): $($clusterRbac -join ', ')" }
+            $roleNs = @($res | Where-Object { (Eq ([string](Prop $_ 'kind')) 'Role') -and (Eq ([string](Prop $_ 'name')) 'reloader-role') } |
+                ForEach-Object { [string](Prop $_ 'namespace') })
+            if (-not (SetEq $roleNs $want)) {
+                $m = "Role reloader-role in [$((SortOrd $roleNs) -join ', ')], expected exactly [$wantText]"
+                if (Contains $roleNs 'cloudflared') { $m += $cfNote }
+                $bad += $m
+            }
+        }
+    }
+    $d = Get-KubeOne 'reloader' 'deployments.apps' 'reloader'
+    if ($null -eq $d) { $bad += 'deployment reloader (ns reloader) not found' }
+    else {
+        $containers = @(PropArr $d @('spec', 'template', 'spec', 'containers'))
+        if ($containers.Count -eq 0) { $bad += 'deployment reloader has no containers' }
+        else {
+            $cargs = @(PropArr $containers[0] @('args') | ForEach-Object { [string]$_ })
+            # 이웃 플래그(--namespaces-to-ignore 등)를 잡지 않도록 플래그 이름 전체('--x' 또는 '--x=' 접두)로 고른다. 같은 플래그가 두 번이면 FAIL.
+            $nsArgs = @($cargs | Where-Object { (Eq $_ '--namespaces') -or (StartsOrd $_ '--namespaces=') })
+            if ($nsArgs.Count -ne 1 -or -not (StartsOrd $nsArgs[0] '--namespaces=')) {
+                $bad += "args: expected exactly one --namespaces=<list>, found $($nsArgs.Count) [$($nsArgs -join ', ')]"
+            }
+            else {
+                $nsArg = $nsArgs[0]
+                $argNs = @($nsArg.Substring('--namespaces='.Length).Split(','))
+                if (-not (SetEq $argNs $want)) {
+                    $m = "args --namespaces set [$((SortOrd $argNs) -join ', ')], expected exactly [$wantText]"
+                    if (Contains $argNs 'cloudflared') { $m += $cfNote }
+                    $bad += $m
+                }
+            }
+            $rsArgs = @($cargs | Where-Object { (Eq $_ '--reload-strategy') -or (StartsOrd $_ '--reload-strategy=') })
+            if ($rsArgs.Count -ne 1 -or -not (Eq $rsArgs[0] '--reload-strategy=annotations')) {
+                $bad += "reload strategy args [$($rsArgs -join ', ')], expected exactly [--reload-strategy=annotations]"
+            }
+        }
+    }
+    if ($bad.Count -gt 0) { return @('FAIL', ($bad -join '; ')) }
+    return @('PASS', "platform-reloader: ClusterRole/ClusterRoleBinding 0 (of $resCount status.resources); Role reloader-role in exactly [$wantText]; args $nsArg --reload-strategy=annotations")
 }
 
 # ---------- 11. OCI 백업 오브젝트(svc-verify 읽기 전용) ----------
