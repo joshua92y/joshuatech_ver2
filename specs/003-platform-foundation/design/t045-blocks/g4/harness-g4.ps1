@@ -10,6 +10,7 @@ if (-not [string]::IsNullOrWhiteSpace($BlockDir)) { $here = (Resolve-Path $Block
 $blocks = [ordered]@{
   adopt   = Join-Path $here 'g4-adopt.ps1'
   restore = Join-Path $here 'g4-restore.ps1'
+  drill = Join-Path $here 'g4-drill.ps1'
 }
 # ---------------------------------------------------------------- 가짜 값(시크릿 아님 · 노출 검사 대상)
 $TOK_JSON  = '{"a":"acct-0123456789abcdef","t":"11112222-3333-4444-5555-666677778888","s":"sec<>&''\"x-0123456789abcdefghijklmnop"}'
@@ -44,6 +45,7 @@ function Reset-Mocks {
     data = [ordered]@{ TUNNEL_TOKEN = $TOK }
     labels = @{}; ann = @{} }
   $global:Es = $null
+  $global:EsReady = 'True'
   $global:Pods = @(
     @{ name = $POD1; restarts = 0; start = $ST1; ready = 'True'; lab = 'app=cloudflared' },
     @{ name = $POD2; restarts = 0; start = $ST2; ready = 'True'; lab = 'app=cloudflared' })
@@ -65,6 +67,9 @@ function Reset-Mocks {
   $global:NewPodReady = $true
   $global:NewPodAt = $null
   $global:DeleteRemoves = $true
+  $global:NewPodWithOld = $false
+  $global:ThrowDelete = $false
+  $global:SurvivorNotReadyAfterDelete=$false
   $global:BumpSurvivorOnDelete = $false
   $global:FailPodsAfterDelete = $false
   $global:LogHit = $true
@@ -90,6 +95,8 @@ function Reset-Mocks {
   $global:OnDrill = $null
   $env:OCI_CLI_PROFILE = ''
   $env:OCI_CLI_AUTH = ''
+  $global:EofAfter = -1
+  $global:ReadCount = 0
   $global:Inputs = [System.Collections.Queue]::new() }
 function EsStamp {
   if (-not [string]::IsNullOrWhiteSpace($global:EsCreated)) { return [string]$global:EsCreated }
@@ -135,12 +142,14 @@ function Set-Clipboard { param([Parameter(ValueFromPipeline = $true)]$Value)
 function Read-Host { param([Parameter(Position = 0)]$Prompt, [switch]$AsSecureString, [switch]$MaskInput)
   [void]$global:Prompts.Add([string]$Prompt)
   [void]$global:Seq.Add($(if ($AsSecureString) { 'read:secure' } else { 'read:plain' }))
+  $global:ReadCount++
+  if ($global:EofAfter -ge 0 -and $global:ReadCount -ge $global:EofAfter) { return $null }
   $v = if ($global:Inputs.Count -gt 0) { [string]$global:Inputs.Dequeue() } else { '' }
   [void]$global:ReadLog.Add([pscustomobject]@{ prompt = [string]$Prompt; secure = [bool]$AsSecureString; value = $v })
   if ([string]::Equals($v, 'merge', [StringComparison]::Ordinal)) {
     $global:MergeAt = $global:Now
     if ($global:OnMerge) { & $global:OnMerge } }
-  if ([string]::Equals($v, 'drill', [StringComparison]::Ordinal) -and $global:OnDrill) { & $global:OnDrill }
+  if (($v -eq $POD2 -or $v -eq 'drill' -or $v -eq 'second') -and $global:OnDrill) { & $global:OnDrill }
   if ($AsSecureString) {
     $ss = [securestring]::new()
     foreach ($c in $v.ToCharArray()) { $ss.AppendChar($c) }
@@ -188,8 +197,9 @@ function kubectl {
   # ⚠ 변경 로그는 **조회 동사(get·auth·logs) 밖의 모든 동사**를 전체 argv 그대로 기록한다.
   # 허용 헬퍼 안에 숨어든 변경 호출(scale·rollout·patch …)과 인자만 바꾼 변이(--all·-l·이름 2개·--force)를
   # 정확 일치 대조로 잡기 위해서다(짧은 요약으로 기록하면 argv 변이가 같은 줄로 접힌다).
-  if (-not (@('get', 'auth', 'logs') -contains $verb)) { [void]$global:Mut.Add(($a -join ' ')) }
+  if (-not (@('get', 'auth', 'logs') -contains $verb)) { [void]$global:Mut.Add(($a -join ' ')); if ($global:ActiveBlock -eq 'adopt') { throw 'ADOPT-WRITE: adopt 변경 동사 거부' } }
   if ([string]::Equals($verb, 'auth', [StringComparison]::Ordinal)) {
+    if ($ns -cne 'cloudflared') { throw '권한 조회 namespace 불일치' }
     if ($global:Faults['canINo']) { $global:LASTEXITCODE = 1; return 'no' }
     # 동사 하나만 거부한다 — "get secrets 는 되는데 delete pods 는 안 된다"를 만들어 0) 의 권한 사전 확인 두 항목을 따로 시험한다.
     if (-not [string]::IsNullOrWhiteSpace($global:CanIDeny) -and (@($pos | Where-Object { [string]::Equals([string]$_, [string]$global:CanIDeny, [StringComparison]::Ordinal) }).Count -gt 0)) {
@@ -215,6 +225,7 @@ function kubectl {
     if ($global:LogHit) { return @('2026-09-21T06:00:01Z INF Starting tunnel', '2026-09-21T06:00:03Z INF Registered tunnel connection connIndex=0', '2026-09-21T06:00:04Z INF Registered tunnel connection connIndex=1') }
     return @('2026-09-21T06:00:01Z INF Starting tunnel', '2026-09-21T06:00:09Z INF Waiting for edge connection') }
   if ([string]::Equals($verb, 'delete', [StringComparison]::Ordinal)) {
+    if ($global:ThrowDelete) { throw 'mock interrupt' }
     $name = [string]$pos[2]
     $c = FailCode 'delete'
     if ($global:FailPodsAfterDelete) { $global:FailAlways['pods'] = 1 }
@@ -223,8 +234,11 @@ function kubectl {
       $global:Pods = @($global:Pods | Where-Object { -not [string]::Equals([string]$_.name, $name, [StringComparison]::Ordinal) })
       # 삭제 직후 남은 커넥터까지 재시작하는 상황(유일한 경로가 흔들린다)
       if ($global:BumpSurvivorOnDelete) { foreach ($p in $global:Pods) { $p.restarts = 1 } }
+      if ($global:SurvivorNotReadyAfterDelete) { foreach ($p in $global:Pods) { $p.ready='False' } }
       $global:Pods += @{ name = $POD3; restarts = 0; start = ($global:Now.ToString('yyyy-MM-ddTHH:mm:ss') + 'Z'); ready = 'False'; lab = 'app=cloudflared' }
       $global:NewPodAt = $global:Now.AddSeconds($global:PodReadyDelay) }
+    if ($global:NewPodWithOld) {
+      $global:Pods += @{ name = $POD3; restarts = 0; start = $ST3; ready = 'True'; lab = 'app=cloudflared' } }
     return "pod `"$name`" deleted" }
   if (-not [string]::Equals($verb, 'get', [StringComparison]::Ordinal)) { $global:LASTEXITCODE = 1; return }
   $kind = [string]$pos[1]
@@ -248,6 +262,7 @@ function kubectl {
     $c = FailCode 'app.res'; if ($c -ne 0) { $global:LASTEXITCODE = $c; return }
     return $global:AppRes }
   if ([string]::Equals($kind, 'externalsecret', [StringComparison]::Ordinal)) {
+    if ($o.Contains('&&')) { throw 'unsupported kubectl JSONPath operator &' }
     if ($o.Contains('tracking-id')) { $c = FailCode 'es.trk' }
     elseif ($o.Contains('creationTimestamp')) { $c = FailCode 'es.created' }
     elseif ($o.Contains('conditions')) { $c = FailCode 'es.reason' }
@@ -265,7 +280,9 @@ function kubectl {
       if ([string]::Equals($r, 'SecretSynced', [StringComparison]::Ordinal)) {
         if ($global:Faults['changeAfterSync']) { $global:Sec.data['TUNNEL_TOKEN'] = $TOK2; $global:Faults['changeAfterSync'] = $false }
         if ($global:Faults['changeUidAfterSync']) { $global:Sec.uid = 'ffffeeee-dddd-4ccc-8bbb-aaaa99998888'; $global:Faults['changeUidAfterSync'] = $false } }
-      return $r }
+      if ($o.Contains('].status}|')) {
+        if ($o -cne 'jsonpath={.status.conditions[?(@.type=="Ready")].status}|{.status.conditions[?(@.type=="Ready")].reason}') { throw 'ES 상태/이유 JSONPath 계약 불일치' }
+        return "$($global:EsReady)|$r" }; return $r }
     if ($o.Contains('tracking-id')) { return [string]$global:Es.ann['argocd.argoproj.io/tracking-id'] }
     $global:LASTEXITCODE = 1; return }
   if (-not [string]::Equals($kind, 'secret', [StringComparison]::Ordinal)) { $global:LASTEXITCODE = 1; return }
@@ -447,7 +464,16 @@ function Lint-Block { param($path, [string[]]$kubeHelpers, [string]$mutHelper, [
     if ($consts -contains 'can-i') { continue }
     foreach ($sc in $c.FindAll({ param($n) $n -is [System.Management.Automation.Language.StringConstantExpressionAst] }, $true)) {
       if ($badVerbs -contains ([string]$sc.Value).ToLowerInvariant()) { $bad += "L$($c.Extent.StartLineNumber) 조회 헬퍼 `$kq 인자에 변경 동사 '$($sc.Value)'" } } }
+  $runtimeGuard = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.IfStatementAst] -and $n.Extent.Text.StartsWith("if (-not ([string]::Equals([string]`$ka[`$vi], 'get',", [StringComparison]::Ordinal) }, $true))
+  $expectedGuard = 'if (-not ([string]::Equals([string]$ka[$vi], ''get'', [StringComparison]::Ordinal) -or [string]::Equals([string]$ka[$vi], ''auth'', [StringComparison]::Ordinal))) {
+        throw "조회 헬퍼에 조회가 아닌 동사가 들어왔다($([string]$ka[$vi])) — 블록 결함이다. 중단" }'
+  if ($runtimeGuard.Count -ne 1 -or -not [string]::Equals($runtimeGuard[0].Extent.Text, $expectedGuard, [StringComparison]::Ordinal)) { $bad += '런타임 조회 동사 허용 목록 불일치' }
+  foreach ($c in $cmds) {
+    if ($c.CommandElements[0].Extent.Text -eq '$kq' -and $c.Extent.Text.Contains("'can-i'")) {
+      if (-not $c.Extent.Text.Contains("'-n', `$NS")) { $bad += 'auth can-i namespace 누락' } }
+  }
   # 클러스터를 바꾸는 헬퍼의 호출 지점이 1곳뿐인가
+  if (-not [string]::IsNullOrWhiteSpace($mutHelper)) {
   $refs = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.VariableExpressionAst] -and [string]::Equals([string]$n.VariablePath.UserPath, $mutHelper, [StringComparison]::Ordinal) }, $true))
   $call = @($refs | Where-Object { -not ($_.Parent -is [System.Management.Automation.Language.AssignmentStatementAst]) })
   if ($call.Count -ne 1) { $bad += "변경 헬퍼 `$$mutHelper 의 호출 지점이 $($call.Count) 곳(1 이어야 한다)" }
@@ -467,6 +493,7 @@ function Lint-Block { param($path, [string[]]$kubeHelpers, [string]$mutHelper, [
       if (-not (@($logs | Where-Object { $_.Extent.StartLineNumber -lt $kline }).Count)) { $bad += '단계 기록($log[...])이 kubectl 호출보다 뒤에 있다' }
       foreach ($flag in $mutFlags) {
         if (-not (@($kc[0].CommandElements | Where-Object { ([string]$_.Extent.Text).Contains($flag) }).Count)) { $bad += "변경 헬퍼의 kubectl 인자에 $flag 없음" } } } }
+  }
   # finally 가 비밀이 스쳐 간 변수를 정리하는가(규칙 5)
   $fins = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.TryStatementAst] }, $true) | ForEach-Object { $_.Finally } | Where-Object { $null -ne $_ })
   $clearedTxt = ''
@@ -519,6 +546,7 @@ $results = [System.Collections.ArrayList]::new()
 function Run-Case { param($id, $desc, $block, [scriptblock]$setup, $expect, [string[]]$want = @(), [string[]]$notWant = @(), [string[]]$mut = @(), [scriptblock]$post = $null, [string[]]$wantPrompt = @(), [string[]]$notWantPrompt = @(), [int]$leftover = 0)
   Reset-Mocks
   Reset-Strict
+  $global:ActiveBlock = $block
   & $setup
   $gvBefore = @{}; foreach ($gv in (Get-Variable -Scope Global)) { if ($gv.Value -is [string]) { $gvBefore[$gv.Name] = $gv.Value } }
   $out = [System.Collections.ArrayList]::new()
@@ -556,6 +584,8 @@ function Run-Case { param($id, $desc, $block, [scriptblock]$setup, $expect, [str
     if (-not [string]::Equals($nx, 'clip', [StringComparison]::Ordinal)) { [void]$fails.Add("STRICT 비밀 입력 직후 클립보드 비우기 없음(다음 사건 = $nx)"); break } }
   if ($global:ClipValues.Count -lt ($nSecure + 1)) { [void]$fails.Add("STRICT 클립보드 비우기 $($global:ClipValues.Count) 회(비밀 입력 $nSecure 회 + finally 1 회 = $($nSecure + 1) 회 이상이어야 한다)") }
   # 공통 사후 조건 2 — 클러스터 변경 동작 로그가 기대 집합과 정확히 일치한다
+  if ($block -eq 'adopt' -and $global:Mut.Count -ne 0) { [void]$fails.Add('ADOPT-WRITE: 공통 사후조건 변경 0 위반') }
+  if ($global:Mut.Count -gt 1) { [void]$fails.Add('WRITE-LIMIT: 실행당 쓰기 1 초과') }
   $got = ($global:Mut -join ' ; ')
   $exp = ($mut -join ' ; ')
   if (-not [string]::Equals($got, $exp, [StringComparison]::Ordinal)) { [void]$fails.Add("변경 로그 불일치: 실제[$got] 기대[$exp]") }
@@ -576,7 +606,15 @@ $EAP = "`$ErrorActionPreference = 'Stop'"
 $PSN = '$PSNativeCommandUseErrorActionPreference = $false'
 # 헬퍼별 동사 허용 목록 · kubectl 인자 고정값 · 네이티브(ssh·oci) 인자 고정값 · 명령 이름 허용 목록.
 # `$kq` 의 kubectl 은 splat(@ka)이라 동사 리터럴이 없다 — 동사 방어는 런타임 허용 목록 + L-E(호출 지점 인자) 쪽이다.
-$lint['g4-adopt.ps1'] = Lint-Block $blocks['adopt'] @('kq', 'klog', 'kdel') 'kdel' @('snap', 'b64', 'hNow', 'uNow', 'hDel', 'uDel', 'pmHash') @('--wait=false', '--request-timeout=') `
+$lint['g4-adopt.ps1'] = Lint-Block $blocks['adopt'] @('kq') '' @('snap', 'b64', 'hNow', 'uNow', 'hDel', 'uDel', 'pmHash') @('--wait=false', '--request-timeout=') `
+  @{ kq = @('get', 'auth') } `
+  @{ kq   = @('kubectl', '@ka', "'--request-timeout=10s'") } `
+  @('ConvertFrom-SecureString', 'ForEach-Object', 'Get-Date', 'Get-ItemProperty', 'kubectl', 'oci', 'Out-Null', 'Read-Host', 'Remove-Variable', 'Set-Clipboard', 'ssh', 'Start-Sleep', 'Where-Object', 'Write-Host', 'Write-Warning') `
+  @($EAP, $PSN) `
+  @{ ssh = @("'-n' '-o' 'BatchMode=yes' '-o' 'ConnectTimeout=15' 'ssh-a' 'cut -c1-8 /proc/sys/kernel/random/boot_id'")
+     oci = @("'iam' 'region' 'list' '--query' 'length(data)'") } `
+  @{}
+$lint['g4-drill.ps1'] = Lint-Block $blocks['drill'] @('kq', 'klog', 'kdel') 'kdel' @('snap', 'b64', 'hNow', 'uNow', 'hDel', 'uDel', 'pmHash') @('--wait=false', '--request-timeout=') `
   @{ kq = @('get', 'auth'); klog = @('logs'); kdel = @('delete') } `
   @{ kq   = @('kubectl', '@ka', "'--request-timeout=10s'")
      klog = @('kubectl', "'-n'", '$NS', "'logs'", '$pod', "'--tail=120'", "'--request-timeout=15s'")
@@ -586,13 +624,21 @@ $lint['g4-adopt.ps1'] = Lint-Block $blocks['adopt'] @('kq', 'klog', 'kdel') 'kde
   @{ ssh = @("'-n' '-o' 'BatchMode=yes' '-o' 'ConnectTimeout=15' 'ssh-a' 'cut -c1-8 /proc/sys/kernel/random/boot_id'",
              "'-n' '-o' 'BatchMode=yes' '-o' 'ConnectTimeout=15' 'ssh-a' 'hostname'")
      oci = @("'iam' 'region' 'list' '--query' 'length(data)'") } `
-  @{ nrWarn = 6 }
+  @{}
 $lint['g4-restore.ps1'] = Lint-Block $blocks['restore'] @('kq', 'kapply') 'kapply' @('tok', 'b64', 'payload') @('--server-side', '--request-timeout=') `
   @{ kq = @('get', 'auth'); kapply = @('apply') } `
   @{ kq     = @('kubectl', '@ka', "'--request-timeout=10s'")
      kapply = @('kubectl', "'apply'", "'--server-side'", "'--force-conflicts'", "'--field-manager=t045-restore'", "'--request-timeout=30s'", "'-f'", "'-'") } `
   @('ConvertFrom-SecureString', 'ConvertTo-Json', 'ForEach-Object', 'Get-ItemProperty', 'kubectl', 'Out-Null', 'Read-Host', 'Remove-Variable', 'Set-Clipboard', 'Start-Sleep', 'Where-Object', 'Write-Host', 'Write-Warning') `
   @($EAP, $PSN) @{}
+$readOnlyAst = [System.Management.Automation.Language.Parser]::ParseFile($blocks['adopt'], [ref]$null, [ref]$null)
+foreach ($cmd in $readOnlyAst.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'kubectl' }, $true)) {
+  $parts = @($cmd.CommandElements | ForEach-Object { $_.Extent.Text })
+  if ($parts -contains '@ka') { continue }
+  $verb = if ($parts[1] -eq "'-n'") { $parts[3].Trim("'") } else { $parts[1].Trim("'") }
+  if ($verb -notin @('get', 'auth', 'logs')) { $lint['g4-adopt.ps1'] += "ADOPT-WRITE AST 금지 동사: $verb" }
+}
+if (-not (Test-Path (Join-Path $here 'g4-drill.ps1'))) { $lint['g4-drill.ps1'] = @('DRILL-MISSING: 독립 드릴 게이트 블록이 없다') }
 foreach ($k in $lint.Keys) {
   $v = $lint[$k]
   Write-Host ("  {0,-16} {1}" -f $k, $(if ($v.Count) { 'LINT-FAIL: ' + ($v -join ' ; ') } else { 'clean(단일 최상위 문 · 빈 줄 0 · CR 0 · 명령 이름 허용 목록 · 첫 두 문 고정 · kubectl 은 헬퍼 안 · 헬퍼별 동사 허용 목록 · 헬퍼 kubectl 인자 정확 일치 · ssh/oci 인자 고정 · 비밀 변수에 -match 0 · finally 첫 문 Remove-Variable + 맨 표현식 0 · Read-Host 앞 FlushInputBuffer)' }))
@@ -600,35 +646,21 @@ foreach ($k in $lint.Keys) {
 Write-Host "`n=== 시나리오 ==="
 $IN = { param([string[]]$v) foreach ($x in $v) { $global:Inputs.Enqueue($x) } }
 # 정상 입력열: boot_id 대조 → 0) go → 1P) skip-pm → 2) merge → 4) drill
-$OK = { & $IN @($BOOT, 'go', 'skip-pm', 'merge', 'drill') }
+$OK = { & $IN @($BOOT, 'go', 'skip-pm', 'merge') }
 # 변경 로그는 **전체 argv 정확 일치**다 — 셀렉터·이름 개수·플래그가 하나라도 달라지면 불일치다.
 $DELARGV = { param($p) "-n cloudflared delete pod $p --wait=false --request-timeout=30s" }
 $DEL2 = @((& $DELARGV $POD2))   # 드릴 대상은 startTime 이 가장 늦은 파드 = POD2(ST2 > ST1)
-# 요약(finally)의 **쌍둥이 줄** 검사(3R 검증 A3-1). `드릴 후 파드서명 = drilled:X` 를 인쇄하는 실행의 요약에
-# 접두어 없는 `기준값 파드서명 = X` 가 **그 값 그대로** 한 줄 더 들어가면, 런북에 옮겨 적는 운영자가 그 줄을
-# 다음 실행의 1R) 입력으로 골라 drilled: 잠금을 스스로 푼다. 검사 범위는 요약 머리줄 이후로 한정한다
-# (실행 중 출력의 같은 이름 줄은 "요약이 권위"라는 문구를 달고 있고, 요약만이 런북에 옮겨진다).
-$SUMMARY_HEAD = '--- G4 단계 요약(런북 §3 기록용) ---'
-# 5R 검증 B4-03: 4R 판은 `^기준값 파드서명 = <서명>$` 만 봐서 **줄 이름이 바뀌면 통과**했다(그래서 값은 여전히 두 줄이었다).
-# 이제 라벨과 무관하게 본다 — 요약 구간에서 `파드서명` 이 들어간 줄 가운데 `드릴 후 파드서명 = drilled:` 로 시작하지 않으면서
-# 그 서명 값을 담고 있는 줄이 하나라도 있으면 FAIL 이다(이름을 바꿔도, 괄호 단서를 붙여도 걸린다).
-$NO_TWIN = { param($t)
-  $f = @()
-  $i = $t.IndexOf($SUMMARY_HEAD)
-  if ($i -lt 0) { return @('요약 머리줄이 없다') }
-  $s = $t.Substring($i)
-  $ls = @(($s -split "`n") | ForEach-Object { ([string]$_).TrimEnd() })
-  foreach ($m in [regex]::Matches($s, '(?m)^드릴 후 파드서명 = drilled:(.+)$')) {
-    $sig = ([string]$m.Groups[1].Value).Trim()
-    foreach ($ln in $ls) {
-      if (-not $ln.Contains('파드서명')) { continue }
-      if ($ln.StartsWith('드릴 후 파드서명 = drilled:', [StringComparison]::Ordinal)) { continue }
-      if ($ln.Contains($sig)) { $f += "요약이 접두어 없는 쌍둥이 값을 파드서명 줄로 함께 인쇄한다: '$ln'" } } }
-  $f }
 # 5R 검증 A4-2: R3 조각의 `unset B`(case **앞**)·`unset T` 는 재시도 안전과 평문 잔류를 떠받치는 줄인데 무시험이었다.
 # 부분 문자열 want 로는 `unset B` 두 줄 중 하나가 사라져도 다른 하나가 매치돼 통과한다 — 그래서 **줄 순서 전체**를 대조한다.
-$R3_SEQ = @('set +o history', 'read -rsp "PM token: " T; echo', 'unset B', 'case "$T" in ', 'unset T',
-  'if [ -n "$B" ]; then printf ', 'unset B', 'sudo k3s kubectl -n cloudflared get secret cloudflared-tunnel -o jsonpath=', 'set -o history')
+$R3_SEQ = @('     set +o history',
+  '     read -rsp "PM token: " T; echo',
+  '     unset B',
+  '     case "$T" in ''''|*[!''!''-~]*) echo BROKEN-PASTE;; *) if [ "${#T}" -ge 32 ]; then B=$(printf ''%s'' "$T" | base64 -w0); else echo TOO-SHORT; fi;; esac',
+  '     unset T',
+  '     if [ -n "$B" ]; then printf ''{"apiVersion":"v1","kind":"Secret","type":"Opaque","metadata":{"name":"cloudflared-tunnel","namespace":"cloudflared"},"data":{"TUNNEL_TOKEN":"%s"}}'' "$B" | sudo k3s kubectl apply --server-side --force-conflicts --field-manager=t045-restore -f -; fi',
+  '     unset B',
+  '     sudo k3s kubectl -n cloudflared get secret cloudflared-tunnel -o jsonpath=''{.data.TUNNEL_TOKEN}'' | sha256sum',
+  '     set -o history')
 $R3_ORDER = { param($t)
   $f = @()
   $ls = @(($t -split "`n") | ForEach-Object { ([string]$_).TrimEnd() })
@@ -640,7 +672,7 @@ $R3_ORDER = { param($t)
   $got = @($ls[$i0..$i1] | ForEach-Object { ([string]$_).Trim() })
   if ($got.Count -ne $R3_SEQ.Count) { return @("R3 조각이 $($got.Count) 줄(기대 $($R3_SEQ.Count) 줄 · 줄이 빠지거나 끼었다): $($got -join ' ⏎ ')") }
   for ($i = 0; $i -lt $R3_SEQ.Count; $i++) {
-    if (-not ([string]$got[$i]).StartsWith([string]$R3_SEQ[$i], [StringComparison]::Ordinal)) {
+    if (-not [string]::Equals([string]$got[$i], ([string]$R3_SEQ[$i]).Trim(), [StringComparison]::Ordinal)) {
       $f += "R3 조각 $($i + 1)번째 줄이 기대와 다르다(기대 '$([string]$R3_SEQ[$i])' · 실제 '$([string]$got[$i])')" } }
   $f }
 # X05 계열(요약의 기준값 파드서명 줄 자체를 없애는 변이) — 그 줄은 1) 화면 출력과 문면이 같아서 부분 문자열 want 로는
@@ -650,44 +682,23 @@ $PODSIG_TWICE = { param($t)
   if ($n -ne 2) { return @("'기준값 파드서명 = ' 줄이 $n 개(화면 1 · 요약 1 = 2 이어야 한다)") }
   @() }
 # ---- 정상 경로
-Run-Case 'G4-01' '정상 경로(캡처 → 머지 대기 → 판정 PASS → 파드 1개 드릴 → 접근 경로)' 'adopt' { & $OK } 'ok' `
-  @('새 연결 실측', 'OK 창 A 에 노드 A 의 살아 있는 셸이 있다', 'OK 값 불변 · UID 불변 · ownerRef 없음 · managed 라벨 · data-hash 있음 · Argo tracking 미복사 · 단일 소유 · 파드 불변',
-    "OK 새 파드 $POD3 이 Ready", 'OK 새 파드 로그에 Registered tunnel connection 있음', 'OK kubectl get nodes = Ready 2', 'OK ssh ssh-a 성공',
-    '이 실행이 클러스터에 가한 변경: 1 건', "기준값 preHash = $PRE_HASH", '창 A 의 대화형 ssh 세션이 아직 살아 있는지',
-    ' 초 경과(ES=',
-    '기준값 파드서명(이 실행의 입력 · 다음 실행에는 이 줄이 아니라 아래 drilled: 줄을 넣는다) = ') `
-  @('복구 안내', '미실행', '판정하지 않았다') $DEL2 -wantPrompt @('2) **아직 머지하지 않는다.**', '진행 줄', '창 A 의 ssh 세션이 삭제 대상 커넥터를 타고 있었다면 약 30초 뒤 끊긴다',
-    '**지금 창 A 에서 Enter 를 쳐 세션이 살아 있는지 확인했으면** 단어를 입력한다') -post {
-  $f = @()
-  if (@($global:Pods).Count -ne 2) { $f += '파드 수가 2가 아니다' }
-  if (-not [string]::Equals([string]$global:Sec.data['TUNNEL_TOKEN'], $TOK, [StringComparison]::Ordinal)) { $f += 'Secret 값이 바뀌었다' }
-  $f }
+$DOK = { Adopt-Now; & $IN @($BOOT, 'go', $PRE_HASH, $PRE_UID, $POD2, 'drill') }
+Run-Case 'G4-01' '캡처 → 머지 대기 → 판정 PASS → 인계(쓰기 0)' 'adopt' { & $OK } 'ok' @(' 초 경과(ES=', 'OK 값 불변', 'drill 입력 preHash', 'g4-drill.ps1', '이 실행이 클러스터에 가한 변경: 0 건') @('삭제 요청') @()
+Run-Case 'G4-02b' 'resume은 해시·UID만 이어받아 판정(파드 불변 미판정)' 'adopt' { Adopt-Now; & $IN @($BOOT,'go','resume',$PRE_HASH,$PRE_UID,'skip-pm','continue') } 'ok' @('파드 불변은 판정하지 않았다', '이 실행이 클러스터에 가한 변경: 0 건') @('삭제 요청') @()
+Run-Case 'G4-53' '중단한 resume도 쓰기 0(A5-1)' 'adopt' { Adopt-Now; $global:Sec.data['TUNNEL_TOKEN']=$TOK2; & $IN @($BOOT,'go','resume',$PRE_HASH,$PRE_UID,'skip-pm','continue') } '대기 중 터널 값' @('이 실행이 클러스터에 가한 변경: 0 건') @('삭제 요청') @()
+Run-Case 'G4-54' '라벨·data-hash 둘 다 제거한 재인수도 쓰기 0(B5-02)' 'adopt' { & $OK; $global:Pods[1].start=$ST3 } 'ok' @('이 실행이 클러스터에 가한 변경: 0 건') @('삭제 요청') @()
+Run-Case 'G4-55' '라벨만 제거한 재인수도 쓰기 0' 'adopt' { & $OK; $global:Sec.ann['reconcile.external-secrets.io/data-hash']='prior' } 'ok' @('이 실행이 클러스터에 가한 변경: 0 건') @('삭제 요청') @()
+Run-Case 'G4-EOF1' '정지점 EOF' 'adopt' { & $OK; $global:EofAfter=2 } 'EOF'
+Run-Case 'G4-EOF2' '기준 해시 입력 EOF' 'adopt' { Adopt-Now; & $IN @($BOOT,'go','resume'); $global:EofAfter=4 } 'EOF'
+Run-Case 'G4-EOF3' 'PM 비밀 EOF' 'adopt' { & $IN @($BOOT,'go','pm'); $global:EofAfter=4 } '입력 스트림이 닫혔다'
+Run-Case 'G4-EMPTY' 'PM 비밀 빈 입력' 'adopt' { & $IN @($BOOT,'go','pm','') } '빈 입력'
 Run-Case 'G4-02' '이미 인수된 Secret(managed 라벨) → 시작 거부' 'adopt' { Adopt-Now; & $IN @($BOOT, 'go', '') } '정지점에서 중단' `
   @('이미 ESO 가 손댄 Secret') @('OK 값 불변') @()
-Run-Case 'G4-02b' 'resume: 기록해 둔 preHash·preUid·파드서명으로 판정만 이어간다(단어는 merge 가 아니라 continue · 드릴 단어는 first-drill · B4-01)' 'adopt' {
-  Adopt-Now; & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, $POD_SIG, 'skip-pm', 'continue', 'first-drill') } 'ok' `
-  @('resume(운영자가 입력한 기준값을 쓴다)', 'OK 값 불변 · UID 불변') @('판정 불가') $DEL2 `
-  -wantPrompt @('이미 머지된 상태다', '**기준값을 이어받은 실행(1R resume)**이다 — 머지 전 상태를 이 실행에서 직접 보지 못했다') `
-  -notWantPrompt @('아직 머지하지 않는다', '**R2(인수 해제) 뒤의 재인수**다')
-# B4-01 의 핵심 회귀: 1R) resume 으로 이어 온 실행에서 옛 단어(drill)로는 드릴이 통과하지 못한다.
-Run-Case 'G4-02b2' 'resume: 옛 단어(drill)로는 드릴이 통과하지 못한다(게이트가 ES 유무가 아니라 기준값 출처에 걸렸다 · B4-01)' 'adopt' {
-  Adopt-Now; & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, $POD_SIG, 'skip-pm', 'continue', 'drill') } '정지점에서 중단' `
-  @('OK 값 불변', '이 실행이 클러스터에 가한 변경: 0 건') @('삭제 요청', '드릴 후 파드서명') @()
 Run-Case 'G4-02c' 'resume: 기준값 형식이 아니면 거부' 'adopt' {
-  Adopt-Now; & $IN @($BOOT, 'go', 'resume', 'not-a-hash', $PRE_UID, $POD_SIG, 'skip-pm', 'continue', 'drill') } 'preHash 형식이 아니다' @() @() @()
-Run-Case 'G4-02d' 'resume: 파드 서명에 빈 Enter → 통과하지 못한다(게이트를 빈 입력으로 포기시키지 않는다)' 'adopt' {
-  Adopt-Now; & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, '', 'skip-pm', 'continue', 'drill') } '빈 입력 — 중단(파드 서명이 없으면 nopods' @() @() @()
-# 입력 끝에 drill 을 **일부러** 남긴다: nopods 가드가 살아 있으면 그 단어는 소비되지 않고(남은 입력 1) 삭제도 0 이다.
-# 가드를 제거한 변이는 4) 정지점에서 그 drill 을 먹고 파드를 지운다 — 그때만 변경 로그가 비지 않는다.
-Run-Case 'G4-02e' 'resume: nopods 로 명시 포기 → 판정은 잇되 **파드를 삭제하지 않는다**(재실행 누적 삭제 방지)' 'adopt' {
-  Adopt-Now; & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, 'nopods', 'skip-pm', 'continue', 'drill') } 'ok' `
-  @('파드 불변은 판정하지 않았다', '이 실행은 파드를 삭제하지 않는다', '건너뜀(nopods · 삭제 0)', '이 실행이 클러스터에 가한 변경: 0 건') `
-  @("· 파드 불변`n", '드릴 후 파드서명') @() -leftover 1
-Run-Case 'G4-02f' 'resume: 파드 서명 형식이 깨졌다(줄바꿈 절단) → 거부' 'adopt' {
-  Adopt-Now; & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, "$POD1|0|$ST1", 'skip-pm', 'continue') } '파드 서명 형식이 아니다' @() @() @()
+  Adopt-Now; & $IN @($BOOT, 'go', 'resume', 'not-a-hash', $PRE_UID, 'skip-pm', 'continue') } 'preHash 형식이 아니다' @() @() @()
 Run-Case 'G4-02g' 'resume: ES 존재 확인 자체가 실패 → "ES 없음 = 인수 해제 상태"로 읽지 않는다(fail-closed)' 'adopt' {
   Adopt-Now; $global:FailAlways['es.name'] = 1
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, $POD_SIG, 'skip-pm', 'continue') } 'ES 존재 확인(resume)' `
+  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, 'skip-pm', 'continue') } 'ES 존재 확인(resume)' `
   @('이 실행이 클러스터에 가한 변경: 0 건') @('인수 해제 상태', 'OK 값 불변') @()
 Run-Case 'G4-03' '키가 2개 → 거부(인수 순간 삭제되는 키)' 'adopt' {
   $global:Sec.data['EXTRA'] = 'not-a-secret'; & $OK } 'TUNNEL_TOKEN 외의 키가 있다' @() @('OK 값 불변') @()
@@ -697,12 +708,11 @@ Run-Case 'G4-04' '머지 대기 중 ES 미출현 → 타임아웃(파드 미접�
 Run-Case 'G4-05' 'ES SecretSyncedError → 파드 미접촉 중단' 'adopt' {
   $global:EsReason = 'SecretSyncedError'; & $OK } 'SecretSyncedError 로 굳었다' `
   @('이 실행이 클러스터에 가한 변경: 0 건') @('OK 값 불변') @()
-# 기대 문면을 `대기 중 터널 값` 으로 좁힌다 — 예전의 `터널 값이 바뀌었다` 는 2) 감시 루프와 3) 판정의 문면에 모두 맞아
-# "어느 단계가 잡았는지"를 구분하지 못했다(감시 루프를 통째로 들어내도 3) 이 잡아 같은 부분 문자열이 나왔다).
 Run-Case 'G4-06' '인수 뒤 값 해시 변경(폴링 중) → 파드 미접촉 중단 + 복구 안내(컨테이너 재시작 경고 · 키 집합 감별 포함)' 'adopt' {
   $global:Faults['changeValue'] = $true; & $OK } '대기 중 터널 값' `
   @('복구 안내(터널 값이 바뀌었다)', '컨테이너가 재시작되지 않는 동안만', '지금   파드서명:', '지금 Secret 의 키 집합: TUNNEL_TOKEN',
     '키 집합은 정상이다', 'kv-correct.ps1', 'g4-restore.ps1', '출처는 **c(PM 직접 입력)뿐**', 'temporary',
+    '④ 위 sha256sum 대조로 값이 옳은 것을 확인한 뒤에만 파드를 **1개만** 지운다',
     'finalizer 가 있다', 'R3(이미 잠겼다', 'read -rsp', '이 실행이 클러스터에 가한 변경: 0 건',
     '⚠ 전제: g4-restore 는 해시 대조에 닿기 전에', '위 2번의 webhook 단서를 그대로 적용한다',
     "`n     set +o history`n", "`n     set -o history`n", '대소문자 무시', 'sudo -v',
@@ -713,10 +723,9 @@ Run-Case 'G4-06' '인수 뒤 값 해시 변경(폴링 중) → 파드 미접촉 
     'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', '"쓰지 않았다"고 가정하지 않는다',
     '이 터미널 화면에 이미 에코됐다', '스크롤백·세션 로그', 'delete pod POD_NAME',
     'sudo 는 -S 없이는 stdin 에서 암호를 읽지 않는다',
-    '라벨을 지우면 drilled: 접두어와 first-drill 잠금도 함께 풀린다',
     '**data-hash 어노테이션은 어떤 경우에도 지우지 않는다.**',
     "`n     unset B`n", "`n     unset T`n",
-    '(0) **apply 줄에 kubectl 오류가 찍혔다 → 쓰기는 0건이다.**', 'field is immutable',
+    '(0) **apply 줄에 kubectl 오류가 찍혔다 → 결과 미확정이다.**', 'field is immutable',
     'get secret cloudflared-tunnel -o jsonpath=''{.type}''',
     '※ apply 줄의 오류는 (3) 이 아니라 (0) 이다.',
     'case 줄의 ''!'' 를 따옴표로 감싼 것은 대화형 bash 의 히스토리 확장 때문이다',
@@ -743,7 +752,7 @@ Run-Case 'G4-32' '폴링 중 값이 바뀌고 ES 는 끝내 SecretSynced 가 되
   @('15분 안에 ES 가 SecretSynced 가 되지 않았다', '아무것도 바꾸지 않았다') @()
 Run-Case 'G4-33' 'resume 인데 라이브 값이 이미 덮여 있다 → 운영자가 든 preHash 가 그것을 드러낸다(가짜 PASS 금지)' 'adopt' {
   Adopt-Now; $global:Sec.data['TUNNEL_TOKEN'] = $TOK2
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, $POD_SIG, 'skip-pm', 'continue', 'drill') } '터널 값이 바뀌었다' `
+  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, 'skip-pm', 'continue') } '터널 값이 바뀌었다' `
   @('복구 안내(터널 값이 바뀌었다)', '이 실행이 클러스터에 가한 변경: 0 건') @('OK 값 불변') @()
 Run-Case 'G4-07' 'UID 만 변경(값 해시는 같다) → kv 정정이 아니라 UID 전용 안내' 'adopt' {
   $global:Faults['changeUid'] = $true; & $OK } 'Secret 이 재생성됐다' `
@@ -764,16 +773,6 @@ Run-Case 'G4-09' 'Argo tracking 어노테이션이 Secret 에 복사됨 → 중�
   $global:Faults['copyTracking'] = $true; & $OK } 'Argo tracking 어노테이션이 복사됐다' @() @() @()
 Run-Case 'G4-10' '머지 대기 중 파드 재시작(restartCount 변화) → 중단' 'adopt' {
   $global:Faults['podRestart'] = $true; & $OK } '파드가 바뀌었다' @('이 실행이 클러스터에 가한 변경: 0 건') @() @()
-Run-Case 'G4-11' '드릴: 남길 파드(startTime 이 이른 쪽)가 NotReady → 삭제 거부' 'adopt' {
-  $global:Faults['survivorNotReady'] = $true; & $OK } "남길 파드 $POD1 가 Ready 가 아니다" `
-  @('이 실행이 클러스터에 가한 변경: 0 건') @() @()
-Run-Case 'G4-11b' '드릴: 삭제 대상이 NotReady → 경고만 하고 진행(남길 파드는 Ready)' 'adopt' {
-  $global:Faults['targetNotReady'] = $true; & $OK } 'ok' `
-  @("삭제 대상 $POD2 이 Ready 가 아니다") @() $DEL2
-Run-Case 'G4-12' '드릴: 새 파드 Ready 타임아웃 → 남은 파드 미접촉' 'adopt' {
-  $global:NewPodReady = $false; & $OK } '새 파드가 300초 안에 Ready 가 되지 않았다' `
-  @("남은 파드 $POD1 를 절대 건드리지 않는다") @() $DEL2 {
-  $f = @(); if (@($global:Pods | Where-Object { [string]::Equals([string]$_.name, $POD1, [StringComparison]::Ordinal) }).Count -ne 1) { $f += '남은 파드가 사라졌다' }; $f }
 Run-Case 'G4-13a' 'kubectl 조회 실패(캡처 시점) → fail-closed' 'adopt' {
   $global:FailAlways['sec.data'] = 1; & $OK } 'kubectl 조회 실패(exit=1 · 3회 시도)' `
   @('이 실행은 아직 아무것도 바꾸지 않았다', '재시작·삭제해서 고치려 하지 않는다') @() @()
@@ -784,28 +783,22 @@ Run-Case 'G4-13b' 'kubectl 조회 실패(머지 대기 폴링 중 · merge 입�
 Run-Case 'G4-13c' 'kubectl 조회 실패(판정 시점) → fail-closed' 'adopt' {
   & $OK; $global:FailAlways['sec.owner'] = 7 } 'kubectl 조회 실패(exit=7 · 3회 시도): ownerReferences' `
   @('이 실행이 클러스터에 가한 변경: 0 건') @() @()
-Run-Case 'G4-13d' 'kubectl 조회 실패(드릴 대기 중 · 터널 순단) → 기한까지 폴링하고 중단(남은 파드 미접촉 · 거짓 문면 없음)' 'adopt' {
-  & $OK; $global:FailPodsAfterDelete = $true } '새 파드가 300초 안에 Ready 가 되지 않았다' `
-  @('삭제 요청함(', '드릴 대기 중 조회 실패', '이 실행이 클러스터에 가한 변경: 1 건') @('파드는 건드리지 않았다') $DEL2 {
-  $f = @(); if (@($global:Pods | Where-Object { [string]::Equals([string]$_.name, $POD1, [StringComparison]::Ordinal) }).Count -ne 1) { $f += '남은 파드가 사라졌다' }; $f }
 Run-Case 'G4-13e' '일시적 조회 실패 1회(폴링 중) → 재시도로 완주(실패를 성공으로 읽지 않는다)' 'adopt' {
-  & $OK; $global:OnMerge = { $global:FailN['sec.uid'] = 1 } } 'ok' @('5초 뒤 재시도(1/3)', 'OK 값 불변') @() $DEL2
+  & $OK; $global:OnMerge = { $global:FailN['sec.uid'] = 1 } } 'ok' @('5초 뒤 재시도(1/3)', 'OK 값 불변') @() @()
 Run-Case 'G4-14a' '정지점 0) 에 빈 Enter → 중단' 'adopt' { & $IN @($BOOT, '') } '정지점에서 중단' @() @('기준값 preHash') @()
-Run-Case 'G4-14b' '정지점 4) 에 틀린 단어 → 중단(삭제 없음 · 요약의 기준값 파드서명 줄은 화면과 나란히 남는다)' 'adopt' { & $IN @($BOOT, 'go', 'skip-pm', 'merge', 'yes') } '정지점에서 중단' `
-  @('OK 값 불변', '이 실행이 클러스터에 가한 변경: 0 건', '기준값 파드서명 = ') @('드릴 후 파드서명') @() -post $PODSIG_TWICE
 Run-Case 'G4-14c' '정지점 단어는 Ordinal 비교다 — 대문자 GO 로는 통과하지 못한다' 'adopt' { & $IN @($BOOT, 'GO') } '정지점에서 중단' `
   @() @('기준값 preHash') @()
 Run-Case 'G4-15' 'ssh 새 연결 실패 → 창 A 대조 불가 · 확인 단어가 noglass 로 바뀐다(미리 눌러 둔 go 가 통과하지 못한다)' 'adopt' {
-  $global:SshOk = $false; & $IN @('go', 'skip-pm', 'merge', 'drill') } '정지점에서 중단' `
+  $global:SshOk = $false; & $IN @('go', 'skip-pm', 'merge') } '정지점에서 중단' `
   @('ssh ssh-a = False', '창 A 세션을 대조할 수 없다') @('OK 창 A 에', '드릴 후 파드서명') @()
 Run-Case 'G4-15b' 'oci 자격 실패 → 단어가 no-oci 로 바뀐다(ssh 만 실패한 noglass 와 구분)' 'adopt' {
-  $global:OciOk = $false; & $IN @($BOOT, 'no-oci', 'skip-pm', 'merge', 'drill') } 'ok' `
-  @('oci 자격(프로파일 DEFAULT) = False') @() $DEL2
+  $global:OciOk = $false; & $IN @($BOOT, 'no-oci', 'skip-pm', 'merge') } 'ok' `
+  @('oci 자격(프로파일 DEFAULT) = False') @() @()
 Run-Case 'G4-15c' '창 A 의 boot_id 가 노드 A 와 다르다 → 열린 세션 없음으로 중단' 'adopt' {
-  & $IN @('deadbeef', 'go', 'skip-pm', 'merge', 'drill') } '창 A 의 값이 노드 A 의 boot_id 와 다르다' @() @() @()
+  & $IN @('deadbeef', 'go', 'skip-pm', 'merge') } '창 A 의 값이 노드 A 의 boot_id 와 다르다' @() @() @()
 Run-Case 'G4-15d' '읽기 전용 svc-verify 프로파일 → oci 를 break-glass 로 세지 않는다(단어 no-oci)' 'adopt' {
-  $env:OCI_CLI_PROFILE = 'svc-verify'; & $IN @($BOOT, 'no-oci', 'skip-pm', 'merge', 'drill') } 'ok' `
-  @('읽기 전용 세션 프로파일', 'oci 자격(프로파일 svc-verify) = False') @() $DEL2
+  $env:OCI_CLI_PROFILE = 'svc-verify'; & $IN @($BOOT, 'no-oci', 'skip-pm', 'merge') } 'ok' `
+  @('읽기 전용 세션 프로파일', 'oci 자격(프로파일 svc-verify) = False') @() @()
 Run-Case 'G4-16' 'SecretSynced 인데 managed 라벨 없음 → 양성 증거 부재로 중단' 'adopt' {
   $global:Faults['noLabel'] = $true; & $OK } 'managed 라벨이 없다' @() @() @()
 Run-Case 'G4-16b' 'managed 라벨은 있는데 data-hash 없음 → ESO 의 쓰기가 닿지 않았다(하드 판정)' 'adopt' {
@@ -820,114 +813,51 @@ Run-Case 'G4-19' '파드가 3개(노드당 1개 전제 붕괴) → 중단' 'adop
   $global:Pods += @{ name = 'cloudflared-6d4f7c9b8-dd44d'; restarts = 0; start = $ST2; ready = 'True'; lab = 'app=cloudflared' }; & $OK } '파드가 2개가 아니다' @() @() @()
 Run-Case 'G4-19b' 'ns 안의 무관한 파드(app 라벨 다름)는 커넥터로 세지 않는다' 'adopt' {
   $global:Pods += @{ name = 'debug-shell'; restarts = 0; start = $ST2; ready = 'True'; lab = 'app=debug' }; & $OK } 'ok' `
-  @('OK 값 불변') @('파드가 2개가 아니다') $DEL2
+  @('OK 값 불변') @('파드가 2개가 아니다') @()
 Run-Case 'G4-20' '머지 전인데 ES 가 이미 있다 → 중단' 'adopt' {
   $global:Es = @{ reason = 'SecretSynced'; created = (EsStamp); ann = @{ 'argocd.argoproj.io/tracking-id' = $ES_TRACK_OK } }; & $OK } 'ES 가 이미 있다' @() @() @()
-Run-Case 'G4-21' '새 파드 로그에 Registered tunnel connection 없음 → 경고(중단 아님)' 'adopt' {
-  $global:LogHit = $false; & $OK } 'ok' @('Registered tunnel connection 을 찾지 못했다', '두 번째 파드는 교체하지 않는다') @('OK 새 파드 로그에') $DEL2
-Run-Case 'G4-22' '드릴 뒤 노드가 Ready 2 가 아니다 → 중단' 'adopt' {
-  $global:NodeReady = 'joshtech-api=True joshtech-cache=False '; & $OK } 'Ready 2 개가 아니다' @() @() $DEL2
-Run-Case 'G4-23' '드릴 뒤 ssh 만 실패(kubectl 은 정상) → 경고로 남기고 완주' 'adopt' {
-  $global:SshOkAfter = $false; & $OK } 'ok' `
+Run-Case 'G4-21' '새 파드 로그에 Registered tunnel connection 없음 → 경고(중단 아님)' 'drill' {
+  $global:LogHit = $false; & $DOK } 'ok' @('Registered tunnel connection 을 찾지 못했다', '두 번째 파드는 교체하지 않는다') @('OK 새 파드 로그에') $DEL2
+Run-Case 'G4-22' '드릴 뒤 노드가 Ready 2 가 아니다 → 중단' 'drill' {
+  $global:NodeReady = 'joshtech-api=True joshtech-cache=False '; & $DOK } 'Ready 2 개가 아니다' @() @() $DEL2
+Run-Case 'G4-23' '드릴 뒤 ssh 만 실패(kubectl 은 정상) → 경고로 남기고 완주' 'drill' {
+  $global:SshOkAfter = $false; & $DOK } 'ok' `
   @('드릴 전에는 되던 ssh ssh-a 가 드릴 뒤에 실패한다', '두 번째 파드를 절대 교체하지 말고') @() $DEL2
-Run-Case 'G4-24' '드릴 뒤 재실행(서명 제공) → 인수 뒤 시작한 Ready 파드가 있으면 SKIP(두 번째 삭제 없음)' 'adopt' {
-  $global:EsCreated = '2026-09-21T08:30:00Z'
-  Adopt-Now
-  $global:Pods = @(
-    @{ name = $POD2; restarts = 0; start = $ST2; ready = 'True'; lab = 'app=cloudflared' },
-    @{ name = $POD3; restarts = 0; start = $ST3; ready = 'True'; lab = 'app=cloudflared' })
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, $POD_SIG_23, 'skip-pm', 'continue') } 'ok' `
-  @('SKIP 드릴: 인수 뒤에 시작한 파드가 이미 Ready 다', '이 실행이 클러스터에 가한 변경: 0 건') @() @()
-Run-Case 'G4-25' '드릴 대상은 이름이 아니라 startTime 이 가장 늦은 파드다(이름 순서와 반대인 경우)' 'adopt' {
-  $global:Pods = @(
-    @{ name = $POD1; restarts = 0; start = $ST2; ready = 'True'; lab = 'app=cloudflared' },
-    @{ name = $POD2; restarts = 0; start = $ST1; ready = 'True'; lab = 'app=cloudflared' })
-  & $OK } 'ok' @("삭제 $POD1") @() @((& $DELARGV $POD1)) -wantPrompt @("남길 파드 $POD2 는 Ready 확인됨")
 Run-Case 'G4-26' 'agent-view kubeconfig(auth can-i = no · exit 1) → 재시도 없이 맞춤 문면' 'adopt' {
   $global:Faults['canINo'] = $true; & $OK } "'get secrets' 를 할 수 없다(응답='no'" `
   @() @('5초 뒤 재시도') @()
 Run-Case 'G4-27' '가드 통과 직후 ESO 가 손댐 → 같은 GET 의 managed 라벨로 잡아 가짜 기준값을 막는다' 'adopt' {
   $global:Faults['snapLabel'] = $true; & $OK } '캡처하는 사이에 ESO 가 Secret 에 손댔다' `
   @('이 실행이 클러스터에 가한 변경: 0 건') @('OK 값 불변') @()
-Run-Case 'G4-28' '드릴 정지점에서 기다리는 사이 값이 바뀜 → 파드를 삭제하지 않고 복구 안내' 'adopt' {
-  $global:OnDrill = { $global:Sec.data['TUNNEL_TOKEN'] = $TOK2 }; & $OK } '정지점에서 기다리는 사이에 터널 값이 바뀌었다' `
-  @('OK 값 불변', '복구 안내(터널 값이 바뀌었다)', '이 실행이 클러스터에 가한 변경: 0 건') @() @()
-Run-Case 'G4-29' '드릴 정지점에서 기다리는 사이 Secret 재생성(UID 변경) → 삭제하지 않는다' 'adopt' {
-  $global:OnDrill = { $global:Sec.uid = 'ffffeeee-dddd-4ccc-8bbb-aaaa99998888' }; & $OK } '정지점에서 기다리는 사이에 Secret 이 재생성됐다' `
-  @('안내(UID 만 바뀌었다', '이 실행이 클러스터에 가한 변경: 0 건',
-    '지금   UID    : ffffeeee-dddd-4ccc-8bbb-aaaa99998888') @('드릴 후 파드서명') @()
-Run-Case 'G4-29b' '드릴 정지점에서 기다리는 사이 남길 파드 상태가 바뀜 → 삭제하지 않는다' 'adopt' {
-  $global:OnDrill = { $global:Pods[0].ready = 'False' }; & $OK } '정지점 사이에 남길 파드' `
-  @('이 실행이 클러스터에 가한 변경: 0 건') @() @()
-Run-Case 'G4-31' '드릴 대기 중 남은 파드까지 재시작(서명 변경) → 더 이상 아무것도 삭제하지 않는다' 'adopt' {
-  $global:BumpSurvivorOnDelete = $true; & $OK } '재시작·교체됐다(서명 변경)' `
+Run-Case 'G4-31' '드릴 대기 중 남은 파드까지 재시작(서명 변경) → 더 이상 아무것도 삭제하지 않는다' 'drill' {
+  $global:BumpSurvivorOnDelete = $true; & $DOK } '재시작·교체됐다(서명 변경)' `
   @('이 실행이 클러스터에 가한 변경: 1 건') @() $DEL2
 Run-Case 'G4-30' '1P) PM 토큰 해시가 기준값과 다르다 → 머지 전에 중단(아무것도 잠기지 않았다)' 'adopt' {
-  & $IN @($BOOT, 'go', 'pm', $TOK2, 'merge', 'drill') } 'PM 의 토큰이 기준값과 다르다' `
+  & $IN @($BOOT, 'go', 'pm', $TOK2, 'merge') } 'PM 의 토큰이 기준값과 다르다' `
   @('이 실행이 클러스터에 가한 변경: 0 건') @('OK PM 토큰 해시') @()
 Run-Case 'G4-30b' '1P) PM 토큰 해시 일치 → 확인 문면(토큰은 SecureString · 어떤 표면에도 남지 않는다)' 'adopt' {
-  & $IN @($BOOT, 'go', 'pm', $TOK, 'merge', 'drill') } 'ok' `
-  @('OK PM 토큰 해시 = preHash', '완료(PM 해시 = preHash)') @() $DEL2 {
+  & $IN @($BOOT, 'go', 'pm', $TOK, 'merge') } 'ok' `
+  @('OK PM 토큰 해시 = preHash', '완료(PM 해시 = preHash)') @() @() {
   $f = @(); foreach ($r in $global:ReadLog) { if ([string]::Equals([string]$r.value, $TOK, [StringComparison]::Ordinal) -and -not $r.secure) { $f += '토큰을 평문으로 읽었다' } }; $f }
 Run-Case 'G4-30c' '1P) 클립보드 기록이 켜져 있으면 토큰을 묻지 않는다' 'adopt' {
-  $global:ClipHistory = 1; & $IN @($BOOT, 'go', 'pm', $TOK, 'merge', 'drill') } '클립보드 기록이 꺼져 있음을 확인하지 못했다' @() @() @() {
+  $global:ClipHistory = 1; & $IN @($BOOT, 'go', 'pm', $TOK, 'merge') } '클립보드 기록이 꺼져 있음을 확인하지 못했다' @() @() @() {
   $f = @(); foreach ($r in $global:ReadLog) { if ($r.secure) { $f += '토큰을 물었다' } }; $f }
-Run-Case 'G4-30d' '1P) 에 엉뚱한 단어 → 중단' 'adopt' { & $IN @($BOOT, 'go', 'yes', 'merge', 'drill') } '1P) 정지점에서 중단' @() @() @()
-Run-Case 'G4-24b' '드릴 뒤 재실행인데 운영자가 **드릴 전** 서명을 넣었다 → "인수가 커넥터를 교체했다"로 오도하지 않는다(A-6)' 'adopt' {
-  $global:EsCreated = '2026-09-21T08:30:00Z'
-  Adopt-Now
-  $global:Pods = @(
-    @{ name = $POD2; restarts = 0; start = $ST2; ready = 'True'; lab = 'app=cloudflared' },
-    @{ name = $POD3; restarts = 0; start = $ST3; ready = 'True'; lab = 'app=cloudflared' })
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, $POD_SIG, 'skip-pm', 'continue', 'drill') } 'ok' `
-  @('**이전 실행의 드릴 결과**다', 'SKIP 드릴: 이전 실행의 드릴 결과가 이미 있다', "드릴 후 파드서명 = drilled:$POD_SIG_23",
-    'drilled: 접두어째 그대로** 넣는다', '이 실행이 클러스터에 가한 변경: 0 건') `
-  @('인수 과정에서 커넥터가 교체·재시작됐다', "· 파드 불변`n") @() -leftover 1 -post $NO_TWIN
-Run-Case 'G4-24c' '드릴 결과가 아닌 진짜 파드 교체(ES 생성 전에 시작한 새 파드) → 종전대로 중단' 'adopt' {
-  $global:EsCreated = '2026-09-21T08:30:00Z'
-  Adopt-Now
-  $global:Pods = @(
-    @{ name = $POD2; restarts = 0; start = $ST2; ready = 'True'; lab = 'app=cloudflared' },
-    @{ name = $POD3; restarts = 0; start = '2026-09-21T08:00:00Z'; ready = 'True'; lab = 'app=cloudflared' })
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, $POD_SIG, 'skip-pm', 'continue') } '파드가 바뀌었다' `
-  @('그 조건을 채우지 못했다', '이 실행이 클러스터에 가한 변경: 0 건') @() @()
+Run-Case 'G4-30d' '1P) 에 엉뚱한 단어 → 중단' 'adopt' { & $IN @($BOOT, 'go', 'yes', 'merge') } '1P) 정지점에서 중단' @() @() @()
 Run-Case 'G4-34' 'KUBECONFIG 가 다른 클러스터를 본다 → 아무것도 하지 않고 중단(A-7)' 'adopt' {
   $global:NodeNames = @('node/other-a', 'node/other-b'); & $OK } 'joshuatech 클러스터를 보고 있지 않다' `
   @('이 실행이 클러스터에 가한 변경: 0 건') @('기준값 preHash') @()
 Run-Case 'G4-35' '머지 전 파드 하나가 NotReady → 캡처 단계에서 중단(한쪽 커넥터가 이미 불안정하다 · A-7)' 'adopt' {
   $global:Pods[1].ready = 'False'; & $OK } "파드 $POD2 이 Ready 가 아니다" `
-  @('이 실행이 클러스터에 가한 변경: 0 건') @('OK 값 불변', 'SKIP 드릴') @()
-Run-Case 'G4-36' 'break-glass 1차·2차 **모두** 실패 → 단어 no-breakglass · 판정은 하되 파드 삭제 거부(A-5/B-4)' 'adopt' {
-  $global:SshOk = $false; $global:OciOk = $false
-  & $IN @('no-breakglass', 'skip-pm', 'merge', 'drill') } 'ok' `
-  @('OK 값 불변', 'SKIP 드릴: break-glass 1차·2차가 모두 미확인이다',
-    '거부(break-glass 1차·2차 모두 미확인 — 삭제 0)', '이 실행이 클러스터에 가한 변경: 0 건',
-    'tofu -chdir=infra/oci output -raw nsg_cluster_id') @('드릴 후 파드서명') @() `
-  -wantPrompt @('**1차(창 A 의 열린 ssh 세션)·2차(OCI 운영자 자격) 모두 미확인**이다', '**4) 파드 삭제는 거부**한다') -leftover 1
+  @('이 실행이 클러스터에 가한 변경: 0 건') @('OK 값 불변', 'SKIP 드릴') @() -notWantPrompt @('2)')
 Run-Case 'G4-36b' 'break-glass 둘 다 실패인데 예전 단어(no-oci)를 넣으면 통과하지 못한다' 'adopt' {
   $global:SshOk = $false; $global:OciOk = $false
-  & $IN @('no-oci', 'skip-pm', 'merge', 'drill') } '정지점에서 중단' @() @('기준값 preHash', '드릴 후 파드서명') @()
-Run-Case 'G4-37' 'R2 뒤 재실행(managed 라벨은 남고 ES 는 없다) → 15분 타임아웃이 아니라 재머지 분기로 간다(B-7) · 드릴 단어는 first-drill 로 갈린다' 'adopt' {
-  $global:Sec.labels['reconcile.external-secrets.io/managed'] = 'true'
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, $POD_SIG, 'skip-pm', 'merge', 'first-drill') } 'ok' `
-  @('ES 가 없다 = 인수 해제 상태', 'ES 없음 = 인수 해제 상태', 'OK 값 불변') @() $DEL2 `
-  -wantPrompt @('**인수 해제 상태**(R2 를 거쳤다)', '**R2(인수 해제) 뒤의 재인수**다 — ES 가 지워진 상태로 왔다',
-    '파드 서명에 drilled: 를 붙이거나 1D 에 drilled 를 넣어 다시 실행한다',
-    '**지금 창 A 에서 Enter 를 쳐 세션이 살아 있는지 확인했으면** 단어를 입력한다') `
-  -notWantPrompt @('이미 머지된 상태다(managed 라벨 · ES 존재)')
-Run-Case 'G4-37b' 'R2 뒤 재인수에서 예전 단어(drill)로는 드릴이 통과하지 못한다(사람 확인 단어가 first-drill 로 갈렸다)' 'adopt' {
-  $global:Sec.labels['reconcile.external-secrets.io/managed'] = 'true'
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, $POD_SIG, 'skip-pm', 'merge', 'drill') } '정지점에서 중단' `
-  @('OK 값 불변', '이 실행이 클러스터에 가한 변경: 0 건') @('삭제 요청') @()
-# ---- 3라운드 지적 반영분(A2-1∼A2-5 · F-B2-01∼F-B2-05)
-$PRE_HASH_PM = SHA (B64 $TOK2)               # 낡은 PM 토큰에서 1R) pm 이 유도하는 기준값
-$SIG_R2 = "$POD1|0|$ST3 $POD2|0|$ST2"        # 1차 드릴이 끝난 상태(POD2 생존 · POD1 이 그때 뜬 파드 · Ordinal 정렬)
+  & $IN @('no-oci', 'skip-pm', 'merge') } '정지점에서 중단' @() @('기준값 preHash', '드릴 후 파드서명') @()
 Run-Case 'G4-38' '1R) preHash 기록이 없어 pm 으로 유도 → 1P) 대조는 건너뛰고(같은 출처 비교) 기준값에 "PM 유도" 꼬리표가 붙는다(F-B2-02)' 'adopt' {
   Adopt-Now
-  & $IN @($BOOT, 'go', 'resume', 'pm', $TOK, $PRE_UID, $POD_SIG, 'continue', 'first-drill') } 'ok' `
+  & $IN @($BOOT, 'go', 'resume', 'pm', $TOK, $PRE_UID, 'continue') } 'ok' `
   @('preHash 를 PM 원본에서 유도했다', "기준값 preHash = $PRE_HASH (PM 유도 — 라이브로 검증된 적 없음)",
     '1P) PM 원본 대조를 건너뛴다', '건너뜀(기준값이 PM 유도라 같은 출처 대조는 성립하지 않는다', 'OK 값 불변') `
-  @('OK PM 토큰 해시 = preHash', '완료(PM 해시 = preHash)') $DEL2 {
+  @('OK PM 토큰 해시 = preHash', '완료(PM 해시 = preHash)') @() {
   param($t)
   $f = @()
   foreach ($r in $global:ReadLog) { if ([string]::Equals([string]$r.value, $TOK, [StringComparison]::Ordinal) -and -not $r.secure) { $f += '토큰을 평문으로 읽었다' } }
@@ -937,240 +867,30 @@ Run-Case 'G4-38' '1R) preHash 기록이 없어 pm 으로 유도 → 1P) 대조�
   $f }
 Run-Case 'G4-38b' '1R) pm 인데 클립보드 기록이 켜져 있다 → 토큰을 묻기 전에 중단(A2-2)' 'adopt' {
   Adopt-Now; $global:ClipHistory = 1
-  & $IN @($BOOT, 'go', 'resume', 'pm', $TOK, $PRE_UID, $POD_SIG, 'continue', 'drill') } '클립보드 기록이 꺼져 있음을 확인하지 못했다' `
+  & $IN @($BOOT, 'go', 'resume', 'pm', $TOK, $PRE_UID, 'continue') } '클립보드 기록이 꺼져 있음을 확인하지 못했다' `
   @() @('OK 값 불변') @() {
   $f = @(); foreach ($r in $global:ReadLog) { if ($r.secure) { $f += '토큰을 물었다' } }; $f }
-Run-Case 'G4-39' '이전 드릴 감지: 나머지 1개가 NotReady 면 "드릴 결과"로 인정하지 않는다(A2-3)' 'adopt' {
-  $global:EsCreated = '2026-09-21T08:30:00Z'
-  Adopt-Now
-  $global:Pods = @(
-    @{ name = $POD2; restarts = 0; start = $ST2; ready = 'True'; lab = 'app=cloudflared' },
-    @{ name = $POD3; restarts = 0; start = $ST3; ready = 'False'; lab = 'app=cloudflared' })
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, $POD_SIG, 'skip-pm', 'continue') } '파드가 바뀌었다' `
-  @('그 조건을 채우지 못했다', '이 실행이 클러스터에 가한 변경: 0 건') @('**이전 실행의 드릴 결과**다', 'SKIP 드릴', '드릴 후 파드서명') @()
-Run-Case 'G4-39b' '이전 드릴 감지: 기준 서명이 하나도 남지 않았다(두 커넥터 모두 교체) → 드릴 결과가 아니다(A2-3)' 'adopt' {
-  $global:EsCreated = '2026-09-21T08:30:00Z'
-  Adopt-Now
-  $global:Pods = @(
-    @{ name = $POD1; restarts = 2; start = $ST1; ready = 'True'; lab = 'app=cloudflared' },
-    @{ name = $POD3; restarts = 0; start = $ST3; ready = 'True'; lab = 'app=cloudflared' })
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, $POD_SIG, 'skip-pm', 'continue') } '파드가 바뀌었다' `
-  @('그 조건을 채우지 못했다', '이 실행이 클러스터에 가한 변경: 0 건') @('**이전 실행의 드릴 결과**다', 'SKIP 드릴', '드릴 후 파드서명') @()
-Run-Case 'G4-40' '드릴 정지점 사이 값 변경 + 키 집합 조회 실패 → 그 분기의 진단도 fail-closed(A2-5)' 'adopt' {
-  $global:OnDrill = { $global:Sec.data['TUNNEL_TOKEN'] = $TOK2; $global:FailAlways['sec.keys'] = 1 }
-  & $OK } '정지점에서 기다리는 사이에 터널 값이 바뀌었다' `
-  @('지금 Secret 의 키 집합: (조회 실패)', '키 집합을 읽지 못했다', '이 실행이 클러스터에 가한 변경: 0 건') `
-  @('키 집합은 정상이다') @()
-Run-Case 'G4-41' 'SKIP 분기(이전 드릴 결과)인데 남은 커넥터가 NotReady → "OK"로 끝내지 않고 경고·요약에 남긴다(A2-4)' 'adopt' {
-  $global:EsCreated = '2026-09-21T08:30:00Z'
-  Adopt-Now
-  $global:Pods = @(
-    @{ name = $POD2; restarts = 0; start = $ST2; ready = 'False'; lab = 'app=cloudflared' },
-    @{ name = $POD3; restarts = 0; start = $ST3; ready = 'True'; lab = 'app=cloudflared' })
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, $POD_SIG, 'skip-pm', 'continue') } 'ok' `
-  @('SKIP 드릴: 이전 실행의 드릴 결과가 이미 있다', "⚠ 커넥터 $POD2 이 Ready 가 아니다", '이중화는 지금 성립하지 않는다',
-    "Ready 아닌 커넥터: $POD2", '이 실행이 클러스터에 가한 변경: 0 건') @() @()
+$PRE_HASH_PM = SHA (B64 $TOK2)
 Run-Case 'G4-42' '기준값이 PM 유도인데 라이브와 다르다 → 복구 안내가 "kv 를 PM 값으로 정정"으로 단정하지 않는다(F-B2-02)' 'adopt' {
   Adopt-Now
-  & $IN @($BOOT, 'go', 'resume', 'pm', $TOK2, $PRE_UID, $POD_SIG, 'continue') } '대기 중 터널 값이 바뀌었다' `
+  & $IN @($BOOT, 'go', 'resume', 'pm', $TOK2, $PRE_UID, 'continue') } '대기 중 터널 값이 바뀌었다' `
   @("기준값 preHash = $PRE_HASH_PM (PM 유도 — 라이브로 검증된 적 없음)", '1P) PM 원본 대조를 건너뛴다',
     '복구 안내(터널 값이 바뀌었다)', '라이브로 검증된 적이 없다', 'PM 이 낡은 것이라면 라이브 값은 옳다',
     '자기 자신 비교', '이 실행이 클러스터에 가한 변경: 0 건') `
   @('OK PM 토큰 해시 = preHash') @()
-Run-Case 'G4-43' 'R2 뒤 재인수: 요약이 인쇄한 drilled: 서명을 그대로 넣으면 삭제 0(요구 (h) · A2-1/F-B2-03)' 'adopt' {
-  $global:Sec.labels['reconcile.external-secrets.io/managed'] = 'true'
-  $global:Pods = @(
-    @{ name = $POD2; restarts = 0; start = $ST2; ready = 'True'; lab = 'app=cloudflared' },
-    @{ name = $POD1; restarts = 0; start = $ST3; ready = 'True'; lab = 'app=cloudflared' })
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, "drilled:$SIG_R2", 'skip-pm', 'merge', 'first-drill') } 'ok' `
-  @('SKIP 드릴: 이미 드릴했다는 선언이 있다', '건너뜀(이미 드릴했다는 선언 — 삭제 0)',
-    '드릴 후 서명(drilled:) — 이 실행은 삭제 0', "드릴 후 파드서명 = drilled:$SIG_R2",
-    '(이미 드릴했다고 선언됐다 — 이 실행은 파드를 삭제하지 않는다)',
-    '기준값 파드서명: 이 실행의 입력은 아래 drilled: 줄과 값이 같다 — 여기에 값을 다시 찍지 않는다',
-    '이 실행이 클러스터에 가한 변경: 0 건') @('삭제 요청') @() -leftover 1 -post $NO_TWIN
-Run-Case 'G4-43b' 'drilled: 로 이어 온 실행인데 그때 뜬 파드가 NotReady → 삭제 0 이고 이중화 미성립을 말한다(A2-4)' 'adopt' {
-  $global:EsCreated = '2026-09-21T08:30:00Z'
-  Adopt-Now
-  $global:Pods = @(
-    @{ name = $POD2; restarts = 0; start = $ST2; ready = 'True'; lab = 'app=cloudflared' },
-    @{ name = $POD3; restarts = 0; start = $ST3; ready = 'False'; lab = 'app=cloudflared' })
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, "drilled:$POD_SIG_23", 'skip-pm', 'continue', 'drill') } 'ok' `
-  @('SKIP 드릴: 이미 드릴했다는 선언이 있다', "⚠ 커넥터 $POD3 이 Ready 가 아니다",
-    '기준값 파드서명: 이 실행의 입력은 아래 drilled: 줄과 값이 같다 — 여기에 값을 다시 찍지 않는다',
-    "Ready 아닌 커넥터: $POD3", '이 실행이 클러스터에 가한 변경: 0 건') @() @() -leftover 1 -post $NO_TWIN
-Run-Case 'G4-43c' 'R2 뒤 재인수에서 drilled: 를 떼고 first-drill 까지 입력하면 드릴이 한 번 더 돈다(알려진 한계 — 요약이 접두어째 인쇄하는 이유)' 'adopt' {
-  $global:Sec.labels['reconcile.external-secrets.io/managed'] = 'true'
-  $global:Pods = @(
-    @{ name = $POD2; restarts = 0; start = $ST2; ready = 'True'; lab = 'app=cloudflared' },
-    @{ name = $POD1; restarts = 0; start = $ST3; ready = 'True'; lab = 'app=cloudflared' })
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, $SIG_R2, 'skip-pm', 'merge', 'first-drill') } 'ok' `
-  @("삭제 $POD1", '이 실행이 클러스터에 가한 변경: 1 건') @('SKIP 드릴') @((& $DELARGV $POD1)) `
-  -wantPrompt @('**R2(인수 해제) 뒤의 재인수**다 — ES 가 지워진 상태로 왔다', '파드 서명에 drilled: 를 붙이거나 1D 에 drilled 를 넣어 다시 실행한다')
-Run-Case 'G4-44' '접두어 없이 드릴 후 서명을 넣었고 그때 뜬 파드가 NotReady → 인수 뒤 시작한 파드가 있으므로 삭제하지 않는다(F-B2-03 ②)' 'adopt' {
-  $global:EsCreated = '2026-09-21T08:30:00Z'
-  Adopt-Now
-  $global:Pods = @(
-    @{ name = $POD2; restarts = 0; start = $ST2; ready = 'True'; lab = 'app=cloudflared' },
-    @{ name = $POD3; restarts = 0; start = $ST3; ready = 'False'; lab = 'app=cloudflared' })
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, $POD_SIG_23, 'skip-pm', 'continue', 'drill') } 'ok' `
-  @('SKIP 드릴: 인수 뒤에 시작한 파드가 있지만 Ready 가 아니다', "건너뜀(SKIP — $POD3 가 인수 뒤 시작 · Ready 아님 · 삭제 0)",
-    '이 실행이 클러스터에 가한 변경: 0 건') @() @() -leftover 1
-# ---- 4라운드 지적 반영분(B3-01∼B3-09 · A3-1∼A3-5 · 3라운드 검증 A 의 ESCAPED 변이 12개)
-$DH = 'dee8952bf80d747f83dde48edad29237eabeb2a5c4b28b2d492b94bb'   # ESO 가 쓴 data-hash 어노테이션(비밀 아님 · 라벨이 지워져도 남는다)
-# A3-2 / V05 — ES creationTimestamp 의 형식 가드. 이것이 무너지면 문자열 비교가 무의미해지고
-# "인수 뒤에 시작한 파드" 판정이 뒤집혀 **두 번째 삭제**가 난다(검증자 A 가 삭제 1건으로 실증).
-Run-Case 'G4-45' 'ES creationTimestamp 가 다른 표기(+09:00)로 온다 → 시각 비교를 하지 않고 중단(A3-2)' 'adopt' {
-  $global:EsCreated = '2026-09-21T17:30:00+09:00'
-  Adopt-Now
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, $POD_SIG, 'skip-pm', 'continue', 'drill') } 'ES creationTimestamp 형식이 기대와 다르다' `
-  @('이 실행이 클러스터에 가한 변경: 0 건') @('SKIP 드릴', '삭제 요청', '드릴 후 파드서명') @()
-Run-Case 'G4-45b' 'ES creationTimestamp 가 소수점 초로 온다 → 같은 중단(A3-2)' 'adopt' {
-  $global:EsCreated = '2026-09-21T08:30:00.123456Z'
-  Adopt-Now
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, $POD_SIG, 'skip-pm', 'continue', 'drill') } 'ES creationTimestamp 형식이 기대와 다르다' `
-  @('이 실행이 클러스터에 가한 변경: 0 건') @('SKIP 드릴', '삭제 요청') @()
-Run-Case 'G4-45c' '3) 의 이전 드릴 감지에서도 같은 형식 가드가 산다(호출 지점 두 곳을 모두 고정)' 'adopt' {
-  $global:EsCreated = '2026-09-21T17:30:00+09:00'
-  Adopt-Now
-  $global:Pods = @(
-    @{ name = $POD2; restarts = 0; start = $ST2; ready = 'True'; lab = 'app=cloudflared' },
-    @{ name = $POD3; restarts = 0; start = $ST3; ready = 'True'; lab = 'app=cloudflared' })
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, $POD_SIG, 'skip-pm', 'continue') } 'ES creationTimestamp 형식이 기대와 다르다' `
-  @('이 실행이 클러스터에 가한 변경: 0 건') @('**이전 실행의 드릴 결과**다') @()
-# A3-3 / V04 — oci 가 exit 0 인데 빈 출력. "성공"으로 읽으면 확인된 복구 경로가 0 인 채로 드릴이 진행된다.
-Run-Case 'G4-46' 'oci 가 exit 0 인데 빈 출력 → 2차 break-glass 로 세지 않는다(단어 no-breakglass · 삭제 거부 · A3-3)' 'adopt' {
-  $global:SshOk = $false; $global:OciEmpty = $true
-  & $IN @('no-breakglass', 'skip-pm', 'merge', 'drill') } 'ok' `
-  @('oci 자격(프로파일 DEFAULT) = False', 'SKIP 드릴: break-glass 1차·2차가 모두 미확인이다',
-    '이 실행이 클러스터에 가한 변경: 0 건') @('드릴 후 파드서명') @() -leftover 1
 Run-Case 'G4-46b' '같은 상황에서 옛 단어(noglass)로는 통과하지 못한다(A3-3)' 'adopt' {
   $global:SshOk = $false; $global:OciEmpty = $true
-  & $IN @('noglass', 'skip-pm', 'merge', 'drill') } '정지점에서 중단' @() @('기준값 preHash') @()
-# A3-5 / V13·V14 — 파드 조회 응답의 형식 가드. 모의가 언제나 옳은 형식을 주어 한 번도 밟지 않던 분기다.
+  & $IN @('noglass', 'skip-pm', 'merge') } '정지점에서 중단' @() @('기준값 preHash') @()
 Run-Case 'G4-47' '파드 jsonpath 가 3필드로 온다 → 오판하지 않고 중단(A3-5)' 'adopt' {
   $global:BadPodRow = $true; & $OK } '파드 행 형식이 기대와 다르다' `
   @('이 실행이 클러스터에 가한 변경: 0 건') @('OK 값 불변', '삭제 요청') @()
 Run-Case 'G4-47b' '파드 목록이 exit 0 인데 빈 응답 → "파드 없음"으로 읽지 않는다(A3-5)' 'adopt' {
   $global:NoPodRows = $true; & $OK } '파드 목록이 비었다' `
   @('이 실행이 클러스터에 가한 변경: 0 건') @('삭제 요청') @()
-# A3-5 / V03 — boot_id 형식 검사. ssh 가 boot_id 아닌 무엇을 돌려줘도 창 A 대조 상대로 삼으면 안 된다.
 Run-Case 'G4-48' 'ssh 가 boot_id 형식이 아닌 것을 돌려준다 → 창 A 대조를 하지 않고 단어가 noglass 로 갈린다(A3-5)' 'adopt' {
   $global:BootId = 'joshtech-api'
-  & $IN @('noglass', 'skip-pm', 'merge', 'drill') } 'ok' `
-  @('ssh ssh-a = False', '창 A 세션을 대조할 수 없다') @('OK 창 A 에') $DEL2
-# A3-5 / V15 — 0) 의 권한 사전 확인은 get secrets 와 delete pods 를 **둘 다** 본다.
-Run-Case 'G4-49' '0) 권한 확인에서 delete pods 만 거부된다 → 그 자리에서 중단(A3-5)' 'adopt' {
-  $global:CanIDeny = 'delete'; & $OK } "'delete pods' 를 할 수 없다(응답='no'" `
-  @('이 실행이 클러스터에 가한 변경: 0 건') @('기준값 preHash', '삭제 요청') @()
-# B3-06 — 드릴 경로 안의 두 SKIP 분기도 반대쪽 커넥터의 Ready 를 판정한다.
-Run-Case 'G4-50' 'SKIP(인수 뒤 시작한 Ready 파드)인데 반대쪽 커넥터가 NotReady → 경고·요약에 남긴다(B3-06)' 'adopt' {
-  $global:EsCreated = '2026-09-21T08:30:00Z'
-  Adopt-Now
-  $global:Pods = @(
-    @{ name = $POD2; restarts = 0; start = $ST2; ready = 'False'; lab = 'app=cloudflared' },
-    @{ name = $POD3; restarts = 0; start = $ST3; ready = 'True'; lab = 'app=cloudflared' })
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, $POD_SIG_23, 'skip-pm', 'continue', 'drill') } 'ok' `
-  @('SKIP 드릴: 인수 뒤에 시작한 파드가 이미 Ready 다', "⚠ 커넥터 $POD2 이 Ready 가 아니다",
-    '이중화는 지금 성립하지 않는다', "Ready 아닌 커넥터: $POD2", '이 실행이 클러스터에 가한 변경: 0 건') `
-  @() @() -leftover 1 -post $NO_TWIN
-Run-Case 'G4-50b' 'SKIP(인수 뒤 시작한 파드가 NotReady)인데 반대쪽도 NotReady → 둘 다 경고에 실린다(B3-06)' 'adopt' {
-  $global:EsCreated = '2026-09-21T08:30:00Z'
-  Adopt-Now
-  $global:Pods = @(
-    @{ name = $POD2; restarts = 0; start = $ST2; ready = 'False'; lab = 'app=cloudflared' },
-    @{ name = $POD3; restarts = 0; start = $ST3; ready = 'False'; lab = 'app=cloudflared' })
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, $POD_SIG_23, 'skip-pm', 'continue', 'drill') } 'ok' `
-  @('SKIP 드릴: 인수 뒤에 시작한 파드가 있지만 Ready 가 아니다', "Ready 아닌 커넥터: $POD2,$POD3",
-    '이 실행이 클러스터에 가한 변경: 0 건') @() @() -leftover 1 -post $NO_TWIN
-# B3-02 — managed 라벨이 지워진 재인수. 라벨이 없으면 정상 캡처 경로로 들어와 drilled:·first-drill 잠금이 **둘 다** 풀렸다.
-# 가드 ⓓ 가 ESO 의 data-hash 어노테이션으로 그 실행을 잡아 1D) 정지점을 낸다(운영자가 지울 이유가 없는 흔적이다).
-Run-Case 'G4-43d' '라벨만 지워진 재인수 → 1D 가 잡고, drilled 로 답하면 삭제 0(B3-02 · 요구 (h))' 'adopt' {
-  $global:Sec.ann['reconcile.external-secrets.io/data-hash'] = $DH
-  $global:Pods = @(
-    @{ name = $POD2; restarts = 0; start = $ST2; ready = 'True'; lab = 'app=cloudflared' },
-    @{ name = $POD1; restarts = 0; start = $ST3; ready = 'True'; lab = 'app=cloudflared' })
-  & $IN @($BOOT, 'go', 'readopt', 'drilled', 'skip-pm', 'merge', 'first-drill') } 'ok' `
-  @('managed 라벨은 없는데 ESO 의 data-hash 어노테이션이 남아 있다', '이 실행은 **첫 인수가 아니라 재인수**다',
-    'SKIP 드릴: 이미 드릴했다는 선언이 있다', '1D 라벨 없는 재인수 — 이미 드릴함, 이 실행은 삭제 0',
-    '기준값 파드서명: 이 실행의 입력은 아래 drilled: 줄과 값이 같다 — 여기에 값을 다시 찍지 않는다',
-    "드릴 후 파드서명 = drilled:$SIG_R2", '이 실행이 클러스터에 가한 변경: 0 건') `
-  @('삭제 요청') @() -leftover 1 -post $NO_TWIN `
-  -wantPrompt @('1D) 이 Secret 은 이전에 인수된 적이 있다', '이전 인수에서 이미 파드 1개를 교체했는가')
-Run-Case 'G4-43e' '라벨만 지워진 재인수에서 first 로 답하면 4) 단어가 first-drill 로 갈린다(사람 확인 둘 · B3-02)' 'adopt' {
-  $global:Sec.ann['reconcile.external-secrets.io/data-hash'] = $DH
-  $global:Pods = @(
-    @{ name = $POD2; restarts = 0; start = $ST2; ready = 'True'; lab = 'app=cloudflared' },
-    @{ name = $POD1; restarts = 0; start = $ST3; ready = 'True'; lab = 'app=cloudflared' })
-  & $IN @($BOOT, 'go', 'readopt', 'first', 'skip-pm', 'merge', 'first-drill') } 'ok' `
-  @("삭제 $POD1", '1D 라벨 없는 재인수 — 이 재인수의 첫 드릴', '이 실행이 클러스터에 가한 변경: 1 건') `
-  @('SKIP 드릴') @((& $DELARGV $POD1)) `
-  -wantPrompt @('1D 정지점에서 확인했다: managed 라벨이 지워졌고 data-hash 어노테이션이 남아 있었다')
-Run-Case 'G4-43f' '라벨만 지워진 재인수에서 1D 의 두 번째 답이 drilled 도 first 도 아니면 중단(B3-02)' 'adopt' {
-  $global:Sec.ann['reconcile.external-secrets.io/data-hash'] = $DH
-  & $IN @($BOOT, 'go', 'readopt', 'yes', 'skip-pm', 'merge', 'first-drill') } '1D) 에서 중단 — drilled 도 first 도 아니다(모르겠으면 drilled 를 넣는다: 삭제 0 이 안전한 쪽이다)' `
-  @('이 실행이 클러스터에 가한 변경: 0 건') @('삭제 요청', 'OK 값 불변') @()
-Run-Case 'G4-43g' '라벨만 지워진 재인수에서 1D 정지점 단어가 틀리면 중단(B3-02)' 'adopt' {
-  $global:Sec.ann['reconcile.external-secrets.io/data-hash'] = $DH
-  & $IN @($BOOT, 'go', 'nope') } '정지점에서 중단' `
-  @('이 실행이 클러스터에 가한 변경: 0 건') @('삭제 요청') @()
-Run-Case 'G4-43h' '라벨을 지운 재인수가 1D 없이 곧장 drill 로 파드를 지우던 경로가 막혔다(B3-02 · 요구 (h))' 'adopt' {
-  $global:Sec.ann['reconcile.external-secrets.io/data-hash'] = $DH
-  $global:Pods = @(
-    @{ name = $POD2; restarts = 0; start = $ST2; ready = 'True'; lab = 'app=cloudflared' },
-    @{ name = $POD1; restarts = 0; start = $ST3; ready = 'True'; lab = 'app=cloudflared' })
-  & $IN @($BOOT, 'go', 'skip-pm', 'merge', 'drill') } '정지점에서 중단' `
-  @('이 실행이 클러스터에 가한 변경: 0 건') @('삭제 요청', 'OK 값 불변') @()
-Run-Case 'G4-43i' 'data-hash 가 없는 진짜 첫 인수에는 1D 정지점이 나오지 않는다(정상 경로 회귀 · 단어는 drill 그대로)' 'adopt' { & $OK } 'ok' `
-  @('OK 값 불변', '이 실행이 클러스터에 가한 변경: 1 건',
-    '기준값 파드서명(이 실행의 입력 · 다음 실행에는 이 줄이 아니라 아래 drilled: 줄을 넣는다) = ') @('첫 인수가 아니라 재인수') $DEL2 `
-  -notWantPrompt @('1D) 이 Secret 은 이전에 인수된 적이 있다', '**기준값을 이어받은 실행(1R resume)**이다')
-# ---- 5라운드 지적 반영분(B4-01 · A4-3)
-# B4-01 — R2(인수 해제) 뒤의 재인수인데 운영자가 **블록보다 먼저 머지**한 실행. 라벨이 남아 resume 으로 들어오고,
-# ES 는 이미 살아 있어 `$esGone` 이 거짓이며, 새 ES 의 creationTimestamp 가 두 파드보다 늦어 `$after` 가드도 구조적으로 비어 있다.
-# 4R 까지는 그 실행이 단어 `drill` 하나로 두 번째 파드를 지웠다(검증 B 가 하네스 사본으로 실증). 이제 단어가 first-drill 로 갈린다.
-Run-Case 'G4-52' 'R2 뒤 재인수 + 먼저 머지(ES 존재) + 접두어 없는 드릴 후 서명 → 옛 단어 drill 로는 통과하지 못한다(B4-01 · 요구 (h))' 'adopt' {
-  Adopt-Now
-  $global:Pods = @(
-    @{ name = $POD1; restarts = 0; start = $ST3; ready = 'True'; lab = 'app=cloudflared' },
-    @{ name = $POD2; restarts = 0; start = $ST2; ready = 'True'; lab = 'app=cloudflared' })
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, $SIG_R2, 'skip-pm', 'continue', 'drill') } '정지점에서 중단' `
-  @('OK 값 불변', '이 실행이 클러스터에 가한 변경: 0 건') @('삭제 요청', '드릴 후 파드서명') @() `
-  -wantPrompt @('**기준값을 이어받은 실행(1R resume)**이다 — 머지 전 상태를 이 실행에서 직접 보지 못했다(이미 머지된 재인수라면 ES 가 살아 있어도 같은 상황이다)',
-    '이 블록은 이 인수에서 드릴이 이미 있었는지 스스로 알 수 없다')
-Run-Case 'G4-52b' '같은 상황에서 drilled: 접두어를 붙이면 삭제 0(B4-01 · 안전한 답)' 'adopt' {
-  Adopt-Now
-  $global:Pods = @(
-    @{ name = $POD1; restarts = 0; start = $ST3; ready = 'True'; lab = 'app=cloudflared' },
-    @{ name = $POD2; restarts = 0; start = $ST2; ready = 'True'; lab = 'app=cloudflared' })
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, "drilled:$SIG_R2", 'skip-pm', 'continue', 'first-drill') } 'ok' `
-  @('SKIP 드릴: 이미 드릴했다는 선언이 있다', "드릴 후 파드서명 = drilled:$SIG_R2",
-    '이 실행이 클러스터에 가한 변경: 0 건') @('삭제 요청') @() -leftover 1 -post $NO_TWIN
-Run-Case 'G4-52c' '같은 상황에서 first-drill 을 입력하면 드릴이 한 번 더 돈다(알려진 한계 — 사람 확인 두 번을 모두 잘못 넘긴 경우)' 'adopt' {
-  Adopt-Now
-  $global:Pods = @(
-    @{ name = $POD1; restarts = 0; start = $ST3; ready = 'True'; lab = 'app=cloudflared' },
-    @{ name = $POD2; restarts = 0; start = $ST2; ready = 'True'; lab = 'app=cloudflared' })
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, $SIG_R2, 'skip-pm', 'continue', 'first-drill') } 'ok' `
-  @("삭제 $POD1", '이 실행이 클러스터에 가한 변경: 1 건') @('SKIP 드릴') @((& $DELARGV $POD1))
-# A4-3 — `$nrWarn`(드릴하지 않고 끝나는 실행의 이중화 판정) 호출 6곳 가운데 시나리오가 닿지 못하던 둘.
-# ① break-glass 둘 다 미확인이라 삭제를 거부한 실행 ② nopods 로 이어 온 실행. 둘 다 **확인된 복구 경로가 0 이거나 기준이 없는** 실행이라
-# 그 "OK"가 T046 판단의 근거가 되면 안 된다(첫 인수 경로는 1) 의 Ready 하드 가드 때문에 여기에 닿지 않는다 — resume/nopods 로만 도달한다).
-Run-Case 'G4-46c' 'break-glass 둘 다 미확인(삭제 거부) 실행에서도 반대쪽 커넥터의 Ready 를 판정한다(A4-3)' 'adopt' {
-  $global:SshOk = $false; $global:OciEmpty = $true
-  Adopt-Now
-  $global:Pods[1].ready = 'False'
-  & $IN @('no-breakglass', 'resume', $PRE_HASH, $PRE_UID, $POD_SIG, 'skip-pm', 'continue', 'first-drill') } 'ok' `
-  @('SKIP 드릴: break-glass 1차·2차가 모두 미확인이다', "⚠ 커넥터 $POD2 이 Ready 가 아니다",
-    '이중화는 지금 성립하지 않는다', "Ready 아닌 커넥터: $POD2",
-    '거부(break-glass 1차·2차 모두 미확인 — 삭제 0)', '이 실행이 클러스터에 가한 변경: 0 건') `
-  @('드릴 후 파드서명') @() -leftover 1
-Run-Case 'G4-51' 'nopods 로 이어 온 실행에서도 반대쪽 커넥터의 Ready 를 판정한다(A4-3)' 'adopt' {
-  Adopt-Now
-  $global:Pods[1].ready = 'False'
-  & $IN @($BOOT, 'go', 'resume', $PRE_HASH, $PRE_UID, 'nopods', 'skip-pm', 'continue', 'first-drill') } 'ok' `
-  @('건너뜀(nopods · 삭제 0)', "⚠ 커넥터 $POD2 이 Ready 가 아니다", '이중화는 지금 성립하지 않는다',
-    "Ready 아닌 커넥터: $POD2", '이 실행이 클러스터에 가한 변경: 0 건') `
-  @('드릴 후 파드서명') @() -leftover 1
+  & $IN @('noglass', 'skip-pm', 'merge') } 'ok' `
+  @('ssh ssh-a = False', '창 A 세션을 대조할 수 없다') @('OK 창 A 에') @()
 # ---- 복구 블록
 $APPLY1 = @('apply --server-side --force-conflicts --field-manager=t045-restore --request-timeout=30s -f -')
 Run-Case 'R-01' '정상 복구: ES 없음 · Git 선언 없음 · PM 토큰 해시 일치 → 제자리 복구' 'restore' {
@@ -1258,6 +978,93 @@ Run-Case 'R-17' '(복구) apply 페이로드의 type 은 실제 Secret 의 type 
   if (-not [string]::Equals([string]$global:AppliedType, 'joshuatech.dev/tunnel-token', [StringComparison]::Ordinal)) {
     $f += "apply 페이로드의 type 이 '$([string]$global:AppliedType)' 이다(실제 Secret 의 type 이어야 한다)" }
   $f }
+# 독립 드릴: 각 게이트가 없어지면 변경 로그 또는 실패 문면이 달라져야 한다.
+$DOK = { Adopt-Now; & $IN @($BOOT, 'go', $PRE_HASH, $PRE_UID, $POD2, 'drill') }
+Run-Case 'D-01' '독립 드릴 정상 경로' 'drill' { & $DOK } 'ok' @('OK 새 파드', '방금 삭제한 커넥터를 타고 있었다면 끊겼다', 'PASS(ES Ready·값·UID·data-hash·파드 2개 Ready)') @() $DEL2 -wantPrompt @('창 A에서 Enter를 쳐 세션을 지금 다시 확인한다')
+Run-Case 'D-02' '드릴 클러스터 신원 거부' 'drill' { & $DOK; $global:NodeNames=@('node/other') } '클러스터'
+Run-Case 'D-03' '드릴 삭제 권한 거부' 'drill' { & $DOK; $global:CanIDeny='delete' } '할 수 없다'
+Run-Case 'D-04' '드릴 ES 준비 상태 거부' 'drill' { & $DOK; $global:Es.reason='SecretSyncedError' } 'ES Ready'
+Run-Case 'D-05' '드릴 값 해시 거부' 'drill' { & $DOK; $global:Sec.data['TUNNEL_TOKEN']=$TOK2 } '값 해시' @('복구 인계(value)')
+Run-Case 'D-06' '드릴 UID 거부' 'drill' { & $DOK; $global:Sec.uid='ffffeeee-dddd-4ccc-8bbb-aaaa99998888' } 'UID' @('복구 인계(uid)') -notWantPrompt @('지울 파드 이름')
+Run-Case 'D-07' '드릴 data-hash 없음 거부' 'drill' { & $DOK; $global:Sec.ann.Clear() } 'data-hash'
+Run-Case 'D-08' '드릴 파드 개수 거부' 'drill' { & $DOK; $global:Pods=@($global:Pods[0]) } '2개'
+Run-Case 'D-09' '드릴 대상 NotReady 거부' 'drill' { & $DOK; $global:Pods[1].ready='False' } 'Ready' -notWantPrompt @('지울 파드 이름')
+Run-Case 'D-10' '드릴 남길 파드 NotReady 거부' 'drill' { & $DOK; $global:Pods[0].ready='False' } 'Ready' -notWantPrompt @('지울 파드 이름')
+Run-Case 'D-11' '양쪽 break-glass 실패는 단어 확인 후 삭제 거부' 'drill' { Adopt-Now; $global:SshOk=$false; $global:OciOk=$false; & $IN @('no-breakglass') } '삭제 거부'
+Run-Case 'D-12' '지울 파드 이름 오타 거부' 'drill' { Adopt-Now; & $IN @($BOOT,'go',$PRE_HASH,$PRE_UID,'typo','drill') } '정지점'
+Run-Case 'D-13' '이전 교체 흔적 second 입력' 'drill' { Adopt-Now; $global:Es.created='2026-09-14T07:49:00Z'; & $IN @($BOOT,'go',$PRE_HASH,$PRE_UID,$POD2,'second') } 'ok' @('second') @() $DEL2
+Run-Case 'D-14' '이전 교체 흔적 일반 drill 단어 거부' 'drill' { & $DOK; $global:Es.created='2026-09-14T07:49:00Z' } '정지점'
+Run-Case 'D-15' '새 파드 Ready 타임아웃' 'drill' { & $DOK; $global:NewPodReady=$false } '300초' @('이 실행이 클러스터에 가한 변경: 1 건') @() $DEL2
+Run-Case 'D-16' '삭제 후 kubectl 지속 실패' 'drill' { & $DOK; $global:FailPodsAfterDelete=$true } '300초' @('이 실행이 클러스터에 가한 변경: 1 건', '실행하지 않고 파일의 R3') @() $DEL2
+Run-Case 'D-17' '삭제 실패 회계 선행' 'drill' { & $DOK; $global:FailAlways['delete']=1 } '요청 실패' @('이 실행이 클러스터에 가한 변경: 1 건') @() $DEL2
+Run-Case 'D-18' '정지점 뒤 값 변경' 'drill' { & $DOK; $global:OnDrill={ $global:Sec.data['TUNNEL_TOKEN']=$TOK2 } } '정지점에서 기다리는 사이' @('복구 인계(value)', 'R1', 'R2', 'R3', '실행하지 않고', '컨테이너가 재시작되지 않는 동안만')
+Run-Case 'D-19' '정지점 뒤 UID 변경' 'drill' { & $DOK; $global:OnDrill={ $global:Sec.uid='ffffeeee-dddd-4ccc-8bbb-aaaa99998888' } } 'UID 변경' @('복구 인계(uid)', 'kv-correct.ps1 · g4-restore.ps1 은 필요 없다', 'ffffeeee-dddd-4ccc-8bbb-aaaa99998888')
+Run-Case 'D-20' '정지점 뒤 파드 변경' 'drill' { & $DOK; $global:OnDrill={ $global:Pods[1].restarts=1 } } '파드 상태'
+Run-Case 'D-21' '입력 EOF는 삭제 전에 중단' 'drill' { & $DOK; $global:EofAfter=2 } 'EOF'
+Run-Case 'D-22' 'Ready=False + SecretSynced 이유는 거부' 'drill' { & $DOK; $global:EsReady='False' } 'ES Ready'
+Run-Case 'D-23' '삭제 대상 선택 startTime이 이름보다 우선' 'drill' { Adopt-Now; $global:Pods[0].start=$ST2; $global:Pods[1].start=$ST1; & $IN @($BOOT,'go',$PRE_HASH,$PRE_UID,$POD1,'drill') } 'ok' @("삭제 $POD1") @() @((& $DELARGV $POD1))
+Run-Case 'D-24' '시각 같으면 이름 Ordinal 동률 해소' 'drill' { & $DOK; $global:Pods[0].start=$ST2 } 'ok' @("삭제 $POD2") @() $DEL2
+Run-Case 'D-25' '삭제 후 남길 파드 변경 감지' 'drill' { & $DOK; $global:BumpSurvivorOnDelete=$true } '재시작·교체됐다' @() @() $DEL2
+Run-Case 'D-26' 'OCI 빈 응답과 SSH 실패는 삭제 거부' 'drill' { Adopt-Now; $global:SshOk=$false; $global:OciEmpty=$true; & $IN @('no-breakglass') } '삭제 거부'
+Run-Case 'D-27' '조회 일시 오류는 기한 내 재시도' 'drill' { & $DOK; $global:OnDrill={ $global:FailN['pods']=1 } } 'ok' @('5초 뒤 재시도') @() $DEL2
+Run-Case 'D-28' '삭제 중 예외 회계 선행' 'drill' { & $DOK; $global:ThrowDelete=$true } 'mock interrupt' @('이 실행이 클러스터에 가한 변경: 1 건') @() $DEL2
+Run-Case 'D-29' 'ES 시각 형식 판정 불가' 'drill' { & $DOK; $global:Es.created='2026-09-22T00:00:00+09:00' } 'creationTimestamp 형식'
+Run-Case 'D-30' '빈 파드 시작시각은 판정 불가' 'drill' { & $DOK; $global:Pods[1].start='' } '파드 행 형식'
+Run-Case 'D-31' '빈 Secret 값을 빈 문자열 해시로 승인할 수 없다' 'drill' { Adopt-Now; $global:Sec.data.Remove('TUNNEL_TOKEN'); & $IN @($BOOT,'go',(SHA ''),$PRE_UID,$POD2,'drill') } '빈 값'
+Run-Case 'D-32' '삭제 후 생존 파드 Ready 상실' 'drill' { & $DOK; $global:SurvivorNotReadyAfterDelete=$true } '남은 파드' @('이 실행이 클러스터에 가한 변경: 1 건') @('OK 새 파드') $DEL2
+Run-Case 'D-34' '삭제 대상이 남은 3파드 상태는 완료가 아니다' 'drill' { & $DOK; $global:DeleteRemoves=$false; $global:NewPodWithOld=$true } '300초' @('이 실행이 클러스터에 가한 변경: 1 건') @('OK 새 파드') $DEL2
+Run-Case 'D-35' '비교는 Ordinal: 대문자 파드 이름 거부' 'drill' { Adopt-Now; & $IN @($BOOT,'go',$PRE_HASH,$PRE_UID,$POD2.ToUpperInvariant(),'drill') } '정지점'
+Run-Case 'D-36' 'break-glass 거부의 경고 프롬프트' 'drill' { Adopt-Now; $global:SshOk=$false; $global:OciOk=$false; & $IN @('no-breakglass') } '삭제 거부' -wantPrompt @('잠기면 남는 복구 경로가 없다', '파드 삭제는 거부')
+Run-Case 'D-37' '삭제 직전 키 조회 실패의 복구 진단' 'drill' { & $DOK; $global:OnDrill={ $global:Sec.data['TUNNEL_TOKEN']=$TOK2; $global:FailAlways['sec.keys']=1 } } '정지점에서 기다리는 사이' @('키 집합: (조회 실패)', '키 집합을 읽지 못했다')
+# R3 대화형 bash 회귀: 실제 운영 블록은 실행하지 않고, 출력 전용 9줄만 AST에서 추출한다.
+$bashPath = Join-Path $env:ProgramFiles 'Git/bin/bash.exe'
+if (Test-Path -LiteralPath $bashPath) {
+  $r3Ast = [System.Management.Automation.Language.Parser]::ParseFile($blocks['adopt'], [ref]$null, [ref]$null)
+  $r3Lines = @($r3Ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Write-Host' }, $true) | Where-Object { $_.CommandElements.Count -eq 2 -and $_.CommandElements[1] -is [System.Management.Automation.Language.StringConstantExpressionAst] } | ForEach-Object { $_.CommandElements[1].Value })
+  $begin = [Array]::IndexOf($r3Lines, '     set +o history')
+  $end = [Array]::IndexOf($r3Lines, '     set -o history')
+  $same = $begin -ge 0 -and $end -gt $begin -and ($end - $begin + 1) -eq $R3_SEQ.Count
+  if ($same) { for ($i=0; $i -lt $R3_SEQ.Count; $i++) { if ($r3Lines[$begin+$i] -cne $R3_SEQ[$i]) { $same=$false } } }
+  if (-not $same) {
+    [void]$results.Add([pscustomobject]@{id='R3-BASH';result='FAIL';desc='대화형 모의';detail='출력 조각 계약이 달라 실행 거부'})
+  } else {
+    $mockPrefix = 'sudo() {
+  if [[ "$*" == *"apply --server-side"* ]]; then
+    local payload; IFS= read -r payload
+    if [[ "$payload" == *''"TUNNEL_TOKEN":"QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE="''* ]]; then echo MOCK-APPLY-OK; else echo MOCK-PAYLOAD-FAIL; return 99; fi
+  elif [[ "$*" == *"get secret"* ]]; then printf ''%s'' ''QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE='';
+  else echo MOCK-UNEXPECTED; return 98; fi
+}
+kubectl() { echo DENIED; return 97; }
+ssh() { echo DENIED; return 97; }
+oci() { echo DENIED; return 97; }
+readonly -f sudo kubectl ssh oci
+set -H
+'
+    $scriptPath = Join-Path ([IO.Path]::GetTempPath()) ('t045-g4-r3-' + [guid]::NewGuid().ToString('N') + '.sh')
+    try {
+      [IO.File]::WriteAllText($scriptPath, $mockPrefix + (($r3Lines[$begin..$end] | ForEach-Object { $_.Trim() }) -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
+      foreach ($case in @(@{id='GOOD';token=('A'*32);marker='MOCK-APPLY-OK'}, @{id='SHORT';token=('A'*8);marker='TOO-SHORT'}, @{id='BROKEN';token=(('A'*16)+' '+('A'*16));marker='BROKEN-PASTE'})) {
+        $psi = [Diagnostics.ProcessStartInfo]::new($bashPath)
+        foreach ($arg in @('--noprofile','--norc','-i',$scriptPath)) { [void]$psi.ArgumentList.Add($arg) }
+        $psi.UseShellExecute=$false; $psi.CreateNoWindow=$true
+        $psi.RedirectStandardInput=$true; $psi.RedirectStandardOutput=$true; $psi.RedirectStandardError=$true
+        $psi.Environment['HISTFILE']='/dev/null'; $psi.Environment['BASH_ENV']=''; $psi.Environment['ENV']=''
+        $proc = [Diagnostics.Process]::Start($psi)
+        try {
+          $stdout = $proc.StandardOutput.ReadToEndAsync(); $stderr = $proc.StandardError.ReadToEndAsync()
+          $proc.StandardInput.Write($case.token + "`n"); $proc.StandardInput.Close()
+          $done = $proc.WaitForExit(10000)
+          if (-not $done) { $proc.Kill($true); throw '로컬 bash 모의 timeout' }
+          $text = $stdout.GetAwaiter().GetResult(); $err = $stderr.GetAwaiter().GetResult()
+          $ok = $proc.ExitCode -eq 0 -and $text.Contains($case.marker) -and -not $text.Contains('DENIED') -and -not $text.Contains('MOCK-PAYLOAD-FAIL')
+          if ($case.id -ne 'GOOD' -and $text.Contains('MOCK-APPLY')) { $ok=$false }
+          [void]$results.Add([pscustomobject]@{id=('R3-BASH-'+$case.id);result=$(if ($ok) {'PASS'} else {'FAIL'});desc='실제 R3 조각 · bash -i · 로컬 모의';detail=$(if ($ok) {''} else {'정상/거부 계약 불일치'})})
+        } finally { $proc.Dispose() }
+      }
+    } finally { if (Test-Path -LiteralPath $scriptPath) { Remove-Item -LiteralPath $scriptPath -Force } }
+  }
+} else { Write-Host 'R3-BASH SKIP: Git Bash가 없어 대화형 모의를 실행하지 못했다(정적 전문·순서 검사는 수행됨)' }
 # ---------------------------------------------------------------- 결과 표
 Write-Host "`n=== 결과 ==="
 $results | Format-Table -AutoSize -Property id, result, desc, detail | Out-String -Width 240 | Write-Host

@@ -1,17 +1,18 @@
 # ===== T045 G4 복구 블록 — 덮인 터널 토큰 Secret 을 PM 원본으로 되돌린다(창 D) =====
-# 언제 쓰나: g4-adopt.ps1 이 "값이 바뀌었다"로 중단했고, **R1(kv 값 정정)으로는 못 고치는 상황**일 때만.
+# 언제 쓰나: g4-adopt.ps1 또는 g4-drill.ps1 이 "값이 바뀌었다"로 중단했고, **R1(kv 값 정정)으로는 못 고치는 상황**일 때만.
 #   R1 이 1순위다 — kv 를 고치면 ESO 가 5분 안에 라이브를 알아서 되돌린다(kv-correct.ps1). 이 블록은 R2 의 마지막 단계다.
 #   오경보 확인에도 쓴다: 2) 의 해시 대조가 SKIP(이미 기준값과 같다)이면 값은 옳다 — 그때는 토큰을 묻지 않고 아무것도 쓰지 않는다.
 # ⚠ 순서가 전부다. ES 가 살아 있으면 **이 블록이 쓴 값을 ESO 가 ≤5분 안에 다시 덮는다.** R2 의 정식 순서:
 #   ① revert PR 머지 → ② platform-secrets 의 status.sync.revision 이 revert 커밋이고 해당 ExternalSecret 이 requiresPruning 인지 확인
 #      (이 확인 없이 지우면 selfHeal 이 ES 를 곧바로 되살린다) → ③ kubectl -n cloudflared delete externalsecret cloudflared-tunnel
-#      (Orphan 이라 Secret 은 남는다 · 평시 금지 · 이 비상 시에만) → ④ **이 블록**으로 값 복구 → ⑤ 파드는 **1개만**, 드릴 규칙 그대로 교체한다.
+#      (Orphan 이라 Secret 은 남는다 · 평시 금지 · 이 비상 시에만) → ④ **이 블록**으로 값 복구 → ⑤ 재인수 판정 PASS 뒤 g4-drill.ps1에서 파드 **1개만** 교체한다(ES가 없는 비상 복구는 R3의 수동 절차).
 #   ⚠ ③ 의 전제: ESO 2.10.0 은 **모든 ES 에 finalizer 를 붙인다** → delete 는 ESO 컨트롤러가 Running 이고 webhook 이 Ready 일 때만 끝난다.
 #      "덮어쓰기를 멈추려고" 컨트롤러를 먼저 scale 0 하면 delete 가 Terminating 에서 멈춘 것처럼 보인다(Retain 이라 Secret 은 안전하지만 진행이 막힌다).
 #      webhook `externalsecret-validate` 는 DELETE·UPDATE 를 failurePolicy Fail 로 가로챈다 — 죽어 있으면 delete 도 finalizer 제거도 거부된다.
 #      그때만: `kubectl delete validatingwebhookconfiguration externalsecret-validate` 뒤 재시도(selfHeal 이 곧 되살린다).
 #   ⚠ R2 뒤에도 Secret 의 `reconcile.external-secrets.io/managed` 라벨은 남는다 — 재인수 때 g4-adopt 는 항상 1R) resume 경로로 간다
 #      (ES 가 없으면 그 2) 가 "인수 해제 상태 — 재인수라면 지금 머지" 분기로 갈린다). 라벨을 지우는 것은 이 블록이 SKIP(해시 일치)을 낸 뒤에만 한다.
+#   **data-hash 어노테이션은 어떤 경우에도 지우지 않는다.** 독립 g4-drill.ps1의 삭제 전 게이트다.
 #   ES 가 아직 있는 채로 실행하면 블록이 그 사실을 감지해 정지 단어를 `temporary` 로 바꾼다(≤5분짜리 임시 조치임을 아는 사람만 통과).
 #      `temporary` 의 쓸모: ES 를 아직 멈추지 못한 동안에도 옳은 값을 ≤5분간 놓아 **컨테이너 재시작 노출 창**을 줄인다(R1·R2 가 끝날 때까지 되풀이).
 # ⚠ 실행 중 컨테이너는 옛 값을 들고 있다 — 그러나 그 안전망은 **컨테이너가 재시작되지 않는 동안만** 유효하다.
@@ -216,7 +217,7 @@
         Write-Host '⚠ 값은 썼지만 5) 복구 확인이 끝나지 않았다 — 지금 값이 옳다고 가정하지 않는다(쓰기 성공과 확인 성공은 다른 사실이다).'
         Write-Host '   위 throw 문면이 원인이다. 파드를 건드리지 말고 원인을 먼저 없앤 뒤(대개 ES 정지) 이 블록을 다시 실행해 2) 의 해시 대조를 본다.' }
       Write-Host '다음: ES 가 아직 살아 있거나 Git 에 남아 있다면 이 값은 ≤5분 뒤 다시 덮인다 — kv 를 정정하거나(R1) ES 를 멈춘다(R2 ①∼③).'
-      Write-Host '값이 옳다고 확인된 뒤에야 파드를 **1개만**, 드릴 규칙 그대로 교체한다(남은 1개가 Ready 인지 먼저 확인 · 두 번째 파드는 교체하지 않는다 · 전면 재시작 금지).'
+      Write-Host '정규 경로는 재인수 판정 PASS 뒤 g4-drill.ps1이다. ES가 없으면 정규 drill은 거부하므로 g4-adopt.ps1 파일의 R3 비상 수동 절차를 읽는다. 값이 옳다고 확인된 뒤에야 파드를 **1개만**, 드릴 규칙 그대로 교체한다(남은 1개가 Ready 인지 먼저 확인 · 두 번째 파드는 교체하지 않는다 · 전면 재시작 금지).'
       Write-Host 'field manager 로 t045-restore 가 남는다 — 이후 ESO 의 쓰기와 소유권이 갈릴 수 있으니 런북에 기록한다.' }
     elseif ($attempted -or $changes.Count -gt 0) {
       Write-Host '⚠ 쓰기를 시도했지만 결과를 확인하지 못했다 — "쓰지 않았다"고 가정하지 않는다. Secret 이 바뀌었을 수도, 그대로일 수도 있다.'
