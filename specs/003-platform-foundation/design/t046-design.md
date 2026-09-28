@@ -81,3 +81,22 @@ Reloader 자체의 되돌리기 = revert PR + (`prune: false`) 운영자가 Depl
 - 게이트(gitops `8595ec7` · PR #31): 부분 자기검사 `app-source-*` 6 + `positive` 1 실패 0 · CI 가드(부분 실행 거부) exit 1 확인 · 실제 트리 validate PASS 26 · FAIL 0 · WARN 4 · `platform/reloader` 렌더가 기준선과 바이트 동일 · gitleaks 0(종료 코드로 판정) · README 단계 3 블록을 kubectl 스텁 + 가짜 시계로 7 시나리오 × 2 모드 실행(정상 10표본 OK · 늦은 시작과 도중 끊김은 `표본` 줄 FAIL). PR의 CI 2건 통과.
 - 머지 전 라이브 상태(agent-view, 읽기만): Application 22개 전부 Synced/Healthy(gitops main `4b7003a`) · `jt-dev`·`reloader` ns에 워크로드 없음.
 - **남은 순서**: 머지(운영자) → 판정 ①·⑥ → Secret 값 변경(운영자 1회) → 5분 관찰(③④⑤) → 제거 PR(G2) → 운영자 삭제(Deployment · Secret) → 런북·학습 로그 → **전체 자기검사 1회 + 하네스 + run-all** → `tasks.md` 체크.
+
+## 8. VD-9 결과(2026-09-28) — PASS, scoped 모드 확정
+
+출력 원문은 `t046-vd9-evidence.md`, 운영 기록은 런북 `docs/runbooks/bootstrap.md` §3 T046 절.
+
+| 판정(§3) | 결과 | 근거 |
+|---|---|---|
+| ① 머지 뒤 기준 | 충족 | `Synced/Healthy/f5a2d86…` · revision 1 · Available · `last-reloaded-from` 없음 |
+| ② Secret 변경 1회 | 충족 | 운영자 실행, t0 = 09:11:41Z |
+| ③ 롤아웃 정확히 1회 | 충족 | revision 1 → 2(t0 + 6초 표본) · 이후 39분간 3 없음 · ReplicaSet 2개(옛 것 0) · 이벤트 `Reloaded` 1 |
+| ④ Argo Synced 유지 | 충족 | 전 표본 `Synced` · `operationState.startedAt` 불변(새 operation 0건) · 변경 **뒤의** 재비교(`reconciledAt` 09:18:18Z)에서도 `Synced` · 필드 관리자 기록에 Reloader 뒤 Argo 적용 없음 |
+| ⑤ annotations 전략 동작 | 충족 | 파드 템플릿 어노테이션 있음 · 재적재 로그 1줄 |
+| ⑥ scoped 모드 | 충족 | ClusterRole·ClusterRoleBinding 0 · 시작 로그의 감시 ns 4 · 컨트롤러 8 · 전역 모드 경고 0 |
+
+- **결론**: 과제의 기본안(scoped 모드)으로 확정한다. **옵션 B(전역 감시 + 네임스페이스 선택자)는 쓰지 않는다.** `ignoreDifferences` · `reloadStrategy: env-vars`도 필요 없다 — 설계 근거(Server-Side Diff는 다른 필드 관리자의 필드를 드리프트로 보지 않는다)가 실측으로 확인됐다. `report.md`에는 "VD-9: scoped 모드 확정(2026-09-28 실측)"으로 적는다.
+- **절차상 편차 1건(기록)**: 절차의 5분 관찰은 t0 + 108초에 시작돼 "첫 표본 60초 이내" 기준을 만족하지 못했다(`표본` 줄 FAIL). 같은 시간대를 읽기 전용 계정의 보조 관찰(10초 간격)이 변경 25분 전부터 덮고 있었고 결과가 같았다. 절차의 문면으로는 운영자 실행 단독은 PASS가 아니다 — **합산 증거로 PASS 확정(사용자 결정)**.
+- **설계에 없던 관찰**: ①머지 직후 Argo가 Deployment 두 장에 selfHeal 부분 동기화를 1회 했다(생성 직후 · Reloader와 무관 · 이후 재발 없음) → selfHeal 판정은 count의 절대값이 아니라 기준과의 비교로 한다. ②롤아웃이 1초 안에 끝나 health `Progressing`이 한 번도 잡히지 않았다(판정 ④의 허용 폭은 쓰이지 않았다). ③머지에서 Argo 반영까지 약 8분(폴링).
+- **D10(신규) — 같은 형태의 실측은 관찰을 먼저 시작한다**: "변경 → 관찰 시작" 순서는 사람 손으로 60초를 맞추기 어렵다. 다음부터는 읽기 전용 관찰을 먼저 켜고(변경 전 표본 = 대조군) 그 위에서 변경한다.
+- **도구 위치 변경**: 실측 도중 임시 폴더의 도구 디렉터리가 외부 정리로 지워졌다. 공식 릴리스에서 다시 받아 SHA-256을 대조하고 저장소의 gitignore된 `.superpowers/bin/`에 두었다. 실측 증거 원본도 `.superpowers/t046-wrapup/`로 옮겼다.

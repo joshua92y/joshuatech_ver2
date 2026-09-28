@@ -419,7 +419,66 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
 - **미확인·인계**: 노드 간 webhook 경로(다음 컴포넌트 T056 CNPG webhook에서 실측) · T048 webhook 교란 드릴(선택) · cert-manager README §3 `charts/` 캐시 서술 정정(다음 bump) · `platform/README.md` 머리 "빈 뼈대" 현재형(G2에서 정정) · 하네스 np-5-live 안내문의 노드 A 사설 IP 리터럴(정리 여부 판단) · `serviceaccounts/token` 렌더 grep = 1 고정과 CSS·`validate.sh` CI 배선(T047) · oci/s3 키 쌍 정합(T053) · Access 4경로(T077/T092) · grafana-cloud(T098) · Vault root 토큰 revoke와 ADR 0011(T084 뒤) · 레거시 SA 토큰 잔여 위험(완료 보고서).
 - **T084(토큰 회전·break-glass 런북)로 넘기는 것**: ①`g4-drill.ps1`의 스케줄 대기 파드 행 오분류 수정 + 과도 상태 모의 시나리오(회전의 파드 교체가 이 블록을 다시 쓴다) ②`kv-correct.ps1` 저위험 항목 — 출처 b(`$pre` 세션 변수)는 G4 v2 블록이 만들지 않아 죽은 경로이므로 문면에서 걷어낸다 · `No value found`(경로 없음)와 조회 실패의 문면 구분 · `vault` CLI PATH 확인 · 머리글에 창 D `KUBECONFIG` 전제 ③Cloudflare 터널 토큰 Refresh의 비가역성(옛 토큰으로 새 연결 불가 — 문서 기준)과 'compromised token' 순서의 실측 ④남은 커넥터(노드 A · T039 시작분)의 교체는 회전 절차의 일부로만 한다(`platform/cloudflared/README.md` ⑨ — 1개씩 · `rollout restart` 금지).
 
-(T045 이후 기록은 이하에 추가)
+### T046 — Stakater Reloader scoped 모드 · VD-9 실측 (2026-09-22 ~ 09-28)
+
+> **VD-9 판정 PASS(2026-09-28, 사용자 확정) — scoped 모드 확정, 옵션 B(전역 감시 + 네임스페이스 선택자)는 쓰지 않는다.** Secret·ConfigMap이 바뀌면 `reloader.stakater.com/auto` 어노테이션을 단 워크로드만 롤링 재시작한다. 감시 ns = `identity`·`jt-dev`·`jt-prod`(+ 릴리스 ns `reloader`). **`cloudflared`는 감시하지 않는다**(터널 커넥터는 수동으로 1개씩 교체한다 — T045 G4). 어노테이션을 다는 것은 소비자 태스크(T072 · T080 · T082)다.
+>
+> **남은 것(2026-09-28 19:30 KST 기록 시점)**: gitops PR #32 머지 → 클러스터의 시험 대상 Deployment·Secret 삭제(운영자) → 마무리 검사(전체 자기검사 · 하네스 · run-all) → `tasks.md` 체크. 끝나면 이 줄을 결과로 바꾼다.
+
+- **설계**: `specs/003-platform-foundation/design/t046-design.md`(D1–D10 · §8 VD-9 결과) · 출력 원문 `t046-vd9-evidence.md`. 계약 `contracts/gitops-repo.md`의 `platform/reloader/` 항목과 §validate.yml 4 「(T046)」 두 줄.
+- **코드(gitops, squash)**: **#31** `f5a2d86`(G1 — 차트 2.2.16(appVersion v1.4.21) kustomize `helmCharts` 인플레이트 · `watchGlobally: false` + `namespaces` 3 · `reloadStrategy: annotations` · 이미지 인덱스 digest 고정 · 일시 시험 대상 `jt-dev/vd9-probe` · AppProject `sourceRepos`의 stakater 줄 삭제 · validate 검사 `10 REL`과 `7.4 APP-source` · 자기검사 부분 실행 필터; 머지 2026-09-28 08:34:44Z = 17:34 KST) · **#32**(G2 — 시험 대상 제거 · `REL_KINDS` Deployment 1(합계 12) · README §3을 판정 기록으로 바꿈).
+  **코드(모노레포)**: `378f7f6`(M0 계약·설계) · `42f3cd5`(하네스 `reloader-2`) · `73e47a8`(설계 F5 정정) · `c944557`·`16344df`·`8702b8b`(계약 — 인자 목록 정확 일치 · Application source 덮어쓰기 금지 · 한계 명시) · `9de512b`(`reloader-2` 정확 일치) · `39bd4f3`(2일차 기록).
+- **게이트·실측**(UTC, KST 병기):
+  - **G1 빌드·검증**: 렌더 13장(ServiceAccount 1 · Deployment 2 · Role 5 · RoleBinding 5) · ClusterRole·ClusterRoleBinding 0 · validate PASS 26 · FAIL 0. 독립 리뷰(low 5) → 적대적 검증(지적 21) → 범위를 좁힌 재검증(6)까지 반영. 매니페스트 렌더는 첫 리뷰 시점과 바이트 동일했다(바뀐 것은 검사·픽스처·문서).
+  - **G1 머지 → 반영**: 머지 08:34:44Z → Argo 자동 동기화 **08:42:58Z**(약 8분 — 폴링 주기를 기다렸다). `platform-reloader` `f5a2d86` Synced/Healthy · Reloader 파드 Running · 시험 대상 Available. 머지 전 확인: 클러스터 워크로드 19개 중 Reloader 어노테이션 보유 0 → 머지로 재시작되는 기존 워크로드 없음.
+  - **판정 ①(08:43:44Z, agent-view)**: `app=Synced/Healthy/f5a2d86…` · `rev=1` · `available=True` · `last-reloaded-from=[]`. 기준값 `baseHistMax=0` · `baseOpStart=2026-09-28T08:42:59Z` · `baseAuto=true` · `baseHeal=1`.
+  - **판정 ⑥(08:44:01Z, agent-view)**: Role 5 · RoleBinding 5 · Deployment 2 · ServiceAccount 1 · **ClusterRole 0 · ClusterRoleBinding 0** · 합계 13 · 시작 로그 `Watching scoped namespaces: identity, jt-dev, jt-prod, reloader` 1줄 · 전역 모드 경고 0줄 · 감시 컨트롤러 8개 = configmaps·secrets × ns 4 정확히. 컨테이너 인자 `["--log-level=info","--namespaces=identity,jt-dev,jt-prod,reloader","--reload-strategy=annotations"]` · 이미지 digest 일치.
+  - **단계 2(운영자, 09:11:41Z = 18:11:41 KST)**: Secret `jt-dev/vd9-probe` 값 1회 변경 → `probe=djI=`(더미 값).
+  - **단계 3(운영자, 5분 관찰)**: 표본 6개 — 18:13:29 · 18:14:07 · 18:14:45 · 18:15:22 · 18:16:00 · 18:16:37 KST, 전부 `rev=2 app=Synced/Healthy opStart=2026-09-28T08:42:59Z`. ReplicaSet 2개(옛 것 `replicas=0`) · `last-reloaded-from` 있음 · `opStart` = 기준(새 operation 0건) · `autoHealAttemptsCount` 1 = 기준 1 · `histMax` 0 = 기준 · 재적재 로그 1줄 → ③④⑤ 항목 전부 OK. **`표본` 줄은 FAIL**(첫 표본 t0 + 108초 — 기준 60초 이내. 단계 3을 늦게 시작했다). 표본 간격은 약 37초였다(30초 대기 + 터널 너머 조회 3회).
+  - **보조 관찰(agent-view, 읽기 전용 · 10초 간격)**: 머지 직후부터 계속 돌렸다. t0 − 34초 ~ t0 + 341초 구간 38표본 · 조회 실패 0. `rev=1`(t0 − 4초) → `rev=2`(t0 + 6초) → 이후 전부 `2` · 전 표본 `Synced/Healthy` · `opStart`·`heal` 불변. 구간 밖도 같다 — 변경 전 25분(204표본)은 전부 `rev=1`, **변경 뒤 39분(232표본)은 전부 `rev=2`** 이고 새 operation이 없었다(그 뒤는 조회 토큰 만료로 관찰 종료). 원문은 `specs/003-platform-foundation/design/t046-vd9-evidence.md`.
+  - **판정의 유효성을 받치는 조회**: `status.reconciledAt` = 09:18:18Z(> t0)에서 `Synced` — Argo가 변경 **뒤에** 다시 비교한 결과다. Deployment의 필드 관리자 기록 = `argocd-controller`(Apply 08:42:59Z) → `Reloader`(Update 09:11:41Z) → kube-controller-manager(09:11:42Z): Reloader 뒤에 Argo의 적용이 없다. ns 이벤트 = `Reloaded` 1 · scale up 1 · scale down 1. Application health 전환 시각 09:11:42Z(롤아웃이 1초 안에 끝나 `Progressing`은 어느 표본에도 잡히지 않았다).
+  - **판정 확정**: 절차의 문면("전부 OK여야 PASS")으로는 운영자 실행 단독은 PASS가 아니다. 빈 구간(t0 ~ t0 + 108초)을 보조 관찰이 덮었고 결과가 같아 **합산 증거로 PASS**(사용자 결정 2026-09-28).
+- **실측으로 확정한 사실**:
+  1. **Server-Side Diff 아래에서 Argo는 Reloader가 넣은 파드 템플릿 어노테이션을 드리프트로 보지 않는다**(설계의 가설 → 실측). `ignoreDifferences`와 `reloadStrategy: env-vars`는 필요 없다.
+  2. **머지 직후 selfHeal이 1회 돌았다 — Reloader와 무관하다.** 첫 전체 동기화 1초 뒤 Deployment 두 장만 대상으로 한 부분 동기화(`operation.sync.resources` 2항목 · `autoHealAttemptsCount=1`). 생성 직후의 일이고 그 뒤 28분간 새 operation이 없었다. 그래서 selfHeal 판정은 count의 절대값이 아니라 **기준과의 비교**로 한다.
+  3. selfHeal은 부분 동기화라 `status.history`에 남지 않는다 → `status.operationState.startedAt`으로 본다. JSON 키는 `autoHealAttemptsCount`다(Go 필드 이름과 다르다 — 없는 키를 조회하면 빈 출력 + exit 0).
+  4. Reloader는 기동할 때 자기 ns에 ConfigMap `reloader-meta-info`를 만든다 → `platform-reloader`에 `OrphanedResourceWarning`(1건)이 붙는다. sync·health에는 영향이 없다. 지우지 않는다.
+  5. 재적재 로그 형식: `msg="Changes detected in '<이름>' of type 'SECRET' in namespace '<ns>'; updated '<이름>' of type 'Deployment' in namespace '<ns>'"`. 같은 문구가 Deployment 이벤트(reason `Reloaded`)로도 남는다.
+  6. 권한: ServiceAccount 하나가 감시 ns 3곳(개발·운영·신원)의 Secret을 전부 읽는다 — 환경 경계를 가로지르는 것이 이 컴포넌트의 실제 비용이다(설계 D3).
+- **상시 점검 명령(읽기만 · agent-view 가능)** — kind별 개수와 시작 로그(실제로 감시하는 ns)를 본다. 하네스 `reloader-2`는 권한·인자는 보지만 개수와 로그는 보지 않는다. gitops README의 판정 ⑥ 명령에서 기대 개수만 시험 대상 제거 뒤 값으로 바꿨다.
+
+  ```powershell
+  $ErrorActionPreference = 'Stop'
+  function kq { $o = kubectl @args; if ($LASTEXITCODE -ne 0) { throw "kubectl $args → exit $LASTEXITCODE — 판정 불가" }; (@($o) -join "`n").TrimEnd() }
+  function okf([bool]$c) { if ($c) { 'OK' } else { 'FAIL' } }
+  $kinds = @((kq -n argocd get application platform-reloader -o 'jsonpath={range .status.resources[*]}{.kind}{"\n"}{end}') -split "`r?`n" | Where-Object { $_ -ne '' })
+  $want = [ordered]@{ Role = 5; RoleBinding = 5; Deployment = 1; ServiceAccount = 1; ClusterRole = 0; ClusterRoleBinding = 0 }
+  foreach ($k in $want.Keys) {
+    $n = @($kinds | Where-Object { [string]::Equals($_, $k, [StringComparison]::Ordinal) }).Count
+    '{0} = {1} (기대 {2}) {3}' -f $k, $n, $want[$k], (okf ($n -eq $want[$k]))
+  }
+  '합계 = {0} (기대 12 — 표 밖의 kind가 있거나 빠지면 FAIL) {1}' -f $kinds.Count, (okf ($kinds.Count -eq 12))
+  $log = @((kq -n reloader logs deploy/reloader) -split "`r?`n")
+  $scoped = @($log | Select-String -CaseSensitive -Pattern 'msg="Watching scoped namespaces: identity, jt-dev, jt-prod, reloader"$').Count
+  $allNs = @($log | Select-String -CaseSensitive -SimpleMatch 'will detect changes in all namespaces').Count
+  $ctrl = [string[]]@($log | Select-String -CaseSensitive -Pattern 'msg="Starting Controller to watch resource type: (configmaps|secrets) in namespace: ([a-z0-9-]+)"$' | ForEach-Object { $_.Matches[0].Groups[1].Value + '/' + $_.Matches[0].Groups[2].Value })
+  $wantCtrl = [string[]]@(foreach ($t in 'configmaps', 'secrets') { foreach ($n in 'identity', 'jt-dev', 'jt-prod', 'reloader') { "$t/$n" } })
+  [Array]::Sort($ctrl, [StringComparer]::Ordinal); [Array]::Sort($wantCtrl, [StringComparer]::Ordinal)
+  'scoped = {0} (기대 1) {1}' -f $scoped, (okf ($scoped -eq 1))
+  'all-ns = {0} (기대 0) {1}' -f $allNs, (okf ($allNs -eq 0))
+  'controller = {0}개 [{1}] (기대 8 = configmaps·secrets × identity·jt-dev·jt-prod·reloader) {2}' -f $ctrl.Count, ($ctrl -join ' '), (okf ([string]::Equals(($ctrl -join ' '), ($wantCtrl -join ' '), [StringComparison]::Ordinal)))
+  ```
+
+  시작 로그는 파드가 오래 돌아 로그가 회전하면 사라진다 — 그때 `scoped = 0`은 감시 범위가 바뀐 것이 아니라 **판정 불가**다(파드를 다시 띄운 직후에 본다).
+- **감시 ns를 늘릴 때**(소비자가 새 ns에 생기면): 계약(감시 목록) → gitops `platform/reloader/kustomization.yaml`의 `namespaces` + validate `REL_WATCH_NS` + 픽스처 → 하네스 `reloader-2`의 기대 목록 순서로 함께 고친다. 목록 밖 ns의 워크로드에 어노테이션을 달면 **아무 일도 일어나지 않는다**(오류도 없다).
+- **절차 메모**:
+  1. **머지 뒤 반영까지 최대 약 8분이 걸렸다**(폴링). 그 사이 `Synced/Healthy`는 옛 리비전 기준이다 — `.status.sync.revision`이 머지 커밋인지 함께 본다.
+  2. **"변경 뒤 60초 안에 관찰 시작"은 사람 손으로는 빠듯하다.** 변경 명령과 관찰 명령 사이에 출력을 읽는 시간만으로 108초가 지났다. 다음에 같은 형태의 실측을 할 때는 **관찰을 먼저 시작해 두고**(변경 전 표본이 대조군이 된다) 그 위에서 변경한다 — 이번의 보조 관찰이 그 방식이었다.
+  3. **도구를 임시 폴더에 두지 않는다.** 실측 도중 임시 폴더의 도구 디렉터리(kustomize · yq · gitleaks · kubeconform)가 외부 정리로 지워졌다(증거 파일은 남았다). 공식 릴리스에서 다시 받아 SHA-256을 대조한 뒤 저장소의 gitignore된 `.superpowers/bin/`에 두었다(kustomize 5.8.1 · yq 4.53.6 · gitleaks 8.30.1은 같은 버전, kubeconform은 최신 0.8.0 — 지워진 것의 버전은 기록이 없었다).
+  4. 검사 실행 방식: 반복 중에는 `VALIDATE_TESTS_ONLY`로 영향 받는 케이스만, 필터 없는 전체 자기검사는 태스크 마무리에 한 번(CI에서는 부분 실행이 거부된다).
+- **인계**: **T047** — `tests/validate.sh` CI 배선 · Application source 우회 경로 전수 열거(`kind: List` · `.json`/`.jsonnet` · ApplicationSet) · 전 렌더 교차 검사(Reloader SA를 주체로 하는 RoleBinding) · `/charts/` 제외 범위 좁히기. **T072 · T080 · T082** — 소비자 Deployment에 `reloader.stakater.com/auto: "true"`. **T098** — Reloader metrics 수집(네트워크 정책 매트릭스에 행을 먼저 더한다).
+
+(T046 이후 기록은 이하에 추가)
 
 ## §4 Vault init·시크릿 시드
 
