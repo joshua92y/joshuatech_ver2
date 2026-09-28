@@ -37,7 +37,7 @@
   1. 머지 뒤 기준: `vd9-probe` revision `1` · Available · 파드 템플릿에 `last-reloaded-from` 없음 · `platform-reloader` Synced/Healthy(`.status.sync.revision` = 머지 커밋).
   2. 운영자가 Secret 값을 한 번 바꾼다.
   3. **롤아웃 정확히 1회**: revision `1 → 2`, 이후 5분 관찰 동안 `3` 없음 · ReplicaSet 2개(옛 것 0 replicas).
-  4. **Argo Synced 유지**: 5분 동안 `platform-reloader` Synced/Healthy · operation history에 selfHeal 동기화 0건 추가.
+  4. **Argo Synced 유지**: 5분 동안 `platform-reloader`의 **sync는 매 표본 `Synced`**. health는 롤아웃 직후 표본에서만 `Progressing`을 허용하고(Reloader가 일으킨 롤아웃 자체가 Deployment를 잠시 Progressing으로 만든다) 이후 `Healthy`로 돌아와 유지. **selfHeal 판정은 `status.operationState`로 한다** — `startedAt`이 기준값과 같고 새 operation이 없어야 한다. `status.history`는 근거가 아니다(selfHeal은 부분 동기화라 history에 남지 않는다 — 2026-09-28 검증 B3, Argo CD v3.5.2 소스). history 최댓값 비교는 "전체 동기화가 끼어들지 않았다"는 보조 확인일 뿐이다.
   5. 파드 템플릿 어노테이션 `reloader.stakater.com/last-reloaded-from` 존재(annotations 전략 동작 증거) · Reloader 로그에 해당 Secret 재적재 1줄.
   6. ClusterRole 0(Application `status.resources`) · Reloader 시작 로그가 scoped 목록을 보고.
 - **실패 시**: ③에서 revision이 3 이상이면 Argo와 충돌한 것 → `reloadStrategy: env-vars`로 바꿔 재측정하거나 `ignoreDifferences`를 검토(결정은 사용자). ⑥에서 감시가 안 되면 과제의 **옵션 B**(`watchGlobally: true` + `namespaceSelector`, ClusterRole이 남는 트레이드오프)로 전환하고 `report.md`에 기록.
@@ -64,3 +64,12 @@ Reloader 자체의 되돌리기 = revert PR + (`prune: false`) 운영자가 Depl
 | 운영자 선행 | 시험 Secret `jt-dev/vd9-probe`(키 `probe=v1`) **생성 완료** 2026-09-22 09:51:42Z — 다음 단계까지 그대로 둔다 |
 
 **재개 순서**: 브랜치 `t046-reloader`에서 low 5건의 남은 부분 반영(리뷰 산출물: 세션 스크래치패드 `t046-review/` — 세션이 바뀌면 없으므로 이 표의 요약으로 재현) → validate PASS · 자기검사 전체 · 렌더 바이트 동일 · gitleaks → squash 대상 PR 생성 → 사용자 머지 → 판정 ①·⑥(agent-view) → 사용자 Secret 값 변경(`kubectl -n jt-dev patch secret vd9-probe --type merge -p '{"stringData":{"probe":"v2"}}'`) → 5분 관찰 판정 ③④⑤ → 제거 PR + 운영자가 Deployment·Secret `vd9-probe` 삭제 → 런북·학습 로그 → T046 체크.
+
+## 7. 2일차(2026-09-28) — 반영분 적대적 검증과 추가 결정
+
+- 재개 시 확인: 1일차 기록(§6)의 "남은 것"은 과소 기록이었다 — low 5건의 **구현은 작업 트리에 이미 들어 있었고** 빠진 것은 검증이었다. 게이트(렌더 바이트 동일 · validate PASS 25 · gitleaks 0)와 적대적 검증 2건을 돌렸다.
+- 검증 결과: low 5건 구현은 의도대로 동작(첫 리뷰의 가짜 PASS 4종 전부 FAIL · 변이 시험으로 단언 고유성 확인 · 가짜 FAIL 0). **그러나 새 가짜 PASS 경로** — 실제 트리 위 변형 47개 중 19개가 검사 10 PASS, 그중 계약 불변식을 깨는 것이 3갈래(medium).
+- **D7(신규)**: 인자 검사는 집합 비교가 아니라 **목록 정확 일치**로 한다(`[--log-level=info, --namespaces=identity,jt-dev,jt-prod,reloader, --reload-strategy=annotations]`). 근거: pflag는 값 없는 플래그 뒤의 인자를 그 플래그의 값으로 삼키고(`--log-format` 뒤의 `--namespaces=…` → 감시 목록이 비어 전역 모드), StringSlice 플래그는 반복되면 목록을 합친다. 정적 검사(validate)와 라이브 검사(하네스 `reloader-2`)에 같은 규칙을 넣는다.
+- **D8(신규)**: Application은 `spec.source`를 덮어쓰지 않는다 — 키는 `{repoURL, targetRevision, path}`뿐, multi-source 금지. 근거: Application 수준 `kustomize.patches`는 Argo가 적용하는 렌더를 validate가 본 렌더와 다르게 만들어 렌더 기반 검사 전부를 무력하게 한다. 현재 Application 22개 + root 전부 3키뿐이라 가짜 FAIL 0(실측). T046 범위보다 넓지만 이 PR이 Application 파일을 건드리고 비용이 작아 함께 넣는다.
+- 미룸(T047 후보 · `tests/README.md` 「보지 않는 것」에 기록): 다른 컴포넌트 렌더가 Reloader SA에 RoleBinding을 주는 경우의 전 렌더 교차 검사.
+- 계약 반영: `contracts/gitops-repo.md` §validate.yml 4의 `(T046)` 두 줄.
