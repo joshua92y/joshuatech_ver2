@@ -211,8 +211,11 @@ Authentik·OpenFGA는 pod가 아니라 환경 공유 컴포넌트이므로 env �
 
 ### validate.yml의 실행 구조 (T047)
 
-- job `validate`(required): 도구 설치(yq · kustomize · kubeconform · gitleaks · **helm** — 버전 고정 + sha256 대조, arm64) → **경로 lint(base ref 스크립트 · `--only-author`)** → 전체 검사(`tests/validate.sh`, PR 쪽 스크립트) → gitleaks(히스토리). `VALIDATE_SKIP_TOOLS`는 CI에서 설정하지 않는다(SKIP만 남아도 exit 0이 된다).
-- 자기검사(`tests/validate.tests.sh`)를 CI에서 언제 돌릴지는 러너 시간 실측 뒤 정한다(VD — T047 G2). 돌릴 때는 `CI=true`라 부분 실행이 거부되고 도구 누락이 실패다 — helm도 도구 게이트에 포함한다.
+- job `validate`(required)의 스텝 순서: checkout → **경로 lint(base ref 스크립트 · `--only-author`)** → 자기검사 대상 판정 → 도구 설치(yq · kustomize · kubeconform · gitleaks · **helm** — 버전 고정 + sha256 대조, arm64 · 워크플로 안 인라인) → 전체 검사(`tests/validate.sh`, PR 쪽 스크립트) → 자기검사(조건부) → gitleaks(히스토리). **경로 lint와 판정은 PR 쪽 코드를 실행하기 전에 돈다** — App은 `.github/workflows/` 밖의 파일을 바꿀 수 있으므로, PR 쪽 코드를 실행한 뒤의 검사는 봇이 미리 환경을 바꿔 둘 수 있다. `VALIDATE_SKIP_TOOLS`는 CI에서 설정하지 않는다(SKIP만 남아도 exit 0이 된다).
+- **자기검사(`tests/validate.tests.sh`)의 실행 시점(T047 결정 2026-09-29 — arm64 러너 실측: 전체 검사 35초 · 자기검사 122 케이스 184초 · job 전체 약 3분 48초)**: ①**main push에서는 항상** ②**PR에서는 `tests/` 또는 `.github/` 아래가 바뀐 경우에만**(merge-base ↔ head의 변경 경로로 판정). 그 밖의 PR은 전체 검사까지만 돈다(약 45초). 이유: 봇의 dev bump PR은 required check가 끝나야 자동 머지되므로 검사 시간이 그대로 배포 지연이다(SC-010 — dev bump → sync 5분 이내). 봇은 `tests/`를 고칠 수 없으므로(경로 lint) 봇 PR의 검사 스크립트는 main의 것과 같고, 그것은 main push에서 이미 검증됐다.
+  - 판정은 워크플로 안의 인라인 스크립트가 **PR 쪽 코드를 실행하기 전에** 한다. 판정에 실패하면(merge-base를 못 구함 등) **돌리는 쪽**으로 넘어진다.
+  - 돌릴 때는 `CI=true`라 부분 실행이 거부되고 도구 누락이 실패다 — helm도 도구 게이트에 포함한다.
+  - 로컬에서는 전체 실행이 약 1시간 걸린다(Windows · Git Bash 실측) — 로컬은 영향 받는 케이스만 돌리고 전체 판정은 CI가 맡는다.
 - job 이름 `validate`는 ruleset의 required check 이름이다 — 바꾸지 않는다.
 
 ## 변경 권한
