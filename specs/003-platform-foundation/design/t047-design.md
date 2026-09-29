@@ -252,3 +252,70 @@ T045·T046과 각 README가 "T047" 또는 "T047 후보"로 넘긴 항목이 15�
 - arm64 러너의 검사 시간 — G2 draft PR에서 실측.
 - 포크 PR에서 코멘트 job이 실패하지 않고 건너뛰는지 — 포크가 없으면 조건식 검토로 대신하고 미실측으로 적는다.
 - App 토큰의 워크플로 파일 push 거부 · main 직접 push 거부 — T115(승격·롤백 실연)에서 증거를 남긴다.
+
+## 8. G5 설계 — 승격 워크플로와 승인 관문(초안 2026-09-29 저녁 · 결정 대기)
+
+G3 · G4 빌드가 도는 동안 조사한 것이다. **결정은 아직 없다** — 아래 실측(V1)을 먼저 하고, 그 결과로 사용자에게 묻는다.
+
+### 8.1 조사로 확정한 사실
+
+- **F23 GitHub의 동작이 바뀌었다(2026-06-11 changelog "Bot-created pull requests can run workflows if approved" · 공식 문서 GITHUB_TOKEN 절)**: `github-actions[bot]`이 만든 PR의 `pull_request` 실행은 **승인 대기** 상태로 만들어지고, 쓰기 권한 사용자가 "Approve workflows to run"을 눌러야 돈다. 그 전에는 실행이 아예 만들어지지 않았다. → P1에 적은 "`GITHUB_TOKEN`이 만든 PR은 required check가 영영 보고되지 않는다"는 **지금은 사실이 아니다**(옛 동작을 근거로 썼다 — 계약을 정정했다).
+- **F24 gitops 저장소의 현재 설정(2026-09-29 조회)**: Environment 0개 · `default_workflow_permissions: read` · `can_approve_pull_request_reviews: false`(워크플로는 PR을 만들 수 없다) · `allowed_actions: all` · `sha_pinning_required: false`(뒤의 둘은 T116의 몫).
+- **F25 모노레포에는 Environment `production`이 이미 있다**(2026-09-02 · T003): 보호 규칙은 브랜치 정책 하나(선택 브랜치) · 필수 검토자 없음 · `can_admins_bypass: true`. App 키(`JT_CI_APP_PRIVATE_KEY`)는 이 Environment의 시크릿이다. **App 키는 이미 존재한다** — 없는 것은 gitops 쪽 등록이다(D1이 등록하지 않기로 했다).
+- **F26 Environment 필수 검토자(공식 문서)**: 공개 저장소면 Free 플랜에서도 쓸 수 있다 · 검토자는 **사용자 또는 팀**(최대 6) — App은 검토자가 될 수 없다 · 승인 API는 "필수 검토자"만 쓸 수 있다 · `prevent_self_review`는 기본 꺼짐(켜면 실행을 일으킨 사람은 승인할 수 없다 — 운영자가 한 명이므로 끈 채로 둔다) · 기본값으로 **관리자는 보호 규칙을 우회할 수 있다** · 배포 브랜치 정책에서 `pull_request` 실행의 ref는 `refs/pull/*/merge`다.
+- **F27 ruleset의 bypass 주체(REST 문서)**: 유형 `Integration`(App ID) · `RepositoryRole` · `User` · `DeployKey` · `Team` · `OrganizationAdmin`, 방식 `always` · `pull_request` · `exempt`. GitHub Actions(App ID 15368)를 bypass 주체로 넣을 수 있는지는 문서로 확정되지 않는다(V4).
+- **F28 FR-038의 원문**: "`promote.yml`은 브랜치 + PR 생성까지만 하고 **prod 승격 PR은 사람이 머지한다** — auto-merge를 쓰지 않아야 prod 게이트가 남는다." 곧 원문의 관문은 **사람의 머지 행위**다. 그런데 App은 통과한 PR을 머지 API로 머지할 수 있고 승인 수가 0이다 — 원문의 관문은 App 토큰이 새면 서지 않는다.
+
+### 8.2 무엇이 빠져 있는가
+
+지금까지 닫은 것은 **봇이 만드는 변경의 범위**다(경로 lint — dev digest의 제자리 교체뿐 · PR base 조작 · 발신자 판정 · 브랜치 쓰기 제한). 닫지 못한 것은 **봇이 하는 머지**다: App 토큰을 가진 쪽은 `validate`를 통과한 **남의 PR**을 머지할 수 있다. 운영자가 검토하려고 열어 둔 PR(에이전트가 만든 플랫폼 변경 · 승격 PR)이 검토 전에 머지될 수 있다.
+
+필요한 성질은 하나다: **dev digest 교체가 아닌 변경은, 봇이 줄 수 없는 사람의 승인 없이는 머지되지 않는다.**
+
+### 8.3 승인 관문의 후보
+
+| 안 | 방식 | 봇이 통과시킬 수 있는가 | 운영자 자신의 PR | 경로별 적용 | 비고 |
+|---|---|---|---|---|---|
+| **M-A(권장)** | required check 안의 job이 **Environment `production`**(필수 검토자 = 운영자)을 요구한다. 승인 전에는 그 job이 대기하고 required check가 보고되지 않아 머지가 막힌다 | 없다(검토자는 사용자·팀뿐) | 승인할 수 있다(`prevent_self_review` 끔) | 워크플로의 판정 job이 정한다 | 승인 이력이 Environment에 남는다. 공개 저장소 Free에서 되는지 실측 필요(V1) |
+| M-B | `GITHUB_TOKEN`으로 PR을 열어 실행이 **승인 대기**가 되게 한다(F23) | 확인 필요(App에 `actions: write`가 있으면 실행 승인 API를 쓸 수 있는지) | 해당 없음 | PR을 누가 열었는가로만 갈린다 | 승인이 검사 **앞**에 온다 — 렌더 diff를 보기 전에 누르는 승인이라 "prod 승인"의 뜻이 아니다 |
+| M-C | CODEOWNERS(`apps/*/overlays/prod/` = 운영자) + ruleset "code owner 리뷰 필수" | 없다 | **승인할 수 없다**(자기 PR은 승인 불가) → 관리자 bypass가 필요해진다 | CODEOWNERS 경로 | `bypass_actors: []`를 깨야 한다 |
+| M-D | ruleset `required_deployments` | 없다 | 가능 | **불가**(모든 PR에 걸린다 — dev 자동 머지가 막힌다) | |
+
+M-A가 서면 **누가 PR을 열고 누가 머지 버튼을 누르든** 성질이 지켜진다. D1(운영자가 PR을 연다)이 지키려던 것 — 토큰 탈취 시 prod가 사람 없이 바뀌지 않는다 — 을 관문이 대신 지킨다.
+
+### 8.4 관문의 범위
+
+| 안 | 승인이 필요한 PR | 막는 것 | 운영자 수고 |
+|---|---|---|---|
+| (a) prod 경로만 | `apps/*/overlays/prod/**`를 건드리는 PR | 승격의 사람 없는 머지 | 승격마다 승인 1회 |
+| **(b) dev digest 교체가 아닌 모든 PR(권장)** | 변경이 "dev overlay의 digest 제자리 교체"가 **아닌** PR 전부 | (a) + 에이전트·사람이 연 플랫폼 PR이 검토 전에 봇에 의해 머지되는 것 | PR마다 승인 1회(머지 명령 대신 승인 — auto-merge를 걸어 두면 승인이 곧 머지다) |
+
+(b)의 판정은 새로 만들 필요가 없다 — **main의 경로 lint를 "봇이 연 것으로 치고" 돌려 통과하면** dev digest 교체뿐인 PR이다(작성자가 누구든). 통과하지 못하면 승인이 필요하다.
+
+### 8.5 승격 PR을 누가 여는가
+
+관문(M-A)이 선 뒤의 선택이다. 어느 안에서도 **끝까지 돌려 보는 것은 첫 pod 이미지가 나온 뒤**(T074 · T115)다 — attestation 검증은 발행된 이미지가 있어야 통과한다.
+
+| 안 | PR을 여는 쪽 | 사람이 하는 일 | 필요한 것 | 대가 |
+|---|---|---|---|---|
+| O-3(지금 · D1) | 운영자 | 실행 · PR 열기 · 승인 · (머지) | 없음 | 목표와 다르다(봇이 PR을 열지 않는다) |
+| O-1 | `promote.yml`(`GITHUB_TOKEN`) | 실행 · 실행 승인 · 관문 승인 · (머지) | 저장소 설정 "Actions의 PR 생성 허용" 켜기 | 승인이 두 번 · 코멘트 job의 토큰도 PR을 만들 수 있게 된다 |
+| **O-2(목표 형태)** | `promote.yml`(App 토큰) | 실행 · **관문 승인 1회**(auto-merge가 머지) | gitops에 App 키 등록(Environment 시크릿 · main에서만 읽히게) + 경로 lint가 봇의 prod digest 제자리 교체를 허용 | gitops 저장소가 App 키를 갖는다 |
+| O-4 | 모노레포의 승격 워크플로(App 토큰 — 키가 이미 있다) | O-2와 같음 | 계약의 위치 변경(`promote.yml`이 모노레포로) + 같은 lint 변경 | gitops에는 키가 없다 · 승격 도구가 다른 저장소에 있다 |
+
+### 8.6 실측 계획(VD-5의 나머지)
+
+| # | 잴 것 | 방법 | 누가 |
+|---|---|---|---|
+| **V1** | Environment 필수 검토자가 이 저장소(공개 · Free · 개인 계정)에서 `pull_request` 실행의 job을 멈춰 세우는가 · 그동안 뒤 job의 check가 보고되지 않는가 | Environment 생성 → 시험 브랜치(임시 워크플로 + prod overlay의 주석 한 줄)로 draft PR → 대기 상태 조회 → 승인 → 통과 확인 → 거절도 1회 | Environment 생성 · 승인 = 운영자 / 브랜치 · PR · 조회 = 컨트롤러 |
+| V2 | 배포 브랜치 정책이 `refs/pull/*/merge`를 받는가 | Environment에 시크릿을 둘 때만 필요(O-2) | 같음 |
+| V3 | `GITHUB_TOKEN`이 연 PR의 실행이 승인 대기가 되는가 | O-1을 고를 때만 | — |
+| V4 | ruleset bypass 주체로 GitHub Actions(15368)를 받는가 | `promote/**` 전용 ruleset을 만들 때(O-1 · O-3) | 운영자(ruleset 쓰기) |
+| V5 | 관문 대기 중 App의 머지 시도가 거부되는가 | App 토큰이 필요하다 → T115 | — |
+| V6 | `gh attestation verify`가 러너에서 요구하는 권한 | 발행된 이미지가 필요하다 → T074 | — |
+
+### 8.7 T047에서 끝낼 수 있는 것과 없는 것
+
+- **끝낼 수 있다**: PR 템플릿 · 관문(V1이 통과하면 — 워크플로 job + ruleset의 required check 추가) · `promote.yml`의 본체(입력 검증 · dev digest 읽기 · attestation 검증 먼저 · prod digest의 제자리 교체 · 브랜치).
+- **끝낼 수 없다**: 승격을 끝까지 돌려 보는 것(이미지가 없다 — T074 · T115) · App이 관문을 통과시키지 못한다는 증거(V5 — T115).
+- 그래서 O-2 · O-4를 고르더라도 **T047에서는 관문과 `promote.yml`의 본체까지** 만들고, App 토큰으로 PR을 여는 마지막 단계는 키를 다루는 T074와 함께 켠다. 그때까지 승격 PR은 O-3으로 연다(관문이 있으므로 성질은 이미 지켜진다).
