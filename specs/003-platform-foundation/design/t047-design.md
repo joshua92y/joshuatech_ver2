@@ -183,6 +183,23 @@ T045·T046과 각 README가 "T047" 또는 "T047 후보"로 넘긴 항목이 15�
 
 - **G1 갱신(PR #33 head `7f6f68a` · 2026-09-29 17:0x KST)**: 발신자 판정(`PR_SENDER`·`PR_SENDER_ID`) + `.github/ruleset-branches.json` + README 근거. 빌더: 케이스 107 → **122**(`author-only-sender-*` 15) · RED 15 → GREEN · 한 줄 변이 15/15 검출 · `^author-` 62 케이스 실패 0. 컨트롤러 독립 검증: 빠른 케이스 53 실패 0 · 일반 모드 출력이 main(`82dd85e`)의 스크립트와 바이트 동일(긍정 픽스처) · gitleaks 0 · CR 0 · ruleset JSON 둘 파싱. CI 통과. **미실측으로 남긴 것**: App 토큰 push의 실제 거부 · 실제 이벤트의 `sender` 값(둘 다 App 키가 있어야 한다 → T074 · T115).
 
+- **G1 머지와 ruleset 적용(운영자 · 2026-09-29 17:07 KST)**: gitops PR #33 → main `fda5a72`(08:07:14Z). ruleset `main`(id 22066865) 갱신 — 규칙 5(`required_linear_history` 추가) · 머지 방식 `["squash"]` · 승인 0 · bypass 없음(현재 사용자 bypass `never`). ruleset `branches`(id **24166519**) 생성 — `creation`·`update`·`deletion` · bypass = 저장소 관리자 역할(현재 사용자 bypass `always`). **개인 계정 저장소에서도 관리자 역할 bypass가 API로 받아들여졌다**(미확인이던 항목 → 실측). 브랜치 이름별 적용 규칙(`/rules/branches/<이름>` 조회): `main` → main ruleset 5규칙뿐 · `bump/dev-…`와 `bump/x/y` → 규칙 없음 · `promote/…`·`renovate/…`·그 밖 → branches ruleset 3규칙. 관리자 자격의 새 브랜치 push 통과(G2 브랜치). **미실측**: App 토큰 push의 거부 · 머지 뒤 브랜치 자동 삭제가 삭제 제한 아래에서도 되는지(G1의 자동 삭제는 ruleset 적용 13초 전이었다 — G2 머지에서 본다).
+- **G2 draft PR #34**(gitops `e055e94`) — **arm64 러너 첫 실측(F21)**:
+
+  | 스텝 | 러너(ubuntu-24.04-arm) | 참고: Windows · Git Bash |
+  |---|---|---|
+  | 2 경로 lint | 1초 | — |
+  | 3 도구 설치(5개 · sha256 대조) | 2초 | — |
+  | 4 전체 검사 | **35초** | 약 10분 |
+  | 5 자기검사(122 케이스) | **184초** | 약 1시간(107 케이스 기준) |
+  | 6 gitleaks 히스토리 | 3초 | — |
+  | job 전체 | **약 3분 48초** | — |
+
+  전체 검사 PASS 26 · FAIL 0 · WARN 4(기존 system-upgrade digest 경고) · 자기검사 122 케이스 실패 0. 플랫폼 차이가 걱정되던 케이스(`author-only-no-tools` · `author-mergebase-criss-cross` · `-submodule-ignore` · `-no-textconv` · `-not-git` · helm 렌더 픽스처)도 Linux에서 통과했다. 스텝 2는 base 커밋 `fda5a72`의 스크립트로 돌았다. 설치한 도구 다섯 개가 `$RUNNER_TEMP/bin`에서 풀렸다(스텝 4의 경로 확인 통과).
+  **뜻**: "전체 자기검사는 태스크 마무리에 한 번"이라는 규칙은 로컬의 1시간 비용 때문이었다. CI에서는 3분이므로 **PR마다 전체 실행이 가능**하다 — 로컬은 영향 받는 케이스만, 전체 판정은 CI가 맡는다.
+
+- **결정 D5(사용자 2026-09-29): 자기검사는 main push에서 항상, PR에서는 `tests/` 또는 `.github/`가 바뀐 경우에만.** 봇 dev bump PR의 검사가 약 45초로 끝난다(SC-010). P3 해소.
+
 ## 6. converge로 넘기는 것(후속 위치와 완료 조건)
 
 | # | 항목 | 후속 위치 | 완료 조건 |
