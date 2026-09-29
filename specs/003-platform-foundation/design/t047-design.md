@@ -38,6 +38,27 @@
 
 - **F15** kustomization 디렉터리 29개(`tests/`·`charts/` 제외). Application의 `spec.source.path` 22개 중 21개가 kustomization과 짝을 이루고, `clusters/oci-k3s/apps`는 directory source다. Application이 없는 kustomization 8개: `apps/identity-admin/*` 3 · `clusters/oci-k3s/projects` · `platform/argocd`(자리표시자) · `platform/policies/tests` · `secrets/*` 2.
 
+### 2.4 실제 권한 경계(2026-09-29 · gitops main `82dd85e` · 전 렌더 29개 · 문서 325장)
+
+- **F16** ServiceAccount 토큰을 만들 수 있는 규칙(명시 + 와일드카드)은 **2개**: ClusterRole `argocd-application-controller`(`*/*/*`) · Role `external-secrets/eso-token-create`(`resourceNames` 5개).
+- **F17** `ServiceAccount reloader/reloader`(또는 그 계정을 포함하는 그룹)를 주체로 한 바인딩은 **5개**, 전부 `platform/reloader` 렌더 안이다. 그룹 주체(`system:serviceaccounts` · `system:authenticated` 등) 바인딩은 어느 렌더에도 없다.
+- **F18** 렌더에 없는 ClusterRole을 가리키는 바인딩은 **2개**: `agent-view-view` → `view` · `vault-server-binding` → `system:auth-delegator`.
+- **F19** `aggregationRule`을 가진 ClusterRole 0개. `aggregate-to-*` 라벨을 가진 ClusterRole 12개(cert-manager 7 · external-secrets 5 — 내장 `view`·`edit`·`admin`·`reader`를 넓힌다).
+- **F20** 형식별 정책의 현재 위반 0: `kind: List` 0 · `kind: ApplicationSet` 0(파일 · 렌더) · `clusters/oci-k3s/apps`에는 `.yaml` 21개와 `.md` 1개뿐이고 하위 디렉터리 없음 · `helmGlobals`·레거시 생성기 0 · `argocd-cm`에 `kustomize.buildOptions: "--enable-helm"` 있음.
+- 측정 스크립트: `.superpowers/t047/measure_rbac.py`(로컬 · gitignore). G4의 검사는 이 판정을 `validate.sh`(yq)로 옮긴 것이어야 하고, 같은 렌더에서 같은 결과가 나오는지로 대조한다.
+
+### 2.5 러너에 설치할 도구(linux arm64 · 공식 릴리스의 체크섬 파일에서 옮김)
+
+| 도구 | 버전 | 자산 | sha256 |
+|---|---|---|---|
+| kustomize | v5.8.1 | `kustomize_v5.8.1_linux_arm64.tar.gz` | `0953ea3e476f66d6ddfcd911d750f5167b9365aa9491b2326398e289fef2c142` |
+| yq(mikefarah) | v4.53.6 | `yq_linux_arm64` | `88a1016bc1d657375a35864e4f44b6f333df8ff97b559f51bba0adcb2169df09` |
+| gitleaks | 8.30.1 | `gitleaks_8.30.1_linux_arm64.tar.gz` | `e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080` |
+| kubeconform | v0.8.0 | `kubeconform-linux-arm64.tar.gz` | `1f53fc8e81258197a35e8603054162a5af1de8c5af13746c71ab680d9534ed87` |
+| helm | v4.3.0 | `helm-v4.3.0-linux-arm64.tar.gz`(get.helm.sh) | `31c5794dd55c66a51e6b7d2e2ac7a114ae8b1de41ff1d9ba51748ac973b06a08` |
+
+로컬 검증에 쓴 버전과 같다(kubeconform은 0.8.0). 서드파티 설치 액션을 쓰지 않고 내려받아 sha256을 대조한다 — 액션을 하나 더 믿지 않아도 되고, 버전 갱신은 Renovate의 정규식 관리자(T116)로 넘길 수 있다.
+
 ## 3. 발견한 문제와 결정 대기 항목
 
 ### P1. 계약 안의 충돌 — 승격 PR을 봇이 열면 required check를 통과할 수 없다
@@ -111,7 +132,27 @@ T045·T046과 각 README가 "T047" 또는 "T047 후보"로 넘긴 항목이 15�
 | G5 | gitops | `promote.yml` + PR 템플릿 | P1 결정에 따름 |
 | M1 | 모노레포 | `ci.yml` kubeconform — `templates/django-pod/deploy`가 아직 없으므로(F5) 대상이 생길 때까지는 "대상 없음"으로 통과하는 스텝 | |
 
-## 5. 검증 후 결정(VD) 항목
+## 5. 진행 기록
+
+- 2026-09-29: 조사(F1–F20) → 결정 D1·D2 → **M0 계약 `1892135`** → G1 빌드 착수(gitops 로컬 브랜치 `t047-g1-only-author`).
+
+## 6. converge로 넘기는 것(후속 위치와 완료 조건)
+
+| # | 항목 | 후속 위치 | 완료 조건 |
+|---|---|---|---|
+| H11-1 | 삭제 패치(`$patch: delete`)의 target이 실제로 렌더에서 사라지는지 | gitops `bootstrap/README.md` 검사 공백 목록 · `tests/validate.sh` 검사 1 | 삭제 패치가 가리키는 객체가 base에 없을 때 FAIL하는 픽스처 1개 + 단언 |
+| H11-2 | 원격 base의 태그·브랜치 ref 금지(커밋 SHA만) | 같음 | `resources`의 원격 URL에 40자 SHA가 없으면 FAIL하는 픽스처 1개 + 단언 |
+| H11-3 | `bootstrap/**` 이미지 digest 병기 | 같음 · 검사 4b의 범위 | 4b의 대상 경로에 `bootstrap/`을 더하고 기존 WARN/FAIL 규칙을 그대로 적용 |
+| H11-4 | `GOMEMLIMIT` ≤ 메모리 limit | 같음 | 컨테이너 env `GOMEMLIMIT`이 같은 컨테이너의 `resources.limits.memory`를 넘으면 FAIL하는 픽스처 1개 + 단언 |
+| H12-1 | Cloudflare `ssl=strict` 드리프트 단언 | gitops `platform/traefik/README.md` §6 · 모노레포 `tests/infra/tofu.tests.ps1` | 계획 출력에서 영역 설정 `ssl`이 `strict`임을 단언(이미 있으면 "있음"으로 닫는다) |
+| H12-2 | 계약 §디렉터리에 소유권 한 문장(TLSOption 정본 = 모노레포 HelmChartConfig · TLSStore 정본 = `platform/traefik/`) · 설계 문면의 edge 검증 호스트 교체 | 모노레포 `contracts/gitops-repo.md` · T042 설계 | 문장 반영(검사 아님) |
+| H12-3 | `validate.sh` 교차 파일 단언 — `platform/traefik/`의 TLSStore는 `default`/`kube-system` 1개 · `spec.certificates[].secretName` = `platform/cert-manager-issuers/` Certificate의 `spec.secretName` · `spec.defaultCertificate` 금지 · `platform/traefik/`에 kind `TLSOption`·`Secret` 금지 | `tests/validate.sh` 새 검사 | 다섯 조건마다 부정 픽스처 1개 + 고유 단언, 긍정 픽스처 통과 |
+
+출처의 원문: gitops `bootstrap/README.md` 「validate 공백 후보」 ①–④ · `platform/traefik/README.md` 「T047 / converge」 ①–④.
+
+`/speckit-converge`가 이 표를 읽어 `tasks.md`에 Convergence 태스크로 붙인다(컨트롤러는 `tasks.md` 본문을 고치지 않는다).
+
+## 7. 검증 후 결정(VD) 항목
 
 - App의 권한 목록(특히 `workflows` 없음)과 실제 봇 로그인 이름 — 운영자 확인.
 - arm64 러너의 검사 시간 — G2 draft PR에서 실측.
