@@ -154,7 +154,7 @@ T045·T046과 각 README가 "T047" 또는 "T047 후보"로 넘긴 항목이 15�
 
 ## 7. 검증 후 결정(VD) 항목
 
-- App의 권한 목록(특히 `workflows` 없음)과 실제 봇 로그인 이름 — 운영자 확인.
+- App의 권한 목록(특히 `workflows` 없음)과 실제 봇 로그인 이름 — **운영자 확인 완료(2026-09-29)**: gitops 저장소에 설치된 App은 `joshuatech-gitapp-1`(봇 로그인 `joshuatech-gitapp-1[bot]` — `VALIDATE_BOT_AUTHORS` 기본값에 있다) · Repository permissions의 `Workflows` = **No access**. 설정 화면으로 확인한 값이고, "워크플로 파일을 바꾸는 push가 실제로 거부된다"는 증거는 T115에서 남긴다. 계약의 `jt-ci[bot]`은 설계 이름이고 실제 App 이름은 `joshuatech-*` 명명 예외를 따른다 — 목록에 둘 다 두는 것은 무해하다(없는 이름은 제한을 더할 뿐이다).
 - arm64 러너의 검사 시간 — G2 draft PR에서 실측.
 - 포크 PR에서 코멘트 job이 실패하지 않고 건너뛰는지 — 포크가 없으면 조건식 검토로 대신하고 미실측으로 적는다.
 - App 토큰의 워크플로 파일 push 거부 · main 직접 push 거부 — T115(승격·롤백 실연)에서 증거를 남긴다.

@@ -84,7 +84,7 @@ FR-010의 순서를 이 표 하나로만 표현한다. Argo CD는 wave N의 리�
 - ruleset(main): PR 필수 · required check `validate` · 0 approvals · **`bypass_actors: []`**(GitHub App 포함 누구도 bypass 없음).
 - **`jt-ci[bot]` 경로 lint**(validate.yml): PR 작성자가 `jt-ci[bot]`이면 변경 파일은 `apps/*/overlays/dev/kustomization.yaml` 뿐이어야 하고, 그 안에서도 `images[].digest` 줄만 바뀌어야 한다. 다른 파일·다른 줄이 바뀌면 실패 — App 토큰이 탈취돼도 dev digest 외에는 못 바꾼다.
   - **이 보증의 전제 셋(T047)** — 하나라도 빠지면 봇이 같은 PR에서 검사를 끌 수 있다(`pull_request` 이벤트는 PR 쪽의 워크플로 파일과 스크립트로 돈다): ①**App에 `workflows` 권한이 없다** — GitHub이 워크플로 파일을 바꾸는 push를 거부한다(App 설정 · 운영자 확인 · VD) ②**경로 lint는 base ref(main)의 `tests/validate.sh`로 돈다** — PR이 스크립트를 고쳐도 main의 규칙으로 판정한다(`--only-author`) ③변경 파일 목록과 diff는 **merge-base ↔ head**로 계산한다(base가 main 끝보다 뒤처져도 main 쪽 변경이 섞이지 않는다).
-  - 봇 로그인 목록의 정본은 `tests/validate.sh`의 `VALIDATE_BOT_AUTHORS` 기본값이다. 워크플로는 이 변수를 설정하지 않는다(설정하면 PR 쪽에서 목록을 바꿀 수 있다).
+  - 봇 로그인 목록의 정본은 `tests/validate.sh`의 `VALIDATE_BOT_AUTHORS` 기본값이다. 워크플로는 이 변수를 설정하지 않는다(설정하면 PR 쪽에서 목록을 바꿀 수 있다). 이 문서의 `jt-ci[bot]`은 설계 이름이고, **실제로 설치된 App은 `joshuatech-gitapp-1`**(봇 로그인 `joshuatech-gitapp-1[bot]` · `Workflows` 권한 No access — 운영자 확인 2026-09-29)이다. 목록에는 둘 다 있다.
 
 ## ExternalSecret 규약
 
