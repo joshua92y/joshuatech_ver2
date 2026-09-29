@@ -174,6 +174,8 @@ T045·T046과 각 README가 "T047" 또는 "T047 후보"로 넘긴 항목이 15�
 - **결정 D3(사용자 2026-09-29): ruleset에 선형 이력 필수 + 머지 방식 squash 전용을 더한다.** F1의 전제(main에 머지 커밋이 들어올 수 있다)를 없앤다 — 스크립트의 merge-base 개수 검사(R1)와 이중 방어. 현재 원격 ruleset은 머지 방식 3종을 허용하고 `required_linear_history`가 없다. `.github/ruleset-main.json`을 G1 PR에서 고치고, 머지 뒤 운영자가 `gh api -X PUT …/rulesets/22066865 --input .github/ruleset-main.json`으로 적용한다(파일만 고쳐서는 적용되지 않는다).
 - **수정 빌더 보고(R1–R8 · DONE_WITH_CONCERNS)**: 전부 반영. 케이스 82 → **107**. 새 케이스는 수정 전 실패(RED 18) → 수정 뒤 통과, 기존 분기를 지키는 케이스는 변이 시험 9/9로 고유성 확인. `^author-` 47 케이스 실패 0. 빌더가 지시에 없이 더한 판정 셋(전부 더 닫는 쪽)을 컨트롤러가 코드로 읽어 확인하고 받아들였다: ①쌍의 두 줄은 hex 값 밖이 같아야 한다(`    digest:` → `  - digest:`로 새 항목을 만드는 경로) ②`PR_AUTHOR` 없이 `PR_AUTHOR_ID`만 오면 FAIL ③머리 구간의 낯선 `+`/`-` 줄은 FAIL. ①은 계약에 반영했다.
 
+- **G1 PR #33**(gitops `3267322` · 2026-09-29 15:3x KST): 컨트롤러 독립 검증 — 문법 검사 · 빠른 케이스 38(전부 `--only-author`) 실패 0 · 일반 모드 출력이 변경 전과 바이트 동일(긍정 픽스처) · gitleaks 0 · CR 0 · ruleset JSON 파싱. 파서(검사 6의 hunk 구간·쌍 판정)는 컨트롤러가 코드로 읽었다. CI 2건 통과. 머지와 ruleset 적용은 운영자.
+
 ## 6. converge로 넘기는 것(후속 위치와 완료 조건)
 
 | # | 항목 | 후속 위치 | 완료 조건 |
