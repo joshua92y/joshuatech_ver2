@@ -202,6 +202,22 @@ T045·T046과 각 README가 "T047" 또는 "T047 후보"로 넘긴 항목이 15�
 - **G2 갱신(PR #34 head `3f144d7`)**: 스텝 2b(자기검사 대상 판정 · 워크플로 인라인 · PR 코드 실행 전 · 실패 시 실행 쪽) + 스텝 5 조건(`run != '0'`) + 스텝 2의 head 커밋 확인 + 발신자 입력(PR 이벤트에서만 — push 이벤트에도 `sender`가 있는데 작성자 없이 발신자만 가면 검사 6이 FAIL한다 · 컨트롤러가 스크립트로 확인) + gitleaks 액션 버전을 8.30.1로 맞춤. 판정 스텝을 실제 커밋 범위 8가지로 로컬 실행: 문서만 바꾼 범위 `run=0` · 검사를 바꾼 범위 `run=1` · push `run=1` · 짧은 SHA·없는 객체·빈 값 `run=1`. 러너 두 번째 실행: 판정 `run=1`(변경 3개) · 전체 검사 31초 PASS 26 · 자기검사 174초 122/0. **`run=0` 경로의 러너 실측은 아직 없다**(이 PR은 `.github/`를 바꾼다 — 문서만 바꾸는 다음 PR에서 본다).
 - **브랜치 쓰기 제한의 증거 하나**: 관리자 자격의 push에 원격이 `Bypassed rule violations for refs/heads/t047-g2-validate-wiring: - Cannot update this protected ref.`를 돌려줬다 — ruleset이 이 브랜치에 걸려 있고, bypass가 없는 주체라면 같은 문구로 거부된다는 뜻이다(App 토큰으로의 실측은 여전히 T074 · T115).
 
+- **G2 독립 리뷰(2026-09-29 저녁) — 판정 CHANGES_REQUIRED(F1 하나 때문)**:
+
+  | # | 심각도 | 내용 | 조치 |
+  |---|---|---|---|
+  | F1 | critical | **PR의 base는 봇이 고른다.** 봇이 검사 스크립트를 무력화한 `bump/a`를 base로 잡은 PR(`bump/b → bump/a`)을 열면, 워크플로는 "base의 스크립트"로 봇의 스크립트를 실행해 통과한다. 성공한 check는 head 커밋에 붙으므로 그 PR의 base를 main으로 바꾸면(`edited`는 기본 활동 유형이 아니라 재실행이 없다) required check가 채워진 채로 머지할 수 있다. 컨트롤러가 실험 사본에서 재현(`ATTACKER BASE SCRIPT RAN` · exit 0) | 트리거를 main 대상 PR로 한정 · 스텝 2가 base ref와 base 커밋을 확인 · 스크립트와 diff 기준을 `origin/main`의 끝에서 |
+  | F2 | low | required check에 출처(`integration_id`)가 없어 이름만 같으면 어떤 App의 check든 조건을 채운다 | ruleset 선언에 `integration_id: 15368`(GitHub Actions) |
+  | F3 | low | 식에서 없는 출력(null)은 0으로 읽힌다 — `outputs.run != '0'`은 출력이 없을 때 거짓이 되어 자기검사가 조용히 꺼진다(주석은 반대로 적혀 있었다) | 출력을 `selftest=run|skip`으로 |
+  | F4 | medium | 포크 PR은 워크플로 파일까지 PR 쪽 것으로 돈다. 외부 계정의 포크 PR + 봇 토큰의 머지 | 저장소 설정 둘(결정 D6) |
+  | F5–F9 | low·info | 2b의 요약 줄 누락 · main push 실행이 서로 취소됨 · 제한 시간 45분 · lint 출력 안의 워크플로 명령 · 봇이 사람 PR을 닫았다 열어 실패시키는 것 | 전부 반영(마지막 것은 복구 방법을 문서에) |
+
+  수정 뒤 실험 사본에서 11가지 시나리오 실행: 공격자 base ref → 실패 · 공격자 base 커밋 → 실패 · 빈 base ref · `refs/heads/main` 표기 → 실패 · 봇의 금지 변경 → main의 lint가 FAIL · 봇의 제자리 교체 → PASS(PR이 말하는 base가 뒤처져 있어도) · 사람 PR → PASS · 사람 PR에 봇 발신자 → FAIL. 러너 세 번째 실행(head `dcda3a9`) 통과 — 스텝 2가 `origin/main` 끝(`fda5a72`)의 스크립트로 돌았고 stop-commands 토큰은 로그에서 가려졌다.
+  **리뷰어가 확인하지 못한 채 남긴 것 → T115 측정에 넣는다**: `workflows` 권한 없는 App이 워크플로를 옛 버전으로 되돌리는 **머지 커밋**이나 옛 커밋을 가리키는 새 브랜치를 push할 수 있는지(통과하면 전제 ①이 무너진다) · 같은 head 커밋의 check가 PR 사이에 공유되는지(수정으로 전제가 사라졌지만 기록용).
+- **운영 조건 하나(시험 중 확인)**: main의 dev overlay는 빈 뼈대라 봇이 `images` 블록을 **처음 추가**하는 PR은 제자리 교체가 아니어서 FAIL한다(계약대로). **첫 digest는 pod overlay를 만드는 사람 PR이 넣는다** — T072 · T074의 조건.
+- **결정 D6(사용자 2026-09-29): 외부 PR 정책 = 둘 다** — PR 생성은 협력자만(`pull_request_creation_policy: collaborators_only`) + 외부 기여자의 워크플로 실행은 항상 승인(`approval_policy: all_external_contributors`). 두 매개변수와 허용 값은 GitHub REST 문서로 확인했다. App의 PR 생성이 막히는지는 미실측(T074 — 막히면 앞의 설정만 되돌린다).
+- **범위 밖 관찰(기록만 · T116 보안 마무리에서 다룬다)**: 모노레포(`joshuatech_ver2`)에는 ruleset도 브랜치 보호도 없다(조회 결과 0건). 명세는 gitops 저장소의 ruleset만 요구한다. 모노레포의 포크 PR 승인 정책도 "첫 기여자만"이다.
+
 ## 6. converge로 넘기는 것(후속 위치와 완료 조건)
 
 | # | 항목 | 후속 위치 | 완료 조건 |
