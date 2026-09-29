@@ -218,6 +218,10 @@ T045·T046과 각 README가 "T047" 또는 "T047 후보"로 넘긴 항목이 15�
 - **결정 D6(사용자 2026-09-29): 외부 PR 정책 = 둘 다** — PR 생성은 협력자만(`pull_request_creation_policy: collaborators_only`) + 외부 기여자의 워크플로 실행은 항상 승인(`approval_policy: all_external_contributors`). 두 매개변수와 허용 값은 GitHub REST 문서로 확인했다. App의 PR 생성이 막히는지는 미실측(T074 — 막히면 앞의 설정만 되돌린다).
 - **범위 밖 관찰(기록만 · T116 보안 마무리에서 다룬다)**: 모노레포(`joshuatech_ver2`)에는 ruleset도 브랜치 보호도 없다(조회 결과 0건). 명세는 gitops 저장소의 ruleset만 요구한다. 모노레포의 포크 PR 승인 정책도 "첫 기여자만"이다.
 
+- **G2 머지와 설정 적용(운영자 · 2026-09-29 19:00 KST)**: gitops PR #34 → main `9181e4e`(09:59:48Z). 컨트롤러가 값으로 대조: ruleset `main` — required check `{context: validate, integration_id: 15368}` · 머지 방식 `["squash"]` · 규칙 5 · bypass 없음 / ruleset `branches` — 그대로 / 저장소 — `pull_request_creation_policy: collaborators_only` · 포크 PR 워크플로 승인 `all_external_contributors`. **머지된 브랜치가 자동 삭제됐다**(원격에 `main`만 남음) — 삭제 제한 아래에서도 머지한 사람이 관리자면 자동 삭제가 된다(미실측 항목 해소).
+- **main push 실행(`9181e4e`)**: 스텝 2 건너뜀(push 이벤트) · 2b `run — PR 이벤트가 아님` · 전체 검사 33초 PASS 26 · 검사 6 "대상 없음" · 자기검사 178초 122/0 · job 약 3분 41초. 러너 실행 4회(PR 3 + push 1) 전부 통과.
+- **G3 · G4 준비**: gitops 작업 트리 둘을 저장소 **밖**에 만들었다(`.superpowers/t047/wt/g3` = 브랜치 `t047-g3-render-diff` · `wt/g4` = `t047-g4-checks`, 둘 다 `9181e4e`에서). 저장소 안에 두면 `validate.sh`의 파일 열거가 작업 트리까지 훑는다. G3은 워크플로 파일만, G4는 `tests/`만 건드리므로 나란히 진행한다.
+
 ## 6. converge로 넘기는 것(후속 위치와 완료 조건)
 
 | # | 항목 | 후속 위치 | 완료 조건 |
