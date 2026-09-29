@@ -43,9 +43,15 @@
 - **F16** ServiceAccount 토큰을 만들 수 있는 규칙(명시 + 와일드카드)은 **2개**: ClusterRole `argocd-application-controller`(`*/*/*`) · Role `external-secrets/eso-token-create`(`resourceNames` 5개).
 - **F17** `ServiceAccount reloader/reloader`(또는 그 계정을 포함하는 그룹)를 주체로 한 바인딩은 **5개**, 전부 `platform/reloader` 렌더 안이다. 그룹 주체(`system:serviceaccounts` · `system:authenticated` 등) 바인딩은 어느 렌더에도 없다.
 - **F18** 렌더에 없는 ClusterRole을 가리키는 바인딩은 **2개**: `agent-view-view` → `view` · `vault-server-binding` → `system:auth-delegator`.
-- **F19** `aggregationRule`을 가진 ClusterRole 0개. `aggregate-to-*` 라벨을 가진 ClusterRole 12개(cert-manager 7 · external-secrets 5 — 내장 `view`·`edit`·`admin`·`reader`를 넓힌다).
+- **F19** `aggregationRule`을 가진 ClusterRole 0개. `aggregate-to-*` 라벨을 가진 ClusterRole **5개**(cert-manager 3 · external-secrets 2 — 내장 `view`·`edit`·`admin`·`reader`를 넓힌다). **정정(2026-09-29 저녁)**: 처음에는 "12개(7 + 5)"로 적었다 — 그것은 ClusterRole 수가 아니라 **라벨 수**였다. G4 지시서를 쓰며 다시 세어 찾았고 계약도 함께 고쳤다.
+- **F22(추가 실측 · G4b 지시서 작성 중)** 첫 측정이 보지 않은 경로를 같은 렌더에서 다시 쟀다(`.superpowers/t047/measure_rbac2.py`):
+  - 바인딩 40장의 주체 40개는 **전부 `ServiceAccount`**이고 `namespace`가 다 적혀 있다. `User`·`Group` 주체 0.
+  - `roleRef`가 Role인데 같은 ns에 그 Role이 렌더되지 않은 바인딩 0. 같은 이름의 Role·ClusterRole이 두 렌더에 나타나는 경우 0.
+  - 내장 역할의 이름(`cluster-admin`·`admin`·`edit`·`view`·`system:` 접두)으로 렌더된 ClusterRole 0.
+  - `secrets` 생성 권한을 가진 규칙 8개(Argo CD 3 · cert-manager 4 · external-secrets 1) · `escalate`·`bind`·`impersonate`는 `argocd-application-controller`의 `*`뿐.
+  - **첫 기준이 놓친 우회 경로 셋**: ①주체를 `User` `system:serviceaccount:reloader:reloader`로 적으면 그룹 넷만 보는 판정을 지나간다 ②RoleBinding의 ServiceAccount 주체는 `namespace`를 비우면 API 서버가 바인딩의 ns로 읽는다 ③내장 역할과 같은 이름의 ClusterRole을 함께 렌더하면 "렌더에 없는 역할" 판정을 지나간다. → 계약을 "주체는 이름을 다 적은 ServiceAccount뿐" · "내장 역할의 이름으로 정의 금지"로 고쳤다.
 - **F20** 형식별 정책의 현재 위반 0: `kind: List` 0 · `kind: ApplicationSet` 0(파일 · 렌더) · `clusters/oci-k3s/apps`에는 `.yaml` 21개와 `.md` 1개뿐이고 하위 디렉터리 없음 · `helmGlobals`·레거시 생성기 0 · `argocd-cm`에 `kustomize.buildOptions: "--enable-helm"` 있음.
-- 측정 스크립트: `.superpowers/t047/measure_rbac.py`(로컬 · gitignore). G4의 검사는 이 판정을 `validate.sh`(yq)로 옮긴 것이어야 하고, 같은 렌더에서 같은 결과가 나오는지로 대조한다.
+- 측정 스크립트: `.superpowers/t047/measure_rbac.py` · `measure_rbac2.py`(로컬 · gitignore). G4의 검사는 이 판정을 `validate.sh`(yq)로 옮긴 것이어야 하고, 같은 렌더에서 같은 결과가 나오는지로 대조한다.
 
 ### 2.5 러너에 설치할 도구(linux arm64 · 공식 릴리스의 체크섬 파일에서 옮김)
 
@@ -221,6 +227,7 @@ T045·T046과 각 README가 "T047" 또는 "T047 후보"로 넘긴 항목이 15�
 - **G2 머지와 설정 적용(운영자 · 2026-09-29 19:00 KST)**: gitops PR #34 → main `9181e4e`(09:59:48Z). 컨트롤러가 값으로 대조: ruleset `main` — required check `{context: validate, integration_id: 15368}` · 머지 방식 `["squash"]` · 규칙 5 · bypass 없음 / ruleset `branches` — 그대로 / 저장소 — `pull_request_creation_policy: collaborators_only` · 포크 PR 워크플로 승인 `all_external_contributors`. **머지된 브랜치가 자동 삭제됐다**(원격에 `main`만 남음) — 삭제 제한 아래에서도 머지한 사람이 관리자면 자동 삭제가 된다(미실측 항목 해소).
 - **main push 실행(`9181e4e`)**: 스텝 2 건너뜀(push 이벤트) · 2b `run — PR 이벤트가 아님` · 전체 검사 33초 PASS 26 · 검사 6 "대상 없음" · 자기검사 178초 122/0 · job 약 3분 41초. 러너 실행 4회(PR 3 + push 1) 전부 통과.
 - **G3 · G4 준비**: gitops 작업 트리 둘을 저장소 **밖**에 만들었다(`.superpowers/t047/wt/g3` = 브랜치 `t047-g3-render-diff` · `wt/g4` = `t047-g4-checks`, 둘 다 `9181e4e`에서). 저장소 안에 두면 `validate.sh`의 파일 열거가 작업 트리까지 훑는다. G3은 워크플로 파일만, G4는 `tests/`만 건드리므로 나란히 진행한다.
+- **권한 경계 기준 보강(같은 날 저녁 · G4b 지시서를 쓰며)**: 기준을 빌더에게 넘기기 전에 같은 렌더에서 다시 쟀다(F22). 계약의 숫자 하나가 틀렸고(F19 — 라벨 수를 ClusterRole 수로 적었다) 기준을 지나가는 경로 셋을 찾아 계약을 먼저 고쳤다. `secrets` 생성 경로는 범위를 넓히지 않고 「보지 않는 것」과 §6 H8-1로 남겼다. 교훈: 기준선 숫자는 **무엇을 센 것인지**(객체 · 라벨 · 규칙)를 함께 적는다.
 
 ## 6. converge로 넘기는 것(후속 위치와 완료 조건)
 
@@ -233,6 +240,7 @@ T045·T046과 각 README가 "T047" 또는 "T047 후보"로 넘긴 항목이 15�
 | H12-1 | Cloudflare `ssl=strict` 드리프트 단언 | gitops `platform/traefik/README.md` §6 · 모노레포 `tests/infra/tofu.tests.ps1` | 계획 출력에서 영역 설정 `ssl`이 `strict`임을 단언(이미 있으면 "있음"으로 닫는다) |
 | H12-2 | 계약 §디렉터리에 소유권 한 문장(TLSOption 정본 = 모노레포 HelmChartConfig · TLSStore 정본 = `platform/traefik/`) · 설계 문면의 edge 검증 호스트 교체 | 모노레포 `contracts/gitops-repo.md` · T042 설계 | 문장 반영(검사 아님) |
 | H12-3 | `validate.sh` 교차 파일 단언 — `platform/traefik/`의 TLSStore는 `default`/`kube-system` 1개 · `spec.certificates[].secretName` = `platform/cert-manager-issuers/` Certificate의 `spec.secretName` · `spec.defaultCertificate` 금지 · `platform/traefik/`에 kind `TLSOption`·`Secret` 금지 | `tests/validate.sh` 새 검사 | 다섯 조건마다 부정 픽스처 1개 + 고유 단언, 긍정 픽스처 통과 |
+| H8-1 | `secrets` 생성 권한을 통한 토큰 발급 경로 — `kubernetes.io/service-account-token` 형식의 Secret을 만들면 그 ns의 ServiceAccount 토큰을 얻는다. 오늘 그 권한을 가진 규칙은 8개(F22)이고 기준선으로 고정하지 않았다 | 계약 §validate.yml 4 권한 경계 「보지 않는 것」 · `tests/validate.sh` 검사 13 | 그 규칙을 가진 Role·ClusterRole의 집합을 기준선으로 고정할지 **결정**(차트 올림마다 계약을 고치는 비용과 맞바꾼다). 고정한다면 부정 픽스처 1개 + 단언, 아니면 「보지 않는 것」에 사유를 남기고 닫는다 |
 
 출처의 원문: gitops `bootstrap/README.md` 「validate 공백 후보」 ①–④ · `platform/traefik/README.md` 「T047 / converge」 ①–④.
 
