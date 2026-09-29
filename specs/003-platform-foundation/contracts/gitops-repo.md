@@ -75,6 +75,7 @@ FR-010의 순서를 이 표 하나로만 표현한다. Argo CD는 wave N의 리�
 ## 이미지 · 승격
 
 - `apps/<pod>/overlays/<env>/kustomization.yaml`의 `images:` 항목은 `newName: ghcr.io/joshua92y/<pod>`, `digest: sha256:…`만(태그 금지). validate.yml이 `newTag` 존재 시 실패.
+  - (T047) 항목마다 **`name`과 `digest`(`sha256:` + 64자리 소문자 hex)가 있어야 하고**, 키는 `{name, newName, digest}` 밖에 없어야 한다. `digest`가 없는 항목은 이미지 고정이 풀린 것이다 — `newTag` 금지만으로는 "아무것도 고정하지 않은 항목"이 통과한다(T047 G1 리뷰: 봇이 digest 줄을 지우면 빌드는 성공하고 이미지는 고정 없는 이름이 된다 — 봇 쪽은 경로 lint의 제자리 교체 규칙이 막고, 사람 PR 쪽은 이 검사가 막는다).
 - `platform/` 이미지(cloudflared·dragonfly·helm values의 `image:`)는 태그에 `@sha256:…`을 병기한다. validate.yml이 digest 없는 `image:` 줄을 **경고**한다(Renovate `pinDigests`가 못 미치는 곳은 수동).
 - **dev bump(자동 머지)**: 모노레포 `publish-pod.yml`이 GitHub App 토큰으로 브랜치 **`bump/dev-<pod>-<sha7>`** 을 만들고 `overlays/dev` digest를 바꾼 PR(메시지 `chore(<pod>): dev → <short-digest>`)을 열어 `gh pr merge --auto --squash`를 건다 — required check `validate` 통과 뒤 자동 머지. main 직접 push 없음.
   - **VD-5(검증 후 결정)**: 기본 가정은 "public repo Free에서 `gh pr merge --auto`와 Environment `production`이 동작한다"(저장소 설정 **Allow auto-merge 활성** 필요, T003 수동 목록). 옵션 A = 동작하면 위 자동 머지 경로, 옵션 B = 동작하지 않으면 dev bump도 **사람 머지**로 내린다. T003·T074의 첫 PR에서 실측해 확정하고 결과를 `report.md`에 남긴다. 어느 쪽이든 아래 `jt-ci[bot]` 경로 lint는 유지한다.
@@ -183,12 +184,13 @@ Authentik·OpenFGA는 pod가 아니라 환경 공유 컴포넌트이므로 env �
      |---|---|---|
      | `*.yaml`·`*.yml`의 최상위 문서 | 검사한다(기존 7.1 · 2 · 7.4) | — |
      | kustomize 렌더에 나타나는 Application | 검사한다(7.4 — 렌더는 `List`를 풀어 낸다) | — |
-     | **`kind: List`**(어느 apiVersion이든) — `--root` 트리의 모든 YAML | **금지** | 파일 단위 추출은 최상위 문서의 kind만 본다. Argo directory source와 kustomize는 List를 풀어 적용하므로 그 안의 Application·RBAC이 검사를 지나간다 |
+     | **목록 객체** — `kind: List`(어느 apiVersion이든)와 `<Kind>List`(이름이 `List`로 끝나고 최상위 `items`가 목록인 문서) — `--root` 트리의 모든 YAML | **금지** | 파일 단위 추출은 최상위 문서의 kind만 본다. Argo directory source와 kustomize는 List를 풀어 적용하므로 그 안의 Application·RBAC이 검사를 지나간다 |
      | **`*.json` · `*.jsonnet` · `*.libsonnet`** — Argo가 디렉터리째 읽는 경로(kustomization이 없는 Application `spec.source.path` — 오늘은 `clusters/oci-k3s/apps`) | **금지** | 파일 열거는 YAML뿐인데 Argo directory source는 셋 다 읽는다. 저장소 전체가 아니라 이 경로로 한정한다(`.github/ruleset-main.json` 같은 정상 파일이 있다) |
      | kustomization의 `resources`·`patches` 등이 가리키는 `*.json` | 검사한다(렌더에 나타난다) | 렌더 기반 검사가 본다 |
      | **`kind: ApplicationSet`** — 파일 + 렌더 | **금지** | template이 만드는 Application은 Git에 없어 검사할 수 없다. 쓰게 되면 계약을 먼저 고친다 |
      | kustomization이 없는 directory source 경로의 하위 디렉터리 | **금지**(파일은 그 경로 바로 아래에만) | `directory.recurse`는 7.4가 금지하므로 하위 디렉터리의 파일은 적용되지 않는 죽은 선언이다 |
-   - (T047) **차트 저장소 허용 목록**: 모든 kustomization의 `helmCharts[].repo`는 아래 표의 값과 정확히 일치한다(이름·저장소 쌍). kustomize의 `helmCharts` 인플레이트는 AppProject `sourceRepos`의 통제 밖이라(T042·T044·T045·T046에서 `sourceRepos` 줄을 네 번 지웠다) **이 표가 차트 출처의 유일한 통제**다. 새 차트는 표에 행을 더하는 계약 변경으로 시작한다. `helmGlobals`·`helmChartInflationGenerator`(레거시 생성기)는 금지한다.
+   - (T047) **차트 저장소 허용 목록**: 모든 kustomization의 `helmCharts[].repo`는 아래 표의 값과 정확히 일치한다(이름·저장소 쌍). kustomize의 `helmCharts` 인플레이트는 AppProject `sourceRepos`의 통제 밖이라(T042·T044·T045·T046에서 `sourceRepos` 줄을 네 번 지웠다) **이 표가 차트 출처의 유일한 통제**다. 새 차트는 표에 행을 더하는 계약 변경으로 시작한다. 항목마다 `version`이 있어야 한다(없으면 그때의 최신을 받는다 — 값 자체는 표로 고정하지 않는다: 차트 올림은 계약 변경이 아니다). `repo`가 없는 항목(로컬 차트)과 `helmGlobals`·`helmChartInflationGenerator`(레거시 생성기)는 금지한다.
+   - (T047) **`charts/`라는 이름의 디렉터리는 helm 인플레이트 캐시 전용이다**: `helmCharts`를 쓰는 kustomization 디렉터리 **바로 아래**에만 있을 수 있다(거기는 `.gitignore` 대상인 빌드 산출물이다). 그 밖의 위치에 `charts` 디렉터리가 있으면 실패 — 파일 열거와 7.4의 파일 찾기는 경로에 `/charts/`가 든 곳을 통째로 건너뛰므로, 이름이 `charts`인 pod(`apps/charts/…`)나 컴포넌트는 모든 검사의 시야 밖으로 빠진다.
 
      | 차트 `name` | `repo` | 쓰는 곳 |
      |---|---|---|
@@ -207,7 +209,8 @@ Authentik·OpenFGA는 pod가 아니라 환경 공유 컴포넌트이므로 env �
 5. 작성자 검사: PR 작성자가 `jt-ci[bot]`이면 변경 파일 = `apps/*/overlays/dev/kustomization.yaml`, 변경 줄 = `images[].digest`뿐.
 6. sync-wave 검사: 모든 Application의 `argocd.argoproj.io/sync-wave` 값이 **§sync-wave 단일 표**와 일치하고, 표에 없는 `platform/<component>/` 디렉터리가 없다.
 7. 렌더링 diff 코멘트: `kustomize build` 결과를 main과 PR에서 비교해 PR 코멘트로 남긴다(Argo CD 접근 불필요; `argocd app diff`는 쓰지 않음).
-   - (T047) **별도 job**(`render-diff`)이다 — required check가 아니다(코멘트 실패가 머지를 막지 않는다 · 판정은 `validate`가 한다). `pull-requests: write` 권한은 **이 job에만** 준다(`validate` job은 `contents: read` 그대로). 포크에서 온 PR은 토큰이 읽기 전용이라 코멘트를 달 수 없으므로 건너뛰고 같은 내용을 job 요약에 남긴다. `pull_request_target`은 쓰지 않는다.
+   - (T047) **별도 job 둘**이다 — required check가 아니다(코멘트 실패가 머지를 막지 않는다 · 판정은 `validate`가 한다). **권한을 나눈다**: ①`render-diff` job은 PR의 내용을 렌더하고 비교해 코멘트 본문을 **파일로** 만든다(`contents: read`뿐 — 쓰기 권한이 없다) ②`render-comment` job은 그 파일을 받아 코멘트를 단다(`pull-requests: write` — **이 job은 저장소를 체크아웃하지 않고 PR의 내용을 처리하지 않는다**). 쓰기 토큰을 가진 job이 PR이 고른 내용을 렌더하지 않게 하려는 것이다. 둘 다 `validate`가 성공한 뒤에만 돈다(봇 PR은 경로 lint를 통과한 것만 렌더된다). 포크에서 온 PR은 토큰이 읽기 전용이라 코멘트를 달 수 없으므로 건너뛰고 같은 내용을 job 요약에 남긴다. `pull_request_target`은 쓰지 않는다.
+   - 본문에는 PR이 고른 글자(렌더된 매니페스트)가 들어간다 — 코드 울타리는 내용 안의 어떤 울타리보다 길게 잡고, 크기 한도를 넘으면 요약으로 바꾸며, 코멘트 갱신은 **`github-actions[bot]`이 쓴, 표식이 있는 코멘트**만 대상으로 한다(다른 계정이 같은 표식을 넣은 코멘트를 덮어쓰지 않는다).
    - 대상은 `--root` 트리의 모든 kustomization 디렉터리(`tests/`·`charts/` 제외)와 directory source 경로(`clusters/oci-k3s/apps`)의 파일이다. 코멘트는 PR마다 하나를 갱신한다(새로 쌓지 않는다). 길이 한도를 넘으면 컴포넌트별 요약(바뀐 객체의 kind/이름 · 줄 수)만 남기고 전문은 job 아티팩트로 올린다.
    - 승격 PR(§이미지·승격)에서 운영자가 확인하는 것이 이 코멘트다 — 코멘트가 없거나 실패했으면 머지하지 않는다(PR 템플릿의 확인 항목).
 
