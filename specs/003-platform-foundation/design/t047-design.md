@@ -132,6 +132,24 @@ T045·T046과 각 README가 "T047" 또는 "T047 후보"로 넘긴 항목이 15�
 | G5 | gitops | `promote.yml` + PR 템플릿 | P1 결정에 따름 |
 | M1 | 모노레포 | `ci.yml` kubeconform — `templates/django-pod/deploy`가 아직 없으므로(F5) 대상이 생길 때까지는 "대상 없음"으로 통과하는 스텝 | |
 
+### 4.1 G2 워크플로의 스텝 순서와 그 이유
+
+`workflows` 권한이 없는 App이 못 바꾸는 것은 **`.github/workflows/` 아래 파일뿐**이다. `.github/scripts/`나 `tests/`는 보호 밖이다. 그래서 같은 job 안에서 PR 쪽 파일을 **실행한 뒤에** 돌리는 검사는 봇이 미리 환경을 바꿔 둘 수 있다(PATH 앞에 가짜 `git`을 두는 식). 순서로 막는다.
+
+| 순서 | 스텝 | 실행되는 코드의 출처 | 비고 |
+|---|---|---|---|
+| 1 | checkout(`fetch-depth: 0`) | 액션(SHA 고정) | PR 쪽 코드는 실행되지 않는다 |
+| 2 | **경로 lint** — `git show "$BASE_SHA:tests/validate.sh" > tests/validate.base.sh` → `bash tests/validate.base.sh --only-author` → 사본 삭제 | **main의 스크립트** | 러너에 미리 있는 git · bash만 쓴다. **PR 쪽 코드를 실행하기 전에** 돈다 |
+| 3 | 도구 설치(버전 고정 + sha256) | **워크플로 파일 안의 인라인 스크립트** | 저장소의 설치 스크립트를 부르지 않는다(보호 밖이라서) |
+| 4 | 전체 검사 `bash tests/validate.sh` | PR 쪽 스크립트 | 사람 PR은 스크립트를 함께 고칠 수 있다 — 그 통제는 리뷰다 |
+| 5 | 자기검사(실행 시점은 P3) | PR 쪽 스크립트 | 검사 8이 픽스처 쪽 `charts/`를 훑지 않도록 4 뒤에 둔다 |
+| 6 | gitleaks 액션(히스토리) | 액션(SHA 고정) | 기존 그대로 |
+
+- 값은 `${{ }}`를 스크립트 본문에 끼워 넣지 않고 **`env:`로 넘긴다**(PR 제목·브랜치 이름을 통한 스크립트 주입 방지). `PR_AUTHOR` = `github.event.pull_request.user.login` · `VALIDATE_BASE_SHA` = `github.event.pull_request.base.sha` · `VALIDATE_HEAD_SHA` = `github.event.pull_request.head.sha`.
+- ruleset이 strict(브랜치가 최신이어야 머지)라 머지 시점의 `base.sha`는 main의 끝이다 — 봇이 옛 base를 골라 옛 스크립트로 판정받는 길이 없다.
+- push 이벤트(main)에서는 2를 건너뛴다(`PR_AUTHOR`가 없어 검사 6은 "대상 없음"이다).
+- `VALIDATE_SKIP_TOOLS` · `VALIDATE_BOT_AUTHORS` · `VALIDATE_TESTS_ONLY`는 어디에도 설정하지 않는다.
+
 ## 5. 진행 기록
 
 - 2026-09-29: 조사(F1–F20) → 결정 D1·D2 → **M0 계약 `1892135`** → G1 빌드 착수(gitops 로컬 브랜치 `t047-g1-only-author`).
