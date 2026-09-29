@@ -189,6 +189,7 @@ Authentik·OpenFGA는 pod가 아니라 환경 공유 컴포넌트이므로 env �
      | kustomization의 `resources`·`patches` 등이 가리키는 `*.json` | 검사한다(렌더에 나타난다) | 렌더 기반 검사가 본다 |
      | **`kind: ApplicationSet`** — 파일 + 렌더 | **금지** | template이 만드는 Application은 Git에 없어 검사할 수 없다. 쓰게 되면 계약을 먼저 고친다 |
      | kustomization이 없는 directory source 경로의 하위 디렉터리 | **금지**(파일은 그 경로 바로 아래에만) | `directory.recurse`는 7.4가 금지하므로 하위 디렉터리의 파일은 적용되지 않는 죽은 선언이다 |
+     | directory source 경로의 YAML 문서의 kind | **`Application`(`argoproj.io/…`)뿐** — 그 밖의 kind 금지 | 이 경로의 파일은 Argo가 렌더 없이 그대로 적용한다. 렌더를 보는 검사(Reloader · 권한 경계 등)는 이 파일들을 보지 못하고, root Application의 프로젝트(`platform`)는 ClusterRole·ClusterRoleBinding과 목적지 ns의 모든 namespaced kind를 허용한다 — 여기에 둔 Role·바인딩은 검사를 지나 적용된다(2026-09-29 실측 — 문서 21개 전부 Application) |
    - (T047) **차트 저장소 허용 목록**: 모든 kustomization의 `helmCharts[].repo`는 아래 표의 값과 정확히 일치한다(이름·저장소 쌍). kustomize의 `helmCharts` 인플레이트는 AppProject `sourceRepos`의 통제 밖이라(T042·T044·T045·T046에서 `sourceRepos` 줄을 네 번 지웠다) **이 표가 차트 출처의 유일한 통제**다. 새 차트는 표에 행을 더하는 계약 변경으로 시작한다. 항목마다 `version`이 있어야 한다(없으면 그때의 최신을 받는다 — 값 자체는 표로 고정하지 않는다: 차트 올림은 계약 변경이 아니다). `repo`가 없는 항목(로컬 차트)과 `helmGlobals`·`helmChartInflationGenerator`(레거시 생성기)는 금지한다.
 
      | 차트 `name` | `repo` | 쓰는 곳 |
