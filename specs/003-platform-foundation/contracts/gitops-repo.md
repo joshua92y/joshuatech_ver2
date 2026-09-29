@@ -78,9 +78,13 @@ FR-010의 순서를 이 표 하나로만 표현한다. Argo CD는 wave N의 리�
 - `platform/` 이미지(cloudflared·dragonfly·helm values의 `image:`)는 태그에 `@sha256:…`을 병기한다. validate.yml이 digest 없는 `image:` 줄을 **경고**한다(Renovate `pinDigests`가 못 미치는 곳은 수동).
 - **dev bump(자동 머지)**: 모노레포 `publish-pod.yml`이 GitHub App 토큰으로 브랜치 **`bump/dev-<pod>-<sha7>`** 을 만들고 `overlays/dev` digest를 바꾼 PR(메시지 `chore(<pod>): dev → <short-digest>`)을 열어 `gh pr merge --auto --squash`를 건다 — required check `validate` 통과 뒤 자동 머지. main 직접 push 없음.
   - **VD-5(검증 후 결정)**: 기본 가정은 "public repo Free에서 `gh pr merge --auto`와 Environment `production`이 동작한다"(저장소 설정 **Allow auto-merge 활성** 필요, T003 수동 목록). 옵션 A = 동작하면 위 자동 머지 경로, 옵션 B = 동작하지 않으면 dev bump도 **사람 머지**로 내린다. T003·T074의 첫 PR에서 실측해 확정하고 결과를 `report.md`에 남긴다. 어느 쪽이든 아래 `jt-ci[bot]` 경로 lint는 유지한다.
-- **prod 승격(사람 머지)**: `promote.yml`(workflow_dispatch, 입력 `pod`)이 dev digest를 읽어 **`gh attestation verify oci://ghcr.io/joshua92y/<pod>@<digest> --owner joshua92y`** 를 먼저 실행(실패 시 중단)한 뒤 `overlays/prod`를 바꾼 PR을 **연다(제목 `promote(<pod>): <short-digest>`)**. **auto-merge를 걸지 않는다** — 운영자가 렌더링 diff 코멘트를 확인하고 직접 머지한다(FR-038·T047과 동일 규칙). 머지 → Argo sync. 롤백 = 해당 커밋 `git revert` PR.
+- **prod 승격(사람이 PR을 열고 사람이 머지)**: `promote.yml`(workflow_dispatch, 입력 `pod`)이 dev digest를 읽어 **`gh attestation verify oci://ghcr.io/joshua92y/<pod>@<digest> --owner joshua92y`** 를 먼저 실행(실패 시 중단)한 뒤 `overlays/prod`의 digest를 바꾼 **브랜치 `promote/prod-<pod>-<sha7>`만 만든다**(워크플로의 `GITHUB_TOKEN` — App 토큰을 쓰지 않는다). **PR은 운영자가 연다**(제목 `promote(<pod>): <short-digest>`) — 워크플로는 PR을 여는 명령과 비교 링크를 출력한다. **auto-merge를 걸지 않는다** — 운영자가 렌더링 diff 코멘트를 확인하고 직접 머지한다(FR-038). 머지 → Argo sync. 롤백 = 해당 커밋 `git revert` PR.
+  - **워크플로가 PR을 열지 않는 이유(T047 결정 2026-09-29)**: ①App 토큰으로 열면 작성자가 봇이라 아래 경로 lint(봇은 `overlays/dev`만)에 걸려 required check를 통과할 수 없다. lint를 prod까지 넓히면, App은 자기 PR에 auto-merge를 걸 수 있고 승인 수가 0이므로 **토큰 탈취 시 prod digest가 사람 없이 머지**된다. ②`GITHUB_TOKEN`으로 연 PR은 워크플로를 일으키지 않아 required check가 보고되지 않는다. → 브랜치까지만 자동, PR 작성자는 사람.
+  - 따라서 **gitops 저장소에는 App 자격(시크릿)을 두지 않는다.** App 토큰을 쓰는 곳은 모노레포 `publish-pod.yml`(dev bump)뿐이다.
 - ruleset(main): PR 필수 · required check `validate` · 0 approvals · **`bypass_actors: []`**(GitHub App 포함 누구도 bypass 없음).
 - **`jt-ci[bot]` 경로 lint**(validate.yml): PR 작성자가 `jt-ci[bot]`이면 변경 파일은 `apps/*/overlays/dev/kustomization.yaml` 뿐이어야 하고, 그 안에서도 `images[].digest` 줄만 바뀌어야 한다. 다른 파일·다른 줄이 바뀌면 실패 — App 토큰이 탈취돼도 dev digest 외에는 못 바꾼다.
+  - **이 보증의 전제 셋(T047)** — 하나라도 빠지면 봇이 같은 PR에서 검사를 끌 수 있다(`pull_request` 이벤트는 PR 쪽의 워크플로 파일과 스크립트로 돈다): ①**App에 `workflows` 권한이 없다** — GitHub이 워크플로 파일을 바꾸는 push를 거부한다(App 설정 · 운영자 확인 · VD) ②**경로 lint는 base ref(main)의 `tests/validate.sh`로 돈다** — PR이 스크립트를 고쳐도 main의 규칙으로 판정한다(`--only-author`) ③변경 파일 목록과 diff는 **merge-base ↔ head**로 계산한다(base가 main 끝보다 뒤처져도 main 쪽 변경이 섞이지 않는다).
+  - 봇 로그인 목록의 정본은 `tests/validate.sh`의 `VALIDATE_BOT_AUTHORS` 기본값이다. 워크플로는 이 변수를 설정하지 않는다(설정하면 PR 쪽에서 목록을 바꿀 수 있다).
 
 ## ExternalSecret 규약
 
@@ -162,11 +166,46 @@ Authentik·OpenFGA는 pod가 아니라 환경 공유 컴포넌트이므로 env �
    - (T045 G1p) `allow-apiserver-webhook` 4장의 출발 ipBlock cidr 집합·포트가 §정책 세트의 webhook 행과 정확 일치(원본 파일 + kustomize 렌더 둘 다 — 렌더에서만 넓어지거나 나타나거나 사라지는 경우 포함).
    - (T045 G2) `ClusterSecretStore`: `platform/secret-stores/`에만 · `metadata.namespace` 없음 · 이름·provider 집합 = **§ClusterSecretStore 5개 표** · vault store는 `serviceAccountRef.namespace`(referent auth 금지 — 생략하면 로그인 없이 Ready=True/Valid가 되는 가짜 PASS)·`audiences: [vault]`·마운트·서버·kv 경로·store↔SA/role 매핑 · kubernetes store는 `auth.serviceAccount` 하나(audiences 없음)·`remoteNamespace: data`·`server.url`·`caProvider.namespace` 명시 · `conditions.namespaces` 집합 = 표(원본 + 렌더).
    - (T046) `platform/reloader` 렌더: ClusterRole·ClusterRoleBinding **0** · Deployment `reloader`(ns `reloader`) 첫 컨테이너의 `args`가 **정확히** `[--log-level=info, --namespaces=<§네임스페이스 platform/reloader/ 목록 + reloader, 사전순 쉼표 목록>, --reload-strategy=annotations]`(순서 포함 · 그 밖의 인자 0 · 제어 문자 0). **집합 비교가 아니라 목록 정확 일치인 이유**(2026-09-28 검증 실측): 값 없는 플래그(`--log-format` 등)가 앞에 오면 pflag가 뒤의 `--namespaces=…`를 그 플래그의 **값으로 삼켜** 감시 목록이 비고 전역 모드가 되며, 같은 플래그를 두 번 주면 목록이 **합쳐진다**(StringSlice) — 인자를 하나씩 세는 검사는 둘 다 통과시킨다. · 렌더 전체의 `Role`·`RoleBinding` ns 집합 = 같은 목록 · 모든 `RoleBinding`은 `roleRef.kind: Role` + `subjects` = `[ServiceAccount reloader/reloader]` 정확 일치 · `reloader-role` 4장의 `rules`가 서로 같고 와일드카드(`*`) 없음 · 모든 `RoleBinding`의 `roleRef`가 가리키는 Role은 **같은 ns에 렌더**돼 있다 · Reloader 이미지(저장소 = `ghcr.io/stakater/reloader`) 컨테이너는 렌더 전체에서 **정확히 1개**(`reloader/reloader`의 `containers[0]`, `command` 없음) · 렌더의 kind별 개수 = 차트 12(ServiceAccount 1 · Deployment 1 · Role 5 · RoleBinding 5). (VD-9 시험 대상 `jt-dev/vd9-probe`가 있던 2026-09-28 하루 동안은 Deployment가 하나 더 있었다 — 판정 PASS 뒤 gitops #32에서 제거했고 그 검사(`REL-probe`)도 함께 지웠다.)
-   - (T046) **Application은 source를 덮어쓰지 않는다**: `clusters/oci-k3s/apps/*.yaml`과 `bootstrap/root-app.yaml`의 모든 Application(파일 + kustomize 렌더에 나타나는 것 포함)은 `spec.source`의 키가 `{repoURL, targetRevision, path}`뿐이고(`kustomize`·`helm`·`directory`·`plugin` 금지), `spec.sources`(multi-source)를 쓰지 않으며, `repoURL` = 이 저장소 · `targetRevision: main`이다. 이유: `spec.source.kustomize.patches` 같은 Application 수준 오버라이드는 **Argo가 적용하는 렌더를 validate가 빌드한 렌더와 다르게** 만든다 — 렌더를 보는 모든 검사(ExternalSecret · 정책 · ClusterSecretStore · Reloader)가 한꺼번에 무력해진다. 같은 효과를 내는 다른 두 경로도 금지한다(2026-09-28 검증 RB-1 · Argo CD v3.5.2 소스 판독 — 라이브 미실측): source 경로 안의 **`.argocd-source.yaml` · `.argocd-source-<앱 이름>.yaml`**(Argo가 Application source 파라미터를 덮어쓰는 파일) · Application `spec.sourceHydrator` · Application 최상위 **`operation`**(`operation.sync.source`·`revision`·`manifests`로 한 번의 동기화 source를 바꾼다 — Git에 선언하는 필드가 아니다). **이 목록이 Argo의 모든 우회 경로를 덮는다고 주장하지 않는다**: `kind: List`로 감싼 Application · `.json`/`.jsonnet` 매니페스트 · ApplicationSet template 등 알려진 사각은 gitops `tests/README.md` 「보지 않는 것」에 있고, 전 확장자·전 렌더 열거는 T047에서 다룬다. 새 차트 저장소를 source로 직접 쓰는 컴포넌트가 생기면 이 줄을 먼저 고친다.
+   - (T046) **Application은 source를 덮어쓰지 않는다**: `clusters/oci-k3s/apps/*.yaml`과 `bootstrap/root-app.yaml`의 모든 Application(파일 + kustomize 렌더에 나타나는 것 포함)은 `spec.source`의 키가 `{repoURL, targetRevision, path}`뿐이고(`kustomize`·`helm`·`directory`·`plugin` 금지), `spec.sources`(multi-source)를 쓰지 않으며, `repoURL` = 이 저장소 · `targetRevision: main`이다. 이유: `spec.source.kustomize.patches` 같은 Application 수준 오버라이드는 **Argo가 적용하는 렌더를 validate가 빌드한 렌더와 다르게** 만든다 — 렌더를 보는 모든 검사(ExternalSecret · 정책 · ClusterSecretStore · Reloader)가 한꺼번에 무력해진다. 같은 효과를 내는 다른 두 경로도 금지한다(2026-09-28 검증 RB-1 · Argo CD v3.5.2 소스 판독 — 라이브 미실측): source 경로 안의 **`.argocd-source.yaml` · `.argocd-source-<앱 이름>.yaml`**(Argo가 Application source 파라미터를 덮어쓰는 파일) · Application `spec.sourceHydrator` · Application 최상위 **`operation`**(`operation.sync.source`·`revision`·`manifests`로 한 번의 동기화 source를 바꾼다 — Git에 선언하는 필드가 아니다). **이 목록이 Argo의 모든 우회 경로를 덮는다고 주장하지 않는다.** 남은 사각은 아래 형식별 정책(T047)으로 닫는다. 새 차트 저장소를 source로 직접 쓰는 컴포넌트가 생기면 이 줄을 먼저 고친다.
+   - (T047) **형식별 정책 — Argo가 읽을 수 있는 형식마다 "검사한다" 또는 "금지한다"를 정한다**(완료 범위는 이 표다 — 표 밖의 형식이 발견되면 표에 행을 더한다):
+
+     | 형식 · 위치 | 정책 | 이유 |
+     |---|---|---|
+     | `*.yaml`·`*.yml`의 최상위 문서 | 검사한다(기존 7.1 · 2 · 7.4) | — |
+     | kustomize 렌더에 나타나는 Application | 검사한다(7.4 — 렌더는 `List`를 풀어 낸다) | — |
+     | **`kind: List`**(어느 apiVersion이든) — `--root` 트리의 모든 YAML | **금지** | 파일 단위 추출은 최상위 문서의 kind만 본다. Argo directory source와 kustomize는 List를 풀어 적용하므로 그 안의 Application·RBAC이 검사를 지나간다 |
+     | **`*.json` · `*.jsonnet` · `*.libsonnet`** — Argo가 디렉터리째 읽는 경로(kustomization이 없는 Application `spec.source.path` — 오늘은 `clusters/oci-k3s/apps`) | **금지** | 파일 열거는 YAML뿐인데 Argo directory source는 셋 다 읽는다. 저장소 전체가 아니라 이 경로로 한정한다(`.github/ruleset-main.json` 같은 정상 파일이 있다) |
+     | kustomization의 `resources`·`patches` 등이 가리키는 `*.json` | 검사한다(렌더에 나타난다) | 렌더 기반 검사가 본다 |
+     | **`kind: ApplicationSet`** — 파일 + 렌더 | **금지** | template이 만드는 Application은 Git에 없어 검사할 수 없다. 쓰게 되면 계약을 먼저 고친다 |
+     | kustomization이 없는 directory source 경로의 하위 디렉터리 | **금지**(파일은 그 경로 바로 아래에만) | `directory.recurse`는 7.4가 금지하므로 하위 디렉터리의 파일은 적용되지 않는 죽은 선언이다 |
+   - (T047) **차트 저장소 허용 목록**: 모든 kustomization의 `helmCharts[].repo`는 아래 표의 값과 정확히 일치한다(이름·저장소 쌍). kustomize의 `helmCharts` 인플레이트는 AppProject `sourceRepos`의 통제 밖이라(T042·T044·T045·T046에서 `sourceRepos` 줄을 네 번 지웠다) **이 표가 차트 출처의 유일한 통제**다. 새 차트는 표에 행을 더하는 계약 변경으로 시작한다. `helmGlobals`·`helmChartInflationGenerator`(레거시 생성기)는 금지한다.
+
+     | 차트 `name` | `repo` | 쓰는 곳 |
+     |---|---|---|
+     | `cert-manager` | `oci://quay.io/jetstack/charts` | `platform/cert-manager` |
+     | `external-secrets` | `https://charts.external-secrets.io` | `platform/external-secrets` |
+     | `reloader` | `https://stakater.github.io/stakater-charts` | `platform/reloader` |
+     | `vault` | `https://helm.releases.hashicorp.com` | `platform/vault` |
+   - (T047) **`helmCharts`를 쓰는 kustomization이 하나라도 있으면** `bootstrap/argocd`의 `argocd-cm` `kustomize.buildOptions`에 `--enable-helm`이 있어야 한다(없으면 Argo가 그 컴포넌트를 렌더하지 못한다).
+   - (T047) **권한 경계 — 문자열이 아니라 규칙 구조로 본다**(전 kustomization 렌더를 합쳐서 · 2026-09-29 main `82dd85e` 실측값이 기준선):
+     - **ServiceAccount 토큰 발급**: `apiGroups`에 `""` 또는 `*`, `verbs`에 `create` 또는 `*`, `resources`에 `serviceaccounts/token` · `serviceaccounts/*` · `*` · `*/*` 중 하나가 든 규칙을 가진 Role·ClusterRole은 **정확히 둘**이다 — ①ClusterRole `argocd-application-controller`(`*/*/*` — GitOps 컨트롤러의 고유 권한, 받아들인 위험) ②Role `external-secrets/eso-token-create`(`resourceNames` = `eso-platform`·`eso-dev`·`eso-prod`·`eso-data`·`eso-ca-reader` 정확히). 셋째가 생기거나 ②의 `resourceNames`가 달라지면 실패.
+     - **렌더에 없는 ClusterRole을 가리키는 바인딩**(내장 역할 등 — validate가 규칙을 볼 수 없다)은 **정확히 둘**이다 — `agent-view-view` → `view` · `vault-server-binding` → `system:auth-delegator`. `cluster-admin`·`admin`·`edit`를 비롯해 그 밖의 이름은 실패.
+     - **Reloader 주체**: `subjects`에 `ServiceAccount reloader/reloader`가 들었거나 그 계정을 포함하는 그룹(`system:serviceaccounts` · `system:serviceaccounts:reloader` · `system:authenticated` · `system:unauthenticated`)이 든 RoleBinding·ClusterRoleBinding은 `platform/reloader` 렌더의 **5장뿐**이다(다른 컴포넌트 렌더가 Reloader에게 Secret 읽기 권한을 주는 경로를 막는다). 위 네 그룹을 주체로 한 바인딩은 어느 렌더에도 없다.
+     - `aggregationRule`을 가진 ClusterRole은 금지한다(오늘 0개 — 합쳐진 결과 규칙은 렌더에 없어 볼 수 없다). 반대 방향인 `rbac.authorization.k8s.io/aggregate-to-*` **라벨**을 가진 ClusterRole(오늘 12개 — cert-manager · external-secrets 차트가 내장 `view`·`edit`·`admin`을 넓힌다)은 허용한다: 그 규칙도 위 토큰 발급 판정의 대상이므로 내장 역할을 통해 토큰 발급이 새는 경로는 잡힌다.
+     - **보지 않는 것**: 내장 역할이 라벨 집계로 얼마나 넓어졌는지(토큰 발급 외) · `escalate`·`bind`·`impersonate` 동사를 통한 권한 상승 · 차트가 런타임에 만드는 RBAC · 클러스터에 손으로 만든 객체.
    - (T045 G4) **배달자는 base를 묶기만 한다**: `platform/secrets/kustomization.yaml`의 최상위 키는 `{apiVersion, kind, resources}`뿐이고, `secrets/<ns>/kustomization.yaml`은 거기에 `namespace`까지만 허용한다(`patches`·`replacements`·`transformers`·`namePrefix`·`helmCharts` 등 변환 키 금지). 이유: scope ↔ 위치 검사(§ExternalSecret 검사 2)는 원본 위치로 판정하므로, 변환 키가 있으면 원본은 그대로인 채 **Argo가 실제로 적용하는 렌더에서만** store·`remoteRef`·`creationPolicy`가 바뀐다 — 그 렌더에 터널 자격(`cloudflared/cloudflared-tunnel`)이 있다. 같은 이유로 `platform/secrets` 렌더에도 `secrets/**` 위치 규칙(`platform/` 접두 + `vault-platform`)을 적용한다.
 5. 작성자 검사: PR 작성자가 `jt-ci[bot]`이면 변경 파일 = `apps/*/overlays/dev/kustomization.yaml`, 변경 줄 = `images[].digest`뿐.
 6. sync-wave 검사: 모든 Application의 `argocd.argoproj.io/sync-wave` 값이 **§sync-wave 단일 표**와 일치하고, 표에 없는 `platform/<component>/` 디렉터리가 없다.
 7. 렌더링 diff 코멘트: `kustomize build` 결과를 main과 PR에서 비교해 PR 코멘트로 남긴다(Argo CD 접근 불필요; `argocd app diff`는 쓰지 않음).
+   - (T047) **별도 job**(`render-diff`)이다 — required check가 아니다(코멘트 실패가 머지를 막지 않는다 · 판정은 `validate`가 한다). `pull-requests: write` 권한은 **이 job에만** 준다(`validate` job은 `contents: read` 그대로). 포크에서 온 PR은 토큰이 읽기 전용이라 코멘트를 달 수 없으므로 건너뛰고 같은 내용을 job 요약에 남긴다. `pull_request_target`은 쓰지 않는다.
+   - 대상은 `--root` 트리의 모든 kustomization 디렉터리(`tests/`·`charts/` 제외)와 directory source 경로(`clusters/oci-k3s/apps`)의 파일이다. 코멘트는 PR마다 하나를 갱신한다(새로 쌓지 않는다). 길이 한도를 넘으면 컴포넌트별 요약(바뀐 객체의 kind/이름 · 줄 수)만 남기고 전문은 job 아티팩트로 올린다.
+   - 승격 PR(§이미지·승격)에서 운영자가 확인하는 것이 이 코멘트다 — 코멘트가 없거나 실패했으면 머지하지 않는다(PR 템플릿의 확인 항목).
+
+### validate.yml의 실행 구조 (T047)
+
+- job `validate`(required): 도구 설치(yq · kustomize · kubeconform · gitleaks · **helm** — 버전 고정 + sha256 대조, arm64) → **경로 lint(base ref 스크립트 · `--only-author`)** → 전체 검사(`tests/validate.sh`, PR 쪽 스크립트) → gitleaks(히스토리). `VALIDATE_SKIP_TOOLS`는 CI에서 설정하지 않는다(SKIP만 남아도 exit 0이 된다).
+- 자기검사(`tests/validate.tests.sh`)를 CI에서 언제 돌릴지는 러너 시간 실측 뒤 정한다(VD — T047 G2). 돌릴 때는 `CI=true`라 부분 실행이 거부되고 도구 누락이 실패다 — helm도 도구 게이트에 포함한다.
+- job 이름 `validate`는 ruleset의 required check 이름이다 — 바꾸지 않는다.
 
 ## 변경 권한
 
