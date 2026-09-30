@@ -75,7 +75,7 @@ FR-010의 순서를 이 표 하나로만 표현한다. Argo CD는 wave N의 리�
 ## 이미지 · 승격
 
 - `apps/<pod>/overlays/<env>/kustomization.yaml`의 `images:` 항목은 `newName: ghcr.io/joshua92y/<pod>`, `digest: sha256:…`만(태그 금지). validate.yml이 `newTag` 존재 시 실패.
-  - (T047) 항목마다 **`name`과 `digest`(`sha256:` + 64자리 소문자 hex)가 있어야 하고**, 키는 `{name, newName, digest}` 밖에 없어야 한다. `digest`가 없는 항목은 이미지 고정이 풀린 것이다 — `newTag` 금지만으로는 "아무것도 고정하지 않은 항목"이 통과한다(T047 G1 리뷰: 봇이 digest 줄을 지우면 빌드는 성공하고 이미지는 고정 없는 이름이 된다 — 봇 쪽은 경로 lint의 제자리 교체 규칙이 막고, 사람 PR 쪽은 이 검사가 막는다).
+  - (T047) 항목마다 **`name`과 `digest`(`sha256:` + 64자리 소문자 hex)가 있어야 하고**, 키는 `{name, newName, digest}` 밖에 없어야 하며, **같은 키가 한 항목에 두 번 나오면 안 된다**(yq · kustomize는 뒤의 값을 쓴다 — 사람이 앞 줄을 읽고 승인하면 다른 digest가 배포된다. 2026-09-30 G4 리뷰 실측). 대상은 `apps/**` overlay만이 아니라 **모든 kustomization**의 `images` 항목이다(기존 `newTag` 금지와 같은 범위). `digest`가 없는 항목은 이미지 고정이 풀린 것이다 — `newTag` 금지만으로는 "아무것도 고정하지 않은 항목"이 통과한다(T047 G1 리뷰: 봇이 digest 줄을 지우면 빌드는 성공하고 이미지는 고정 없는 이름이 된다 — 봇 쪽은 경로 lint의 제자리 교체 규칙이 막고, 사람 PR 쪽은 이 검사가 막는다).
 - `platform/` 이미지(cloudflared·dragonfly·helm values의 `image:`)는 태그에 `@sha256:…`을 병기한다. validate.yml이 digest 없는 `image:` 줄을 **경고**한다(Renovate `pinDigests`가 못 미치는 곳은 수동).
 - **dev bump(자동 머지)**: 모노레포 `publish-pod.yml`이 GitHub App 토큰으로 브랜치 **`bump/dev-<pod>-<sha7>`** 을 만들고 `overlays/dev` digest를 바꾼 PR(메시지 `chore(<pod>): dev → <short-digest>`)을 열어 `gh pr merge --auto --squash`를 건다 — required check `validate` 통과 뒤 자동 머지. main 직접 push 없음.
   - **VD-5(검증 후 결정)**: 기본 가정은 "public repo Free에서 `gh pr merge --auto`와 Environment `production`이 동작한다"(저장소 설정 **Allow auto-merge 활성** 필요, T003 수동 목록). 옵션 A = 동작하면 위 자동 머지 경로, 옵션 B = 동작하지 않으면 dev bump도 **사람 머지**로 내린다. T003·T074의 첫 PR에서 실측해 확정하고 결과를 `report.md`에 남긴다. 어느 쪽이든 아래 `jt-ci[bot]` 경로 lint는 유지한다.
