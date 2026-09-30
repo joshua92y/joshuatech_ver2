@@ -39,6 +39,16 @@ Check 'codex-skill-policy-sync' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 fai
 pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/run-platform-tests.tests.ps1 | Out-Host
 Check 'platform-harness' ($LASTEXITCODE -eq 0) 'see platform runner harness output'
 
+# 1b3. ci-kubeconform (T047 M1) — tests/scripts/kubeconform-deploy.tests.ps1: scripts/ci/kubeconform-deploy.sh 하네스
+#       (임시 픽스처 실행 + .github/workflows/ci.yml job kubeconform 정적 검사 · 네트워크 필요 — 스키마 내려받기).
+#       도구(bash · kustomize · kubeconform)가 없으면 하네스가 첫 줄 'SKIP kubeconform-deploy tests -- ' + exit 0으로 끝난다 — 그때만 SKIP 허용.
+#       그 밖에는 1d · 1e와 같은 양성 증거 규율: exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 · 크래시 = FAIL).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/kubeconform-deploy.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+if ($c -eq 0 -and $o -match '\ASKIP kubeconform-deploy tests -- ') { Write-Host 'SKIP ci-kubeconform -- allowed (bash, kustomize or kubeconform not found; see SKIP line above)' }
+else { Check 'ci-kubeconform' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see kubeconform-deploy harness output above" }
+
 # 1c. specs index freshness — 이 검사는 낡은 인덱스를 발견하면 specs/README.md를 갱신하는 부작용이 있다(FAIL이면 diff를 검토하고 커밋한다)
 $o = pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/update-specs-index.ps1 2>&1 | Out-String
 Check 'specs-index-fresh' ($LASTEXITCODE -eq 0 -and $o -match '\(unchanged\)') ("exit=$LASTEXITCODE; $($o.Trim()) -- if stale: README was regenerated now, review and commit specs/README.md; if error: fix the spec header and rerun")
