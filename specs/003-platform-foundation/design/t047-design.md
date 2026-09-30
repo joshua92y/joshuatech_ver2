@@ -375,20 +375,29 @@ PR의 검사
 
 `promote/**`를 따로 막는 이유: 승격 브랜치를 App이 쓸 수 있는 이름(`bump/**`)에 두면, 워크플로가 브랜치를 올리고 PR을 열기까지의 짧은 틈에 App 토큰으로 커밋을 끼워 넣을 수 있다. 그 PR의 작성자는 `github-actions[bot]`이라 경로 lint가 제한하지 않고, 끼워 넣은 커밋이 운영 overlay 밖을 건드리면 관문(D7의 범위)도 보지 않는다.
 
-**남은 실측(운영자와 함께 · 다음 세션의 첫 일)**:
+**남은 실측(운영자와 함께)**: V4 · V3 — 결과는 §8.10.
 
-| # | 잴 것 | 준비된 것(로컬 · gitignore) |
+### 8.10 V3 · V4 실측 결과(2026-09-30 11:50–11:56 KST)
+
+| # | 잰 것 | 결과 |
 |---|---|---|
-| V4 | ruleset의 bypass 주체로 GitHub Actions(App ID 15368)를 받는가 · 워크플로 토큰이 `promote/**` 브랜치를 만들 수 있는가 | `.superpowers/t047/g5/ruleset-promote.json` · `ruleset-branches.v2.json` |
-| V3 | 워크플로 토큰이 PR을 만들 수 있는가(설정을 켠 뒤) · 그 PR의 검사 실행이 승인 대기로 만들어지는가 · 운영자가 승인하면 도는가 | `.superpowers/t047/g5/vd5-promote.yml`(시험 PR 안에서만 도는 임시 워크플로 — 스크립트는 사본 저장소에서 돌려 확인했다) |
+| V4-a | ruleset의 bypass 주체로 GitHub Actions(App ID 15368)를 받는가 | **거부** — `POST …/rulesets` 422 `Actor GitHub Actions integration must be part of the ruleset source or owner organization`. 개인 계정 저장소에서는 GitHub Actions를 우회 주체로 넣을 수 없다 → 승격 브랜치 전용 ruleset은 만들 수 없다 |
+| V4-b | 워크플로 토큰이 `promote/**` 브랜치를 만들 수 있는가 | **됨** — ruleset `branches`(24166519)의 제외 목록에 `refs/heads/promote/*` · `refs/heads/promote/**/*`를 더한 뒤(운영자 PUT · 11:50 KST). 시험 PR #39의 job이 `promote/vd5-test-<run id>`를 push(rc 0) |
+| 설정 | "Actions의 PR 생성 허용" | 운영자 PUT → `can_approve_pull_request_reviews: true`(조회로 대조) |
+| V3-a | 워크플로 토큰이 PR을 만들 수 있는가 | **됨** — PR #40, 작성자 `app/github-actions`(커밋 author·committer `github-actions[bot]` · 서명 없음) |
+| V3-b | 그 PR의 검사 실행이 승인 대기로 만들어지는가 | **됨** — `validate` 실행이 `conclusion: action_required`로 만들어졌고 check는 0 · PR은 BLOCKED |
+| V3-c | 운영자가 승인하면 도는가 | **됨** — `POST …/actions/runs/<id>/approve` → `{}` → 같은 실행의 attempt 2(`triggering_actor` = 운영자) → validate 41초 성공 · render-diff 13초 · render-comment 7초 · 코멘트 "렌더 변경 없음" · PR CLEAN |
+| 덤 | 경로 lint의 작성자 판정 | `github-actions[bot]`(ID 41898282)은 봇 목록 밖 → "봇 아님 — 경로 제한 없음"(설계대로: 승격 PR의 내용은 main의 워크플로가 만든다) |
+| 덤 | 자기검사 건너뜀 경로의 러너 실행 | 처음 재어졌다 — 2b `skip`(`tests/` · `.github/` 변경 없음) → validate job 41초(자기검사 없이) |
 
-V4가 거부되면: `promote/**`를 ruleset `branches`의 제외 목록에만 넣고(App도 쓸 수 있다), `promote.yml`이 PR을 연 직후 브랜치 끝이 자기가 올린 커밋인지 확인해 다르면 PR을 닫는 것으로 틈을 좁힌다 — 그 경우 위 "짧은 틈"은 받아들인 위험으로 `report.md`에 적는다.
+시험 PR #39 · #40은 닫았고 브랜치 둘은 지웠다. 저장소 설정 둘(PR 생성 허용 · `promote/**` 제외)은 D8의 형태에 필요하므로 **그대로 둔다** — 선언 파일(`.github/ruleset-branches.json`)은 G5 PR이 원격 값에 맞춘다.
 
-## 9. 재개 지점(2026-09-29 20:40 KST 기준)
+**V4-a의 결과로 정해지는 것**: `promote/**`는 쓰기 권한이 있는 누구나(App 포함) 쓸 수 있는 이름 공간으로 남는다. 틈을 좁히는 것: ①`promote.yml`이 PR을 연 직후 브랜치 끝이 자기가 올린 커밋인지 확인하고 다르면 PR을 닫고 실패한다 ②PR이 열린 뒤 App이 push하면 발신자 판정(검사 6)이 봇 규칙으로 판정해 운영 overlay 변경을 FAIL시킨다 ③운영 overlay 변경은 관문 승인이 필요하다(D7). 남는 틈: 워크플로가 브랜치를 올리고 PR을 열기까지의 몇 초 사이에 App 토큰으로 커밋을 끼워 넣는 것(①이 잡는다 — ①의 확인과 App의 push가 교차하는 아주 짧은 순간만 남는다) → **받아들인 위험으로 `report.md`에 적는다.**
 
-- **gitops 원격**: main `9181e4e` · 열린 PR 없음 · 브랜치는 main뿐 · Environment `production`(필수 검토자 = 운영자) 있음 · ruleset · 저장소 설정은 G2 적용 뒤 그대로.
-- **G3**(작업 트리 `.superpowers/t047/wt/g3` · 브랜치 `t047-g3-render-diff`): 빌더가 구현 · 로컬 실증(렌더 비교 9경우 · 코멘트 8경우 · 변이 시험) · 문서까지 끝낸 상태였다(로그 `.superpowers/t047/g3/progress.log`). 바뀐 파일은 `.github/workflows/validate.yml` · `README.md` · `tests/README.md`. 리뷰는 아직이다.
-- **G4**(작업 트리 `wt/g4` · 브랜치 `t047-g4-checks`): G4a(검사 11 `FMT` · 12 `HELM`)가 새 케이스 14개 GREEN 뒤 변이 시험 중이었다. G4b(검사 13 `RBAC`) · G4c(4a 보강)는 시작 전. 작업 트리에 변이 시험용 사본 `tests/validate.mut.sh`가 남아 있으면 지운다(빌더가 지우기 전에 끊긴 경우).
-- **M1**(모노레포 주 작업 트리 · 커밋 전): 빌더 완료(하네스 56/0) · 리뷰 중이었다. 바뀐 파일 넷 — `scripts/ci/kubeconform-deploy.sh` · `tests/scripts/kubeconform-deploy.tests.ps1` · `.github/workflows/ci.yml` · `tests/run-all.ps1`.
-- **워크플로가 세션과 함께 끊겼으면**: 작업 트리와 로그로 어디까지 했는지 확인하고, 끝난 조각은 컨트롤러가 독립 검증 → 리뷰어만 다시 부른다. 끝나지 않은 조각은 지시서(`.superpowers/t047/prompts/`)에 "작업 트리에 앞선 시도의 변경이 있다 — 로그를 읽고 이어서 한다"를 더해 새 빌더를 부른다.
-- **순서**: G3 검증 · 리뷰 → PR → 머지(운영자) → G4 검증 · 리뷰 → main을 받아 PR → 머지 → V3 · V4 실측 → 계약(D7 · D8) → G5 빌드(G3 머지 뒤의 main에서) → 머지 · 설정 적용 · 관문 실측(승인 전 머지 거부) → M1 커밋 → 런북 §3 T047 절 · 학습 로그 · `tasks.md` 체크.
+## 9. 재개 지점(2026-09-30 12:00 KST 기준)
+
+- **gitops 원격**: main `7675f5f`(#38 G3 머지) · 열린 PR 없음 · 브랜치는 main뿐 · Environment `production`(필수 검토자 = 운영자) · 저장소 설정 "Actions의 PR 생성 허용" 켜짐 · ruleset `branches` 제외 목록에 `promote/**` 추가됨(선언 파일은 아직 옛 값 — G5 PR이 맞춘다).
+- **모노레포**: `791f49f`까지 푸시됨(M1 `332b9cc` 포함). 계약은 D7 · D8 반영 전(§8.9 표 참조).
+- **G4**(작업 트리 `.superpowers/t047/wt/g4` · 브랜치 `t047-g4-checks` · base `9181e4e`): G4a 완료(보고 사본 `.superpowers/t047/g4a/report.md`) · G4b 빌더 진행 중 · G4c 미착수 · 리뷰 미착수. PR 전에 main(`7675f5f` — validate.yml에 G3 job 둘 · `tests/validate.tests.sh`에 flaky 수정 `9bd1408`)을 받아야 한다(`tests/validate.tests.sh`의 `tg()` · `mb_break()` 변경과 겹칠 수 있다 — 컨트롤러가 푼다).
+- **G5**: 계약(D7 · D8 · §8.9 · §8.10) → gitops 작업 트리(main `7675f5f`에서) → 빌더(관문 job 셋 · `promote.yml` · PR 템플릿 · ruleset 선언 둘 · README · tests/README) → 리뷰 → PR → 머지 → 운영자가 ruleset `main`에 required check `prod-approval` 추가 → 관문 실측(운영 overlay를 건드린 PR의 승인 전 머지 거부 · 승인 뒤 머지).
+- **마무리**: 런북 §3 T047 절 · 학습 로그 · `tasks.md` T047 체크(53/119) · 메모리.
