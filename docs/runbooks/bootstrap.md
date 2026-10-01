@@ -489,7 +489,7 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
 >
 > **VD-5 판정: 승인 관문은 동작한다.** 운영 overlay(`apps/*/overlays/prod/**`)를 건드린 PR은 운영자가 Environment `production`의 배포를 승인하기 전에는 required check `prod-approval`이 보고되지 않아 **머지가 거부된다**(운영자 자격의 머지 명령도 — ruleset bypass 0). 승인하면 머지 가능 상태가 된다. 봇(App) 토큰이 이 승인을 줄 수 없다는 것은 문서 근거뿐이다 — 실증은 T115.
 >
-> **열린 운영자 조치 1건**: Environment `production`의 `can_admins_bypass`가 아직 `true`다(계약은 `false`). REST로는 바뀌지 않는다 — Settings → Environments → production → "Allow administrators to bypass configured protection rules"를 끈 뒤 아래 「상시 점검 명령」으로 확인한다. 켜져 있는 동안에도 App은 관리자가 아니어서 봇 토큰에 대한 성질은 성립한다. 닫히지 않은 것은 관리자 자격(운영자 · 그 자격을 쓰는 에이전트)이 대기를 건너뛸 수 있다는 한 겹이다.
+> **운영자 조치 1건 — 닫힘(2026-10-01 14:57 KST)**: Environment `production`의 관리자 우회를 껐다(`can_admins_bypass: false` — 조회로 대조 · 아래 「상시 점검 명령」 13항목 전부 OK). 과제를 닫을 때는 `true`였다. REST로는 바뀌지 않는 설정이다 — Settings → Environments → production → "Allow administrators to bypass configured protection rules" 해제 뒤 **"Save protection rules"** 까지 눌러야 저장된다. 같은 이름의 Environment가 모노레포에도 있어 저장소를 확인한다(이날 모노레포 쪽이 먼저 꺼졌다 — 그쪽은 필수 검토자 없이 브랜치 정책만 있는 Environment라 관리자도 브랜치 정책을 우회하지 못하게 될 뿐이다 · 더 닫는 쪽).
 >
 > **과제 문구와 다른 점 1건(결정 D8)**: 승격 PR은 App 토큰이 아니라 **워크플로 토큰**(`GITHUB_TOKEN`)이 연다. App 토큰으로 열면 봇에게 운영 경로를 열어 줘야 하고, 그 토큰이 새면 운영이 사람 없이 바뀔 길이 생긴다. gitops 저장소에는 App 자격을 두지 않는다. `report.md`에 편차로 적는다.
 
@@ -509,7 +509,7 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
   | ruleset `main` | required check `validate` · `prod-approval`(출처 GitHub Actions 고정) · strict · PR 필수(승인 수 0) · squash 전용 · 선형 이력 · 삭제 · 강제 push 금지 · **bypass 0** |
   | ruleset `branches` | `main` · `bump/**` · `promote/**` 밖의 브랜치 생성 · 갱신 · 삭제는 저장소 관리자 역할만 |
   | 저장소 | PR 생성은 협력자만 · 외부 기여자의 워크플로 실행은 항상 승인 · 워크플로 토큰 기본 권한 read · Actions의 PR 생성 허용 |
-  | Environment `production` | 필수 검토자 = 운영자 1명 · `prevent_self_review: false` · `can_admins_bypass` — **`false`여야 한다(현재 `true`)** |
+  | Environment `production` | 필수 검토자 = 운영자 1명 · `prevent_self_review: false` · `can_admins_bypass: false`(2026-10-01 14:57 KST 적용) |
 
   선언 파일(`.github/ruleset-*.json`)을 고치는 것만으로는 적용되지 않는다 — 머지 뒤 운영자가 `gh api -X PUT …/rulesets/<id> --input <파일>`로 적용하고 조회로 대조한다.
 - **게이트·실측**:
@@ -542,7 +542,7 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
   - **롤백** = 머지 커밋의 `git revert` PR. 운영 overlay를 건드리므로 같은 관문을 지난다.
   - **승격 PR에 다른 커밋이 들어왔으면**(브랜치 끝 확인이 잡으면 워크플로가 PR을 닫고 브랜치를 지운다 · 그 뒤에 들어오면 발신자가 App이라 `validate`가 실패한다) — PR을 **다시 열지 않는다**. 닫고 브랜치를 지운 뒤 승격을 새로 실행한다. 다시 열면 발신자가 사람이 되어 App의 커밋이 사람 규칙으로 검사된다.
   - **사람이 여는 운영 overlay PR**(pod overlay의 첫 `images` 항목 등)도 같은 관문을 지난다 — 5 · 6만 하면 된다(사람이 연 PR의 실행은 승인 대기가 아니다).
-- **상시 점검 명령(읽기만 · 에이전트 가능)** — 원격 설정을 기대 값과 대조한다. 설정을 바꾼 뒤와 보안 점검(T116) 때 돌린다. 2026-10-01 실행: 12항목 OK · `can_admins_bypass` 1항목 FAIL(위의 열린 조치).
+- **상시 점검 명령(읽기만 · 에이전트 가능)** — 원격 설정을 기대 값과 대조한다. 설정을 바꾼 뒤와 보안 점검(T116) 때 돌린다. 2026-10-01 실행: 과제를 닫을 때 12항목 OK · `can_admins_bypass` 1항목 FAIL → 운영자가 끈 뒤(14:57 KST) 13항목 전부 OK.
 
   ```powershell
   $ErrorActionPreference = 'Stop'
@@ -598,7 +598,7 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
   5. **테스트 준비가 저장 방식에 기대면 먼저 고정한다.** 자기검사 한 케이스가 러너에서 한 번 실패했다 — 임시 저장소의 객체가 pack 안에 있으면 느슨한 객체 파일을 지워도 남는다. `gc.auto=0` · `maintenance.auto=false`와 pack 풀기로 고쳤다.
   6. **결정을 권할 때 그것이 최종 형태인지 거쳐 가는 형태인지 함께 말한다.** D1(운영자가 승격 PR을 연다)은 관문이 생기기 전의 임시 형태였는데 처음에 그렇게 말하지 않았다.
   7. 도구 함정: Git Bash는 `<ref>:<경로>` 인자를 파일 경로로 바꾼다(체크아웃된 파일을 읽는다) · yq 4.53.6은 별칭 노드의 kind를 `alias`로 보고하고(`explode(.)` 뒤에 판정) `-`를 오른쪽부터 묶는다 · 셸에서 `TMP`를 덮어쓰면 kustomize의 helm 인플레이트가 깨진다(`export -n TMP`) · 동시에 무거운 프로세스가 많으면 Git Bash의 fork가 고갈돼 긴 스크립트가 끊긴다.
-- **인계**: **운영자(지금)** — Environment 관리자 우회 끄기. **converge** — 설계 §6 표(H11-1–4 · H12-1–3 · H8-1 `secrets` 생성 권한 경로를 기준선으로 고정할지 결정). **T072** — copier 생성물을 `kubeconform-deploy.sh --generated`에 연결 · pod overlay의 첫 `images` 항목은 사람 PR. **T074** — Application `source.path`는 소문자 `apps/<pod>/overlays/prod` · App의 PR 생성(협력자 전용 정책 아래) · App push 거부와 실제 `sender` 값 · `gh attestation verify`의 러너 권한. **T115** — `promote.yml` 끝까지 · App의 승인 API 거부 · 관문 대기 중 App 머지 거부 · App이 워크플로를 옛 버전으로 되돌리는 push. **T116** — 모노레포 ruleset · `allowed_actions` · SHA 고정 · 에이전트 전용 토큰. **`report.md`** — VD-5 결과 · D8 편차 · 받아들인 위험 둘(관문 범위 밖 PR은 봇 토큰으로 머지될 수 있다 / `promote/**`의 짧은 경쟁).
+- **인계**: **운영자** — Environment 관리자 우회 끄기(2026-10-01 닫힘). **converge** — 설계 §6 표(H11-1–4 · H12-1–3 · H8-1 `secrets` 생성 권한 경로를 기준선으로 고정할지 결정). **T072** — copier 생성물을 `kubeconform-deploy.sh --generated`에 연결 · pod overlay의 첫 `images` 항목은 사람 PR. **T074** — Application `source.path`는 소문자 `apps/<pod>/overlays/prod` · App의 PR 생성(협력자 전용 정책 아래) · App push 거부와 실제 `sender` 값 · `gh attestation verify`의 러너 권한. **T115** — `promote.yml` 끝까지 · App의 승인 API 거부 · 관문 대기 중 App 머지 거부 · App이 워크플로를 옛 버전으로 되돌리는 push. **T116** — 모노레포 ruleset · `allowed_actions` · SHA 고정 · 에이전트 전용 토큰. **`report.md`** — VD-5 결과 · D8 편차 · 받아들인 위험 둘(관문 범위 밖 PR은 봇 토큰으로 머지될 수 있다 / `promote/**`의 짧은 경쟁).
 
 (T047 이후 기록은 이하에 추가)
 
