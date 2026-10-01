@@ -197,6 +197,9 @@ Vault 스냅샷 쪽은 절단 · 변조가 전부 FAIL했다(CLI가 해시를 �
 - 17:00 KST경: 실제 터널 너머 port-forward 수립 시간을 재어 하네스의 8초 상한 결함을 찾았다(§8.1 F19) → 수정 지시서 3. 관찰 도구 보강(스냅샷: 커널 기대값 관문 · `-Since` 관문 선택 · Vault 조회를 40초까지 / 표본: 두 노드의 bootID · 커널 / 자동 시작: 연속 다섯 번 실패 + 잘못된 시작이면 다시 대기).
 - 교훈: **하네스는 실제 경로에서 한 번 돌려 봐야 한다.** 가짜 kubectl로 181개 단언을 통과한 하네스가, 실제 터널의 지연(port-forward 수립 10–23초) 앞에서는 한 조건이 항상 실패하게 돼 있었다. 사전 관찰을 리허설과 같은 경로 · 같은 도구로 미리 돌린 덕에 재부팅 전에 잡았다. 그리고 **"재부팅"이라는 한 단어 안에 다른 변경이 숨어 있을 수 있다** — 자동 재부팅을 꺼 둔 노드에서는 다음 재부팅이 곧 그동안 쌓인 커널 전환이다.
 
+- 17:40–19:00 KST: **하네스를 실제 경로에서 예행**(재부팅 없이 · 일부러 틀린 기준값) — 다섯 조건이 실제 응답 · 권한에서 전부 동작(Vault 확인 13.7초 · reboot-4는 부팅 anchor 뒤의 refresh를 기다려 155초에 충족). 같은 경로의 호출 시간 실측: 한 번에 2–20초 · 여섯–여덟 번에 한 번꼴로 실패(10초 근처 — TLS 핸드셰이크 시간 초과) · `get applications`는 419 KB로 한 번 19.5초 → 수정 4(조회 시간 제한 30초 · **0초 기준점 = 옛 부팅을 마지막으로 본 시각** — 하네스를 먼저 켜 두고 운영자가 준비됐을 때 재부팅한다) → 수정 5(재부팅 뒤 API가 먼저 돌아와 낡은 옛 bootID가 보이는 창에 대비해, 한 번 굳은 기준점은 옛 부팅을 연속 세 번 봐야 다시 움직인다). armed 경로도 실제 경로에서 예행했다(1분 제한 — armed → 일시 실패로 기준점이 굳음 → 세 번째 관측에서 다시 armed → "재부팅 없음" FAIL: 설계대로). 이 PC의 부하(빌더 · 리뷰어의 테스트 · 다른 세션이 남긴 `find` + sshfs)가 조회 경로를 느리게 했을 가능성이 있다 — 15:36에는 호출 넷이 12초였다. **리허설 동안에는 다른 작업을 돌리지 않는다.**
+- `kernel-trial.sh`: 빌더 완료(모의 하네스 85 단언 · 컨트롤러 독립 실행 85/0 · 스크립트 전문을 컨트롤러가 읽음) → 독립 리뷰 중(GRUB 전제를 우분투 소스와 대조). 실행표 §8.7.
+
 ## 8. 커널 전환을 포함한 재부팅 — 복구 경로 준비와 단계(2026-10-01 오후)
 
 ### 8.1 사전 관찰과 노드 점검에서 나온 것
@@ -254,3 +257,22 @@ Vault 스냅샷 쪽은 절단 · 변조가 전부 FAIL했다(CLI가 해시를 �
 - 우분투 클라우드 이미지의 initrd 없는 부팅 시도 → 실패 시 initrd로 재시도하는 논리가 grub.cfg에 있다 — 시험 커널의 부팅이 두 번에 걸쳐 일어날 수 있다(부팅 시간이 늘어난다). B3에서 본다.
 - 노드 B가 내려가 있는 동안의 접속 경로는 노드 A의 커넥터 하나다(9월 7일부터 돌던 파드). 노드 B의 재부팅은 접속 경로에 의존하지 않는다(스스로 올라온다).
 - 커널 7.0에서 K3s server · Vault(raft · KMS unseal)는 노드 A에서 처음 돈다 — 노드 B의 관문이 덮지 못하는 부분이다. 그래서 A1의 실패 대응(재부팅 → 6.17)을 먼저 준비했다.
+
+### 8.7 실행표(명령 · 단계마다 운영자 실행 → 출력 확인 → 다음 단계)
+
+스크립트는 표준 입력으로 넘긴다(노드에 파일을 남기지 않는다). 아래에서 `KT` = `Get-Content -Raw D:\code\joshuatech_ver2\infra\bootstrap\kernel-trial.sh`.
+
+| 단계 | 운영자 명령(PowerShell) | 통과 기준 |
+|---|---|---|
+| K0 읽기 | `foreach ($h in 'ssh-b','ssh-a') { "===== $h"; KT \| ssh $h "sudo bash -s -- status" }` | 두 노드 `RESULT: OK status` · 두 커널 모두 `menu-entry-ids=1` · 7.0의 `missing-loaded-modules=0` · `next_entry logic: present` · 기본값 `"0"` · grubenv 비어 있음 |
+| B0 고정 | `KT \| ssh ssh-b "sudo bash -s -- pin"` | `RESULT: OK pin` · `later boots: 6.17.0-1020-oracle` |
+| B1 시험 파드 | `kubectl --kubeconfig "$HOME\.kube\joshuatech-admin.yaml" apply --dry-run=server -f <kernel-canary.yaml>` → 같은 명령에서 `--dry-run=server`를 뺀 것 | 에이전트 조회: 파드 Ready · `Unhealthy` 이벤트 0 |
+| B2 그냥 재부팅 | `"node B reboot command at $((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))"; ssh ssh-b "sudo systemctl reboot"` | 에이전트 스냅샷: 노드 B 커널 **6.17**(고정이 먹었다) · 관문 전부 OK · 시험 파드 Ready. 운영자 `status`(ssh-b): 고정 그대로 |
+| B3 새 커널 1회 | `KT \| ssh ssh-b "sudo bash -s -- trial 7.0.0-1012-oracle"` → `RESULT: OK trial` 확인 뒤 B2와 같은 재부팅 명령 | **A 진행 조건**(§8.4) — 에이전트 스냅샷(노드 B 커널 7.0 · `-Since` 관문 es · apps) + 운영자 `status`(ssh-b: `running 7.0` · `next_entry` 없음 · AppArmor 거부 0) + 운영자 exec 시험 `kubectl --kubeconfig <admin> -n jt-dev exec kernel-canary -- vault version` |
+| A0 고정 | `KT \| ssh ssh-a "sudo bash -s -- pin"` | B0과 같음 |
+| A1 측정 재부팅 | 에이전트가 관찰 · 하네스를 먼저 켠다 → `KT \| ssh ssh-a "sudo bash -s -- trial 7.0.0-1012-oracle"` → `RESULT: OK trial` 확인 뒤 `"node A reboot command at …"; ssh ssh-a "sudo systemctl reboot"` | 하네스 `VERDICT: PASS` · 사후 스냅샷(두 노드 커널 7.0 · `-Since` 관문 전부) · 운영자 `status`(ssh-a) |
+| F 고정 해제 | `foreach ($h in 'ssh-b','ssh-a') { KT \| ssh $h "sudo bash -s -- unpin" }` → `kubectl --kubeconfig <admin> -n jt-dev delete pod kernel-canary` | `RESULT: OK unpin` 둘 · 기본값 `"0"` → 7.0 · 시험 파드 없음 |
+
+실패 때: B3이 관문을 못 넘으면 `ssh ssh-b "sudo systemctl reboot"` 한 번으로 6.17로 돌린다(부팅이 멈췄으면 OCI 콘솔에서 인스턴스 강제 재시작). A1이 실패하면 같은 방법으로 노드 A를 6.17로 돌리고, 같은 하네스로 다시 잰다. 시험을 접으려면 재부팅 전에 `cancel-trial`.
+
+에이전트 쪽(조회 전용): 단계마다 `observe.ps1`(fast · full 둘)을 먼저 켜고, 재부팅 뒤 `snapshot.ps1 -Label <단계> -Since <명령 시각> -SinceGates <…> -ExpectKernel <노드=커널,…>`으로 관문을 본다. 노드 A의 측정 재부팅은 `run-reboot-harness.ps1 -Mode after`를 **재부팅 전에** 켠다 — 하네스가 옛 부팅을 마지막으로 본 시각을 0초로 잡는다. 리허설 동안 이 PC에서 다른 무거운 작업을 돌리지 않는다(조회 경로가 느려지고 실패가 늘어난다 — 실측).
