@@ -13,7 +13,7 @@
 
 ## 2. 조사로 확정한 사실(2026-10-01)
 
-- **F1 재부팅 리허설은 처음이다.** 노드 A는 2026-09-04 재이미지 · K3s 설치 뒤 재부팅 기록이 없다(런북 §2 · §3). Vault 파드 재기동 드릴은 있었다(vault-unseal.md §1 — unseal 8초 · 드릴 전체 20초). 곧 이번이 "호스트가 꺼졌다 켜질 때 iptables 규칙 · k3s 서비스 · WireGuard · DNS 설정이 사람 없이 돌아오는가"의 첫 실측이다.
+- **F1 재부팅 리허설은 처음이다.** 노드 A의 마지막 부팅은 2026-09-04 16:24 KST(K3s 설치 당일 — K3s 시스템 파드의 재시작 수 1–2가 그 흔적)이고 그 뒤 27일간 없다(노드 B는 09-04 19:05 KST). Vault · ESO · Argo · 정책 · 터널 커넥터가 들어온 뒤로는 한 번도 재부팅되지 않았다. Vault 파드 재기동 드릴은 있었다(vault-unseal.md §1 — unseal 8초 · 드릴 전체 20초). 곧 이번이 "호스트가 꺼졌다 켜질 때 iptables 규칙 · k3s 서비스 · WireGuard · DNS 설정이 사람 없이 돌아오는가"의 첫 실측이다.
 - **F2 터널 커넥터는 노드마다 하나다**(gitops `platform/cloudflared/deployment.yaml` — replicas 2 · required anti-affinity `kubernetes.io/hostname`). 노드 A가 내려가도 노드 B의 커넥터가 남는다. 터널 ingress 셋: `ssh-a` → 노드 A 22 · `ssh-b` → 노드 B 22 · `k8s` → svc `kubernetes.default` 443(→ 노드 A 6443). 곧 재부팅 중에도 `ssh ssh-b`는 되고, 노드 A의 sshd가 뜨면 `ssh ssh-a`가, k3s가 뜨면 kubectl이 돌아온다. **노드 B 커넥터가 Running이 아니면 재부팅하지 않는다**(유일한 접속 경로가 사라진다).
 - **F3 Vault는 노드 A에 고정**(nodeSelector `role: platform` · Raft 1 replica · local-path PVC · OCI KMS auto-unseal은 인스턴스 주체 — 노드 A의 동적 그룹만 키를 쓸 수 있다). KMS 장애 중의 재시작은 CrashLoop이다(vault-unseal.md §2) — 사전 점검에 넣는다.
 - **F4 ClusterSecretStore 5개**(`vault-platform` · `vault-dev` · `vault-prod` · `vault-data` · `k8s-data-ca`) · 실제 ExternalSecret 2개(`secrets/cert-manager` DNS 토큰 · `secrets/cloudflared` 터널 토큰), 둘 다 `refreshInterval: 5m`. 하네스 reboot-4의 마감(reboot-2 통과 + 300초)과 맞는다.
@@ -193,3 +193,64 @@ Vault 스냅샷 쪽은 절단 · 변조가 전부 FAIL했다(CLI가 해시를 �
 - 14:35 KST 조회 경로 상태: API에는 닿고(터널 리스너 열림) 조회 토큰은 만료(401). `svc-verify` 세션은 만료.
 - **남은 것(전부 운영자 · 사용자가 있어야 한다)**: P2 결정(SC-001 근거) → 단계 0–7 → 런북 §3 T048 절과 §3 요약 → 모노레포 run-all 전체 한 번 → 체크(54/119).
 - 빌더가 범위 밖에서 찾은 것: `vault` CLI 2.1.0은 Windows에서 실행할 때마다 임시 폴더에 `gosnowflake-cgo*` 디렉터리(DLL 한 개)를 남긴다 — 운영자의 평소 사용에서도 쌓인다. 스크립트는 자식의 임시 폴더를 작업 디렉터리로 돌려 피한다.
+- 15:35–16:30 KST: 운영자가 OCI 세션 · 조회 토큰을 열었다 → 백업 검증 13항목 통과(실제 버킷) → 사전 관찰 전부 정상(관찰 도구 셋이 실제 클러스터에서 처음 돌았다) → 노드 A 읽기 점검에서 **대기 중인 커널 7.0**이 나왔다(§8.1 F15). 재부팅을 멈추고 선택지를 냈다 → 사용자 결정(§8.2) → 복구 경로 준비 착수(§8.3 — 빌더).
+- 17:00 KST경: 실제 터널 너머 port-forward 수립 시간을 재어 하네스의 8초 상한 결함을 찾았다(§8.1 F19) → 수정 지시서 3. 관찰 도구 보강(스냅샷: 커널 기대값 관문 · `-Since` 관문 선택 · Vault 조회를 40초까지 / 표본: 두 노드의 bootID · 커널 / 자동 시작: 연속 다섯 번 실패 + 잘못된 시작이면 다시 대기).
+- 교훈: **하네스는 실제 경로에서 한 번 돌려 봐야 한다.** 가짜 kubectl로 181개 단언을 통과한 하네스가, 실제 터널의 지연(port-forward 수립 10–23초) 앞에서는 한 조건이 항상 실패하게 돼 있었다. 사전 관찰을 리허설과 같은 경로 · 같은 도구로 미리 돌린 덕에 재부팅 전에 잡았다. 그리고 **"재부팅"이라는 한 단어 안에 다른 변경이 숨어 있을 수 있다** — 자동 재부팅을 꺼 둔 노드에서는 다음 재부팅이 곧 그동안 쌓인 커널 전환이다.
+
+## 8. 커널 전환을 포함한 재부팅 — 복구 경로 준비와 단계(2026-10-01 오후)
+
+### 8.1 사전 관찰과 노드 점검에서 나온 것
+
+- **백업 검증(단계 6)은 끝났다** — 운영자 실행 15:35 KST · 13항목 통과 · 16초. K3s 번들 `k3s/k3s-20260930T173010Z.tar.age`(항목 67 · `state.db` 1 · `token` 1 · `cred` 10 · `tls` 47 · `kine` 1,867행) · Vault 스냅샷 `vault/vault-20260930T173010Z.snap.age`(Index 187495 · Term 4 · 키 28). 출력 사본 `.superpowers/t048/restore/real-run-2026-10-01.txt`.
+- **사전 관찰(15:36–15:39 KST)**: 노드 2 Ready · Application 22 Synced/Healthy · store 5 Ready · ExternalSecret 2 동기화 · Vault unsealed · 터널 커넥터는 노드마다 하나 · 기준값 `joshtech-api` / bootID `a8d06ef9-…`. 조회 계정의 노드 조회 권한과 `role=platform` 라벨 1개도 확인됐다. 노드 A의 실행 중 파드 11개(Vault · ESO 3 · Traefik · svclb · 터널 커넥터 1 · Reloader · SUC 컨트롤러 · metrics-server · local-path) — Argo 5개와 CoreDNS는 노드 B.
+- **F15 재부팅하면 커널이 바뀐다(두 노드 동일)**: 실행 중 `6.17.0-1020-oracle` · 설치만 된 채 대기 중 `7.0.0-1012-oracle` + `libc6`(`reboot-required`). `unattended-upgrades`는 보안 패치만 받고 자동 재부팅은 꺼져 있다(host-prep) — "재부팅은 업그레이드 창"이라는 주석은 있으나 **OS 패치 재부팅 절차는 런북에 없다**(§6은 K3s 업그레이드만).
+- **F16 GRUB(두 노드 동일)**: `GRUB_DEFAULT=0` · 메뉴 숨김 · 대기 0초 · recordfail 대기 0초 → 새 커널이 부팅에 실패하면 콘솔에서 옛 커널을 고를 수 없다. grub.cfg에 우분투의 1회용 논리가 있다(`next_entry`가 있으면 그 항목을 한 번 부팅하고 지운다). grubenv는 `/boot/grub/grubenv`(별도 ext4 `/boot`). 항목 ID: 하위 메뉴 `gnulinux-advanced-<uuid>` · 커널 `gnulinux-<kver>-advanced-<uuid>`.
+- **F17 새 커널의 사전 점검(읽기)**: initrd 있음 · WireGuard 모듈 있음 · K3s 관련 커널 설정 40여 개에 두 커널 사이 차이 없음 · `k3s check-config`(새 커널 설정 대상) `STATUS: pass`(선택 항목 둘만 missing) · `kernel.panic=10`(패닉 10초 뒤 재부팅). `linux-modules-extra`가 7.0에는 설치돼 있지 않다 — 지금 적재된 모듈이 새 커널에 다 있는지는 도구의 `status`가 대조한다.
+- **F18 위험이 몰린 곳**: 계획 단계 조사(`research.md`)는 커널 6.17과 AppArmor · containerd 조합의 문제를 짚었고 exec 관련 건(containerd#12886)은 미해결이었다. 지금 커널에서 AppArmor 거부는 0건이다. 클러스터에서 **exec 프로브는 Vault의 readiness 프로브 하나뿐**이고 전 컨테이너가 기본 AppArmor 프로파일이다 — 커널 7.0은 조사된 적이 없다.
+- **F19 조회 경로의 지연(실측)**: kubectl 한 번에 2–6초 · `port-forward svc/vault`의 수립에 **10–23초**(8회 전부 8초 초과). 하네스의 Vault 확인 1회 상한이 8초라 **지금 코드로는 reboot-1이 복구와 무관하게 항상 실패한다**(`cluster.tests.ps1`은 30초를 기다린다) → 수정 지시서 3(`harness-fix3.md` — 45초). 하네스가 실제 클러스터에서 `-AfterReboot`로 돈 적이 없어서 드러나지 않았던 결함이다. 터널의 일시 오류(TLS handshake timeout)도 한 번 관측됐다 → 하네스 자동 시작 도구는 연속 다섯 번 실패로 판정하고, 잘못 시작됐으면(실패로 끝났는데 bootID가 그대로) 다시 기다린다.
+
+### 8.2 결정
+
+커널을 어떻게 다룰지 네 안(①이번만 현재 커널로 부팅 ②노드 B 먼저 새 커널 → A ③그대로 새 커널 ④보류)을 냈고 컨트롤러의 권장은 ①이었다. **사용자 답(2026-10-01 · 원문)**: "커널 전환까지 이번에 처리하려면 2번을 선택하되, B의 실제 exec probe 검증과 완전 복구를 A 진행 조건으로 둔다. A에서는 T048 전체 검증을 수행한다. 부팅 실패 시 사용할 복구 경로가 준비되지 않았다면 4번으로 먼저 준비한다. T048의 원인 분리 자체가 우선이면 1번을 선택한다."
+
+컨트롤러의 판단: **부팅 실패 시의 복구 경로는 준비돼 있지 않다**(F16 — 메뉴 숨김 · 시험해 본 콘솔 절차 없음 · 런북의 비상 경로는 sshd가 떠야 한다). 그래서 **먼저 준비하고**(아래 8.3), 준비와 리뷰가 끝난 뒤 ②를 주신 조건대로 진행한다. 원인 분리는 복구 경로가 겸한다 — 노드 A가 새 커널에서 실패하면 재부팅 한 번으로 옛 커널로 돌아오므로 그 시점에 같은 하네스로 다시 잴 수 있다.
+
+### 8.3 복구 경로 — 기본값을 검증된 커널로 고정하고 새 커널은 한 번만
+
+`infra/bootstrap/kernel-trial.sh`(가드와 모의 하네스가 있는 스크립트 — 지시서 `kernel-trial-build.md`). 운영자가 `Get-Content -Raw infra/bootstrap/kernel-trial.sh | ssh <노드> "sudo bash -s -- <하위 명령>"`으로 실행한다(노드에 파일을 남기지 않는다).
+
+| 하위 명령 | 하는 일 | 핵심 가드 |
+|---|---|---|
+| `status` | 읽기 전용 — 커널 · GRUB 기본값 · 고정 · 1회용 선택 · 적재된 모듈이 각 커널에 있는가 | 상태가 어긋나면 exit 1 |
+| `pin` | **지금 돌고 있는 커널**을 GRUB 기본값으로 고정(드롭인 `99-kernel-trial-pin.cfg` + `update-grub`) | 항목 ID가 정확히 하나 · 쓴 뒤 grub.cfg를 읽어 검증 · 실패하면 되돌림 |
+| `trial <kver>` | grubenv에 `next_entry`만 쓴다 — 다음 한 번만 그 커널 | **고정이 있고 일관될 때만**(복구 경로 없이는 거부) · 적재된 모듈이 대상 커널에 다 있을 때만 |
+| `cancel-trial` | `next_entry`를 지운다 | — |
+| `unpin` | 고정을 풀어 기본값을 가장 새 커널로 | 실행 중 커널이 가장 새 커널일 때만(아니면 다음 부팅이 검증 안 된 커널이 된다) |
+
+이렇게 하면 시험 커널이 어떤 식으로 실패하든 복구가 같다: **재부팅 한 번**(패닉이면 10초 뒤 저절로 · 부팅이 멈추면 OCI 콘솔의 강제 재시작)으로 고정된 커널로 올라온다. GRUB 메뉴를 만질 일이 없다. `grub-reboot`은 판에 따라 쓰는 변수가 달라(`next_entry` / `saved_entry`) 쓰지 않고, 노드의 grub.cfg에서 확인한 논리에 맞는 `next_entry`를 직접 쓴다.
+
+### 8.4 단계와 관문
+
+| # | 단계 | 누가 | 다음으로 가는 조건 |
+|---|---|---|---|
+| K0 | `status`(두 노드 · 읽기) | 운영자 | 일관 · 적재된 모듈이 7.0에 다 있다 |
+| B0 | 노드 B `pin` | 운영자(쓰기) | `RESULT: OK` · grub.cfg 기본값 = 6.17 항목 |
+| B1 | exec 프로브 시험 파드 적용(§8.5) → 지금 커널에서 Ready(대조군) | 운영자(쓰기) · 에이전트(관찰) | 파드 Ready · 프로브 실패 이벤트 0 |
+| B2 | 노드 B **그냥 재부팅** — 고정이 먹는지(복구 경로의 실증) | 운영자(쓰기) | 6.17로 올라옴 · 스냅샷 관문 전부 OK · 시험 파드 다시 Ready |
+| B3 | 노드 B `trial 7.0.0-1012-oracle` → 재부팅 | 운영자(쓰기) | **A 진행 조건**: 커널 7.0 · 노드 Ready · 파드 전부 Running/Ready · Application 22 Synced/Healthy(부팅 뒤 재조정) · ExternalSecret 부팅 뒤 갱신(= 노드 A 파드 → 노드 B CoreDNS, 노드 간 WireGuard) · 터널 커넥터 둘 · **시험 파드의 exec 프로브 Ready** · AppArmor 거부 0 · `next_entry` 비워짐 |
+| A0 | 노드 A `pin` | 운영자(쓰기) | B0과 같음(값이 노드 B의 것과 같다) |
+| A1 | 노드 A `trial 7.0.0-1012-oracle` → **T048의 측정 재부팅**(§4 단계 2–5 그대로: 관찰 먼저 → 재부팅 → 하네스 → 사후 스냅샷) | 운영자(쓰기) · 에이전트 | 하네스 PASS + 사후 스냅샷 관문(커널 7.0 포함) |
+| F | 두 노드 `unpin` · 시험 파드 삭제 | 운영자(쓰기) | 기본값 = 가장 새 커널 · `next_entry` 없음 |
+
+어느 단계에서든 멈출 수 있다 — 고정만 한 상태(B0 · A0)는 "재부팅해도 지금 커널"이라 지금보다 안전하다. B3이 실패하면 노드 B를 재부팅해 6.17로 돌리고 A는 건드리지 않는다(이 경우 T048을 6.17에서 잴지는 다시 묻는다). A1이 실패하면 노드 A를 재부팅해 6.17로 돌린 뒤 같은 하네스로 다시 잰다(원인 분리).
+
+### 8.5 exec 프로브 시험 파드
+
+`.superpowers/t048/canary/kernel-canary.yaml` — ns `jt-dev`(PSA restricted · 쿼터 안) · `nodeSelector: role=data` · Vault와 **같은 이미지(digest 고정) · 같은 securityContext** · 명령은 대기 루프 · readiness 프로브 `exec: /bin/sh -ec "vault version"`(Vault의 프로브와 같은 모양 — 셸을 거쳐 Go 바이너리를 exec). GitOps 밖의 일회용 수동 객체다(전례: T041의 `np-probe`) — 끝나면 지우고 삭제를 확인한다. 어느 Application에도 속하지 않아 sync 상태에는 영향이 없다.
+
+### 8.6 남는 위험
+
+- 1회용 선택이 지워지지 않는 경우(GRUB의 `save_env` 실패) — 그러면 시험 커널이 계속 선택된다. 노드 B의 B3에서 `next_entry`가 비워졌는지로 확인하고, 안 비워졌으면 A로 가지 않는다.
+- 우분투 클라우드 이미지의 initrd 없는 부팅 시도 → 실패 시 initrd로 재시도하는 논리가 grub.cfg에 있다 — 시험 커널의 부팅이 두 번에 걸쳐 일어날 수 있다(부팅 시간이 늘어난다). B3에서 본다.
+- 노드 B가 내려가 있는 동안의 접속 경로는 노드 A의 커넥터 하나다(9월 7일부터 돌던 파드). 노드 B의 재부팅은 접속 경로에 의존하지 않는다(스스로 올라온다).
+- 커널 7.0에서 K3s server · Vault(raft · KMS unseal)는 노드 A에서 처음 돈다 — 노드 B의 관문이 덮지 못하는 부분이다. 그래서 A1의 실패 대응(재부팅 → 6.17)을 먼저 준비했다.
