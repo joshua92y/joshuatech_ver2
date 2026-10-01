@@ -276,3 +276,69 @@ Vault 스냅샷 쪽은 절단 · 변조가 전부 FAIL했다(CLI가 해시를 �
 실패 때: B3이 관문을 못 넘으면 `ssh ssh-b "sudo systemctl reboot"` 한 번으로 6.17로 돌린다(부팅이 멈췄으면 OCI 콘솔에서 인스턴스 강제 재시작). A1이 실패하면 같은 방법으로 노드 A를 6.17로 돌리고, 같은 하네스로 다시 잰다. 시험을 접으려면 재부팅 전에 `cancel-trial`.
 
 에이전트 쪽(조회 전용): 단계마다 `observe.ps1`(fast · full 둘)을 먼저 켜고, 재부팅 뒤 `snapshot.ps1 -Label <단계> -Since <명령 시각> -SinceGates <…> -ExpectKernel <노드=커널,…>`으로 관문을 본다. 노드 A의 측정 재부팅은 `run-reboot-harness.ps1 -Mode after`를 **재부팅 전에** 켠다 — 하네스가 옛 부팅을 마지막으로 본 시각을 0초로 잡는다. 리허설 동안 이 PC에서 다른 무거운 작업을 돌리지 않는다(조회 경로가 느려지고 실패가 늘어난다 — 실측).
+
+### 8.8 `kernel-trial.sh` 독립 리뷰(2026-10-01 저녁) — APPROVED_WITH_FIXES
+
+리뷰어는 Docker의 Ubuntu 24.04와 **실제 grub 도구**(grub-common · grub2-common · grub-emu 2.12-1ubuntu7.3 — x86_64 에뮬레이션, 같은 소스 판)로 돌렸다. 그 환경의 실제 `update-grub`이 만든 grub.cfg의 줄 번호가 노드에서 본 것과 전부 일치했다. 확인된 것: ID 경로 기본값(`<하위 메뉴 ID>><항목 ID>`)이 드롭인에서 이기고 실제 GRUB에서 6.17로 부팅한다 · `next_entry`는 한 번 쓰이고 빈 값으로 남는다(우분투의 `grub-reboot`과 같은 변수) · ID가 메뉴에 없으면 첫 항목(가장 새 커널)으로 간다 · 표준 입력 실행에서 스크립트를 삼키는 명령이 없다 · 실제 `update-grub` · `grub-editenv` · mawk와의 결합(status → pin → trial → 1회 부팅 흉내 → unpin)이 정상이다. 리뷰 실험물은 `.superpowers/t048/kernel-review/`(gitignore — `out/*.log` · `docker/*.sh` · `src/`에 소스 원문).
+
+| # | 심각도 | 내용 | 조치(내일) |
+|---|---|---|---|
+| 1 | medium | 다른 `update-grub`(커널 · grub 패키지 훅 · 수동 apt)과 겹치면 **메뉴 항목이 0개인 grub.cfg**가 남는다(grub-mkconfig에 잠금이 없다). 도구는 FAIL · INCONSISTENT로 알리지만 그 상태로 재부팅하면 부팅 불가 | 쓰기 전 가드: `dpkg` · `apt` · `unattended-upgr` · `grub-mkconfig`가 돌고 있거나 `/boot/grub/grub.cfg.new`가 있으면 거부. 쓰기 단계 직전마다 apt 활동 없음 확인. 수동 복구(`sudo update-grub` → `status`)를 실행표에 |
+| 2 | medium | §8.6의 "initrd 없이 시도 → 실패하면 initrd로 재시도"는 고정 · 시험 경로에서 일어나지 않는다. `set partuuid=`가 없으면 그 논리는 죽은 코드이고, 있으면 **하위 메뉴 안의 항목은 항상 initrd 없이 부팅하고 재시도가 없다**(변수가 하위 메뉴 컨텍스트에 export되지 않는다) — 그 경우 시험 결과가 평소 부팅(최상위 항목)과 같지 않다 | K0 관문에 `grep -c 'set partuuid=' /boot/grub/grub.cfg` = 0 추가 · `status`도 한 줄로 낸다. 0이 아니면 진행 전에 다시 판단. §8.6 둘째 항목은 이 내용으로 읽는다 |
+| 3 | medium | 쓰기 도중 SSH가 끊기면 bash가 다음 출력에서 죽어 과도 상태가 남고(전부 부팅 가능), 그 상태에서는 도구의 쓰기 명령이 모두 거부한다 | 머리에 `trap '' HUP PIPE`(끝까지 · 실패면 되돌리기까지 실행됨을 리뷰어가 확인) · `pin`이 "같은 값의 고정 파일 + 옛 grub.cfg"에서 이어 끝내게 하거나 수동 복구를 실행표에 |
+| 4 | medium | 절차: 노드 A의 고정(A0)이 B3 뒤다 — B 단계 동안, 그리고 B3 실패 분기에서는 계속, A의 다음 재부팅이 7.0이다 | **A0를 K0 직후(B0와 함께)로 옮긴다.** B3 실패 분기: 두 노드 모두 고정 유지 · 7.0 처리는 따로 결정 |
+| 5 | medium | 절차: 노드 A의 복구 경로는 A1이 실패할 때 처음 실행된다 — "값이 B와 같다"뿐이고 동일성 관문이 없다. A의 6.17 initrd가 마지막 부팅 뒤에 다시 만들어졌다면 부팅해 본 적 없는 initrd다 | A0 관문에 읽기 전용 대조(아래 명령 2 · 3). initrd가 부팅 뒤에 바뀌었으면 A를 먼저 그냥 재부팅할지 사용자에게 묻는다 |
+| 6 | low | `trial`과 `status`가 복구용(고정된) 커널의 파일 유무와 항목 종류를 다시 보지 않는다 | `trial` · 판정에서 고정 값 = 실행 중 커널의 `-advanced-` 경로 + 그 커널 파일 확인 |
+| 7 | low | 시험 커널로 도는 동안 더 새 커널이 설치되면 고정된 6.17이 자동 제거될 수 있다(`Remove-Unused-Kernel-Packages`) → GRUB은 조용히 가장 새 커널로 간다 | **F(고정 해제)를 같은 날 끝낸다**(apt 일일 실행 전). 날을 넘기면 `status` 재확인. 관문에 `apt list --upgradable` · `apt-get -s autoremove` |
+| 8 | low | "패닉이면 10초 뒤 저절로"는 `kernel.panic=10`이 적용된 뒤의 패닉에만 맞을 가능성이 크다 — 초기 부팅 패닉 · GRUB 단계 실패는 자동 재부팅이 없다 | A1 전 관문: 운영자가 OCI 강제 재시작을 바로 실행할 수 있는 상태. §8.3의 그 문장은 이 한계와 함께 읽는다 |
+| 9 | low | `status`의 "next boot"가 grubenv의 `initrdfail` · `prev_entry`를 보지 않는다(#2의 partuuid 경우에만 생긴다) | 두 변수가 있으면 INCONSISTENT |
+| 10 | low | 테스트의 빈 곳 — 변이 여섯 생존(unpin 사후 검증 · unset 뒤 읽어 보기 · 고정 파일의 모르는 줄 · ASCII 치환 · `trial`/`unpin`의 root 가드) · 가짜 부팅이 grubenv를 "변수 없음"으로 만든다(실제는 `next_entry=` 빈 값) | 케이스 추가 |
+| 11 | info | 죽은 실행의 잔여 파일을 `status`가 말하지 않는다 · 전송이 마지막 줄 앞에서 잘리면 exit 0 · 출력 없음 → **RESULT 줄이 없으면 실패**로 본다 | 절차에 명시 |
+
+실행표 문구 정정: B3의 "`next_entry` 없음"은 실제로 `INFO grubenv: next_entry=`(빈 값)로 보인다 — 기준은 `INFO next boot: 6.17… (default)`.
+
+**재부팅 전에 두 노드에서 읽기 전용으로 확인할 것(리뷰어 제안 — K0에 넣는다)**
+
+```bash
+# 1) initrd 없는 부팅 폴백이 켜져 있는가 — 기대: 0, 항목은 linux + initrd
+sudo grep -c 'set partuuid=' /boot/grub/grub.cfg
+sudo grep -nE '^\s*(linux|initrd)\s|panic=-1|^\s*initrdfail$' /boot/grub/grub.cfg | head -20
+ls -la /etc/default/grub.d/ /etc/grub.d/
+grep -rnE 'GRUB_(FORCE_PARTUUID|DEFAULT|SAVEDEFAULT|DISABLE_SUBMENU|TOP_LEVEL|FLAVOUR_ORDER)' /etc/default/grub /etc/default/grub.d/
+cat /proc/cmdline
+# 2) 두 노드의 부팅 구성이 같은가
+sudo sha256sum /boot/grub/grub.cfg /boot/efi/EFI/ubuntu/grub.cfg /boot/efi/EFI/ubuntu/grubaa64.efi /boot/vmlinuz-6.17.0-1020-oracle /boot/vmlinuz-7.0.0-1012-oracle
+dpkg-query -W -f '${db:Status-Abbrev} ${Package} ${Version}\n' 'grub*' 'shim*' 'linux-image-*' 'linux-modules-*' initramfs-tools
+# 3) 복구용 initrd가 이번 부팅에 쓰인 그 파일인가(mtime < 부팅 시각이면 그렇다)
+uptime -s; stat -c '%y %s %n' /boot/initrd.img-* /boot/vmlinuz-*
+grep -hE ' (install|upgrade) (grub|shim|linux-image|linux-modules|initramfs-tools)' /var/log/dpkg.log /var/log/dpkg.log.1 2>/dev/null | tail -20
+lsinitramfs /boot/initrd.img-7.0.0-1012-oracle | wc -l
+# 4) GRUB이 grubenv를 쓸 수 있는 모양인가, 비어 있는가
+sudo grub-editenv /boot/grub/grubenv list; stat -c '%s bytes, %b blocks' /boot/grub/grubenv; sudo filefrag -v /boot/grub/grubenv | tail -n 3
+findmnt -no SOURCE,FSTYPE,OPTIONS /boot; df -h /boot
+systemctl is-enabled grub-common.service grub-initrd-fallback.service
+# 5) 패닉 · 멈춤 때 자동 재부팅이 되는 구간
+sysctl kernel.panic kernel.panic_on_oops; grep -rn 'kernel.panic' /etc/sysctl.conf /etc/sysctl.d /usr/lib/sysctl.d 2>/dev/null
+grep CONFIG_PANIC_TIMEOUT /boot/config-6.17.0-1020-oracle /boot/config-7.0.0-1012-oracle
+# 6) 패키지 작업이 끼어들 여지(쓰기 단계 직전마다)
+pgrep -a 'apt|dpkg|unattended-upgr|grub-mkconfig' || echo none
+systemctl list-timers 'apt-daily*' --all --no-pager
+apt list --upgradable 2>/dev/null | grep -E '^linux-|^grub|^shim' || echo "no kernel/grub upgrades pending"
+apt-get -s autoremove 2>/dev/null | grep -E '^Remv linux-' || echo "no kernel autoremove pending"
+ls -la /boot/grub/grub.cfg.new 2>/dev/null || echo "no grub.cfg.new"
+```
+
+## 9. 재개 지점(2026-10-01 19:10 KST — 사용자가 여기서 멈췄다)
+
+- **노드 · 클러스터**: 아무것도 바꾸지 않았다. 두 노드 모두 실행 중 6.17.0-1020 · 대기 중 7.0.0-1012 · GRUB 기본값 0 · 고정 없음. gitops Environment의 관리자 우회는 꺼졌다(T047의 열린 조치 닫힘).
+- **끝난 것**: 백업 검증(단계 6 — 실제 저장소 13항목 통과 · 출력 사본 `.superpowers/t048/restore/real-run-2026-10-01.txt`) · 사전 관찰 · SC-001 근거 결정(안 A) · 커널 처리 결정(§8.2).
+- **작업 트리에 커밋 전으로 남은 것**(리뷰 반영 전이라 커밋하지 않았다 — 파일 이름으로 스테이징할 것):
+  - 재부팅 하네스 수정 3 · 4 · 5: `tests/platform/reboot.tests.ps1` · `tests/scripts/reboot-tests.tests.ps1`(빌더 전체 실행 245/0 · 그 뒤 컨트롤러가 S1의 arm 제한을 16초로 넓힘 — S1 3회 통과 · 대상 케이스 독립 실행 통과). 재리뷰(수정 3–5 집중)를 맡겼고 마무리 요청을 보냈다 — 결과 파일은 `.superpowers/t048/harness-review/re3/REPORT.md`(있으면 읽고, 없으면 재리뷰를 다시 맡긴다. 지시 내용은 이 세션의 재리뷰 요청문: 기준점 논리의 잘못된 PASS/FAIL · 기록의 충분성 · 테스트).
+  - 커널 도구: `infra/bootstrap/kernel-trial.sh` · `tests/infra/kernel-trial.tests.ps1` · `tests/run-all.ps1`(항목 `kernel-trial`) — 빌더 85/0 · 컨트롤러 독립 실행 85/0 · 리뷰 §8.8.
+- **내일의 순서**:
+  1. 하네스 재리뷰 결과 확인 → 반영 → 전체 단위 테스트 1회 → 커밋.
+  2. `kernel-trial.sh` 수정(§8.8 #1 · #2 · #3 · #6 · #9 · #10) → 모의 하네스 → 커밋. 절차 수정(#4 A0를 앞으로 · #5 A의 동일성 대조 · #7 같은 날 끝내기 · #8 강제 재시작 준비 · #11 RESULT 줄)은 §8.4 · §8.7에 반영.
+  3. 운영자 전제: 터널 리스너 · 조회 토큰(8시간) 재발급 · 필요하면 `svc-verify` 세션. 이 PC에서 다른 무거운 작업을 멈추고 조회 지연을 다시 잰다.
+  4. K0(두 노드 `status` + 위 읽기 전용 확인) → 두 노드 고정(B0 · A0) → 시험 파드 → B2(그냥 재부팅) → B3(새 커널 1회) → A 진행 조건 → A1(T048 측정 — 하네스를 먼저 켠다) → F(고정 해제 · 시험 파드 삭제). 단계마다 사용자 재확인.
+  5. 기록: 런북 §3 T048 절 · §3 요약(전체 순서 · 시간 · 시크릿 취급) · §6에 OS 패치 재부팅 절차 · `report.md`에 올릴 것(SC-001 한계 · 커널 전환) · 학습 로그 · 모노레포 run-all 전체 1회 · 체크(54/119).
+- **에이전트 도구(gitignore)**: `.superpowers/t048/obs/`(`snapshot.ps1` · `observe.ps1` · `run-reboot-harness.ps1` · `pf-timing.ps1` · 기준값 `baseline.txt`(bootID는 재부팅 전까지 유효)) · `.superpowers/t048/canary/kernel-canary.yaml` · 지시서 `.superpowers/t048/prompts/`.
