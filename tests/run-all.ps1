@@ -39,6 +39,26 @@ Check 'codex-skill-policy-sync' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 fai
 pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/run-platform-tests.tests.ps1 | Out-Host
 Check 'platform-harness' ($LASTEXITCODE -eq 0) 'see platform runner harness output'
 
+# 1b2a. reboot-harness (T048 선행) — tests/scripts/reboot-tests.tests.ps1: tests/platform/reboot.tests.ps1 단위 테스트
+#       (가짜 kubectl 심 · 시나리오로 과도 상태 재현 · 실제 클러스터 접근 없음 · 약 4–5분 — 기본 폴링 간격을 그대로 쓰는 경계 케이스가 있다). 1b3과 같은 양성 증거 규율:
+#       exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 · 크래시 = FAIL). 선택 실행(REBOOT_HARNESS_TESTS_ONLY)이면
+#       요약 줄 끝에 ' (filtered: …)'가 붙어 이 판정을 통과하지 못한다(부분 실행이 전체 통과로 보이지 않게).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/reboot-tests.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'reboot-harness' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see reboot harness test output above"
+
+# 1b2b. backup-verify (T048) — tests/scripts/backup-verify.tests.ps1: scripts/backup-verify.ps1 하네스(진짜 age · age-keygen · tar · vault ·
+#       파이썬 sqlite3 + 가짜 oci 심 · 실행마다 임시 픽스처 · 실제 OCI · 클러스터 · 개인키 접근 없음 · 약 3분). 하네스가 설정됐을 때 요약 줄에 접미를 붙이는 환경 변수가 하나 더 있다(BACKUP_VERIFY_SCRIPT).
+#       도구가 없으면 하네스가 첫 줄 'SKIP backup-verify tests -- ' + exit 0으로 끝난다 — 그때만 SKIP 허용(1b3과 같은 규율).
+#       그 밖에는 exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 · 크래시 = FAIL). 선택 실행(BACKUP_VERIFY_TESTS_ONLY)이면
+#       요약 줄 끝에 ' (filtered: …)'가 붙어 이 판정을 통과하지 못한다(부분 실행이 전체 통과로 보이지 않게).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/backup-verify.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+if ($c -eq 0 -and $o -match '\ASKIP backup-verify tests -- ') { Write-Host 'SKIP backup-verify -- allowed (age, age-keygen, tar, vault or python with sqlite3 not found; see SKIP line above)' }
+else { Check 'backup-verify' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see backup-verify harness output above" }
+
 # 1b3. ci-kubeconform (T047 M1) — tests/scripts/kubeconform-deploy.tests.ps1: scripts/ci/kubeconform-deploy.sh 하네스
 #       (임시 픽스처 실행 + .github/workflows/ci.yml job kubeconform 정적 검사 · 네트워크 필요 — 스키마 내려받기).
 #       도구(bash · kustomize · kubeconform)가 없으면 하네스가 첫 줄 'SKIP kubeconform-deploy tests -- ' + exit 0으로 끝난다 — 그때만 SKIP 허용.
