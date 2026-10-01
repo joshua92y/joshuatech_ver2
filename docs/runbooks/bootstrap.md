@@ -483,7 +483,124 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
   5. `prune: false`인 Application에서 객체를 없애는 일은 두 단계다(Git에서 제거 → 머지 → **`OutOfSync`가 정상** → 운영자 삭제 → `Synced`). 머지 직후의 `OutOfSync`를 고장으로 읽지 않는다.
 - **인계**: **T047** — `tests/validate.sh` CI 배선 · Application source 우회 경로 전수 열거(`kind: List` · `.json`/`.jsonnet` · ApplicationSet) · 전 렌더 교차 검사(Reloader SA를 주체로 하는 RoleBinding) · `/charts/` 제외 범위 좁히기. **T072 · T080 · T082** — 소비자 Deployment에 `reloader.stakater.com/auto: "true"`. **T098** — Reloader metrics 수집(네트워크 정책 매트릭스에 행을 먼저 더한다).
 
-(T046 이후 기록은 이하에 추가)
+### T047 — gitops CI 배선 · 봇 경로 lint · 렌더링 diff 코멘트 · 검사 확장 · 승인 관문 · 승격 워크플로 (2026-09-29 ~ 10-01)
+
+> **완료(2026-10-01).** gitops PR 다섯(#33 · #34 · #38 · #41 · #42)이 main `e041f41`에 들어갔고, 마무리 검사는 그 커밋의 main push 실행 한 번이다: 전체 검사 **PASS 38 · FAIL 0 · WARN 4**(WARN은 `platform/system-upgrade`의 기존 digest 경고) · 자기검사 **164 케이스 · 실패 0** · job 5분 28초. 모노레포는 `tests/run-all.ps1` ALL PASS(클러스터 · ingress 하네스는 `KUBECONFIG` 없이 SKIP — 이 태스크의 gitops 변경은 `.github/` · `tests/` · 문서뿐이라 렌더가 바뀌지 않았다).
+>
+> **VD-5 판정: 승인 관문은 동작한다.** 운영 overlay(`apps/*/overlays/prod/**`)를 건드린 PR은 운영자가 Environment `production`의 배포를 승인하기 전에는 required check `prod-approval`이 보고되지 않아 **머지가 거부된다**(운영자 자격의 머지 명령도 — ruleset bypass 0). 승인하면 머지 가능 상태가 된다. 봇(App) 토큰이 이 승인을 줄 수 없다는 것은 문서 근거뿐이다 — 실증은 T115.
+>
+> **열린 운영자 조치 1건**: Environment `production`의 `can_admins_bypass`가 아직 `true`다(계약은 `false`). REST로는 바뀌지 않는다 — Settings → Environments → production → "Allow administrators to bypass configured protection rules"를 끈 뒤 아래 「상시 점검 명령」으로 확인한다. 켜져 있는 동안에도 App은 관리자가 아니어서 봇 토큰에 대한 성질은 성립한다. 닫히지 않은 것은 관리자 자격(운영자 · 그 자격을 쓰는 에이전트)이 대기를 건너뛸 수 있다는 한 겹이다.
+>
+> **과제 문구와 다른 점 1건(결정 D8)**: 승격 PR은 App 토큰이 아니라 **워크플로 토큰**(`GITHUB_TOKEN`)이 연다. App 토큰으로 열면 봇에게 운영 경로를 열어 줘야 하고, 그 토큰이 새면 운영이 사람 없이 바뀔 길이 생긴다. gitops 저장소에는 App 자격을 두지 않는다. `report.md`에 편차로 적는다.
+
+- **설계**: `specs/003-platform-foundation/design/t047-design.md`(사실 F1–F28 · 결정 D1–D8 · §6 converge 인계 표 · §8 승인 관문과 승격 · §9 종료 상태). 계약 `contracts/gitops-repo.md` §validate.yml · §이미지·승격 · §변경 권한.
+- **결정(사용자)**: D2 범위 = 넘겨받은 후보 H1–H9 · H13(H10은 문서 · H11 · H12는 converge) · D3 ruleset에 선형 이력 + squash 전용 · D4 브랜치 쓰기 제한 + 이벤트 발신자 판정 · D5 자기검사는 main push에서 항상, PR은 `tests/` · `.github/` 변경 시 · D6 PR 생성은 협력자만 + 외부 기여자 실행은 항상 승인 · D7 승인 관문의 범위 = 운영 overlay · D8 승격 PR은 워크플로 토큰(D1 "운영자가 연다"를 대체).
+- **코드(gitops, squash)**:
+  - **#33** `fda5a72`(G1 · 09-29 17:07 KST) — 검사 6(봇 경로 lint) 단독 실행 `--only-author` · 우회 차단(merge-base 정확히 하나 · hunk 구간 판정 · digest 줄의 제자리 교체 쌍만 · 봇은 로그인과 계정 ID 둘 다로 · PR 작성자와 이벤트 발신자 둘 다로 판정) · ruleset 선언 둘.
+  - **#34** `9181e4e`(G2 · 09-29 18:59 KST) — `validate.yml` 배선: 경로 lint는 **`origin/main` 끝의 스크립트**로 PR 코드 실행 전에 · 도구 다섯은 버전 고정 + sha256 대조(워크플로 인라인) · 전체 검사 · 자기검사(D5) · gitleaks 히스토리. 트리거는 main 대상 PR과 main push.
+  - **#38** `7675f5f`(G3 · 09-30 11:50 KST) — 렌더링 diff 코멘트: job `render-diff`(권한 없음 · PR 코드를 렌더) → 아티팩트 → job `render-comment`(`pull-requests: write` · PR 코드를 실행하지 않음). Secret의 `data` · `stringData` · 어노테이션 값은 싣지 않는다. 자기검사 flaky 1건 수정 포함.
+  - **#41** `ddb70c5`(G5 · 10-01 10:04 KST) — 승인 관문 job 셋(`classify` → `gate` → `prod-approval`) · `promote.yml` · `pull_request_template.md`(렌더 diff 확인 · 관문 승인 · **비가역 파일 변경 시 스냅샷 3종** · k8s-security 리뷰 대상) · ruleset 선언 갱신.
+  - **#42** `e041f41`(G4 · 10-01 10:39 KST) — 검사 11 `FMT`(목록 객체 · 별칭 · ApplicationSet · directory source · **심볼릭 링크는 트리 어디든 금지**) · 12 `HELM`(차트 저장소 허용 목록 · 버전 필수 · 레거시 생성기 · `--enable-helm` · `charts/` 위치) · 13 `RBAC`(토큰 발급 역할 2 · 렌더 밖 역할을 가리키는 바인딩 2 · 내장 역할 이름 금지 · 주체는 ns 적힌 ServiceAccount뿐 · Reloader 주체 5 · 집계 라벨 ClusterRole 5) · 4a 보강(`images` 항목의 name · digest 필수 · 키 제한). 자기검사 69 → 164 케이스.
+  **코드(모노레포)**: `332b9cc`(M1 — `scripts/ci/kubeconform-deploy.sh` + ci.yml job `kubeconform` + 하네스 58 단언 + run-all 항목 `ci-kubeconform`) · `73dca81`(규칙 — 머지를 결정하는 GitHub 동작은 운영자 전용) · 계약 `1892135` … `60dee38`(18커밋).
+- **원격 설정(운영자 적용 · 컨트롤러가 조회로 대조)**:
+
+  | 대상 | 값 |
+  |---|---|
+  | ruleset `main` | required check `validate` · `prod-approval`(출처 GitHub Actions 고정) · strict · PR 필수(승인 수 0) · squash 전용 · 선형 이력 · 삭제 · 강제 push 금지 · **bypass 0** |
+  | ruleset `branches` | `main` · `bump/**` · `promote/**` 밖의 브랜치 생성 · 갱신 · 삭제는 저장소 관리자 역할만 |
+  | 저장소 | PR 생성은 협력자만 · 외부 기여자의 워크플로 실행은 항상 승인 · 워크플로 토큰 기본 권한 read · Actions의 PR 생성 허용 |
+  | Environment `production` | 필수 검토자 = 운영자 1명 · `prevent_self_review: false` · `can_admins_bypass` — **`false`여야 한다(현재 `true`)** |
+
+  선언 파일(`.github/ruleset-*.json`)을 고치는 것만으로는 적용되지 않는다 — 머지 뒤 운영자가 `gh api -X PUT …/rulesets/<id> --input <파일>`로 적용하고 조회로 대조한다.
+- **게이트·실측**:
+  - **러너(ubuntu-24.04-arm · 캐시 없음)**: 전체 검사 37–39초 · 자기검사 164 케이스 약 280–290초 · validate job 약 5분 30초. 자기검사를 건너뛰는 PR은 validate job 41초. `classify` 3–7초 · `render-diff` 14초 · `render-comment` 5초. 같은 자기검사가 작업용 PC(Git Bash)에서는 한 시간을 넘는다 — **전체 판정은 CI, 로컬은 영향 받는 케이스만**(`VALIDATE_TESTS_ONLY`).
+  - **관문 V1(09-29 · 시험 PR #35–#37)**: 승인 전 `gate` 대기 · `prod-approval` check 없음 / 거절 → 실패 / 승인 → 성공 / 운영 overlay를 건드리지 않으면 `gate` 건너뜀 · `prod-approval` 성공.
+  - **워크플로 토큰 PR V3 · V4(09-30 · #39 · #40)**: 워크플로 토큰이 `promote/**` 브랜치와 PR을 만든다(작성자 `github-actions[bot]`) · 그 PR의 검사 실행은 **승인 대기**(`action_required`)로 만들어지고 운영자가 승인하면 돈다 · ruleset bypass 주체로 GitHub Actions를 넣는 것은 개인 계정 저장소에서 **거부**(422) → `promote/**`만 쓰게 하는 전용 ruleset은 만들 수 없다.
+  - **관문 실측(10-01 · #43 — required check 등록 뒤)**: 승인 전 `gh pr merge` → `the base branch policy prohibits the merge`(`validate` 성공 · `gate` 대기 · PR BLOCKED) → 운영자 승인 → `gate` 2초 · `prod-approval` 성공 → `mergeStateStatus: CLEAN`. 머지하지 않고 닫았다.
+  - **독립 리뷰와 빌더가 찾은 우회**(전부 닫음): 실행으로 재현한 것 — 교차 이력의 merge-base 선택 · 봇이 PR의 base를 고르는 경로(무력화한 스크립트를 "base의 스크립트"로 실행) · YAML 별칭 `items: *a`(yq는 별칭으로, Argo는 목록으로 읽는다) · directory source 경로의 링크 파일 · 링크된 컴포넌트 디렉터리(열거는 건너뛰고 kustomize는 따라간다). 검토로 성립을 확인한 것 — 봇이 사람 PR에 커밋을 올리고 머지하는 경로(App 키가 없어 실행하지 못했다).
+- **실측으로 확정한 사실**:
+  1. `pull_request` 실행은 **PR 쪽의 워크플로와 스크립트**로 돈다. App에 `workflows` 권한이 없어도 보호되는 것은 `.github/workflows/`뿐이다 — 봇을 제한하는 검사는 main의 스크립트로, PR 코드를 실행하기 전에 돌린다.
+  2. **PR의 base는 PR을 여는 쪽이 고른다.** "base의 스크립트"는 main의 스크립트가 아닐 수 있다 → 트리거를 main 대상으로 한정하고 기준을 `origin/main`의 끝으로 잡는다.
+  3. 앞 job을 기다리는 job은 만들어지지 않으므로 **check도 보고되지 않는다** — Environment 필수 검토자가 required check 안에서 관문이 되는 이유다. 대기 시간은 러너 시간을 쓰지 않는다.
+  4. `github-actions[bot]`이 만든 PR의 실행은 승인 대기로 만들어진다(GitHub 2026-06-11 변경 — 그 전에는 실행이 만들어지지 않았다).
+  5. 개인 계정 저장소: 관리자 역할(`RepositoryRole`)은 ruleset bypass 주체가 되지만 GitHub Actions(`Integration` 15368)는 안 된다.
+  6. ruleset의 삭제 제한 아래에서도 머지한 사람이 관리자면 머지된 브랜치의 자동 삭제가 된다.
+  7. GitHub 식에서 없는 출력(null)은 숫자 비교에서 0이 된다 — job 출력은 `run`/`skip` 같은 문자열로 주고 **기대 값과의 일치**로 판정한다(모르는 값은 닫는 쪽).
+  8. 에이전트의 `gh` 자격은 운영자 계정의 것이라 승인 API도 통과한다 — 관문은 봇 토큰을 막는 장치이고 에이전트는 규칙(`.claude/rules/infra.md` 「Credentials」)으로 막는다.
+- **운영 절차 — prod 승격**(끝까지 돌려 보는 것은 T115다. 오늘 pod overlay는 빈 뼈대라 실행하면 dev digest 읽기에서 실패한다. 아래에서 **운영자** 표시가 있는 명령은 에이전트가 실행하지 않는다):
+  1. **운영자** — 승격 실행: `gh workflow run promote.yml -R joshua92y/platform-gitops -f pod=<pod>`. 워크플로가 attestation을 **먼저** 검증하고(실패하면 브랜치도 PR도 없다) 브랜치 `promote/prod-<pod>-<digest 앞 7자>`와 PR `promote(<pod>): <digest 앞 12자>`를 만든다.
+  2. 조회(읽기) — 승인 대기 실행: `gh api "repos/joshua92y/platform-gitops/actions/runs?status=action_required" --jq '.workflow_runs[] | [.id, .head_branch, .head_sha] | @tsv'`. 브랜치 이름과 커밋이 승격 PR의 것인지 본다.
+  3. **운영자** — 검사 실행 승인: `gh api -X POST repos/joshua92y/platform-gitops/actions/runs/<run id>/approve`(응답 `{}` → 같은 실행의 attempt 2가 돈다).
+  4. 조회(읽기) — `validate` 성공과 렌더링 diff 코멘트(머리의 PR head가 최신 커밋인지)를 확인한다. 이때 `gate`는 대기 · PR은 BLOCKED다.
+  5. **운영자** — 관문 승인(화면의 "Review deployments"와 같다):
+
+     ```powershell
+     $envId = gh api repos/joshua92y/platform-gitops/environments/production --jq '.id'
+     gh api -X POST repos/joshua92y/platform-gitops/actions/runs/<run id>/pending_deployments -F "environment_ids[]=$envId" -f state=approved -f comment='<사유>'
+     ```
+  6. **운영자** — 머지: `gh pr merge <번호> -R joshua92y/platform-gitops --squash --match-head-commit <확인한 head 커밋>`. auto-merge는 걸지 않는다(FR-038).
+  - **롤백** = 머지 커밋의 `git revert` PR. 운영 overlay를 건드리므로 같은 관문을 지난다.
+  - **승격 PR에 다른 커밋이 들어왔으면**(브랜치 끝 확인이 잡으면 워크플로가 PR을 닫고 브랜치를 지운다 · 그 뒤에 들어오면 발신자가 App이라 `validate`가 실패한다) — PR을 **다시 열지 않는다**. 닫고 브랜치를 지운 뒤 승격을 새로 실행한다. 다시 열면 발신자가 사람이 되어 App의 커밋이 사람 규칙으로 검사된다.
+  - **사람이 여는 운영 overlay PR**(pod overlay의 첫 `images` 항목 등)도 같은 관문을 지난다 — 5 · 6만 하면 된다(사람이 연 PR의 실행은 승인 대기가 아니다).
+- **상시 점검 명령(읽기만 · 에이전트 가능)** — 원격 설정을 기대 값과 대조한다. 설정을 바꾼 뒤와 보안 점검(T116) 때 돌린다. 2026-10-01 실행: 12항목 OK · `can_admins_bypass` 1항목 FAIL(위의 열린 조치).
+
+  ```powershell
+  $ErrorActionPreference = 'Stop'
+  $R = 'repos/joshua92y/platform-gitops'
+  function gq { $o = gh api @args; if ($LASTEXITCODE -ne 0) { throw "gh api $args → exit $LASTEXITCODE — 판정 불가" }; (@($o) -join "`n") | ConvertFrom-Json }
+  function okf([bool]$c) { if ($c) { 'OK' } else { 'FAIL' } }
+  function pick($list, [string]$prop, [string]$val) { @($list | Where-Object { [string]::Equals([string]$_.$prop, $val, [StringComparison]::Ordinal) }) }
+  function same([string[]]$a, [string[]]$b) { [string]::Equals(($a -join ' '), ($b -join ' '), [StringComparison]::Ordinal) }
+
+  $sets = @(gq "$R/rulesets")
+  $names = [string[]]@($sets | ForEach-Object { '{0}/{1}' -f $_.name, $_.enforcement }); [Array]::Sort($names, [StringComparer]::Ordinal)
+  'rulesets = [{0}] (기대 branches/active main/active — 둘뿐) {1}' -f ($names -join ' '), (okf (same $names @('branches/active', 'main/active')))
+
+  $m = gq "$R/rulesets/$((pick $sets name main).id)"
+  $types = [string[]]@($m.rules.type); [Array]::Sort($types, [StringComparer]::Ordinal)
+  $wantTypes = [string[]]@('deletion', 'non_fast_forward', 'pull_request', 'required_linear_history', 'required_status_checks')
+  $sc = (pick $m.rules type required_status_checks).parameters
+  $checks = [string[]]@($sc.required_status_checks | ForEach-Object { '{0}/{1}' -f $_.context, $_.integration_id }); [Array]::Sort($checks, [StringComparer]::Ordinal)
+  $pr = (pick $m.rules type pull_request).parameters
+  'main 규칙 = [{0}] {1}' -f ($types -join ' '), (okf (same $types $wantTypes))
+  'main required check = [{0}] strict={1} (기대 prod-approval/15368 validate/15368 · True) {2}' -f ($checks -join ' '), $sc.strict_required_status_checks_policy, (okf ((same $checks @('prod-approval/15368', 'validate/15368')) -and $sc.strict_required_status_checks_policy -eq $true))
+  'main 머지 방식 = [{0}] 승인 수 = {1} (기대 squash · 0) {2}' -f (@($pr.allowed_merge_methods) -join ' '), $pr.required_approving_review_count, (okf ((same ([string[]]@($pr.allowed_merge_methods)) @('squash')) -and $pr.required_approving_review_count -eq 0))
+  'main bypass = {0}개 (기대 0) {1}' -f @($m.bypass_actors).Count, (okf (@($m.bypass_actors).Count -eq 0))
+
+  $b = gq "$R/rulesets/$((pick $sets name branches).id)"
+  $bt = [string[]]@($b.rules.type); [Array]::Sort($bt, [StringComparer]::Ordinal)
+  $ex = [string[]]@($b.conditions.ref_name.exclude); [Array]::Sort($ex, [StringComparer]::Ordinal)
+  $wantEx = [string[]]@('refs/heads/bump/*', 'refs/heads/bump/**/*', 'refs/heads/promote/*', 'refs/heads/promote/**/*', '~DEFAULT_BRANCH'); [Array]::Sort($wantEx, [StringComparer]::Ordinal)
+  $by = [string[]]@($b.bypass_actors | ForEach-Object { '{0}/{1}/{2}' -f $_.actor_type, $_.actor_id, $_.bypass_mode })
+  'branches 규칙 = [{0}] {1}' -f ($bt -join ' '), (okf (same $bt @('creation', 'deletion', 'update')))
+  'branches 제외 = [{0}] {1}' -f ($ex -join ' '), (okf (same $ex $wantEx))
+  'branches bypass = [{0}] (기대 RepositoryRole/5/always 하나) {1}' -f ($by -join ' '), (okf (same $by @('RepositoryRole/5/always')))
+
+  $e = gq "$R/environments/production"
+  $rv = pick $e.protection_rules type required_reviewers
+  $who = [string[]]@($rv.reviewers | ForEach-Object { '{0}/{1}' -f $_.type, $_.reviewer.login })
+  'production 필수 검토자 = [{0}] (기대 User/joshua92y 하나) {1}' -f ($who -join ' '), (okf (same $who @('User/joshua92y')))
+  'production can_admins_bypass = {0} (기대 False) {1}' -f $e.can_admins_bypass, (okf ($e.can_admins_bypass -eq $false))
+
+  $repo = gq $R
+  $wf = gq "$R/actions/permissions/workflow"
+  $fk = gq "$R/actions/permissions/fork-pr-contributor-approval"
+  'PR 생성 정책 = {0} (기대 collaborators_only) {1}' -f $repo.pull_request_creation_policy, (okf ([string]::Equals([string]$repo.pull_request_creation_policy, 'collaborators_only', [StringComparison]::Ordinal)))
+  '워크플로 토큰 기본 권한 = {0} · PR 생성 허용 = {1} (기대 read · True) {2}' -f $wf.default_workflow_permissions, $wf.can_approve_pull_request_reviews, (okf ([string]::Equals([string]$wf.default_workflow_permissions, 'read', [StringComparison]::Ordinal) -and $wf.can_approve_pull_request_reviews -eq $true))
+  '외부 기여자 실행 승인 = {0} (기대 all_external_contributors) {1}' -f $fk.approval_policy, (okf ([string]::Equals([string]$fk.approval_policy, 'all_external_contributors', [StringComparison]::Ordinal)))
+  ```
+- **검사를 고칠 때**(gitops `tests/`): 계약을 먼저 고치고(모노레포 커밋) → 부정 픽스처와 고유 단언을 먼저 쓴다(RED) → 구현 → 영향 받는 케이스만 로컬 실행 → PR(자기검사 전체는 러너가 돈다 — `tests/` · `.github/` 변경이면 자동). 기준선 숫자(권한 경계의 2 · 2 · 5 · 5)를 바꾸는 차트 올림은 계약의 숫자와 검사의 상수를 같은 PR 묶음으로 고친다.
+- **절차 메모**:
+  1. **기준선 숫자는 무엇을 센 것인지와 함께 적는다.** 계약에 적은 "12"는 ClusterRole이 아니라 라벨의 수였다(ClusterRole은 5). 빌더에게 넘기기 전에 같은 렌더에서 다시 세어 찾았다.
+  2. **외부 서비스의 동작을 근거로 쓸 때는 확인한 날을 적는다.** "워크플로 토큰 PR은 검사가 돌지 않는다"는 석 달 전에 바뀐 옛 동작이었다.
+  3. **판정은 해소 뒤의 값으로 한다.** YAML 별칭 · 심볼릭 링크처럼 같은 입력이 도구마다 다른 모양으로 읽히는 것은 검사 사이의 틈이 된다 — 리뷰 지시서에 "검사를 고치지 않고 통과하는 입력을 만들어 실행하라"를 고정했고, 별칭과 링크의 우회는 그 지시에서 나왔다.
+  4. **세션이 끊겨도 이어 갈 수 있게 한다.** 재부팅 1회 · 세션 종료 1회 · API 사용량 한도 1회로 빌더가 끊겼다. 단계마다 남긴 진행 로그와 작업 트리로 위치를 확인하고 새 빌더가 이어 갔다. gitops 작업 트리는 저장소 **밖**에 둔다(안에 두면 검사의 파일 열거가 작업 트리까지 훑는다).
+  5. **테스트 준비가 저장 방식에 기대면 먼저 고정한다.** 자기검사 한 케이스가 러너에서 한 번 실패했다 — 임시 저장소의 객체가 pack 안에 있으면 느슨한 객체 파일을 지워도 남는다. `gc.auto=0` · `maintenance.auto=false`와 pack 풀기로 고쳤다.
+  6. **결정을 권할 때 그것이 최종 형태인지 거쳐 가는 형태인지 함께 말한다.** D1(운영자가 승격 PR을 연다)은 관문이 생기기 전의 임시 형태였는데 처음에 그렇게 말하지 않았다.
+  7. 도구 함정: Git Bash는 `<ref>:<경로>` 인자를 파일 경로로 바꾼다(체크아웃된 파일을 읽는다) · yq 4.53.6은 별칭 노드의 kind를 `alias`로 보고하고(`explode(.)` 뒤에 판정) `-`를 오른쪽부터 묶는다 · 셸에서 `TMP`를 덮어쓰면 kustomize의 helm 인플레이트가 깨진다(`export -n TMP`) · 동시에 무거운 프로세스가 많으면 Git Bash의 fork가 고갈돼 긴 스크립트가 끊긴다.
+- **인계**: **운영자(지금)** — Environment 관리자 우회 끄기. **converge** — 설계 §6 표(H11-1–4 · H12-1–3 · H8-1 `secrets` 생성 권한 경로를 기준선으로 고정할지 결정). **T072** — copier 생성물을 `kubeconform-deploy.sh --generated`에 연결 · pod overlay의 첫 `images` 항목은 사람 PR. **T074** — Application `source.path`는 소문자 `apps/<pod>/overlays/prod` · App의 PR 생성(협력자 전용 정책 아래) · App push 거부와 실제 `sender` 값 · `gh attestation verify`의 러너 권한. **T115** — `promote.yml` 끝까지 · App의 승인 API 거부 · 관문 대기 중 App 머지 거부 · App이 워크플로를 옛 버전으로 되돌리는 push. **T116** — 모노레포 ruleset · `allowed_actions` · SHA 고정 · 에이전트 전용 토큰. **`report.md`** — VD-5 결과 · D8 편차 · 받아들인 위험 둘(관문 범위 밖 PR은 봇 토큰으로 머지될 수 있다 / `promote/**`의 짧은 경쟁).
+
+(T047 이후 기록은 이하에 추가)
 
 ## §4 Vault init·시크릿 시드
 

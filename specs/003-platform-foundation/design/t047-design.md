@@ -242,6 +242,18 @@ T045·T046과 각 README가 "T047" 또는 "T047 후보"로 넘긴 항목이 15�
   - **G4 독립 리뷰 둘**: 테스트 품질·명세 = APPROVED_WITH_FIXES(회귀 0 · 변이 8/8 · 실측 표 일치 · 계약에 "키 중복 금지" 추가 `0d27e3e`) / **우회 = CHANGES_REQUIRED** — 검사를 고치지 않고 통과하는 입력 둘을 실행으로 재현: **A1** YAML 별칭(`items: *anchor`)은 yq가 `alias`로 보고해 11.1·11.4를 지나가는데 Argo의 디코더는 목록으로 해소한다 · **A2** directory source 경로의 심볼릭 링크 Application은 11.4만 보고 파일 열거(`-type f`)가 빼서 2·7.1·7.4가 못 본다. 계약 표에 두 행 반영 `0ae4afb`(별칭도 풀어서 본다 · directory source 경로의 링크 금지) → 수정 빌더. 교훈: **파싱 도구의 "종류" 판정은 해소 뒤의 값으로 한다** · **열거 규칙이 다른 검사 둘 사이의 틈은 "한쪽만 보는 것"으로 나타난다** — 링크·별칭처럼 같은 파일이 다른 모양으로 읽히는 입력을 리뷰 목록에 고정한다.
   - **G5 완료 → gitops PR #41**(러너: classify 7초 · gate skipped · prod-approval 성공 · 코멘트 "렌더 변경 없음"): 리뷰 둘 APPROVED_WITH_FIXES(관문 우회 없음 · 승격 주입·검증·경쟁 없음) → 반영(⑦ 실패 시 브랜치 삭제 · 안내 · 한계 · README 10행 · 하네스에 원시 바이트 경로). 리뷰 권고 A2(Environment `can_admins_bypass: false`) → 계약 `2fde17b` + 운영자 UI. 실측 V3·V4 → `promote/**`는 ruleset 제외(App도 쓸 수 있음) — 남는 틈은 ⑦ + 발신자 판정 + 관문으로 좁힌다.
   - **자기검사 flaky 1건 발견·수정(`9bd1408`)**: PR #38 첫 실행에서 `author-mergebase-diff-fails`가 "객체를 지운 사본을 만들 수 없음"으로 실패 — 어제 같은 러너(git 2.55.0 · 이미지 20260828.587)에서 네 번 통과한 케이스. 원인 가설: 임시 저장소의 객체가 pack 안에 있으면 느슨한 파일을 지워도 남는다(로컬에서 `repack` 뒤 옛 코드로 같은 증상을 재현). 수정: pack을 밖으로 옮겨 풀어 놓은 뒤 지우고, 임시 저장소에 `gc.auto=0` · `maintenance.auto=false`. 남으면 객체 저장 상태를 로그에 남긴다. 교훈: 객체 저장 방식(느슨/pack)에 기대는 테스트 준비는 저장 방식을 먼저 고정한다.
+  - **G4 수정 1차(14:22–17:17 KST · 빌더 둘 — 첫 빌더는 RED까지 간 뒤 API 사용량 한도로 끊겨, 둘째가 진행 로그를 읽고 이어 갔다)**: 리뷰가 재현한 넷을 닫았다. A1 — 문서를 읽는 yq 식 일곱 개가 판정 전에 `explode(.)`로 별칭을 푼다 + 풀지 못하는 문서와 별칭이 남은 문서는 새 검사 `11.0 FMT-alias`가 FAIL(fail-closed) · A2 — directory source 경로의 링크는 `11.3`이 FAIL하고 `11.4`는 `-type f`로 맞춤 · A3 — 레거시 생성기 탐색을 문서 전체(`..`)로 · B1 — `--enable-helm` 판정을 pflag의 뜻으로(마지막 값이 이긴다 · `=true` · `=false` · 낱말 경계는 유니코드 공백 전체). 케이스 154 → **161** · 변이 19개 중 18 검출(남은 하나는 동등 변이 — yq의 `explode`가 문서를 제자리에서 바꿔 뒤 가지도 푼 문서를 본다) · 리뷰어의 우회 입력만 든 트리가 수정 전 `[PASS] 11.1`·`[PASS] 11.4` → 수정 뒤 FAIL · 실제 트리 PASS 37 · 기존 검사 출력은 검사 11 머리줄 한 쌍 말고 diff 0.
+  - **수정 빌더가 범위 밖에서 찾은 사각 → 계약 `60dee38`**: **컴포넌트 디렉터리 자체가 심볼릭 링크**면 파일 열거가 그 디렉터리를 건너뛰는데 kustomize는 링크를 따라 렌더한다. `platform/<컴포넌트>`를 저장소 안의 숨긴 디렉터리로 가리키는 링크로 바꾸고 그 안에 `cluster-admin` 바인딩을 두면 전체 검사가 exit 0이었다(대조군은 13.2 FAIL · 열거된 kustomization 27 → 26). 링크는 이 저장소에 쓸 일이 없으므로 **트리 어디든 금지**로 계약을 넓혔다 — 경로별 예외를 두는 것보다 전제 하나가 싸다.
+  - **G4 수정 2차(17:22–18:26 KST)**: 검사 `11.5 FMT-symlink` — 작업 트리(`find`)와 git 인덱스(모드 120000) 둘 다에서 링크 0을 요구한다(Windows 체크아웃은 링크를 보통 파일로 풀 수 있어 인덱스도 본다). 도구가 없어 검사 11이 SKIP될 때도 11.5는 돈다 · `find` 실패는 FAIL. 케이스 161 → **164** · RED 6 → GREEN · 변이 6/6 검출 · 위 사각 입력이 exit 0 → exit 1(FAIL 줄은 11.5 하나) · 실제 트리 **PASS 38 · FAIL 0 · WARN 4**(11.5 — 작업 트리 항목 1329 · 인덱스 306 · 모드 120000 0).
+  - **G4 → gitops PR #42 · 러너 첫 실행(18:33 KST · 실행 `36696860951`)**: 전체 검사(0–13) 37초 · 자기검사 **164 케이스 278초** 실패 0 · validate job 약 5분 20초 · render-diff 16초 · 코멘트 "렌더 변경 없음". 2일차는 여기서 끝났다(#41 · #42 둘 다 머지 대기).
+- **3일차(2026-10-01) — 머지 · 관문 실측 · 종료**:
+  - **G5 머지(운영자 10:04 KST)**: gitops #41 → main `ddb70c5`(01:04:39Z). 이어서 운영자가 ruleset `main`을 선언 파일로 PUT — 컨트롤러가 조회로 대조: required check `validate` · `prod-approval`(둘 다 `integration_id` 15368) · strict · squash 전용 · 선형 이력 · bypass 0.
+  - **관문 실측(§8.11)**: 운영 overlay의 주석 한 줄을 바꾼 시험 PR #43 — 승인 전 머지 **거부**, 승인 뒤 머지 가능. 머지하지 않고 닫았고 브랜치를 지웠다.
+  - **G4 머지(운영자 10:39 KST)**: #42에 main(#41)을 받아(충돌 하나 — `tests/README.md`의 러너 실측 줄. 두 쪽의 사실을 합쳤다) head `bb37f62` → 러너(실행 `36799489563`): classify 4초 · 전체 검사 39초 · 자기검사 164 케이스 292초 · validate job 5분 39초 · `gate` skipped → `prod-approval` success(승인 없이) · render-diff 14초 → main `e041f41`(01:39:59Z).
+  - **main push 실행(`e041f41` · 실행 `36802183106`)**: 성공 — 전체 검사 37초 **PASS 38 · FAIL 0 · WARN 4 · SKIP 0** · 자기검사 283초 **164 케이스 실패 0** · gitleaks 히스토리 2초 · validate job 5분 28초. PR 전용 job 다섯(`classify` · `render-diff` · `render-comment` · `gate` · `prod-approval`)은 skipped. 이것이 이 태스크의 gitops 쪽 마무리 검사다(전체 판정은 CI — 로컬 전체 실행은 하지 않았다).
+  - **정리**: gitops 작업 트리 둘(`wt/gate` · `wt/g4`)과 로컬 브랜치 삭제 · 원격 브랜치는 `main`뿐 · 열린 PR 0.
+  - **모노레포 마무리 검사(한 번)**: `tests/run-all.ps1` exit 0 · **ALL PASS**(항목 `ci-kubeconform` 58/0 포함 · infra 61/0). 플랫폼 하네스의 클러스터 · ingress 검사는 `KUBECONFIG` 없이 SKIP — 이 태스크의 gitops 변경은 `.github/` · `tests/` · 문서뿐이라 렌더가 바뀌지 않았다(코멘트 job이 생긴 뒤의 PR 셋 #38 · #41 · #42의 렌더링 diff 코멘트가 전부 "렌더 변경 없음").
+  - **원격 설정 대조(읽기 전용 명령 — 런북 §3 T047 「상시 점검 명령」)**: 13항목 중 12 OK · `can_admins_bypass` 1 FAIL(§8.11의 열린 조치).
 
 ## 6. converge로 넘기는 것(후속 위치와 완료 조건)
 
@@ -397,10 +409,36 @@ PR의 검사
 
 **V4-a의 결과로 정해지는 것**: `promote/**`는 쓰기 권한이 있는 누구나(App 포함) 쓸 수 있는 이름 공간으로 남는다. 틈을 좁히는 것: ①`promote.yml`이 PR을 연 직후 브랜치 끝이 자기가 올린 커밋인지 확인하고 다르면 PR을 닫고 실패한다 ②PR이 열린 뒤 App이 push하면 발신자 판정(검사 6)이 봇 규칙으로 판정해 운영 overlay 변경을 FAIL시킨다 ③운영 overlay 변경은 관문 승인이 필요하다(D7). 남는 틈: 워크플로가 브랜치를 올리고 PR을 열기까지의 몇 초 사이에 App 토큰으로 커밋을 끼워 넣는 것(①이 잡는다 — ①의 확인과 App의 push가 교차하는 아주 짧은 순간만 남는다) → **받아들인 위험으로 `report.md`에 적는다.**
 
-## 9. 재개 지점(2026-09-30 12:00 KST 기준)
+### 8.11 관문 실측 — required check로 등록한 뒤(2026-10-01 10:06–10:40 KST)
 
-- **gitops 원격**: main `7675f5f`(#38 G3 머지) · 열린 PR 없음 · 브랜치는 main뿐 · Environment `production`(필수 검토자 = 운영자) · 저장소 설정 "Actions의 PR 생성 허용" 켜짐 · ruleset `branches` 제외 목록에 `promote/**` 추가됨(선언 파일은 아직 옛 값 — G5 PR이 맞춘다).
-- **모노레포**: `791f49f`까지 푸시됨(M1 `332b9cc` 포함). 계약은 D7 · D8 반영 전(§8.9 표 참조).
-- **G4**(작업 트리 `.superpowers/t047/wt/g4` · 브랜치 `t047-g4-checks` · base `9181e4e`): G4a 완료(보고 사본 `.superpowers/t047/g4a/report.md`) · G4b 빌더 진행 중 · G4c 미착수 · 리뷰 미착수. PR 전에 main(`7675f5f` — validate.yml에 G3 job 둘 · `tests/validate.tests.sh`에 flaky 수정 `9bd1408`)을 받아야 한다(`tests/validate.tests.sh`의 `tg()` · `mb_break()` 변경과 겹칠 수 있다 — 컨트롤러가 푼다).
-- **G5**: 계약(D7 · D8 · §8.9 · §8.10) → gitops 작업 트리(main `7675f5f`에서) → 빌더(관문 job 셋 · `promote.yml` · PR 템플릿 · ruleset 선언 둘 · README · tests/README) → 리뷰 → PR → 머지 → 운영자가 ruleset `main`에 required check `prod-approval` 추가 → 관문 실측(운영 overlay를 건드린 PR의 승인 전 머지 거부 · 승인 뒤 머지).
-- **마무리**: 런북 §3 T047 절 · 학습 로그 · `tasks.md` T047 체크(53/119) · 메모리.
+§8.8이 남긴 "그래서 머지가 막히는가"를 쟀다. 준비: #41 머지 뒤 운영자가 ruleset `main`에 `prod-approval`을 required check로 적용. 컨트롤러가 운영 overlay(`apps/identity-admin/overlays/prod/kustomization.yaml`)의 주석 한 줄을 바꾼 시험 PR #43을 열었다(실행 `36799512834`).
+
+| 시점 | 관찰 |
+|---|---|
+| 승인 전(01:06:49Z 실행 시작) | `classify` 3초 → 판정 `need` · `validate` 48초 success · `render-diff` · `render-comment` success(코멘트 "렌더 변경 없음") · **`gate` 대기 · `prod-approval`은 check가 없다** · PR `BLOCKED` |
+| 승인 전 머지 시도(운영자) | **거부** — `gh pr merge` → `Pull request … is not mergeable: the base branch policy prohibits the merge.` |
+| 승인(운영자 · `pending_deployments` POST) | `gate` 01:21:06Z 시작 → 2초 success → `prod-approval` 01:21:19Z success · 실행 success · 승인 이력 1건(상태 · 코멘트 · 누가 · Environment `production`) |
+| 승인 뒤 | 검사 전부 SUCCESS · `mergeStateStatus: CLEAN`(머지 가능) — **머지하지 않고 닫았다**(01:40:42Z) · 브랜치 삭제 |
+| 운영 overlay를 건드리지 않는 PR(#42 · 같은 날) | `gate` skipped → `prod-approval` success(승인 없이) — 단 `prod-approval`은 `validate`를 기다리므로 `validate`가 끝난 뒤에 보고된다 |
+
+- **잰 것**: 관문은 required check로서 머지를 막는다 — 운영자 자격의 머지 명령도 승인 전에는 거부된다(ruleset bypass 0).
+- **재지 않은 것(T115)**: App 토큰의 승인 API · 실행 승인 API 호출이 거부되는가(문서 근거뿐) · 관문 대기 중 App의 머지 시도.
+- **원격에 남은 차이 하나**: Environment `production`의 `can_admins_bypass`가 아직 `true`다(계약은 `false` — `2fde17b`). REST PUT으로는 바뀌지 않아 **운영자가 화면에서 끈다**(Settings → Environments → production → "Allow administrators to bypass configured protection rules" 해제). 켜져 있는 동안 저장소 관리자는 관문 대기를 건너뛰어 배포를 강제로 시작할 수 있다 — App은 관리자가 아니므로 봇 토큰에 대한 성질은 지금도 성립하고, 닫히지 않은 것은 운영자 자격(과 그 자격을 쓰는 에이전트)에 대한 한 겹이다.
+
+## 9. 종료 상태(2026-10-01)
+
+- **gitops 원격**: main `e041f41` · 열린 PR 0 · 브랜치 `main`뿐. 머지 순서 #33 `fda5a72`(G1) → #34 `9181e4e`(G2) → #38 `7675f5f`(G3) → #41 `ddb70c5`(G5) → #42 `e041f41`(G4). 머지하지 않고 닫은 시험 PR: #35–#37(관문 V1) · #39–#40(워크플로 토큰 PR V3) · #43(관문 실측).
+- **설정(조회로 대조)**: ruleset `main`(22066865) — required check `validate` · `prod-approval`(출처 15368) · strict · squash 전용 · 선형 이력 · 삭제 · 강제 push 금지 · bypass 0 / ruleset `branches`(24166519) — `main` · `bump/**` · `promote/**` 밖의 브랜치 생성·갱신·삭제는 관리자 역할만 / 저장소 — PR 생성은 협력자만 · 외부 기여자 실행은 항상 승인 · Actions의 PR 생성 허용 / Environment `production` — 필수 검토자 1 · `prevent_self_review: false` · **`can_admins_bypass: true`(운영자 화면 조치 대기 — §8.11)**.
+- **모노레포**: M1 `332b9cc`(ci `kubeconform` job) · 계약 파일을 고친 커밋 18개(`1892135` … `60dee38`) · 규칙 `73dca81`.
+- **검사의 크기**: `tests/validate.sh` 검사 0–13 · 실제 트리 PASS 38 · FAIL 0 · WARN 4(기존 `platform/system-upgrade` digest 경고) · 자기검사 164 케이스(시작 69).
+- **인계**:
+
+  | 받는 쪽 | 항목 |
+  |---|---|
+  | 운영자(지금) | Environment `production`의 관리자 우회 끄기 → 조회로 `can_admins_bypass: false` 확인 |
+  | converge | §6 표(H11-1–4 · H12-1–3 · H8-1) |
+  | T072 | copier 생성물을 `scripts/ci/kubeconform-deploy.sh --generated`에 연결(경보선이 요구한다) · pod overlay의 첫 `images` 항목(name · digest)은 사람 PR이 넣는다 |
+  | T074 | Application `source.path`는 소문자 `apps/<pod>/overlays/prod`(관문의 경로 판정과 같은 표기) · App의 PR 생성이 `collaborators_only` 아래에서 되는지 · App push 거부(`bump/**` · `promote/**` 밖)와 실제 이벤트의 `sender` 값 · `gh attestation verify`의 러너 권한 |
+  | T115 | `promote.yml` 끝까지(⑦ 실패 때 워크플로 토큰의 브랜치 삭제 포함) · App의 승인 API · 실행 승인 API 거부 · 관문 대기 중 App 머지 거부 · App이 워크플로를 옛 버전으로 되돌리는 머지 커밋이나 브랜치를 push할 수 있는지 |
+  | T116 | 모노레포 ruleset · `allowed_actions` · `sha_pinning_required` · 에이전트 전용 토큰(승인 · 머지 · 설정 쓰기 권한 없음) |
+  | `report.md` | VD-5 결과(§8.8 · §8.10 · §8.11) · 편차: 승격 PR은 App 토큰이 아니라 워크플로 토큰이 연다(D8 — 과제 문구와 다르다) · 받아들인 위험 둘: 관문 범위 밖(플랫폼 · 검사 · 문서) PR은 봇 토큰으로 머지될 수 있다(D7) / `promote/**`는 App도 쓸 수 있어 브랜치 push와 ⑦ 확인 사이의 짧은 경쟁이 남는다(§8.10) |
