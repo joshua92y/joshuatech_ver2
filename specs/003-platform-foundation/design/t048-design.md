@@ -93,6 +93,49 @@
 | 6 | 운영자(개인키 · `svc-verify` 세션) | **백업 검증**(§6 스크립트 한 줄): 최신 객체 둘 내려받기 → 복호화 → K3s `state.db` integrity_check · 번들 항목 수 확인 / Vault 스냅샷 inspect → 평문 삭제. 재부팅과 독립이라 재부팅 앞이나 뒤 어느 쪽에 해도 된다 | exit 0 · `ok` · 메타데이터 출력 |
 | 7 | 에이전트 | 기록: 런북 §3 T048 절(출력 · 시각) · §3 요약(전체 순서 · 시간 · 시크릿 취급) · 학습 로그 · `tasks.md` 체크 | — |
 
+### 4.1 명령(운영자 것과 에이전트 것을 나눈다)
+
+**운영자 — 단계 0(전제 열기)**
+- 터널 리스너: `cloudflared access tcp --hostname k8s.joshuatech.dev --url 127.0.0.1:6443`(세션 동안 켜 둔다).
+- 조회 토큰(8시간): gitops `platform/policies/README.md`의 조회 kubeconfig 절차(`kubectl create token agent-view -n kube-system --duration=8h` → 조회 전용 kubeconfig 파일 갱신).
+- OCI 세션(60분): `oci session authenticate --profile-name svc-verify`.
+
+**운영자 — 단계 1b(노드 A 읽기 점검 · 쓰기 없음)**
+
+```powershell
+$cmd = @'
+hostname; uname -r; uptime -s
+echo "k3s enabled=$(systemctl is-enabled k3s) active=$(systemctl is-active k3s)"
+if [ -f /var/run/reboot-required ]; then echo "reboot-required: yes ($(cat /var/run/reboot-required.pkgs 2>/dev/null | tr '\n' ' '))"; else echo "reboot-required: no"; fi
+pgrep -a 'apt|dpkg|unattended-upgr' || echo "apt/dpkg: none running"
+systemctl list-jobs --no-pager | tail -n 1
+systemctl list-timers platform-backup.timer --no-pager | sed -n '2p'
+'@
+ssh ssh-a $cmd
+```
+
+판정: `k3s enabled=enabled active=active` · apt/dpkg 없음 · `No jobs running.`. `reboot-required: yes`면 새 커널로 부팅된다 — 진행 여부를 다시 묻는다.
+
+**운영자 — 단계 3(재부팅 · 사용자 재확인 뒤)**
+
+```powershell
+"reboot command at $((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'))"; ssh ssh-a "sudo systemctl reboot"; "ssh exit=$LASTEXITCODE (연결이 끊기며 255가 나오는 것은 정상)"
+```
+
+**운영자 — 단계 6(백업 검증 · 읽기와 로컬 임시 파일뿐)**
+
+```powershell
+pwsh -NoProfile -File scripts/backup-verify.ps1 -AgeKeyFile "<개인키 파일 경로>"
+```
+
+출력 전체를 붙여 준다(개인키 경로 · 내용은 출력에 없다). 창을 강제로 닫았으면 임시 폴더의 `backup-verify-*`를 확인한다(다음 실행이 `bv-pre-3`으로 알려 준다).
+
+**에이전트(조회 전용 · `.superpowers/t048/obs/`의 도구)**
+- 단계 1: `snapshot.ps1 -Label pre`(관문 줄 전부 OK여야 한다) · `run-reboot-harness.ps1 -Mode baseline -BaselineOut <파일>`.
+- 단계 2: `observe.ps1 -LogFile <파일>`(백그라운드 · 10초 간격).
+- 단계 4: `run-reboot-harness.ps1 -Mode after -BaselineOut <파일> -LogFile <파일>` — 기준값을 파일에서 읽어 넘기고, 하네스의 `reboot-pre-4` 줄과 대조한 뒤 `VERDICT` 줄을 낸다.
+- 단계 5: `snapshot.ps1 -Label post -Since <재부팅 명령 시각>` — Vault 컨테이너 시작 · ExternalSecret refreshTime · Application reconciledAt이 그 시각 뒤인지까지 관문으로 본다(하네스 직후 한 번 · 10분 뒤 한 번).
+
 ## 5. 위험과 대응
 
 | 일어날 수 있는 일 | 알아채는 방법 | 대응(운영자) |
@@ -144,3 +187,7 @@ Vault 스냅샷 쪽은 절단 · 변조가 전부 FAIL했다(CLI가 해시를 �
 ## 7. 진행 기록
 
 - 2026-10-01: T047을 닫고 조사(F1–F11) → P1 하네스 가드 빌더 착수 → 이 문서 초안. 조회 경로와 OCI 세션이 닫혀 있어 사전 관찰은 운영자가 전제를 연 뒤에 한다.
+- 2026-10-01 오후: 하네스 — 빌더 → 리뷰 → 수정 → 재리뷰 → 수정 2 → 컨트롤러 독립 실행 181/0 → 커밋 `56301c3`. 백업 검증 스크립트 — 빌더 → 리뷰 → 수정 → 컨트롤러 독립 실행 96/0 → 커밋 `2df4a3b`(run-all 항목 둘 포함). 관찰 도구 셋(`snapshot.ps1` · `observe.ps1` · `run-reboot-harness.ps1`)은 `.superpowers/t048/obs/`(gitignore) — 문법 검사와 닫힌 조회 경로에서의 실패 동작까지만 확인했다. **실제 클러스터에서는 아직 한 번도 돌지 않았다** — 사전 관찰(재부팅 전)이 첫 실행이고, 거기서 드러나는 결함은 재부팅 전에 고친다.
+- 14:35 KST 조회 경로 상태: API에는 닿고(터널 리스너 열림) 조회 토큰은 만료(401). `svc-verify` 세션은 만료.
+- **남은 것(전부 운영자 · 사용자가 있어야 한다)**: P2 결정(SC-001 근거) → 단계 0–7 → 런북 §3 T048 절과 §3 요약 → 모노레포 run-all 전체 한 번 → 체크(54/119).
+- 빌더가 범위 밖에서 찾은 것: `vault` CLI 2.1.0은 Windows에서 실행할 때마다 임시 폴더에 `gosnowflake-cgo*` 디렉터리(DLL 한 개)를 남긴다 — 운영자의 평소 사용에서도 쌓인다. 스크립트는 자식의 임시 폴더를 작업 디렉터리로 돌려 피한다.
