@@ -13,11 +13,20 @@
 #   port-forward는 실제로 127.0.0.1:<port>를 열고 'Forwarding from 127.0.0.1:<port> -> 8200'을 stdout에 쓴 뒤 /v1/sys/seal-status에
 #   JSON으로 답한다(하네스가 프로세스 트리를 죽일 때까지; 안전장치로 60 s 뒤 스스로 끝난다).
 #   모든 호출은 calls.log(JSON 줄: seq · elapsed(첫 호출 기준 초) · phase · kind · idx · code · served · args)에 남고 단언에 쓰인다.
-#   단계별 첫 호출 시각은 state.json의 phaseFirstAt에 남는다. 가짜의 0초 = 첫 kubectl 호출이고 하네스의 0초는 그보다 앞서므로,
-#   하네스가 보고한 경과 초 >= 가짜가 기록한 같은 순간의 경과 초다(S2 · S12의 "③ 시작 이후" 단언의 근거).
-# 시간: 하네스 손잡이 REBOOT_TESTS_*로 간격을 1 s로 줄인다. 마감까지 기다려야 끝나는 케이스(expired)는 6–15 s, 마감 전에 끝나야 함을
-#   단언하는 final 경로(S5a · S20)는 30 s, 성공하면 바로 끝나는 케이스(S2 · S5c · S12 · S16 · S19 · S21 · S23)는 20–45 s로 넉넉히 둔다
-#   (실행 시간을 늘리지 않으면서, 다른 프로세스가 같은 PC를 쓰는 부하에서도 흔들리지 않게).
+#   단계별 첫 호출 시각은 state.json의 phaseFirstAt에 남는다. 가짜의 0초 = 첫 kubectl 호출이고 하네스의 0초(옛 부팅을 한 번도 못 봤으면
+#   스크립트 시작)는 그보다 앞서므로, 하네스가 보고한 경과 초 >= 가짜가 기록한 같은 순간의 경과 초다(S12 · S32의 "단계 시작 이후" 단언의
+#   근거). 하네스가 옛 부팅을 보면(armed) 0초가 그 관측의 시작으로 옮겨지므로 S2는 "마지막 옛 부팅 whoami" 기준으로 같은 단언을 한다.
+#   가짜는 모든 조회에 --request-timeout=30s를 요구한다(H1 — 다른 값이면 'unexpected').
+#   호출 단위의 실패(수정 지시서 6 — 하네스의 재시도 A): 단계의 whoamiFailAt / nodesFailAt = 그 단계 안에서 몇 번째(1부터) whoami / get nodes
+#   호출이 "도달 실패"(실제 경로의 TLS handshake timeout 흉내, exit 1 — 기록의 served = transport-fail)인지. nodesDelayMs = 그 단계의 get nodes
+#   응답을 늦춘다(느린 API — 관측 하나가 마감을 가로지르게). transportFailDelayMs = 그 단계의 도달 실패 응답만 늦춘다(실제 실패는 10 s쯤 걸린다).
+#   하네스가 재시도한 whoami는 단계 진행에 한 번 더 세어지므로, 재시도가 일어나는 관측의
+#   단계는 whoamiCalls에 그 몫을 더해 둔다(수정 전 하네스에서는 그 몫이 다음 관측이 된다).
+#   Invoke-Harness는 실행마다 자식의 PATH에서 처음 찾히는 kubectl이 픽스처의 심(bin/kubectl.cmd)인지 확인하고, 아니면 하네스를 실행하지 않는다.
+# 시간: 하네스 손잡이 REBOOT_TESTS_*로 간격을 1 s로 줄인다. 마감까지 기다려야 끝나는 케이스(expired)는 6–30 s, 마감 전에 끝나야 함을
+#   단언하는 final 경로(S5a · S20)는 30 s, 성공하면 바로 끝나는 케이스(S2 · S5c · S12 · S16 · S21 · S23 · S37 · S38 · S40 · S41 · S42–S45 · S48–S51)는
+#   20–60 s로 넉넉히 둔다(실행 시간을 늘리지 않으면서, 다른 프로세스가 같은 PC를 쓰는 부하에서도 흔들리지 않게). arm 시간 제한은 S1 · S47 · S52에서만
+#   줄인다(S52는 굳은 상태가 제한을 넘길 만큼 불통 관측을 길게 둔다 — "관측 N번이 M초 안에"에 기대지 않게).
 # 반복용 손잡이: REBOOT_HARNESS_TESTS_ONLY=S1,S3 → 그 케이스만 실행한다. 이때 요약 줄 끝에 ' (filtered: …)'가 붙어
 #   run-all의 'N passed, 0 failed' 판정을 통과하지 못한다(부분 실행이 전체 통과로 보이지 않게).
 $ErrorActionPreference = 'Stop'
@@ -25,7 +34,7 @@ $PSNativeCommandUseErrorActionPreference = $false
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $harnessPath = Join-Path $repo 'tests/platform/reboot.tests.ps1'
 $expectedUser = 'system:serviceaccount:kube-system:agent-view'
-$knobNames = @('REBOOT_TESTS_PHASE_DEADLINE_SEC', 'REBOOT_TESTS_ES_REFRESH_SEC', 'REBOOT_TESTS_POLL_INTERVAL_SEC')
+$knobNames = @('REBOOT_TESTS_PHASE_DEADLINE_SEC', 'REBOOT_TESTS_ES_REFRESH_SEC', 'REBOOT_TESTS_POLL_INTERVAL_SEC', 'REBOOT_TESTS_ARM_TIMEOUT_SEC')
 $sep = [IO.Path]::PathSeparator
 $script:pass = 0
 $script:fail = 0
@@ -50,8 +59,11 @@ function Test-Case([string]$id, [string]$title, [scriptblock]$body) {
     $script:known += $id
     if ($script:only.Count -gt 0 -and @($script:only | Where-Object { Test-Same $_ $id }).Count -eq 0) { return }
     Write-Host "-- ${id}: $title"
+    $caseWatch = [Diagnostics.Stopwatch]::StartNew()
     try { . $body }
     catch { $script:fail++; Write-Host "FAIL $id -- unhandled $($_.Exception.GetType().Name): $($_.Exception.Message) (line $($_.InvocationInfo.ScriptLineNumber))" }
+    # 케이스별 걸린 시간(진단용 — 실행 시간을 줄일 곳을 찾는 데 쓴다; PASS/FAIL·요약 줄 형식과 겹치지 않는다)
+    Write-Host "   [$id took $($caseWatch.Elapsed.TotalSeconds.ToString('0.0', [Globalization.CultureInfo]::InvariantCulture))s]"
 }
 
 # ---------- 가짜 kubectl(픽스처 bin/fake-kubectl.ps1로 쓴다) ----------
@@ -67,7 +79,7 @@ $utf8 = [Text.UTF8Encoding]::new($false)
 $scn = [IO.File]::ReadAllText((Join-Path $root 'scenario.json')) | ConvertFrom-Json -AsHashtable -DateKind String
 $phases = @($scn['phases'])
 $a = @($args | ForEach-Object { "$_" })
-$rt = '--request-timeout=10s'
+$rt = '--request-timeout=30s'
 
 function Eq([string]$x, [string]$y) { return [string]::Equals($x, $y, [StringComparison]::Ordinal) }
 function Same([object[]]$x, [object[]]$y) {
@@ -113,7 +125,7 @@ elseif ($a.Count -eq 7 -and (Same $a[0..3] @('-n', 'vault', 'port-forward', 'svc
     $pfPort = [int]($a[4].Split(':')[0])
 }
 
-$resp = @{ out = $null; err = $null; code = 0; served = ''; sealed = $false }
+$resp = @{ out = $null; err = $null; code = 0; served = ''; sealed = $false; delay = 0.0 }
 $lock = Open-Lock
 try {
     $st = $null
@@ -139,6 +151,10 @@ try {
     } elseif (Eq "$($ph['api'])" 'down') {
         $resp.err = 'Unable to connect to the server: dial tcp 10.0.0.10:6443: connectex: No connection could be made because the target machine actively refused it.'
         $resp.code = 1; $resp.served = 'api-down'
+    } elseif (((Eq $kind 'whoami') -and (@($ph['whoamiFailAt']) -contains $idx)) -or ((Eq $kind 'nodes') -and (@($ph['nodesFailAt']) -contains $idx))) {
+        # 호출 단위의 도달 실패(이 단계의 idx번째 whoami / get nodes만): 실제 경로에서 가끔 10 s쯤 걸려 실패하는 TLS 핸드셰이크 시간 초과 흉내
+        $resp.err = 'Unable to connect to the server: net/http: TLS handshake timeout'
+        $resp.code = 1; $resp.served = 'transport-fail'
     } elseif (Eq $kind 'whoami') {
         if ([bool]$ph['whoamiUnauthorized']) {
             $resp.err = 'error: You must be logged in to the server (Unauthorized)'; $resp.code = 1; $resp.served = 'unauthorized'
@@ -205,7 +221,14 @@ try {
     } elseif (Eq $kind 'pf') {
         $v = Pick $ph['vault'] $idx
         $resp.sealed = [bool]$v['sealed']
-        $resp.served = "sealed=$($resp.sealed) port=$pfPort"
+        if ($null -ne $v['establishDelaySec']) { $resp.delay = [double]$v['establishDelaySec'] }
+        $resp.served = "sealed=$($resp.sealed) port=$pfPort establishDelay=$($resp.delay)s"
+        if ([bool]$v['exitImmediately']) {
+            # 곧바로 죽는 port-forward(파드 없음 · 엔드포인트 없음 흉내)
+            $resp.err = 'error: unable to forward port because pod is not running. Current status=Pending'
+            $resp.code = 1
+            $resp.served = "exit-immediately port=$pfPort"
+        }
     }
     [IO.File]::WriteAllText($statePath, (New-Json $st), $utf8)
     Write-CallLog ([ordered]@{ seq = $st['seq']; elapsed = $elapsed; phase = $pi; phaseName = "$($ph['name'])"; kind = $kind; idx = $idx; code = $resp.code; served = $resp.served; args = ($a -join ' ') })
@@ -215,6 +238,10 @@ try {
 
 # 느린 API 흉내(F1): ES 응답을 잠금 밖에서 늦춘다 — 관측 하나가 마감을 가로지르게 한다
 if ((Eq $kind 'es') -and $null -ne $ph['esDelayMs']) { Start-Sleep -Milliseconds ([int]$ph['esDelayMs']) }
+# 느린 get nodes(B-1): reboot-0 관측 하나가 마감을 가로지르게 한다
+if ((Eq $kind 'nodes') -and $null -ne $ph['nodesDelayMs'] -and [int]$ph['nodesDelayMs'] -gt 0) { Start-Sleep -Milliseconds ([int]$ph['nodesDelayMs']) }
+# 느린 도달 실패(S53): 실제 경로의 실패는 10 s쯤 걸린다(TLS 핸드셰이크 시간 초과) — transport-fail 응답만 늦춘다
+if ((Eq $resp.served 'transport-fail') -and $null -ne $ph['transportFailDelayMs'] -and [int]$ph['transportFailDelayMs'] -gt 0) { Start-Sleep -Milliseconds ([int]$ph['transportFailDelayMs']) }
 if ($null -ne $resp.err) { [Console]::Error.WriteLine($resp.err) }
 if (-not (Eq $kind 'pf') -or $resp.code -ne 0) {
     if ($null -ne $resp.out) { [Console]::Out.WriteLine($resp.out) }
@@ -222,10 +249,16 @@ if (-not (Eq $kind 'pf') -or $resp.code -ne 0) {
 }
 
 # port-forward: 실제로 로컬 포트를 열고 seal-status에 답한다(죽을 때까지; 안전장치 60 s)
+#   수립 지연(G3): 실제 kubectl은 API 서버(터널 너머)와 연결을 맺은 뒤에야 로컬 포트를 열고 'Forwarding from' 줄을 낸다 —
+#   그동안에는 리스너도 줄도 없다(실측 10–23 s). establishDelaySec만큼 그 상태로 있다가 연다.
+if ($resp.delay -gt 0) { Start-Sleep -Milliseconds ([int][Math]::Round($resp.delay * 1000)) }
 $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, $pfPort)
 try { $listener.Start() } catch { [Console]::Error.WriteLine("error: unable to listen on 127.0.0.1:${pfPort}: $($_.Exception.Message)"); exit 1 }
 [Console]::Out.WriteLine("Forwarding from 127.0.0.1:$pfPort -> 8200")
 [Console]::Out.Flush()
+$lk = Open-Lock
+try { Write-CallLog ([ordered]@{ seq = 0; elapsed = [Math]::Round(([DateTime]::UtcNow.Ticks - $t0) / 1e7, 3); phase = $pi; phaseName = "$($ph['name'])"; kind = 'pf-ready'; idx = $idx; code = 0; served = "forwarding port=$pfPort after establishDelay=$($resp.delay)s"; args = '' }) }
+finally { $lk.Dispose() }
 $body = New-Json ([ordered]@{ type = 'ocikms'; initialized = $true; sealed = $resp.sealed; t = 1; n = 1; progress = 0; nonce = ''; version = '2.0.4'; migration = $false; recovery_seal = $true; storage_type = 'raft' })
 $until = [DateTime]::UtcNow.AddSeconds(60)
 while ([DateTime]::UtcNow -lt $until) {
@@ -285,6 +318,7 @@ function New-Phase([hashtable]$o = @{}) {
         name = 'post-reboot'; whoamiCalls = 0; api = 'up'; user = $expectedUser; whoamiUnauthorized = $false
         nodes = @(@{ name = 'jt-node-a'; bootID = $newBoot; ready = 'True'; heartbeat = $postHeartbeat })
         nodesExit = 0; nodesRaw = $null
+        whoamiFailAt = @(); nodesFailAt = @(); nodesDelayMs = 0; transportFailDelayMs = 0   # 호출 단위의 도달 실패(단계 안의 순번 목록) · 느린 get nodes · 느린 도달 실패(ms)
         vault = @(@{ sealed = $false })
         stores = @(@{ ready = $true; ltt = $postLtt })
         apps = @('Healthy')
@@ -299,8 +333,65 @@ function New-PrePhase([hashtable]$o = @{}) {
     foreach ($k in $o.Keys) { $base[$k] = $o[$k] }
     return New-Phase $base
 }
-function Knobs([int]$deadline, [int]$es, [int]$interval = 1) {
-    return @{ REBOOT_TESTS_PHASE_DEADLINE_SEC = "$deadline"; REBOOT_TESTS_ES_REFRESH_SEC = "$es"; REBOOT_TESTS_POLL_INTERVAL_SEC = "$interval" }
+function Knobs([int]$deadline, [int]$es, [int]$interval = 1, [int]$arm = 0) {
+    $k = @{ REBOOT_TESTS_PHASE_DEADLINE_SEC = "$deadline"; REBOOT_TESTS_ES_REFRESH_SEC = "$es"; REBOOT_TESTS_POLL_INTERVAL_SEC = "$interval" }
+    if ($arm -gt 0) { $k['REBOOT_TESTS_ARM_TIMEOUT_SEC'] = "$arm" }   # arm 시간 제한(초) — 0이면 기본값(30분)
+    return $k
+}
+# 진행 줄 · 요약 앞 줄(H2 — 0초 기준점)
+$zeroScriptStartLine = '  zero point = script start (the old boot was never observed)'
+function Get-ArmedLines($r) { return @(@(Get-Lines $r) | Where-Object { $_.StartsWith('  armed: old boot still up (bootID unchanged) -- zero point moves with each observation; waiting for the reboot (arm timeout in ', [StringComparison]::Ordinal) }) }
+# '  zero point fixed at <UTC> (last observation of the old boot); deadlines count from here' 줄들의 <UTC>
+function Get-FixedZeros($r) {
+    return @(@(Get-Lines $r) | ForEach-Object { $m = [regex]::Match($_, '\A  zero point fixed at (\S+) \(last observation of the old boot\); deadlines count from here\z'); if ($m.Success) { $m.Groups[1].Value } })
+}
+# J1: '  old boot seen again after the zero point was fixed (1 of 3 needed to move it again); zero point stays at <UTC>' 줄들의 <UTC>
+function Get-StayZeros($r) {
+    return @(@(Get-Lines $r) | ForEach-Object { $m = [regex]::Match($_, '\A  old boot seen again after the zero point was fixed \(1 of 3 needed to move it again\); zero point stays at (\S+)\z'); if ($m.Success) { $m.Groups[1].Value } })
+}
+# J1: 세 번째 연속 관측에서 기준점이 다시 움직일 때의 note 줄
+function Get-RearmNotes($r) { return @(@(Get-Lines $r) | Where-Object { $_.StartsWith('  note: the old boot was seen 3 times in a row after the zero point had been fixed', [StringComparison]::Ordinal) }) }
+# A(수정 지시서 6): '  retried: …' 진행 줄(구간마다 첫 재시도에 한 줄, 그 뒤로는 최대 60초에 한 줄)
+function Get-RetryLines($r) { return @(@(Get-Lines $r) | Where-Object { $_.StartsWith('  retried: ', [StringComparison]::Ordinal) }) }
+# A: reboot-0 waiting 줄 가운데 detail이 'retried: '로 시작하는 것(재시도한 관측의 detail은 120자로 잘려도 그 표시가 맨 앞에 남는다)
+function Get-RetriedWaits($r) { return @(@(Get-Lines $r) | Where-Object { [regex]::IsMatch($_, '\A  \[\d+s\] waiting: reboot-0\(deadline \d+s: retried: ') }) }
+# E(수정 지시서 6): 줄 안의 'observation UTC <시작> .. <끝>'(밀리초 · Z) → @{ start; end }(DateTime UTC). 없거나 형식이 다르면 $null
+function Get-ObsUtc([string]$line) {
+    $m = [regex]::Match("$line", 'observation UTC (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z) \.\. (\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z)')
+    if (-not $m.Success) { return $null }
+    $a = Parse-ZeroUtc $m.Groups[1].Value
+    $b = Parse-ZeroUtc $m.Groups[2].Value
+    if ($null -eq $a -or $null -eq $b) { return $null }
+    return @{ start = $a; end = $b }
+}
+# B(수정 지시서 6): 굳은 채 재부팅 전에 만료된 reboot-0 FAIL 줄에 덧붙는 문구(기준점 UTC · 근거 뒤)
+$bText = 'the old boot kept being seen after that but never 3 times in a row -- no reboot was observed; restart the harness'
+# 줄 목록에서 조건을 만족하는 줄의 위치(0부터)
+function Get-LineIndexes($r, [scriptblock]$pred) {
+    $lines = @(Get-Lines $r)
+    return @(for ($i = 0; $i -lt $lines.Count; $i++) { if (& $pred $lines[$i]) { $i } })
+}
+# 하네스가 찍은 기준점 UTC(밀리초, ...Z) → DateTime(UTC). 형식이 다르면 $null
+function Parse-ZeroUtc([string]$s) {
+    $d = [DateTime]::MinValue
+    $styles = [Globalization.DateTimeStyles]::AssumeUniversal -bor [Globalization.DateTimeStyles]::AdjustToUniversal
+    if ([DateTime]::TryParseExact("$s", "yyyy-MM-dd'T'HH:mm:ss.fff'Z'", [Globalization.CultureInfo]::InvariantCulture, $styles, [ref]$d)) { return $d }
+    return $null
+}
+# 가짜의 0초(첫 kubectl 호출)의 UTC — state.json의 t0(ticks). 호출 기록 하나의 UTC = 이 값 + 그 기록의 elapsed
+function Get-FakeT0Utc([string]$dir) {
+    $p = Join-Path $dir 'state.json'
+    if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { return $null }
+    return [DateTime]::new([long](([IO.File]::ReadAllText($p) | ConvertFrom-Json -AsHashtable)['t0']), [DateTimeKind]::Utc)
+}
+function Get-CallUtc($t0Utc, $call) { return $t0Utc.AddSeconds([double]$call['elapsed']) }
+# 'zero point (UTC): <UTC> (<why>)' 줄 → @{ utc; why } (없으면 $null)
+function Get-ZeroSummary($r) {
+    foreach ($l in @(Get-Lines $r)) {
+        $m = [regex]::Match($l, '\Azero point \(UTC\): (\S+) \((last observation of the old boot|script start)\)\z')
+        if ($m.Success) { return @{ utc = $m.Groups[1].Value; why = $m.Groups[2].Value } }
+    }
+    return $null
 }
 
 # ---------- 픽스처 ----------
@@ -338,6 +429,18 @@ function Remove-Fixture {
 # 하네스를 자식 pwsh로 실행한다. 환경은 자식에게만 준다(이 프로세스의 환경은 바꾸지 않는다).
 #   주변 환경의 REBOOT_TESTS_* 손잡이는 지우고, $knobs에 있는 것만 넣는다. 시간 상한을 넘기면 트리째 종료하고 timedOut=$true.
 #   $kubeconfig: ''이면 픽스처의 kubeconfig.yaml(기본), 아니면 그 경로(R6 — 경로 마스킹 케이스)
+# 자식의 PATH에서 처음 찾히는 kubectl(PATHEXT 순서) — 실제 kubectl을 가리는지 실행마다 확인하는 데 쓴다
+function Find-FirstKubectl([string]$pathValue) {
+    $exts = @('') + @("$env:PATHEXT".Split(';') | Where-Object { $_.Length -gt 0 })
+    foreach ($p in "$pathValue".Split($sep)) {
+        if ([string]::IsNullOrWhiteSpace($p)) { continue }
+        foreach ($e in $exts) {
+            $cand = Join-Path $p ('kubectl' + $e)
+            if (Test-Path -LiteralPath $cand -PathType Leaf) { return $cand }
+        }
+    }
+    return $null
+}
 function Invoke-Harness([string]$dir, [string[]]$harnessArgs = @(), [hashtable]$knobs = @{}, [int]$timeoutSec = 60, [string]$kubeconfig = '') {
     if (-not (Test-Path -LiteralPath $harnessPath -PathType Leaf)) { return @{ out = "<missing harness: $harnessPath>"; err = ''; code = 127; wall = 0.0; timedOut = $false } }
     $psi = [Diagnostics.ProcessStartInfo]::new([Environment]::ProcessPath)
@@ -347,6 +450,10 @@ function Invoke-Harness([string]$dir, [string[]]$harnessArgs = @(), [hashtable]$
     $psi.RedirectStandardError = $true
     $psi.Environment['KUBECONFIG'] = if ([string]::IsNullOrEmpty($kubeconfig)) { Join-Path $dir 'kubeconfig.yaml' } else { $kubeconfig }
     $psi.Environment['PATH'] = (Join-Path $dir 'bin') + $sep + $env:PATH
+    # 실행마다 확인: 자식이 처음 찾는 kubectl이 픽스처의 심이 아니면(실제 kubectl에 닿을 수 있으면) 하네스를 실행하지 않는다.
+    #   Windows 경로는 대소문자를 가리지 않는다(PATHEXT는 '.CMD') — 경로 비교만 OrdinalIgnoreCase(문화권 비교는 아니다)
+    $firstKubectl = Find-FirstKubectl $psi.Environment['PATH']
+    if (-not [string]::Equals($firstKubectl, (Join-Path (Join-Path $dir 'bin') 'kubectl.cmd'), [StringComparison]::OrdinalIgnoreCase)) { return @{ out = "<refusing to run: the first kubectl on the child PATH is '$firstKubectl', not the fixture shim>"; err = ''; code = 125; wall = 0.0; timedOut = $false } }
     $psi.Environment['TMP'] = Join-Path $dir 'tmp'
     $psi.Environment['TEMP'] = Join-Path $dir 'tmp'
     foreach ($k in $knobNames) { [void]$psi.Environment.Remove($k) }
@@ -465,17 +572,26 @@ try {
     }
 
     # ---------- S1: 재부팅이 일어나지 않음(bootID가 끝까지 baseline, 나머지는 전부 건강) ----------
-    #   baseline은 대문자로 준다(옛 S1b를 합침 — 같은 부팅 ID를 대소문자만 바꿔 줘도 재부팅으로 보지 않는다: OrdinalIgnoreCase)
-    Test-Case 'S1' 'no reboot: bootID stays at the baseline (given in upper case) while everything else is healthy' {
+    #   H2: 옛 부팅이 보이는 동안은 armed — 기준점이 관측마다 움직이고 reboot-0의 마감은 만료되지 않는다. 재부팅이 끝내 없으면
+    #   arm 시간 제한(손잡이 16초 — 부하에서도 관측 세 번이 들어가게)에서 FAIL("no reboot observed within") — "재부팅 없이 PASS" 방어는 그대로 단언한다.
+    #   baseline은 대문자로 준다(옛 S1b를 합침 — 같은 부팅 ID를 대소문자만 바꿔 줘도 재부팅으로 보지 않는다: OrdinalIgnoreCase).
+    #   감시 시간 60 s: arm 시간 제한이 빠지면(변이) 끝나지 않아 시간 초과로 실패한다.
+    Test-Case 'S1' 'no reboot: bootID stays at the baseline (given in upper case) -> armed until the arm timeout, then FAIL' {
         $d = New-Fixture @(New-PrePhase)
-        $r = Invoke-Harness $d @('-AfterReboot', '-BaselineBootId', $oldBoot.ToUpperInvariant(), '-BaselineNode', 'jt-node-a') (Knobs 10 10)
+        $r = Invoke-Harness $d @('-AfterReboot', '-BaselineBootId', $oldBoot.ToUpperInvariant(), '-BaselineNode', 'jt-node-a') (Knobs 10 10 1 16) 60
         $calls = @(Get-Calls $d)
         Assert-Completed 'S1' $r $calls
         $f0 = @(Lines-Starting $r 'FAIL reboot-0: ')
-        Assert 'S1-1: exit 1 and "FAIL reboot-0" says bootID unchanged, not met within 10s' ($r.code -eq 1 -and $f0.Count -eq 1 -and (Has-Text $f0[0] 'has not rebooted yet (bootID unchanged)') -and (Has-Text $f0[0] 'not met within 10s')) (Format-Result $r)
+        Assert 'S1-1: exit 1 and "FAIL reboot-0" says no reboot observed within the 16s arm timeout (baseline bootID kept)' ($r.code -eq 1 -and $f0.Count -eq 1 -and (Has-Text $f0[0] 'no reboot observed within 16s') -and (Has-Text $f0[0] 'kept reporting the baseline bootID')) (Format-Result $r)
         Assert-NotAttempted 'S1' $r
         $other = (Count-Calls $calls 'pf') + (Count-Calls $calls 'stores') + (Count-Calls $calls 'apps') + (Count-Calls $calls 'es')
-        Assert 'S1-2: reboot-0 polled repeatedly (>= 2 get nodes) and reboot-1..4 never queried the cluster' ((Count-Calls $calls 'nodes') -ge 2 -and $other -eq 0) (Format-Calls $calls)
+        Assert 'S1-2: reboot-0 polled repeatedly (>= 3 get nodes) and reboot-1..4 never queried the cluster' ((Count-Calls $calls 'nodes') -ge 3 -and $other -eq 0) (Format-Calls $calls)
+        # (바) armed 진행 줄은 관측마다 나오지 않는다(최대 60초에 한 줄) · armed 동안 reboot-0 waiting 줄도 내지 않는다
+        $armed = @(Get-ArmedLines $r)
+        $unchangedWaits = @(@(Get-Lines $r) | Where-Object { (Has-Text $_ 'waiting: reboot-0(') -and (Has-Text $_ 'bootID unchanged') })
+        Assert 'S1-3: one armed line for all the old-boot observations (not one per observation) and no per-poll waiting lines while armed' ($armed.Count -eq 1 -and (Count-Calls $calls 'nodes') -ge 3 -and $unchangedWaits.Count -eq 0) "armed=$($armed.Count) nodes=$(Count-Calls $calls 'nodes') unchangedWaits=$($unchangedWaits.Count) :: $(Format-Result $r)"
+        $z = Get-ZeroSummary $r
+        Assert 'S1-4: the summary says the zero point is the last observation of the old boot' ($null -ne $z -and (Test-Same $z.why 'last observation of the old boot') -and @(Lines-Starting $r $zeroScriptStartLine).Count -eq 0) (Format-Result $r)
     }
 
     # ---------- S2: 경쟁 뒤 실제 재부팅 — ①재부팅 전 건강 ②API 불통 ③새 bootID + 과도 상태 ----------
@@ -495,9 +611,15 @@ try {
         Assert-Completed 'S2' $r $calls
         $passIds = @(0..4 | Where-Object { @(Lines-Starting $r "PASS reboot-${_}:").Count -eq 1 })
         Assert 'S2-1: exit 0 and PASS reboot-0..4' ($r.code -eq 0 -and $passIds.Count -eq 5) "pass=[$($passIds -join ',')] $(Format-Result $r)"
+        # H2: 경과 초는 기준점(마지막으로 옛 부팅을 본 관측의 시작) 기준이다. 가짜 시계에서 "③ 시작 - 마지막 옛 부팅 whoami"보다 앞설 수 없다
+        #   (하네스의 관측 시작은 가짜가 whoami를 기록하기 전이므로 하네스 쪽 간격이 같거나 더 길다).
         $p3 = Get-PhaseStart $d 2
         $m0 = Get-MetSec $r 'reboot-0'
-        Assert 'S2-2: "reboot-0 met" elapsed second is at or after the start of phase 3 (new bootID served)' ($null -ne $p3 -and $null -ne $m0 -and $m0 -ge [Math]::Floor($p3)) "phase3Start=$p3 reboot0Met=$m0 $(Format-Result $r)"
+        $oldWho = @(Get-CallsOf $calls 'whoami' 0)
+        $lastOld = if ($oldWho.Count -gt 0) { [double]$oldWho[$oldWho.Count - 1]['elapsed'] } else { $null }
+        $nodeCalls = @(Get-CallsOf $calls 'nodes')
+        $metByPost = $nodeCalls.Count -gt 0 -and [int]$nodeCalls[$nodeCalls.Count - 1]['phase'] -eq 2 -and (Has-Text $nodeCalls[$nodeCalls.Count - 1]['served'] $newBoot)
+        Assert 'S2-2: reboot-0 was met by a phase-3 observation (new bootID), and its elapsed second (from the zero point) is no earlier than phase 3 started after the last old-boot observation' ($null -ne $p3 -and $null -ne $m0 -and $null -ne $lastOld -and $metByPost -and $m0 -ge [Math]::Floor($p3 - $lastOld)) "phase3Start=$p3 lastOldBoot=$lastOld reboot0Met=$m0 :: $(Format-Result $r)"
         $m = @{}
         foreach ($i in 1..4) { $m[$i] = Get-MetSec $r "reboot-$i" }
         $order = ($null -ne $m0) -and ($null -ne $m[1]) -and ($null -ne $m[2]) -and ($null -ne $m[3]) -and ($null -ne $m[4]) -and $m[1] -ge $m0 -and $m[2] -ge $m0 -and $m[3] -ge $m0 -and $m[4] -ge $m[2]
@@ -516,7 +638,7 @@ try {
         foreach ($ph in 0, 1) { foreach ($k in 'pf', 'stores', 'apps', 'es') { $early += (Count-Calls $calls $k $ph) } }
         Assert 'S2-6: no port-forward / stores / apps / externalsecrets call before the new bootID was seen' ($early -eq 0) (Format-Calls $calls)
         $applied = @(Lines-Starting $r 'note: REBOOT_TESTS_PHASE_DEADLINE_SEC=45 applied').Count + @(Lines-Starting $r 'note: REBOOT_TESTS_ES_REFRESH_SEC=20 applied').Count + @(Lines-Starting $r 'note: REBOOT_TESTS_POLL_INTERVAL_SEC=1 applied').Count
-        Assert 'S2-7: applied test knobs are announced and shown on the polling line' ($applied -eq 3 -and (Has-Line $r 'polling reboot-0..4 (nominal interval 1s; reboot-0..3 deadline 45s from start; reboot-4 deadline = reboot-2 pass + 20s)')) (Format-Result $r)
+        Assert 'S2-7: applied test knobs are announced and shown on the polling line' ($applied -eq 3 -and (Has-Line $r 'polling reboot-0..4 (nominal interval 1s; reboot-0..3 deadline 45s from the zero point; reboot-4 deadline = reboot-2 pass + 20s; arm timeout 30 minutes)')) (Format-Result $r)
         $met0 = @(@(Get-Lines $r) | Where-Object { [regex]::IsMatch($_, '\A  \[\d+s\] reboot-0 met -- ') })
         $pass0 = @(Lines-Starting $r 'PASS reboot-0: ')
         $change = "node jt-node-a bootID $oldBoot -> $newBoot"
@@ -525,6 +647,14 @@ try {
         $pass4 = @(Lines-Starting $r 'PASS reboot-4: ')
         Assert 'S2-9: reboot-4 uses max(store anchor, boot anchor) and prints both (store Ready transitioned after the reboot -> using=storeAnchor)' ($pass4.Count -eq 1 -and (Has-Text $pass4[0] "storeAnchor=$postLtt bootAnchor=$postHeartbeat using=storeAnchor")) (Format-Result $r)
         Assert 'S2-10: pre-4 PASS line shows the full baseline boot ID' (@(@(Lines-Starting $r 'PASS reboot-pre-4: ') | Where-Object { Has-Text $_ "baseline bootID $oldBoot" }).Count -eq 1) (Format-Result $r)
+        # H2: 옛 부팅 두 라운드(armed) → 불통에서 기준점이 굳는다(한 줄) → 요약 앞 줄은 같은 시각, "last observation of the old boot"
+        $fixed = @(Get-FixedZeros $r)
+        $z = Get-ZeroSummary $r
+        Assert 'S2-11: armed once, the zero point fixed once at the API outage, and the summary repeats that zero point' (@(Get-ArmedLines $r).Count -eq 1 -and $fixed.Count -eq 1 -and $null -ne $z -and (Test-Same $z.why 'last observation of the old boot') -and (Test-Same $z.utc $fixed[0]) -and @(Lines-Starting $r $zeroScriptStartLine).Count -eq 0) (Format-Result $r)
+        # H1: 모든 kubectl 조회가 --request-timeout=30s로 불렸다(가짜는 정확한 인자 목록만 인정한다 — 여기서는 기록으로 다시 본다)
+        $queries = @(@($calls) | Where-Object { @('whoami', 'nodes', 'stores', 'apps', 'es') -contains "$($_['kind'])" })
+        $bad = @($queries | Where-Object { -not ("$($_['args'])".EndsWith(' --request-timeout=30s', [StringComparison]::Ordinal)) })
+        Assert 'S2-12: every whoami/get call carried --request-timeout=30s' ($queries.Count -ge 8 -and $bad.Count -eq 0) "queries=$($queries.Count) bad=[$((@($bad | ForEach-Object { $_['args'] })) -join ' || ')]"
     }
 
     # ---------- S3: -AfterReboot인데 -BaselineBootId 없음 ----------
@@ -704,25 +834,25 @@ try {
     }
 
     # ---------- S10: 손잡이 무시(기본값보다 큼 · 정수 아님) — fatal 경로로 곧바로 끝낸다 ----------
-    $defaultPollingLine = 'polling reboot-0..4 (nominal interval 10s; reboot-0..3 deadline 300s from start; reboot-4 deadline = reboot-2 pass + 300s)'
+    $defaultPollingLine = 'polling reboot-0..4 (nominal interval 10s; reboot-0..3 deadline 300s from the zero point; reboot-4 deadline = reboot-2 pass + 300s; arm timeout 30 minutes)'
     Test-Case 'S10a' 'knobs above the defaults are ignored' {
         $d = New-Fixture @(New-Phase @{ user = 'system:admin' })
-        $r = Invoke-Harness $d $afterArgs @{ REBOOT_TESTS_PHASE_DEADLINE_SEC = '301'; REBOOT_TESTS_ES_REFRESH_SEC = '99999'; REBOOT_TESTS_POLL_INTERVAL_SEC = '11' } 120
+        $r = Invoke-Harness $d $afterArgs @{ REBOOT_TESTS_PHASE_DEADLINE_SEC = '301'; REBOOT_TESTS_ES_REFRESH_SEC = '99999'; REBOOT_TESTS_POLL_INTERVAL_SEC = '11'; REBOOT_TESTS_ARM_TIMEOUT_SEC = '1801' } 120
         $calls = @(Get-Calls $d)
         Assert-Completed 'S10a' $r $calls
         $ignored = @($knobNames | Where-Object { @(Lines-Starting $r "note: $_ ignored").Count -eq 1 })
-        Assert 'S10a-1: one "ignored" note per knob and no "applied" note' ($ignored.Count -eq 3 -and @(@(Get-Lines $r) | Where-Object { Has-Text $_ ' applied' }).Count -eq 0) (Format-Result $r)
-        Assert 'S10a-2: the polling line shows the defaults (10s / 300s / 300s)' (Has-Line $r $defaultPollingLine) (Format-Result $r)
+        Assert 'S10a-1: one "ignored" note per knob (4, incl. the arm timeout) and no "applied" note' ($ignored.Count -eq 4 -and @(@(Get-Lines $r) | Where-Object { Has-Text $_ ' applied' }).Count -eq 0) (Format-Result $r)
+        Assert 'S10a-2: the polling line shows the defaults (10s / 300s / 300s / 30 minutes)' (Has-Line $r $defaultPollingLine) (Format-Result $r)
         Assert 'S10a-3: exit 1 via the identity refusal, quickly (wall < 60s)' ($r.code -eq 1 -and $r.wall -lt 60) (Format-Result $r)
     }
     Test-Case 'S10b' 'non-integer / zero knobs are ignored' {
         $d = New-Fixture @(New-Phase @{ user = 'system:admin' })
-        $r = Invoke-Harness $d $afterArgs @{ REBOOT_TESTS_PHASE_DEADLINE_SEC = 'abc'; REBOOT_TESTS_ES_REFRESH_SEC = '1.5'; REBOOT_TESTS_POLL_INTERVAL_SEC = '0' } 120
+        $r = Invoke-Harness $d $afterArgs @{ REBOOT_TESTS_PHASE_DEADLINE_SEC = 'abc'; REBOOT_TESTS_ES_REFRESH_SEC = '1.5'; REBOOT_TESTS_POLL_INTERVAL_SEC = '0'; REBOOT_TESTS_ARM_TIMEOUT_SEC = '6s' } 120
         $calls = @(Get-Calls $d)
         Assert-Completed 'S10b' $r $calls
         $ignored = @($knobNames | Where-Object { @(Lines-Starting $r "note: $_ ignored").Count -eq 1 })
-        Assert 'S10b-1: one "ignored" note per knob and no "applied" note' ($ignored.Count -eq 3 -and @(@(Get-Lines $r) | Where-Object { Has-Text $_ ' applied' }).Count -eq 0) (Format-Result $r)
-        Assert 'S10b-2: the polling line shows the defaults (10s / 300s / 300s)' (Has-Line $r $defaultPollingLine) (Format-Result $r)
+        Assert 'S10b-1: one "ignored" note per knob (4, incl. the arm timeout) and no "applied" note' ($ignored.Count -eq 4 -and @(@(Get-Lines $r) | Where-Object { Has-Text $_ ' applied' }).Count -eq 0) (Format-Result $r)
+        Assert 'S10b-2: the polling line shows the defaults (10s / 300s / 300s / 30 minutes)' (Has-Line $r $defaultPollingLine) (Format-Result $r)
         Assert 'S10b-3: exit 1 via the identity refusal, quickly (wall < 60s)' ($r.code -eq 1 -and $r.wall -lt 60) (Format-Result $r)
     }
 
@@ -804,12 +934,13 @@ try {
 
     # ---------- F1: 마감 판정은 관측을 시작한 시각 기준(마감 안에 시작한 관측이 충족이면 통과) ----------
     #   경과 시간 기반 가짜: ES refreshTime은 "store 전부 Ready"를 처음 답한 뒤 esFreshAfterStoresSec초가 지나야 새 값이 된다.
-    #   ES 응답은 2초 늦게 온다(느린 API) — 마감 1초 전에 시작한 마지막 관측이 마감을 넘겨 끝난다. 간격은 기본 10 s(손잡이 미설정).
-    #   reboot-4 마감 = reboot-2 통과 + 14 s. 첫 관측(+0.4 s · 옛 값) 뒤 10 s를 자고 마감 약 1 s 전에 다시 관측한다.
+    #   ES 응답은 2초 늦게 온다(느린 API) — 마감 1초 전에 시작한 마지막 관측이 마감을 넘겨 끝난다. 간격 6 s(손잡이).
+    #   reboot-4 마감 = reboot-2 통과 + 8 s. 첫 관측(+0.4 s · 옛 값, 약 2.5 s 걸림) 뒤 "마감 1초 전"까지 자고 다시 관측한다
+    #   (간격 6 s보다 짧은 대기 — 마감에 맞춰 줄인 마지막 대기가 이 케이스의 대상이다).
     Test-Case 'S26' 'F1: the refresh lands 3s before the reboot-4 deadline; the last observation starts inside and ends past the deadline -> PASS' {
-        $ph = New-Phase @{ esFreshAfterStoresSec = 11; esFresh = $postRefresh; esStale = $preRefresh; esDelayMs = 2000 }
+        $ph = New-Phase @{ esFreshAfterStoresSec = 5; esFresh = $postRefresh; esStale = $preRefresh; esDelayMs = 2000 }
         $d = New-Fixture @($ph)
-        $r = Invoke-Harness $d $afterArgs @{ REBOOT_TESTS_PHASE_DEADLINE_SEC = '45'; REBOOT_TESTS_ES_REFRESH_SEC = '14' } 120
+        $r = Invoke-Harness $d $afterArgs @{ REBOOT_TESTS_PHASE_DEADLINE_SEC = '45'; REBOOT_TESTS_ES_REFRESH_SEC = '8'; REBOOT_TESTS_POLL_INTERVAL_SEC = '6' } 120
         $calls = @(Get-Calls $d)
         Assert-Completed 'S26' $r $calls
         $p4 = @(Lines-Starting $r 'PASS reboot-4: ')
@@ -818,9 +949,9 @@ try {
         Assert 'S26-2: the stale refreshTime was observed first, then the fresh one (2 ES observations)' ($esCalls.Count -eq 2 -and (Has-Text $esCalls[0]['served'] $preRefresh) -and (Has-Text $esCalls[1]['served'] $postRefresh)) (Format-Calls $calls)
     }
     Test-Case 'S27' 'F1: the refresh lands 3s after the reboot-4 deadline -> FAIL (not met within)' {
-        $ph = New-Phase @{ esFreshAfterStoresSec = 17; esFresh = $postRefresh; esStale = $preRefresh; esDelayMs = 2000 }
+        $ph = New-Phase @{ esFreshAfterStoresSec = 11; esFresh = $postRefresh; esStale = $preRefresh; esDelayMs = 2000 }
         $d = New-Fixture @($ph)
-        $r = Invoke-Harness $d $afterArgs @{ REBOOT_TESTS_PHASE_DEADLINE_SEC = '45'; REBOOT_TESTS_ES_REFRESH_SEC = '14' } 120
+        $r = Invoke-Harness $d $afterArgs @{ REBOOT_TESTS_PHASE_DEADLINE_SEC = '45'; REBOOT_TESTS_ES_REFRESH_SEC = '8'; REBOOT_TESTS_POLL_INTERVAL_SEC = '6' } 120
         $calls = @(Get-Calls $d)
         Assert-Completed 'S27' $r $calls
         $f4 = @(Lines-Starting $r 'FAIL reboot-4: ')
@@ -873,6 +1004,9 @@ try {
         $p0 = @(Lines-Starting $r 'PASS reboot-0: ')
         Assert 'S21-1: exit 0, PASS reboot-0, and the pre-4 PASS line shows the baseline node' ($r.code -eq 0 -and $p0.Count -eq 1 -and $pre4.Count -eq 1 -and (Has-Text $pre4[0] 'baseline node jt-node-a')) (Format-Result $r)
         Assert 'S21-2: PASS reboot-0 shows both full boot IDs (same 8-char prefix)' ($p0.Count -eq 1 -and (Has-Text $p0[0] "node jt-node-a bootID $oldBoot -> $prefixBoot")) (Format-Result $r)
+        # (라) H2: 재부팅 뒤에 시작(옛 부팅을 한 번도 못 봄) — 기준점은 스크립트 시작, 그 사실을 한 줄로 · 요약 앞 줄도 "script start"
+        $z = Get-ZeroSummary $r
+        Assert 'S21-3: started after the reboot -> one "zero point = script start" line, no armed/fixed lines, summary "(script start)"' (@(Lines-Starting $r $zeroScriptStartLine).Count -eq 1 -and @(Get-ArmedLines $r).Count -eq 0 -and @(Get-FixedZeros $r).Count -eq 0 -and $null -ne $z -and (Test-Same $z.why 'script start')) (Format-Result $r)
     }
     Test-Case 'S22' 'R2: -BaselineNode without -AfterReboot' {
         $d = New-Fixture @(New-Phase)
@@ -961,6 +1095,486 @@ try {
         $all2 = $r2.out + "`n" + $r2.err
         Assert 'S25-2: -BaselineNode <path>: FAIL reboot-pre-4 shows <KUBECONFIG> and no fragment of the path' ($r2.code -eq 1 -and @(Lines-Starting $r2 'FAIL reboot-pre-4: ').Count -eq 1 -and (Has-Text $r2.out '<KUBECONFIG>') -and -not (Has-Text $all2 'reboottest-') -and -not (Has-Text $all2 'kkkkkkkkkk')) (Format-Result $r2)
         Assert 'S25-3: both refused before any kubectl call' (@(Get-Calls $d).Count -eq 0) (Format-Calls @(Get-Calls $d))
+    }
+
+    # ---------- G3: port-forward 수립 지연(실제 터널 너머 10–23 s 실측) — 확인 1회 상한 45 s · 걸린 시간 기록 ----------
+    # 'pf' 기록의 elapsed = 가짜 kubectl이 port-forward로 불린 시각(첫 호출 기준) — 두 확인의 시작 간격으로 첫 확인의 길이를 잰다
+    $pfStartGap = {
+        param($calls)
+        $pfs = @(Get-CallsOf $calls 'pf')
+        if ($pfs.Count -lt 2) { return $null }
+        return ([double]$pfs[1]['elapsed'] - [double]$pfs[0]['elapsed'])
+    }
+    # (가) 수립에 12 s가 걸리는 정상 복구 → 확인 한 번으로 PASS(상한 8 s였다면 매번 미충족)
+    Test-Case 'S34' 'G3: port-forward takes 12s to establish (tunnel latency) -> one check waits it out -> PASS' {
+        $d = New-Fixture @(New-Phase @{ vault = @(@{ sealed = $false; establishDelaySec = 12 }) })
+        $r = Invoke-Harness $d $afterArgs (Knobs 40 40) 120
+        $calls = @(Get-Calls $d)
+        Assert-Completed 'S34' $r $calls
+        $p1 = @(Lines-Starting $r 'PASS reboot-1: ')
+        $m = if ($p1.Count -eq 1) { [regex]::Match($p1[0], 'forward ready in (\d+\.\d)s, answered in (\d+\.\d)s\)') } else { $null }
+        $timed = $null -ne $m -and $m.Success -and [double]::Parse($m.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture) -ge 12.0 -and [double]::Parse($m.Groups[2].Value, [Globalization.CultureInfo]::InvariantCulture) -ge [double]::Parse($m.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
+        Assert 'S34-1: exit 0 and PASS reboot-1 whose detail records the wait (forward ready in >= 12.0s, answered no earlier)' ($r.code -eq 0 -and $timed) (Format-Result $r)
+        Assert 'S34-2: a single check waited out the 12s establishment (exactly one port-forward, one Forwarding line, one answered request)' ((Count-Calls $calls 'pf') -eq 1 -and (Count-Calls $calls 'pf-ready') -eq 1 -and (Count-Calls $calls 'pf-http') -eq 1) (Format-Calls $calls)
+    }
+    # (나) port-forward가 곧바로 죽는다(파드·엔드포인트 없음) → 그 확인은 바로 끝나고 다음 폴링으로 넘어간다(45 s를 기다리지 않는다)
+    Test-Case 'S35' 'G3: port-forward exits immediately -> the check returns at once, the next poll passes' {
+        $d = New-Fixture @(New-Phase @{ vault = @(@{ exitImmediately = $true }, @{ sealed = $false }) })
+        $r = Invoke-Harness $d $afterArgs (Knobs 40 40) 90
+        $calls = @(Get-Calls $d)
+        Assert-Completed 'S35' $r $calls
+        $gap = & $pfStartGap $calls
+        Assert 'S35-1: exit 0 and PASS reboot-1 on the second port-forward' ($r.code -eq 0 -and @(Lines-Starting $r 'PASS reboot-1: ').Count -eq 1 -and (Count-Calls $calls 'pf') -eq 2) "$(Format-Result $r) :: $(Format-Calls $calls)"
+        Assert 'S35-2: the failed check did not wait for the 45s cap (next port-forward started < 10s later)' ($null -ne $gap -and $gap -lt 10) "gap=$gap :: $(Format-Calls $calls)"
+        $waitExit = @(@(Get-Lines $r) | Where-Object { (Has-Text $_ 'waiting: ') -and [regex]::IsMatch($_, 'reboot-1\(deadline \d+s: port-forward exited after \d+\.\ds \(exit=1\)') })
+        Assert 'S35-3: the waiting line records the early exit with its duration ("port-forward exited after N.Ns (exit=1)")' ($waitExit.Count -ge 1) (Format-Result $r)
+    }
+    # (다) 수립이 끝까지 안 됨(가짜는 90 s 뒤에야 줄을 낸다) → 그 확인은 45 s 근처에서 미충족으로 끝나고, 다음 확인(새 port-forward)이 통과
+    #   상한은 손잡이로 줄이지 않는다(실제 기본값을 그대로 시험 — 약 50 s 걸린다).
+    Test-Case 'S36' 'G3: port-forward never establishes -> that check ends unmet near the 45s cap, the next one passes' {
+        $d = New-Fixture @(New-Phase @{ vault = @(@{ sealed = $false; establishDelaySec = 90 }, @{ sealed = $false }) })
+        $r = Invoke-Harness $d $afterArgs (Knobs 120 60) 150
+        $calls = @(Get-Calls $d)
+        Assert-Completed 'S36' $r $calls
+        $gap = & $pfStartGap $calls
+        $firstReady = @(Get-CallsOf $calls 'pf-ready' | Where-Object { [int]$_['idx'] -eq 1 })
+        Assert 'S36-1: exit 0 and PASS reboot-1 on the second port-forward; the first never printed its Forwarding line' ($r.code -eq 0 -and @(Lines-Starting $r 'PASS reboot-1: ').Count -eq 1 -and (Count-Calls $calls 'pf') -eq 2 -and $firstReady.Count -eq 0) "$(Format-Result $r) :: $(Format-Calls $calls)"
+        Assert 'S36-2: the first check ended near the 45s cap (next port-forward started 44..56s later), not at 8s and not at 90s' ($null -ne $gap -and $gap -ge 44 -and $gap -le 56) "gap=$gap :: $(Format-Calls $calls)"
+        $waitCap = @(@(Get-Lines $r) | Where-Object { (Has-Text $_ 'waiting: ') -and (Has-Text $_ 'seal-status not answered within 45s via port-forward') -and (Has-Text $_ "no 'Forwarding' line after") })
+        Assert 'S36-3: the waiting line says "not answered within 45s" and "no Forwarding line after N.Ns"' ($waitCap.Count -ge 1) (Format-Result $r)
+    }
+
+    # ---------- H2: 0초 기준점 = 마지막으로 옛 부팅을 본 관측(armed 시작) ----------
+    # (가) 옛 부팅이 마감(20 s)보다 오래(가짜 시계로 약 27 s 이상) 보인다 → 재부팅(불통 한 라운드) → 곧바로 복구 → PASS.
+    #   경과 초는 기준점 기준이라 실행 시간보다 훨씬 작다. 0초가 스크립트 시작이었다면 reboot-0은 옛 부팅을 보는 동안 20 s에 만료됐다(RED).
+    #   -ArmTimeoutMinutes 5(유효한 값)로 매개변수 경로도 함께 지난다. (바)도 여기서 본다(옛 부팅 관측 >= 8번에 armed 줄 <= 2).
+    #   불통 단계는 whoami 2회: armed였던 첫 불통 관측은 도달 실패한 호출을 한 번 더 하고(A — 수정 지시서 6) 그것도 실패해야 기준점이 굳는다.
+    Test-Case 'S37' 'H2: the old boot stays up longer than the deadline, then reboots and recovers -> PASS counted from the last old-boot observation' {
+        $pre = New-PrePhase @{ whoamiCalls = 16 }
+        $down = New-Phase @{ name = 'api-down'; whoamiCalls = 2; api = 'down' }
+        $d = New-Fixture @($pre, $down, (New-Phase))
+        $r = Invoke-Harness $d ($afterArgs + @('-ArmTimeoutMinutes', '5')) (Knobs 20 20) 180
+        $calls = @(Get-Calls $d)
+        Assert-Completed 'S37' $r $calls
+        $passIds = @(0..4 | Where-Object { @(Lines-Starting $r "PASS reboot-${_}:").Count -eq 1 })
+        Assert 'S37-1: exit 0 and PASS reboot-0..4' ($r.code -eq 0 -and $passIds.Count -eq 5) "pass=[$($passIds -join ',')] $(Format-Result $r)"
+        $p0 = @(Lines-Starting $r 'PASS reboot-0: ')
+        $mAt = if ($p0.Count -eq 1) { [regex]::Match($p0[0], ' -- met at (\d+)s \(deadline 20s\)') } else { $null }
+        $metAt = if ($null -ne $mAt -and $mAt.Success) { [int]$mAt.Groups[1].Value } else { $null }
+        $oldWho = @(Get-CallsOf $calls 'whoami' 0)
+        $oldSpan = if ($oldWho.Count -ge 2) { [double]$oldWho[$oldWho.Count - 1]['elapsed'] - [double]$oldWho[0]['elapsed'] } else { 0.0 }
+        Assert 'S37-2: reboot-0 "met at" counts from the zero point (<= 15s and >= 20s below the run time) although the old boot was visible longer than the 20s deadline (>= 22s on the fake clock)' ($null -ne $metAt -and $metAt -le 15 -and ($r.wall - $metAt) -ge 20 -and $oldSpan -ge 22) "metAt=$metAt wall=$([Math]::Round([double]$r.wall, 1)) oldSpan=$oldSpan :: $(Format-Result $r)"
+        $fixed = @(Get-FixedZeros $r)
+        $z = Get-ZeroSummary $r
+        Assert 'S37-3: exactly one "zero point fixed at" line and the summary repeats it (last observation of the old boot)' ($fixed.Count -eq 1 -and $null -ne $z -and (Test-Same $z.utc $fixed[0]) -and (Test-Same $z.why 'last observation of the old boot') -and @(Lines-Starting $r $zeroScriptStartLine).Count -eq 0) (Format-Result $r)
+        $armed = @(Get-ArmedLines $r)
+        $unchangedWaits = @(@(Get-Lines $r) | Where-Object { (Has-Text $_ 'waiting: reboot-0(') -and (Has-Text $_ 'bootID unchanged') })
+        Assert 'S37-4: (바) >= 8 old-boot observations produced 1..2 armed lines (the first says "arm timeout in 5m") and no per-poll waiting lines while armed' ((Count-Calls $calls 'nodes' 0) -ge 8 -and $armed.Count -ge 1 -and $armed.Count -le 2 -and $armed[0].EndsWith('(arm timeout in 5m)', [StringComparison]::Ordinal) -and $unchangedWaits.Count -eq 0) "oldBootNodes=$(Count-Calls $calls 'nodes' 0) armed=$($armed.Count) unchangedWaits=$($unchangedWaits.Count) :: $(Format-Result $r)"
+        Assert 'S37-5: the polling line shows the arm timeout from -ArmTimeoutMinutes 5' (@(@(Lines-Starting $r 'polling reboot-0..4 (') | Where-Object { $_.EndsWith('; arm timeout 5 minutes)', [StringComparison]::Ordinal) }).Count -eq 1) (Format-Result $r)
+    }
+    # (나) J1: 옛 부팅 → 호출 실패(armed라 한 번 더 하고 그것도 실패 — whoami 2회) → 옛 부팅 세 번(세 번째 관측에서 기준점이 다시 움직인다) → 재부팅 → 복구.
+    #   기준점은 굳었다가(줄 1) 세 번째 연속 관측에서 다시 움직이고 다시 굳는다(줄 2) — 마지막 기준점은 그 세 번째 관측이다(가짜 시계로 대조).
+    #   C-2도 여기서 본다: 옛 bootID + Ready=True(New-PrePhase)는 굳은 뒤에도 옛 부팅으로 세어진다(세 번째에 다시 armed).
+    Test-Case 'S38' 'J1: old boot -> one failed call -> old boot 3 times in a row (moves again at the third) -> reboot -> recovery' {
+        $pre1 = New-PrePhase @{ name = 'old-boot-1'; whoamiCalls = 2 }
+        $blip = New-Phase @{ name = 'call-failure'; whoamiCalls = 2; api = 'down' }
+        $pre2 = New-PrePhase @{ name = 'old-boot-2'; whoamiCalls = 3 }
+        $down = New-Phase @{ name = 'api-down'; whoamiCalls = 2; api = 'down' }
+        $d = New-Fixture @($pre1, $blip, $pre2, $down, (New-Phase))
+        $r = Invoke-Harness $d $afterArgs (Knobs 30 30) 120
+        $calls = @(Get-Calls $d)
+        Assert-Completed 'S38' $r $calls
+        Assert 'S38-1: exit 0 and PASS reboot-0' ($r.code -eq 0 -and @(Lines-Starting $r 'PASS reboot-0: ').Count -eq 1) (Format-Result $r)
+        $fixed = @(Get-FixedZeros $r)
+        $z = Get-ZeroSummary $r
+        Assert 'S38-2: two "zero point fixed at" lines, the second later than the first, and the summary reports the second' ($fixed.Count -eq 2 -and [string]::CompareOrdinal($fixed[1], $fixed[0]) -gt 0 -and $null -ne $z -and (Test-Same $z.utc $fixed[1]) -and (Test-Same $z.why 'last observation of the old boot')) "fixed=[$($fixed -join ', ')] :: $(Format-Result $r)"
+        $stay = @(Get-StayZeros $r)
+        Assert 'S38-3: one "seen again (1 of 3)" line staying at the first fixed zero point, one "seen 3 times in a row" note, two armed lines; every phase observed' ($stay.Count -eq 1 -and $fixed.Count -ge 1 -and (Test-Same $stay[0] $fixed[0]) -and @(Get-RearmNotes $r).Count -eq 1 -and @(Get-ArmedLines $r).Count -eq 2 -and @(0..4 | Where-Object { (Count-Calls $calls 'whoami' $_) -ge 1 }).Count -eq 5) "stay=[$($stay -join ', ')] notes=$(@(Get-RearmNotes $r).Count) armed=$(@(Get-ArmedLines $r).Count) :: $(Format-Result $r)"
+        # 마지막 기준점 = 둘째 구간의 세 번째 관측의 시작: UTC(둘째 구간 whoami #2) < 기준점 <= UTC(둘째 구간 whoami #3)
+        $t0u = Get-FakeT0Utc $d
+        $w = @(Get-CallsOf $calls 'whoami' 2)
+        $zu = if ($null -ne $z) { Parse-ZeroUtc $z.utc } else { $null }
+        $ok4 = $null -ne $t0u -and $null -ne $zu -and $w.Count -eq 3 -and $zu -gt (Get-CallUtc $t0u $w[1]) -and $zu -le (Get-CallUtc $t0u $w[2])
+        Assert 'S38-4: the final zero point is the start of the third old-boot observation after the failure (between the 2nd and 3rd whoami of that stretch on the fake clock)' $ok4 "zero=$(if ($null -ne $z) { $z.utc }) w=[$((@($w | ForEach-Object { (Get-CallUtc $t0u $_).ToString('HH:mm:ss.fff', [Globalization.CultureInfo]::InvariantCulture) })) -join ', ')]"
+    }
+    # (가) J1: 재부팅 뒤의 낡은 bootID — 옛 부팅(armed) → 불통 → 옛 bootID 두 번(API는 돌아왔지만 kubelet이 아직 새 status를 올리지 않음)
+    #   → 새 bootID · 복구. 연속 세 번이 아니므로 기준점은 불통 전의 마지막 옛 부팅 관측에 머물고, PASS 줄의 경과 초가 불통 구간을 포함한다.
+    #   수정 4까지의 규칙(옛 부팅마다 기준점을 옮김)이면 기준점이 낡은 관측으로 옮겨져 경과 초가 작게 나온다(RED — 경과 초의 하한으로 단언).
+    #   불통 단계의 whoami 2회는 armed였던 첫 불통 관측의 호출 + 재시도(A — 둘 다 실패해 굳는다)다.
+    Test-Case 'S40' 'J1: stale old bootID right after the reboot (seen twice) does not move the zero point' {
+        $pre = New-PrePhase @{ name = 'old-boot'; whoamiCalls = 2 }
+        $down = New-Phase @{ name = 'api-down'; whoamiCalls = 2; api = 'down' }
+        $stale = New-PrePhase @{ name = 'stale-old-bootid'; whoamiCalls = 2 }
+        $d = New-Fixture @($pre, $down, $stale, (New-Phase))
+        $r = Invoke-Harness $d $afterArgs (Knobs 40 40) 120
+        $calls = @(Get-Calls $d)
+        Assert-Completed 'S40' $r $calls
+        $passIds = @(0..4 | Where-Object { @(Lines-Starting $r "PASS reboot-${_}:").Count -eq 1 })
+        Assert 'S40-1: exit 0 and PASS reboot-0..4' ($r.code -eq 0 -and $passIds.Count -eq 5) "pass=[$($passIds -join ',')] $(Format-Result $r)"
+        $fixed = @(Get-FixedZeros $r)
+        $z = Get-ZeroSummary $r
+        $stay = @(Get-StayZeros $r)
+        Assert 'S40-2: the zero point is fixed once (at the outage) and stays there: one "seen again (1 of 3)" line at that zero point, no "3 times in a row" note, one armed line, summary = that zero point' ($fixed.Count -eq 1 -and $stay.Count -eq 1 -and (Test-Same $stay[0] $fixed[0]) -and @(Get-RearmNotes $r).Count -eq 0 -and @(Get-ArmedLines $r).Count -eq 1 -and $null -ne $z -and (Test-Same $z.utc $fixed[0]) -and (Test-Same $z.why 'last observation of the old boot')) "fixed=[$($fixed -join ', ')] stay=[$($stay -join ', ')] notes=$(@(Get-RearmNotes $r).Count) armed=$(@(Get-ArmedLines $r).Count) :: $(Format-Result $r)"
+        # 기준점 = 불통 전의 마지막 옛 부팅 관측(첫 구간 whoami #1 < 기준점 <= 첫 구간 whoami #2, 그리고 낡은 관측보다 앞)
+        $t0u = Get-FakeT0Utc $d
+        $w0 = @(Get-CallsOf $calls 'whoami' 0)
+        $wStale = @(Get-CallsOf $calls 'whoami' 2)
+        $zu = if ($null -ne $z) { Parse-ZeroUtc $z.utc } else { $null }
+        $ok3 = $null -ne $t0u -and $null -ne $zu -and $w0.Count -eq 2 -and $wStale.Count -ge 1 -and $zu -gt (Get-CallUtc $t0u $w0[0]) -and $zu -le (Get-CallUtc $t0u $w0[1]) -and $zu -lt (Get-CallUtc $t0u $wStale[0])
+        Assert 'S40-3: the zero point is the last old-boot observation before the outage, not a stale one after it (fake clock)' $ok3 "zero=$(if ($null -ne $z) { $z.utc }) :: $(Format-Calls $calls)"
+        # PASS 줄의 경과 초 >= (가짜 시계) 복구를 충족한 get nodes - 불통 전 마지막 옛 부팅 whoami  — 불통·낡은 구간을 포함한다
+        $m0 = Get-MetSec $r 'reboot-0'
+        $nodeCalls = @(Get-CallsOf $calls 'nodes')
+        $bound = if ($nodeCalls.Count -gt 0 -and $w0.Count -gt 0) { [Math]::Floor([double]$nodeCalls[$nodeCalls.Count - 1]['elapsed'] - [double]$w0[$w0.Count - 1]['elapsed']) } else { $null }
+        Assert 'S40-4: reboot-0 "met at" (from the zero point) includes the outage and the stale observations (>= the fake-clock gap from the last pre-outage old-boot observation)' ($null -ne $m0 -and $null -ne $bound -and $m0 -ge $bound) "metAt=$m0 bound=$bound :: $(Format-Result $r)"
+    }
+    # (다) J1: 일시 오류(armed라 한 번 더 하고 그것도 실패 — whoami 2회) 뒤 옛 부팅이 두 번만 보이고 곧 재부팅 → 기준점은 오류 전 관측에 머문다
+    #   (엄격한 쪽) · 복구가 마감 안이면 PASS. 불통의 첫 관측은 연속 2라 한 번 더 하고 그것도 실패한다(불통 단계 whoami 2회).
+    Test-Case 'S41' 'J1: after a transient failure the old boot is seen only twice, then the reboot starts -> the zero point stays before the failure' {
+        $pre1 = New-PrePhase @{ name = 'old-boot-1'; whoamiCalls = 2 }
+        $blip = New-Phase @{ name = 'call-failure'; whoamiCalls = 2; api = 'down' }
+        $pre2 = New-PrePhase @{ name = 'old-boot-2'; whoamiCalls = 2 }
+        $down = New-Phase @{ name = 'api-down'; whoamiCalls = 2; api = 'down' }
+        $d = New-Fixture @($pre1, $blip, $pre2, $down, (New-Phase))
+        $r = Invoke-Harness $d $afterArgs (Knobs 40 40) 120
+        $calls = @(Get-Calls $d)
+        Assert-Completed 'S41' $r $calls
+        $passIds = @(0..4 | Where-Object { @(Lines-Starting $r "PASS reboot-${_}:").Count -eq 1 })
+        Assert 'S41-1: exit 0 and PASS reboot-0..4 (recovery within the deadline counted from before the failure)' ($r.code -eq 0 -and $passIds.Count -eq 5) "pass=[$($passIds -join ',')] $(Format-Result $r)"
+        $fixed = @(Get-FixedZeros $r)
+        $z = Get-ZeroSummary $r
+        $stay = @(Get-StayZeros $r)
+        Assert 'S41-2: fixed once at the failure and never moved again: one "seen again (1 of 3)" line, no "3 times in a row" note, one armed line, summary = that zero point' ($fixed.Count -eq 1 -and $stay.Count -eq 1 -and (Test-Same $stay[0] $fixed[0]) -and @(Get-RearmNotes $r).Count -eq 0 -and @(Get-ArmedLines $r).Count -eq 1 -and $null -ne $z -and (Test-Same $z.utc $fixed[0])) "fixed=[$($fixed -join ', ')] stay=[$($stay -join ', ')] :: $(Format-Result $r)"
+        $t0u = Get-FakeT0Utc $d
+        $w0 = @(Get-CallsOf $calls 'whoami' 0)
+        $w2 = @(Get-CallsOf $calls 'whoami' 2)
+        $zu = if ($null -ne $z) { Parse-ZeroUtc $z.utc } else { $null }
+        $ok3 = $null -ne $t0u -and $null -ne $zu -and $w0.Count -eq 2 -and $w2.Count -ge 1 -and $zu -gt (Get-CallUtc $t0u $w0[0]) -and $zu -le (Get-CallUtc $t0u $w0[1]) -and $zu -lt (Get-CallUtc $t0u $w2[0])
+        Assert 'S41-3: the zero point is the last old-boot observation before the failure (fake clock)' $ok3 "zero=$(if ($null -ne $z) { $z.utc }) :: $(Format-Calls $calls)"
+        $m0 = Get-MetSec $r 'reboot-0'
+        $nodeCalls = @(Get-CallsOf $calls 'nodes')
+        $bound = if ($nodeCalls.Count -gt 0 -and $w0.Count -gt 0) { [Math]::Floor([double]$nodeCalls[$nodeCalls.Count - 1]['elapsed'] - [double]$w0[$w0.Count - 1]['elapsed']) } else { $null }
+        Assert 'S41-4: reboot-0 "met at" includes the failure, the two old-boot observations and the outage (>= the fake-clock gap from the last observation before the failure)' ($null -ne $m0 -and $null -ne $bound -and $m0 -ge $bound) "metAt=$m0 bound=$bound :: $(Format-Result $r)"
+    }
+    # ---------- A(수정 지시서 6): 직전 관측이 옛 부팅이었으면 도달 실패한 호출을 그 자리에서 한 번 더 ----------
+    #   실제 경로의 호출은 가끔 실패한다(여섯–여덟 번에 한 번). 실패마다 기준점이 굳으면 대기 시간의 절반 이상이 굳은 상태가 되고, 그때 재부팅이
+    #   시작되면 모든 경과 초에 (재부팅 시작 - 굳은 기준점)이 더해진다(재리뷰 3 발견 A). 가짜의 whoamiFailAt / nodesFailAt로 호출 하나만 실패시킨다.
+    # (A-1) armed → 신원 호출 첫 번 실패(재시도 성공) → 다음 관측의 노드 조회 첫 번 실패(재시도 성공) → 불통(armed였던 첫 불통 관측은 재시도까지 실패) →
+    #   복구 → PASS. 기준점은 불통 전까지 굳지 않고, 마지막에는 "다시 한 노드 조회"의 시작이다 — 경과 초가 두 실패를 포함하지 않는다(가짜 시계로 단언).
+    #   수정 전에는 첫 실패에서 기준점이 굳는다(RED). E-1도 여기서 본다: met 줄 · PASS 줄의 'observation UTC <시작> .. <끝>'.
+    Test-Case 'S42' 'A-1: armed; whoami fails once and the immediate retry answers, then get nodes the same -> the zero point does not fix before the outage; reboot -> PASS' {
+        $old = New-PrePhase @{ name = 'old-boot'; whoamiCalls = 2 }
+        $wBlip = New-PrePhase @{ name = 'whoami-blip'; whoamiCalls = 2; whoamiFailAt = @(1) }
+        $nBlip = New-PrePhase @{ name = 'nodes-blip'; whoamiCalls = 1; nodesFailAt = @(1) }
+        $down = New-Phase @{ name = 'api-down'; whoamiCalls = 3; api = 'down' }
+        $d = New-Fixture @($old, $wBlip, $nBlip, $down, (New-Phase))
+        $r = Invoke-Harness $d $afterArgs (Knobs 40 40) 120
+        $calls = @(Get-Calls $d)
+        Assert-Completed 'S42' $r $calls
+        $passIds = @(0..4 | Where-Object { @(Lines-Starting $r "PASS reboot-${_}:").Count -eq 1 })
+        Assert 'S42-1: exit 0 and PASS reboot-0..4' ($r.code -eq 0 -and $passIds.Count -eq 5) "pass=[$($passIds -join ',')] $(Format-Result $r)"
+        $fixed = @(Get-FixedZeros $r)
+        $z = Get-ZeroSummary $r
+        Assert 'S42-2: the zero point fixed only once, at the outage: no "seen again" line, no "3 times in a row" note, one armed line, and the summary repeats it' ($fixed.Count -eq 1 -and @(Get-StayZeros $r).Count -eq 0 -and @(Get-RearmNotes $r).Count -eq 0 -and @(Get-ArmedLines $r).Count -eq 1 -and $null -ne $z -and (Test-Same $z.utc $fixed[0]) -and (Test-Same $z.why 'last observation of the old boot')) "fixed=[$($fixed -join ', ')] :: $(Format-Result $r)"
+        $wb = @(Get-CallsOf $calls 'whoami' 1)
+        $nb = @(Get-CallsOf $calls 'nodes' 2)
+        $okCalls = $wb.Count -eq 2 -and (Test-Same "$($wb[0]['served'])" 'transport-fail') -and (Count-Calls $calls 'nodes' 1) -eq 1 -and (Count-Calls $calls 'whoami' 2) -eq 1 -and $nb.Count -eq 2 -and (Test-Same "$($nb[0]['served'])" 'transport-fail')
+        Assert 'S42-3: each failed call was retried once, at once, inside the same observation (whoami-blip: 2 whoami + 1 get nodes; nodes-blip: 1 whoami + 2 get nodes)' $okCalls (Format-Calls $calls)
+        $t0u = Get-FakeT0Utc $d
+        $zu = if ($null -ne $z) { Parse-ZeroUtc $z.utc } else { $null }
+        $okZero = $null -ne $t0u -and $null -ne $zu -and $nb.Count -eq 2 -and $zu -gt (Get-CallUtc $t0u $nb[0]) -and $zu -le (Get-CallUtc $t0u $nb[1])
+        Assert 'S42-4: the zero point is the start of the retried get nodes (later than its failed first attempt), so the elapsed seconds include neither failure (fake clock)' $okZero "zero=$(if ($null -ne $z) { $z.utc }) :: $(Format-Calls $calls)"
+        Assert 'S42-5: one "retried:" progress line for the three retried observations of the armed stretch (not one per retry), and the waiting line after the outage shows "retried:" first in the reboot-0 detail' (@(Get-RetryLines $r).Count -eq 1 -and @(Get-RetriedWaits $r).Count -ge 1) "retried=$(@(Get-RetryLines $r).Count) retriedWaits=$(@(Get-RetriedWaits $r).Count) :: $(Format-Result $r)"
+        # E-1: met 줄과 PASS 줄의 관측 UTC(밀리초) — 형식 · 시작 <= 끝 · 두 줄이 같은 관측 · reboot-0을 충족한 get nodes 호출이 그 사이(가짜 시계)
+        $badE = @()
+        foreach ($i in 0..4) {
+            $pl = @(Lines-Starting $r "PASS reboot-${i}: ")
+            $ml = @(@(Get-Lines $r) | Where-Object { [regex]::IsMatch($_, '\A  \[\d+s\] reboot-' + $i + ' met -- observation UTC ') })
+            $pu = if ($pl.Count -eq 1) { Get-ObsUtc $pl[0] } else { $null }
+            $mu = if ($ml.Count -eq 1) { Get-ObsUtc $ml[0] } else { $null }
+            if ($null -eq $pu -or $null -eq $mu -or $pu.start -gt $pu.end -or $pu.start -ne $mu.start -or $pu.end -ne $mu.end) { $badE += "reboot-$i" }
+        }
+        Assert 'S42-6 (E-1): every met line and PASS line (reboot-0..4) carries "observation UTC <start> .. <end>" in ms, start <= end, the same observation on both lines' ($badE.Count -eq 0) "bad=[$($badE -join ', ')] :: $(Format-Result $r)"
+        $p0 = @(Lines-Starting $r 'PASS reboot-0: ')
+        $o0 = if ($p0.Count -eq 1) { Get-ObsUtc $p0[0] } else { $null }
+        $metNodes = @(Get-CallsOf $calls 'nodes' 4)
+        $nu = if ($metNodes.Count -ge 1 -and $null -ne $t0u) { Get-CallUtc $t0u $metNodes[$metNodes.Count - 1] } else { $null }
+        $inv = [Globalization.CultureInfo]::InvariantCulture
+        Assert 'S42-7 (E-1): the get nodes call that met reboot-0 lies inside that observation''s UTC range (fake clock)' ($null -ne $o0 -and $null -ne $nu -and $o0.start -lt $nu -and $nu -lt $o0.end) "obs=$(if ($null -ne $o0) { "$($o0.start.ToString('HH:mm:ss.fff', $inv)) .. $($o0.end.ToString('HH:mm:ss.fff', $inv))" }) nodes=$(if ($null -ne $nu) { $nu.ToString('HH:mm:ss.fff', $inv) })"
+    }
+    # (A-2) armed → 호출과 재시도가 둘 다 실패 → 굳는다 → 옛 부팅 1번째 관측(연속 0이라 재시도 대상이 아니다 — 실패 없음) → 2번째 관측의 신원 호출 첫 번
+    #   실패(재시도 성공) → 3번째 관측의 노드 조회 첫 번 실패(재시도 성공) → 연속 횟수가 끊기지 않아 세 번째에서 다시 armed(기준점 = 다시 한 노드 조회의
+    #   시작) → 재부팅 → PASS. 수정 전에는 실패마다 연속 횟수가 0으로 돌아가 다시 armed가 되지 않는다(RED).
+    Test-Case 'S43' 'A-2: fixed after a call and its retry both fail; the next old-boot observations each lose one call but the retry answers -> the streak survives and moves the zero point again at the third' {
+        $old = New-PrePhase @{ name = 'old-boot'; whoamiCalls = 1 }
+        $dbl = New-Phase @{ name = 'call-and-retry-fail'; whoamiCalls = 2; api = 'down' }
+        $o1 = New-PrePhase @{ name = 'old-1'; whoamiCalls = 1 }
+        $o2 = New-PrePhase @{ name = 'old-2-whoami-blip'; whoamiCalls = 2; whoamiFailAt = @(1) }
+        $o3 = New-PrePhase @{ name = 'old-3-nodes-blip'; whoamiCalls = 1; nodesFailAt = @(1) }
+        $down = New-Phase @{ name = 'api-down'; whoamiCalls = 3; api = 'down' }
+        $d = New-Fixture @($old, $dbl, $o1, $o2, $o3, $down, (New-Phase))
+        $r = Invoke-Harness $d $afterArgs (Knobs 40 40) 120
+        $calls = @(Get-Calls $d)
+        Assert-Completed 'S43' $r $calls
+        Assert 'S43-1: exit 0 and PASS reboot-0' ($r.code -eq 0 -and @(Lines-Starting $r 'PASS reboot-0: ').Count -eq 1) (Format-Result $r)
+        $fixed = @(Get-FixedZeros $r)
+        $z = Get-ZeroSummary $r
+        $stay = @(Get-StayZeros $r)
+        Assert 'S43-2: fixed twice (the double failure, then the outage); one "seen again (1 of 3)" line at the first; one "3 times in a row" note; two armed lines; summary = the second' ($fixed.Count -eq 2 -and $stay.Count -eq 1 -and (Test-Same $stay[0] $fixed[0]) -and @(Get-RearmNotes $r).Count -eq 1 -and @(Get-ArmedLines $r).Count -eq 2 -and $null -ne $z -and (Test-Same $z.utc $fixed[1])) "fixed=[$($fixed -join ', ')] stay=[$($stay -join ', ')] notes=$(@(Get-RearmNotes $r).Count) armed=$(@(Get-ArmedLines $r).Count) :: $(Format-Result $r)"
+        $okCalls = (Count-Calls $calls 'whoami' 1) -eq 2 -and (Count-Calls $calls 'nodes' 1) -eq 0 -and (Count-Calls $calls 'whoami' 2) -eq 1 -and (Count-Calls $calls 'nodes' 2) -eq 1 -and (Count-Calls $calls 'whoami' 3) -eq 2 -and (Count-Calls $calls 'nodes' 3) -eq 1 -and (Count-Calls $calls 'whoami' 4) -eq 1 -and (Count-Calls $calls 'nodes' 4) -eq 2
+        Assert 'S43-3: retried exactly where the previous observation saw the old boot (double failure: 2 whoami; old-1: no retry; old-2: 2 whoami + 1 get nodes; old-3: 1 whoami + 2 get nodes)' $okCalls (Format-Calls $calls)
+        $t0u = Get-FakeT0Utc $d
+        $n4 = @(Get-CallsOf $calls 'nodes' 4)
+        $zu = if ($null -ne $z) { Parse-ZeroUtc $z.utc } else { $null }
+        $okZero = $null -ne $t0u -and $null -ne $zu -and $n4.Count -eq 2 -and $zu -gt (Get-CallUtc $t0u $n4[0]) -and $zu -le (Get-CallUtc $t0u $n4[1])
+        Assert 'S43-4: the zero point moved again at the third old-boot observation, to the start of its retried get nodes (fake clock)' $okZero "zero=$(if ($null -ne $z) { $z.utc }) :: $(Format-Calls $calls)"
+        Assert 'S43-5: "retried:" lines, one per stretch: armed (the double failure), fixed (two retried observations), armed again (the outage) = 3 lines for 4 retried observations' (@(Get-RetryLines $r).Count -eq 3) "retried=$(@(Get-RetryLines $r).Count) :: $(Format-Result $r)"
+    }
+    # (A-3) 굳은 상태 · 연속 횟수 0에서는 재시도하지 않는다(재부팅으로 내려가 있는 구간으로 본다 — 관측이 길어지면 복구를 늦게 본다).
+    #   get nodes가 계속 도달 실패하는 단계에서 관측 4번: armed였던 첫 관측만 다시 한다 → 그 단계의 whoami 4회 · get nodes 5회(호출 수로 단언).
+    Test-Case 'S44' 'A-3: no retry while the zero point is fixed and the old-boot streak is 0 (call counts)' {
+        $old = New-PrePhase @{ name = 'old-boot'; whoamiCalls = 2 }
+        $nd = New-PrePhase @{ name = 'nodes-unreachable'; whoamiCalls = 4; nodesFailAt = @(1..20) }
+        $d = New-Fixture @($old, $nd, (New-Phase))
+        $r = Invoke-Harness $d $afterArgs (Knobs 40 40) 120
+        $calls = @(Get-Calls $d)
+        Assert-Completed 'S44' $r $calls
+        Assert 'S44-1: exit 0 and PASS reboot-0' ($r.code -eq 0 -and @(Lines-Starting $r 'PASS reboot-0: ').Count -eq 1) (Format-Result $r)
+        $w = Count-Calls $calls 'whoami' 1
+        $n = Count-Calls $calls 'nodes' 1
+        Assert 'S44-2: 4 observations while get nodes kept failing, only the first (armed) one retried: 4 whoami and 5 get nodes calls in that phase' ($w -eq 4 -and $n -eq 5) "whoami=$w nodes=$n :: $(Format-Calls $calls)"
+        Assert 'S44-3: the zero point fixed once (at that first failed observation) and one "retried:" line' (@(Get-FixedZeros $r).Count -eq 1 -and @(Get-RetryLines $r).Count -eq 1) (Format-Result $r)
+    }
+    # (A-4) 재시도가 401 · 다른 신원을 만나도 신원 규칙은 그대로다(401 연속 두 번 = fatal · 다른 신원 = 즉시 fatal) — 401 자체는 판정 결과라 다시 하지 않는다.
+    #   재시도한 관측은 401 셈에서 관측 하나다(첫 시도의 도달 실패가 셈을 0으로 돌리지도, 재시도의 401을 두 번 세지도 않는다).
+    Test-Case 'S45' 'A-4: a retry that meets 401 or another identity keeps the identity rules; a 401 itself is never retried' {
+        $old = New-PrePhase @{ name = 'old-boot'; whoamiCalls = 2 }
+        # (a) armed → whoami 도달 실패 → 재시도 401(1 of 2) → 다음 관측(굳음 · 연속 0 — 재시도 없음) 401 → fatal(2 of 2): 그 단계 whoami 정확히 3회
+        $d = New-Fixture @($old, (New-Phase @{ name = 'unreachable-then-401'; whoamiFailAt = @(1); whoamiUnauthorized = $true }))
+        $r = Invoke-Harness $d $afterArgs (Knobs 40 40) 90
+        $calls = @(Get-Calls $d)
+        Assert-Completed 'S45a' $r $calls
+        $f0 = @(Lines-Starting $r 'FAIL reboot-0: ')
+        $retried401 = @(@(Get-RetriedWaits $r) | Where-Object { Has-Text $_ '401 (1 of 2 before fatal)' })
+        Assert 'S45a-1: exit 1; the retried observation met 401 and counted once ("retried: ... 401 (1 of 2" in its waiting line); the next observation''s 401 is fatal "401 (2 of 2)"; whoami calls in that phase exactly 3, no get nodes' ($r.code -eq 1 -and $f0.Count -eq 1 -and (Has-Text $f0[0] '401 (2 of 2)') -and $retried401.Count -eq 1 -and (Count-Calls $calls 'whoami' 1) -eq 3 -and (Count-Calls $calls 'nodes' 1) -eq 0) "$(Format-Result $r) :: $(Format-Calls $calls)"
+        Assert-NotAttempted 'S45a' $r
+        # (b) armed → 첫 시도가 401 → 다시 하지 않는다 → 다음 관측 401 → fatal: 그 단계 whoami 정확히 2회 · 'retried:' 줄 없음
+        $d = New-Fixture @($old, (New-Phase @{ name = 'unauthorized'; whoamiUnauthorized = $true }))
+        $r = Invoke-Harness $d $afterArgs (Knobs 40 40) 90
+        $calls = @(Get-Calls $d)
+        Assert-Completed 'S45b' $r $calls
+        $f0 = @(Lines-Starting $r 'FAIL reboot-0: ')
+        Assert 'S45b-1: exit 1, fatal "401 (2 of 2)" at the second 401 observation; whoami calls in that phase exactly 2 (a 401 is not retried) and no "retried:" line' ($r.code -eq 1 -and $f0.Count -eq 1 -and (Has-Text $f0[0] '401 (2 of 2)') -and (Count-Calls $calls 'whoami' 1) -eq 2 -and @(Get-RetryLines $r).Count -eq 0) "$(Format-Result $r) :: $(Format-Calls $calls)"
+        # (c) armed → whoami 도달 실패 → 재시도가 다른 신원 → 그 관측에서 바로 fatal: 그 단계 whoami 2회 · get nodes 0회
+        $d = New-Fixture @($old, (New-Phase @{ name = 'unreachable-then-admin'; whoamiFailAt = @(1); user = 'system:admin' }))
+        $r = Invoke-Harness $d $afterArgs (Knobs 40 40) 90
+        $calls = @(Get-Calls $d)
+        Assert-Completed 'S45c' $r $calls
+        $f0 = @(Lines-Starting $r 'FAIL reboot-0: ')
+        Assert 'S45c-1: exit 1; the retry met another identity and that observation was fatal at once ("retried: context user is ''system:admin''" ... "refusing to run with non-agent-view credentials"); whoami calls in that phase exactly 2, no get nodes' ($r.code -eq 1 -and $f0.Count -eq 1 -and (Has-Text $f0[0] "retried: context user is 'system:admin'") -and (Has-Text $f0[0] 'refusing to run with non-agent-view credentials') -and (Count-Calls $calls 'whoami' 1) -eq 2 -and (Count-Calls $calls 'nodes' 1) -eq 0) "$(Format-Result $r) :: $(Format-Calls $calls)"
+        Assert-NotAttempted 'S45c' $r
+    }
+    # (A-5 · 지시서 밖 판정) 재시도한 관측은 다시 한 호출을 시작한 시각을 그 관측의 시작으로 본다(옛 부팅이면 기준점 · 충족이면 마감 판정 · UTC 표기).
+    #   마감 전에 시작한 관측의 첫 get nodes가 15 s 걸려 마감(20 s) 뒤에 실패하고, 마감 뒤에 다시 한 호출이 새 bootID · Ready=True를 보면 late(FAIL)다 —
+    #   재시도가 마감 뒤에 모은 증거로 PASS하지 않는다(재시도가 없던 때는 그 관측이 마감을 넘겨 끝난 미충족 = FAIL이었다). 관측 시작(첫 시도 앞)으로
+    #   판정하면 PASS가 된다(변이로 확인).
+    Test-Case 'S53' 'A (added): a retry that starts after the deadline and then meets reboot-0 is late, not a pass -- the retried call is the observation start' {
+        $old = New-PrePhase @{ name = 'old-boot'; whoamiCalls = 1 }
+        $down = New-Phase @{ name = 'api-down'; whoamiCalls = 2; api = 'down' }
+        $stale = New-PrePhase @{ name = 'stale-old-bootid'; whoamiCalls = 1 }
+        $slow = New-Phase @{ name = 'new-boot-first-nodes-call-fails-slowly'; nodesFailAt = @(1); transportFailDelayMs = 15000 }
+        $d = New-Fixture @($old, $down, $stale, $slow)
+        $r = Invoke-Harness $d $afterArgs (Knobs 20 20) 90
+        $calls = @(Get-Calls $d)
+        Assert-Completed 'S53' $r $calls
+        $f0 = @(Lines-Starting $r 'FAIL reboot-0: ')
+        Assert 'S53-1: exit 1 and "FAIL reboot-0" met late (deadline 20s) by the retried observation ("retried:" detail)' ($r.code -eq 1 -and $f0.Count -eq 1 -and (Has-Text $f0[0] 'met late at') -and (Has-Text $f0[0] 'after the deadline 20s') -and (Has-Text $f0[0] 'retried: ')) (Format-Result $r)
+        $t0u = Get-FakeT0Utc $d
+        $fixed = @(Get-FixedZeros $r)
+        $zu = if ($fixed.Count -eq 1) { Parse-ZeroUtc $fixed[0] } else { $null }
+        $n3 = @(Get-CallsOf $calls 'nodes' 3)
+        $okPre = $null -ne $t0u -and $null -ne $zu -and $n3.Count -eq 2 -and ((Get-CallUtc $t0u $n3[0]) - $zu).TotalSeconds -le 20 -and ((Get-CallUtc $t0u $n3[1]) - $zu).TotalSeconds -gt 20
+        Assert 'S53-2: precondition on the fake clock -- the slow first get nodes started before the deadline (<= 20s after the zero point) and the retry after it (> 20s)' $okPre "zero=$(if ($fixed.Count) { $fixed[0] }) :: $(Format-Calls $calls)"
+        $fu = if ($f0.Count -eq 1) { Get-ObsUtc $f0[0] } else { $null }
+        Assert 'S53-3 (E): the late FAIL line''s observation UTC starts at the retried call (after the slow first attempt failed, before the fake logged the retry)' ($null -ne $fu -and $null -ne $t0u -and $n3.Count -eq 2 -and $fu.start -lt (Get-CallUtc $t0u $n3[1]) -and $fu.start -gt (Get-CallUtc $t0u $n3[0]).AddSeconds(15)) (Format-Result $r)
+        Assert-NotAttempted 'S53' $r
+    }
+
+    # ---------- B(수정 지시서 6): 굳은 채 재부팅 전에 마감이 지난 경우를 FAIL 문구로 구분한다 ----------
+    # (B-1) armed → 호출과 재시도가 둘 다 실패(굳음) → 옛 부팅(연속 1) → 다시 둘 다 실패(연속 0) → 옛 부팅이 느리게(get nodes 15 s) 계속 —
+    #   마지막 관측이 옛 부팅인 채 마감(25 s)을 넘긴다(앞 단계는 부하에서도 마감 전에 끝나고, 느린 관측 두 번이면 연속 세 번 전에 반드시 마감을 넘는다).
+    #   판정(FAIL)과 종료 코드는 그대로이고 문구만 덧붙는다. 수정 전 하네스에는 그 문구가 없다(RED).
+    Test-Case 'S46' 'B-1: the zero point is fixed and the old boot shows up again but never 3 times in a row; the deadline runs out before any reboot -> FAIL says no reboot was observed' {
+        $old = New-PrePhase @{ name = 'old-boot'; whoamiCalls = 1 }
+        $dbl1 = New-Phase @{ name = 'call-and-retry-fail-1'; whoamiCalls = 2; api = 'down' }
+        $o1 = New-PrePhase @{ name = 'old-1'; whoamiCalls = 1 }
+        $dbl2 = New-Phase @{ name = 'call-and-retry-fail-2'; whoamiCalls = 2; api = 'down' }
+        $slow = New-PrePhase @{ name = 'old-slow'; nodesDelayMs = 15000 }
+        $d = New-Fixture @($old, $dbl1, $o1, $dbl2, $slow)
+        $r = Invoke-Harness $d $afterArgs (Knobs 25 25) 120
+        $calls = @(Get-Calls $d)
+        Assert-Completed 'S46' $r $calls
+        $f0 = @(Lines-Starting $r 'FAIL reboot-0: ')
+        $fixed = @(Get-FixedZeros $r)
+        Assert 'S46-1: exit 1 and "FAIL reboot-0" expired (not met within 25s) on an old-boot observation (bootID unchanged)' ($r.code -eq 1 -and $f0.Count -eq 1 -and (Has-Text $f0[0] 'not met within 25s') -and (Has-Text $f0[0] 'node A has not rebooted yet (bootID unchanged)')) (Format-Result $r)
+        Assert 'S46-2: the FAIL line adds "zero point fixed at <the fixed zero point> (last observation of the old boot); the old boot kept being seen after that but never 3 times in a row -- no reboot was observed; restart the harness"' ($f0.Count -eq 1 -and $fixed.Count -eq 1 -and (Has-Text $f0[0] "zero point fixed at $($fixed[0]) (last observation of the old boot); $bText")) (Format-Result $r)
+        Assert-NotAttempted 'S46' $r
+        $newServed = @(@(Get-CallsOf $calls 'nodes') | Where-Object { Has-Text $_['served'] $newBoot })
+        Assert 'S46-3: never re-armed and never saw a new bootID: one fixed line, >= 2 "seen again" lines (one per old-boot stretch), no "3 times in a row" note, one armed line' ($fixed.Count -eq 1 -and @(Get-StayZeros $r).Count -ge 2 -and @(Get-RearmNotes $r).Count -eq 0 -and @(Get-ArmedLines $r).Count -eq 1 -and $newServed.Count -eq 0) "stay=$(@(Get-StayZeros $r).Count) :: $(Format-Result $r)"
+        $fu = if ($f0.Count -eq 1) { Get-ObsUtc $f0[0] } else { $null }
+        Assert 'S46-4 (E): the expired FAIL line carries the last observation UTC in ms (start <= end, at least the 15s get nodes apart)' ($null -ne $fu -and ($fu.end - $fu.start).TotalSeconds -ge 15) (Format-Result $r)
+    }
+
+    # ---------- C(수정 지시서 6): "옛 부팅이 살아 있다"는 Ready=True일 때만 ----------
+    # (C-1) armed → 불통 → 옛 bootID + Ready=Unknown이 계속(재부팅 뒤 kubelet이 끝내 status를 못 올리는 고장) → 옛 부팅이 아니므로 다시 armed가 되지 않고
+    #   reboot-0은 마감(30 s)에 만료된다 — arm 제한(50 s)까지 가지 않는다. 수정 전에는 세 번째 관측에서 다시 armed → arm 제한에서 끝난다(RED).
+    Test-Case 'S47' 'C-1: after the outage node A keeps reporting the baseline bootID with Ready=Unknown -> not the old boot: no re-arm; reboot-0 expires at the deadline, not at the arm timeout' {
+        $old = New-PrePhase @{ name = 'old-boot'; whoamiCalls = 1 }
+        $down = New-Phase @{ name = 'api-down'; whoamiCalls = 2; api = 'down' }
+        $stale = New-PrePhase @{ name = 'stale-ready-unknown'; nodes = @(@{ name = 'jt-node-a'; bootID = $oldBoot; ready = 'Unknown'; heartbeat = $preHeartbeat }) }
+        $d = New-Fixture @($old, $down, $stale)
+        $r = Invoke-Harness $d $afterArgs (Knobs 30 30 1 50) 120
+        $calls = @(Get-Calls $d)
+        Assert-Completed 'S47' $r $calls
+        $f0 = @(Lines-Starting $r 'FAIL reboot-0: ')
+        Assert 'S47-1: exit 1 and "FAIL reboot-0" not met within 30s with the reason "ready=Unknown with the baseline bootID" (not "no reboot observed")' ($r.code -eq 1 -and $f0.Count -eq 1 -and (Has-Text $f0[0] 'not met within 30s') -and (Has-Text $f0[0] 'node A ready=Unknown with the baseline bootID') -and -not (Has-Text $f0[0] 'no reboot observed')) (Format-Result $r)
+        Assert 'S47-2: >= 3 such observations, none counted as the old boot: one armed line, one fixed line, no "seen again" line, no "3 times in a row" note' ((Count-Calls $calls 'nodes' 2) -ge 3 -and @(Get-ArmedLines $r).Count -eq 1 -and @(Get-FixedZeros $r).Count -eq 1 -and @(Get-StayZeros $r).Count -eq 0 -and @(Get-RearmNotes $r).Count -eq 0) "staleNodes=$(Count-Calls $calls 'nodes' 2) :: $(Format-Result $r)"
+        $unkWaits = @(@(Get-Lines $r) | Where-Object { (Has-Text $_ 'waiting: reboot-0(') -and (Has-Text $_ 'node A ready=Unknown with the baseline bootID') })
+        Assert 'S47-3: the waiting lines keep that reason inside the 120-char clip, and the FAIL line has no "no reboot was observed" text (its last observation was not the old boot)' ($unkWaits.Count -ge 2 -and $f0.Count -eq 1 -and -not (Has-Text $f0[0] 'no reboot was observed')) (Format-Result $r)
+        Assert-NotAttempted 'S47' $r
+    }
+    # (C-2) 옛 bootID + Ready=True는 지금처럼 옛 부팅 — 대조: 불통 뒤 옛 bootID + Ready=Unknown 세 번은 연속 횟수를 올리지 않고(옛 부팅이 아니다),
+    #   이어지는 Ready=True 세 번이 기준점을 다시 움직인다(그 세 번째 관측의 시작) → 재부팅 → PASS. 수정 전에는 Unknown 세 번이 옛 부팅으로 세어진다(RED).
+    Test-Case 'S48' 'C-2: the baseline bootID counts as the old boot with Ready=True only: 3 Ready=Unknown observations leave the streak at 0, the next 3 Ready=True ones move the zero point again' {
+        $old = New-PrePhase @{ name = 'old-boot'; whoamiCalls = 1 }
+        $down = New-Phase @{ name = 'api-down'; whoamiCalls = 2; api = 'down' }
+        $unk = New-PrePhase @{ name = 'old-bootid-ready-unknown'; whoamiCalls = 3; nodes = @(@{ name = 'jt-node-a'; bootID = $oldBoot; ready = 'Unknown'; heartbeat = $preHeartbeat }) }
+        $tru = New-PrePhase @{ name = 'old-bootid-ready-true'; whoamiCalls = 3 }
+        $down2 = New-Phase @{ name = 'api-down-2'; whoamiCalls = 3; api = 'down' }
+        $d = New-Fixture @($old, $down, $unk, $tru, $down2, (New-Phase))
+        $r = Invoke-Harness $d $afterArgs (Knobs 60 40) 150
+        $calls = @(Get-Calls $d)
+        Assert-Completed 'S48' $r $calls
+        $passIds = @(0..4 | Where-Object { @(Lines-Starting $r "PASS reboot-${_}:").Count -eq 1 })
+        Assert 'S48-1: exit 0 and PASS reboot-0..4' ($r.code -eq 0 -and $passIds.Count -eq 5) "pass=[$($passIds -join ',')] $(Format-Result $r)"
+        $unkIdx = @(Get-LineIndexes $r { param($l) Has-Text $l 'node A ready=Unknown with the baseline bootID' })
+        $stayIdx = @(Get-LineIndexes $r { param($l) $l.StartsWith('  old boot seen again after the zero point was fixed', [StringComparison]::Ordinal) })
+        $noteIdx = @(Get-LineIndexes $r { param($l) $l.StartsWith('  note: the old boot was seen 3 times in a row', [StringComparison]::Ordinal) })
+        $order = $unkIdx.Count -ge 3 -and $stayIdx.Count -eq 1 -and $noteIdx.Count -eq 1 -and $stayIdx[0] -gt $unkIdx[$unkIdx.Count - 1] -and $noteIdx[0] -gt $stayIdx[0]
+        Assert 'S48-2: the 3 Ready=Unknown observations were reported as not the old boot (>= 3 lines with "node A ready=Unknown with the baseline bootID"); the one "seen again (1 of 3)" line and the one "3 times in a row" note come only after them' $order "unk=[$($unkIdx -join ',')] stay=[$($stayIdx -join ',')] note=[$($noteIdx -join ',')] :: $(Format-Result $r)"
+        $fixed = @(Get-FixedZeros $r)
+        $z = Get-ZeroSummary $r
+        Assert 'S48-3: fixed twice (the outage, the outage again), two armed lines, summary = the second fixed zero point' ($fixed.Count -eq 2 -and @(Get-ArmedLines $r).Count -eq 2 -and $null -ne $z -and (Test-Same $z.utc $fixed[1])) "fixed=[$($fixed -join ', ')] :: $(Format-Result $r)"
+        $t0u = Get-FakeT0Utc $d
+        $w3 = @(Get-CallsOf $calls 'whoami' 3)
+        $zu = if ($null -ne $z) { Parse-ZeroUtc $z.utc } else { $null }
+        Assert 'S48-4: the zero point moved again at the third Ready=True observation (between its 2nd and 3rd whoami on the fake clock)' ($null -ne $t0u -and $null -ne $zu -and $w3.Count -eq 3 -and $zu -gt (Get-CallUtc $t0u $w3[1]) -and $zu -le (Get-CallUtc $t0u $w3[2])) "zero=$(if ($null -ne $z) { $z.utc }) :: $(Format-Calls $calls)"
+        Assert 'S48-5: one get nodes per Ready=Unknown observation (3 whoami, 3 get nodes -- no retry while the streak is 0)' ((Count-Calls $calls 'whoami' 2) -eq 3 -and (Count-Calls $calls 'nodes' 2) -eq 3) (Format-Calls $calls)
+    }
+
+    # ---------- 재리뷰 3 §5.2 가운데 S34–S41이 덮지 않는 시나리오 ----------
+    # (Z1-3) 문서화된 잔여(잘못된 PASS 쪽): 불통 뒤 낡은 옛 bootID(Ready=True)가 연속 세 번 보이면 기준점이 다시 움직여 불통 뒤로 간다(재부팅 뒤 낡은
+    #   bootID 창이 폴링 간격 둘 이상 이어지는 경우 — 실측 전). 그 동작을 고정해 둔다(바뀌면 이 케이스가 드러낸다). k <= 2는 S40(두 번 — 그대로)이 덮는다.
+    Test-Case 'S49' 'Z1-3 (documented residual): a stale old bootID seen 3 times in a row right after the outage moves the zero point past the outage' {
+        $old = New-PrePhase @{ name = 'old-boot'; whoamiCalls = 2 }
+        $down = New-Phase @{ name = 'api-down'; whoamiCalls = 2; api = 'down' }
+        $stale = New-PrePhase @{ name = 'stale-old-bootid'; whoamiCalls = 3 }
+        $d = New-Fixture @($old, $down, $stale, (New-Phase))
+        $r = Invoke-Harness $d $afterArgs (Knobs 40 40) 120
+        $calls = @(Get-Calls $d)
+        Assert-Completed 'S49' $r $calls
+        $passIds = @(0..4 | Where-Object { @(Lines-Starting $r "PASS reboot-${_}:").Count -eq 1 })
+        Assert 'S49-1: exit 0 and PASS reboot-0..4' ($r.code -eq 0 -and $passIds.Count -eq 5) "pass=[$($passIds -join ',')] $(Format-Result $r)"
+        $fixed = @(Get-FixedZeros $r)
+        $z = Get-ZeroSummary $r
+        Assert 'S49-2: fixed twice (the outage, then the new bootID), one "seen again", one "3 times in a row" note, two armed lines; summary = the second' ($fixed.Count -eq 2 -and @(Get-StayZeros $r).Count -eq 1 -and @(Get-RearmNotes $r).Count -eq 1 -and @(Get-ArmedLines $r).Count -eq 2 -and $null -ne $z -and (Test-Same $z.utc $fixed[1])) "fixed=[$($fixed -join ', ')] :: $(Format-Result $r)"
+        $t0u = Get-FakeT0Utc $d
+        $ws = @(Get-CallsOf $calls 'whoami' 2)
+        $wd = @(Get-CallsOf $calls 'whoami' 1)
+        $zu = if ($null -ne $z) { Parse-ZeroUtc $z.utc } else { $null }
+        Assert 'S49-3: the final zero point is the start of the third stale observation, later than every api-down call (fake clock) -- reboot-0 counts from after the outage' ($null -ne $t0u -and $null -ne $zu -and $ws.Count -eq 3 -and $wd.Count -ge 1 -and $zu -gt (Get-CallUtc $t0u $ws[1]) -and $zu -le (Get-CallUtc $t0u $ws[2]) -and $zu -gt (Get-CallUtc $t0u $wd[$wd.Count - 1])) "zero=$(if ($null -ne $z) { $z.utc }) :: $(Format-Calls $calls)"
+    }
+    # (Z2 · Z4) 첫 관측부터 옛 부팅 네 번 → 하네스가 불통을 보지 못한 채 새 bootID → 기준점 = 마지막 옛 부팅 관측의 시작 · 요약 '(last observation of the old boot)'
+    Test-Case 'S50' 'Z2/Z4: old boot from the first observation (4 times), then the new bootID without an observed outage -> zero point = the last old-boot observation' {
+        $d = New-Fixture @((New-PrePhase @{ name = 'old-boot'; whoamiCalls = 4 }), (New-Phase))
+        $r = Invoke-Harness $d $afterArgs (Knobs 40 40) 90
+        $calls = @(Get-Calls $d)
+        Assert-Completed 'S50' $r $calls
+        $passIds = @(0..4 | Where-Object { @(Lines-Starting $r "PASS reboot-${_}:").Count -eq 1 })
+        Assert 'S50-1: exit 0 and PASS reboot-0..4' ($r.code -eq 0 -and $passIds.Count -eq 5) "pass=[$($passIds -join ',')] $(Format-Result $r)"
+        $fixed = @(Get-FixedZeros $r)
+        $z = Get-ZeroSummary $r
+        Assert 'S50-2: armed once and fixed once (by the new-bootID observation), no "seen again" / note line; summary "(last observation of the old boot)" = the fixed zero point' ($fixed.Count -eq 1 -and @(Get-ArmedLines $r).Count -eq 1 -and @(Get-StayZeros $r).Count -eq 0 -and @(Get-RearmNotes $r).Count -eq 0 -and $null -ne $z -and (Test-Same $z.utc $fixed[0]) -and (Test-Same $z.why 'last observation of the old boot') -and @(Lines-Starting $r $zeroScriptStartLine).Count -eq 0) (Format-Result $r)
+        $t0u = Get-FakeT0Utc $d
+        $w0 = @(Get-CallsOf $calls 'whoami' 0)
+        $zu = if ($null -ne $z) { Parse-ZeroUtc $z.utc } else { $null }
+        Assert 'S50-3: the zero point is the start of the 4th old-boot observation (between its 3rd and 4th whoami on the fake clock)' ($null -ne $t0u -and $null -ne $zu -and $w0.Count -eq 4 -and $zu -gt (Get-CallUtc $t0u $w0[2]) -and $zu -le (Get-CallUtc $t0u $w0[3])) "zero=$(if ($null -ne $z) { $z.utc }) :: $(Format-Calls $calls)"
+    }
+    # (Z3) 옛 부팅과 "호출 + 재시도 실패"가 번갈아 온다(old, fail, old, fail, old, fail, old, old) → 연속 세 번이 끝내 안 나와 기준점은 첫 실패 앞의
+    #   옛 부팅 관측에 머문다(엄격한 쪽) → 재부팅 → PASS. 옛 부팅 다음의 실패는 매번 재시도까지 실패한다(그 단계 whoami 2회).
+    Test-Case 'S51' 'Z3: old boot and double failures alternate -> the zero point stays at the observation before the first failure -> reboot -> PASS' {
+        $ph = @(
+            (New-PrePhase @{ name = 'old-0'; whoamiCalls = 1 })
+            (New-Phase @{ name = 'fail-1'; whoamiCalls = 2; api = 'down' })
+            (New-PrePhase @{ name = 'old-1'; whoamiCalls = 1 })
+            (New-Phase @{ name = 'fail-2'; whoamiCalls = 2; api = 'down' })
+            (New-PrePhase @{ name = 'old-2'; whoamiCalls = 1 })
+            (New-Phase @{ name = 'fail-3'; whoamiCalls = 2; api = 'down' })
+            (New-PrePhase @{ name = 'old-3'; whoamiCalls = 2 })
+            (New-Phase)
+        )
+        $d = New-Fixture $ph
+        $r = Invoke-Harness $d $afterArgs (Knobs 60 40) 150
+        $calls = @(Get-Calls $d)
+        Assert-Completed 'S51' $r $calls
+        $passIds = @(0..4 | Where-Object { @(Lines-Starting $r "PASS reboot-${_}:").Count -eq 1 })
+        Assert 'S51-1: exit 0 and PASS reboot-0..4' ($r.code -eq 0 -and $passIds.Count -eq 5) "pass=[$($passIds -join ',')] $(Format-Result $r)"
+        $fixed = @(Get-FixedZeros $r)
+        $z = Get-ZeroSummary $r
+        $stay = @(Get-StayZeros $r)
+        Assert 'S51-2: fixed once; three "seen again (1 of 3)" lines (one per old-boot stretch), all at that zero point; no note; one armed line; summary = it' ($fixed.Count -eq 1 -and $stay.Count -eq 3 -and @($stay | Where-Object { -not (Test-Same $_ $fixed[0]) }).Count -eq 0 -and @(Get-RearmNotes $r).Count -eq 0 -and @(Get-ArmedLines $r).Count -eq 1 -and $null -ne $z -and (Test-Same $z.utc $fixed[0])) "fixed=[$($fixed -join ', ')] stay=[$($stay -join ', ')] :: $(Format-Result $r)"
+        $t0u = Get-FakeT0Utc $d
+        $w0 = @(Get-CallsOf $calls 'whoami' 0)
+        $zu = if ($null -ne $z) { Parse-ZeroUtc $z.utc } else { $null }
+        $m0 = Get-MetSec $r 'reboot-0'
+        $nodeCalls = @(Get-CallsOf $calls 'nodes')
+        $bound = if ($nodeCalls.Count -gt 0 -and $w0.Count -gt 0) { [Math]::Floor([double]$nodeCalls[$nodeCalls.Count - 1]['elapsed'] - [double]$w0[0]['elapsed']) } else { $null }
+        Assert 'S51-3: the zero point is the first observation (not later than its whoami on the fake clock) and reboot-0 "met at" includes all the alternation (>= the fake-clock gap from that whoami)' ($null -ne $t0u -and $null -ne $zu -and $w0.Count -eq 1 -and $zu -le (Get-CallUtc $t0u $w0[0]) -and $null -ne $m0 -and $null -ne $bound -and $m0 -ge $bound) "zero=$(if ($null -ne $z) { $z.utc }) metAt=$m0 bound=$bound :: $(Format-Calls $calls)"
+        Assert 'S51-4: every failure that followed an old-boot observation was a call plus one retry (2 whoami calls in each fail phase)' ((Count-Calls $calls 'whoami' 1) -eq 2 -and (Count-Calls $calls 'whoami' 3) -eq 2 -and (Count-Calls $calls 'whoami' 5) -eq 2) (Format-Calls $calls)
+        Assert 'S51-5: "retried:" lines, one per stretch: armed (fail-1) and fixed (fail-2, fail-3) = 2 lines for 3 retried observations' (@(Get-RetryLines $r).Count -eq 2) "retried=$(@(Get-RetryLines $r).Count) :: $(Format-Result $r)"
+    }
+    # (F4) arm 시간 제한은 기준점이 움직이는 관측에서만 판정된다(설계 — F): armed 첫 관측 뒤 불통이 길어(굳은 채) 제한 15 s를 넘겨도 판정하지 않고,
+    #   불통 뒤 옛 부팅을 연속 세 번 봐 기준점이 다시 움직이는 그 관측에서야 'no reboot observed within 15s'로 끝난다. 불통 관측 15번(간격 1 s)은
+    #   부하와 무관하게 15 s를 넘긴다(가짜 시계로 확인 — "관측 N번이 M초 안에"에 기대지 않는다).
+    Test-Case 'S52' 'F4: the arm timeout is judged only on observations that move the zero point -> fixed past the limit, it fails only at the third old-boot observation' {
+        $old = New-PrePhase @{ name = 'old-boot'; whoamiCalls = 1 }
+        $down = New-Phase @{ name = 'api-down'; whoamiCalls = 16; api = 'down' }
+        $d = New-Fixture @($old, $down, (New-PrePhase @{ name = 'old-boot-again' }))
+        $r = Invoke-Harness $d $afterArgs (Knobs 120 40 1 15) 150
+        $calls = @(Get-Calls $d)
+        Assert-Completed 'S52' $r $calls
+        $f0 = @(Lines-Starting $r 'FAIL reboot-0: ')
+        Assert 'S52-1: exit 1 and "FAIL reboot-0" says no reboot observed within 15s' ($r.code -eq 1 -and $f0.Count -eq 1 -and (Has-Text $f0[0] 'no reboot observed within 15s')) (Format-Result $r)
+        $again = @(Get-CallsOf $calls 'whoami' 2)
+        Assert 'S52-2: the limit had passed while fixed (the first old-boot-again whoami >= 15s on the fake clock) but was judged only at the third old-boot observation after the outage (exactly 3 whoami and 3 get nodes calls in that phase)' ($again.Count -eq 3 -and [double]$again[0]['elapsed'] -ge 15 -and (Count-Calls $calls 'nodes' 2) -eq 3) "again=$($again.Count) firstAt=$(if ($again.Count) { $again[0]['elapsed'] }) :: $(Format-Calls $calls)"
+        Assert-NotAttempted 'S52' $r
+    }
+
+    # (마) -ArmTimeoutMinutes: 범위 밖(0 · 121) · 정수 아님 · -AfterReboot 없이 → pre-4 FAIL, kubectl 호출 0
+    Test-Case 'S39' 'H2: -ArmTimeoutMinutes out of range, not an integer, or without -AfterReboot -> pre-4 FAIL before any kubectl call' {
+        $variants = @(
+            @{ id = 'S39a'; args = ($afterArgs + @('-ArmTimeoutMinutes', '0')); reason = "-ArmTimeoutMinutes '0' is not an integer 1..120" },
+            @{ id = 'S39b'; args = ($afterArgs + @('-ArmTimeoutMinutes', '121')); reason = "-ArmTimeoutMinutes '121' is not an integer 1..120" },
+            @{ id = 'S39c'; args = ($afterArgs + @('-ArmTimeoutMinutes', 'abc')); reason = "-ArmTimeoutMinutes 'abc' is not an integer 1..120" },
+            @{ id = 'S39d'; args = @('-ArmTimeoutMinutes', '30'); reason = '-ArmTimeoutMinutes is only used with -AfterReboot' }
+        )
+        foreach ($v in $variants) {
+            $d = New-Fixture @(New-Phase)
+            $r = Invoke-Harness $d ([string[]]$v.args) (Knobs 10 10)
+            $calls = @(Get-Calls $d)
+            Assert-Completed $v.id $r $calls
+            Assert-RefusedBeforePolling $v.id $r $calls $v.reason $false
+        }
     }
 
     # 선택 실행에 모르는 케이스 이름이 있으면 실패(오타로 아무것도 안 돌고 통과하지 않게)

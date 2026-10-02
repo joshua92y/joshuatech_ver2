@@ -40,7 +40,7 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/run-platform-tests.t
 Check 'platform-harness' ($LASTEXITCODE -eq 0) 'see platform runner harness output'
 
 # 1b2a. reboot-harness (T048 선행) — tests/scripts/reboot-tests.tests.ps1: tests/platform/reboot.tests.ps1 단위 테스트
-#       (가짜 kubectl 심 · 시나리오로 과도 상태 재현 · 실제 클러스터 접근 없음 · 약 4–5분 — 기본 폴링 간격을 그대로 쓰는 경계 케이스가 있다). 1b3과 같은 양성 증거 규율:
+#       (가짜 kubectl 심 · 시나리오로 과도 상태 재현 · 실제 클러스터 접근 없음 · 약 12분 — 가짜 kubectl 프로세스를 호출마다 띄우고, 기본 폴링 간격을 그대로 쓰는 경계 케이스가 있다). 1b3과 같은 양성 증거 규율:
 #       exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 · 크래시 = FAIL). 선택 실행(REBOOT_HARNESS_TESTS_ONLY)이면
 #       요약 줄 끝에 ' (filtered: …)'가 붙어 이 판정을 통과하지 못한다(부분 실행이 전체 통과로 보이지 않게).
 $o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/reboot-tests.tests.ps1 2>&1 | Out-String
