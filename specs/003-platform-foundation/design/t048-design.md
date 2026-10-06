@@ -578,4 +578,29 @@ ls -la /boot/grub/grub.cfg.new 2>/dev/null || echo "no grub.cfg.new"
 
 ### 10.15 F 절차 초안의 독립 검토(워크플로 — `unpin` 경로 추적 · hold의 소스 검증 · hold 재현 · 블록 문법 · 주말 무인 위험)
 
-결과는 이 절에 덧붙인다(2일차 종료 시점에는 진행 중).
+결과는 이 절에 덧붙인다(2일차 종료 시점에는 진행 중). 금요일의 실행은 세션이 닫히며 결과 없이 끊겨, 화요일(10-06) 아침에 같은 다섯 관점으로 다시 띄웠다(문맥만 "hold는 금요일에 실행됨 · 오늘은 그 뒤"로 고침).
+
+### 10.16 3일차(2026-10-06 화요일) 아침 — 금–화 무인 상태와 K3s 자동 업그레이드의 첫 실행
+
+- **노드(F0 · 운영자 읽기 10:30 KST)**: 두 노드 모두 `7.0.0-1012-oracle` 실행 중이고 부팅 시각이 금요일 그대로다(**금 저녁–화 아침 재부팅 없음**). hold가 먹었다 — 메타패키지 셋이 `hi` · 모의 업그레이드가 `The following packages have been kept back: linux-headers-oracle linux-image-oracle linux-oracle`(1013은 아직 noble-updates에만 있고 noble-security의 후보는 1012) · 커널 autoremove 대기 없음 · unattended-upgrades는 토·일·월·화 네 번(10-03 · 04 · 05 · 06) 모두 "No packages found that can be upgraded unattended" · `reboot-required` 없음. `status`는 두 노드 `RESULT: OK status -- pin present -> 6.17.0-1020-oracle; next boot 6.17.0-1020-oracle (default)` · `next_entry=` 빈 값 · 잔여 없음. 출력 사본 `.superpowers/t048/f/f0-readonly.txt`.
+- **클러스터(에이전트 스냅샷 10:32)**: 관문 9/9 · Application 22 Synced/Healthy · store 5 · ES 2 · Vault unsealed(컨테이너는 금요일 17:07 시작 그대로) · 경고 이벤트 0 · 시험 파드는 금요일 16:22:36부터 계속 Ready(재시작은 B3의 1회뿐) — **7.0에서 exec 프로브 3일 반 통과**. 사본 `f/cluster-check-monday.txt` · `f/snapshot-f-monday.txt`.
+- **K3s가 v1.36.4 → v1.36.5로 올라가 있었다(두 노드 · `v1.36.5+k3s1` · 커밋 3dd98cc5)**. system-upgrade-controller의 **첫 실제 실행**이다 — T037의 "첫 일요일 창은 리허설(채널 해석값 = 클러스터 버전)"이라는 예상은 빗나갔다(채널 `v1.36`이 그 사이 1.36.5를 해석). 일요일 2026-10-04 **03:00–03:02 KST**(창 03:00–05:00 Asia/Seoul 안): 03:00:11 노드 B의 agent Job 파드가 뜨고(서버 완료 대기) · 03:00:57 노드 A의 server Job 파드(prepare = `platform-backup.sh --pre-upgrade`) · 03:01 두 노드의 `/usr/local/bin/k3s` 교체 · 03:01:28 노드 A `k3s.service` 정지(systemd 로그: containerd-shim들은 "remains running after unit stopped" — **파드는 살아남았다**, 재시작 수 금요일 그대로) · Plan `k3s-server` Complete 03:02:13 · 03:01:57 노드 B `k3s-agent.service` 정지 · `k3s-agent` Complete 03:02:44. 노드 라벨 `plan.upgrade.cattle.io/k3s-server` · `k3s-agent` = `98199dce…`. 두 Plan 모두 `latestVersion v1.36.5-k3s1` · `applying` 빈 값. 업그레이드 Job은 TTL로 지워져 남아 있지 않다.
+  - **K3s가 번들로 관리하는 것이 함께 바뀌었다**: Traefik 차트 `40.1.4` → `40.1.5+up40.1.0`(이미지 `3.7.8` → `3.7.13` · 새 파드 03:02:30 · `helm-install-traefik` Job 03:01:52–03:02:33, 그 파드는 성공 전 2회 재시작 — CRD Job을 기다리는 통상의 순서 문제) · CoreDNS `1.14.7` 새 파드 03:01:50. **우리 설정은 살아 있다**(운영자 읽기 10:41): HelmChartConfig의 값이 라이브 TLSOption `default`(resourceVersion 2862022)에 그대로 — `sniStrict: true` · `clientAuthType: RequireAndVerifyClientCert` · `secretNames: [cloudflare-origin-pull-ca]` · `minVersion: VersionTLS12`; TLSStore `default`(2026-09-10) 그대로; 엣지 `auth` 404 · `argo` 302. 단일 replica라 교체 순간 443이 잠깐 끊겼을 것이다(측정 없음 · 사이트는 아직 공개 전).
+  - 업그레이드 직전 백업(prepare)의 객체 확인은 `svc-verify` 세션이 필요하다(§10.17에 적는다).
+  - 저장소 쪽 영향: 부트스트랩 스크립트의 설치 핀은 `v1.36.4+k3s1` 그대로다(`infra/bootstrap/k3s-{server,agent}.sh` · 테스트 `ver-1`) — 노드를 다시 만들면 1.36.4로 설치되고 다음 창에 SUC가 올린다(의도된 분업). `CLAUDE.md` · `plan.md`의 "K3s v1.36.4" 문구는 기록이다(갱신은 /finish 때). 런북 §6에 "첫 실행 기록"을 더한다(§10.14 표에 추가).
+- **사용량(10:33)**: 노드 A 3,660Mi(금요일 19:02 3,108Mi) · vault 377Mi(359) · ESO cert-controller 58Mi(107–121 → 내려감) · 새 Traefik 20Mi(옛 파드 157Mi) · 새 CoreDNS 14Mi · 시험 파드 279Mi. 전부 압박 없음(경고 이벤트 0). K3s 바이너리가 바뀌어 노드 합계의 비교는 의미가 약하다 — 기록만.
+
+### 10.17 3일차 — F 실행 · K3s 업그레이드 사후 확인 · 결정 셋 · 종료(2026-10-06 화)
+
+- **F 절차 검토(§10.15) 결과**: 다섯 관점 가운데 셋이 끝났다(`unpin` 경로 추적 · 블록 문법 · 주말과 그 뒤의 위험 — 셋 다 "고치고 진행" · 막는 것 없음). 둘(apt hold의 소스 검증 · 컨테이너 재현)은 모델 사용량 한도로 실패했고, hold의 효과는 F0의 실측(메타 셋 kept back · unattended-upgrades 4회 "설치할 것 없음")으로 대신했다. 반영한 것: F0 · F4의 기준 문구(hold는 있는 것이 정상) · apt 모의 실행의 fail-open(`2>/dev/null` → `2>&1` · 요약 줄 · `E:` 줄) · pgrep에서 종료 대기 도우미 거르기 · **GRUB 설정 지문**(기본값 줄을 뺀 sha256 · linux/initrd 줄 수 · 마지막 줄) · 부팅 파일 시각과 부팅 시각 비교 · `/boot` 여유 · 10-02 뒤 apt 이력 · 컨테이너 메모리 cgroup · 실패 분기 행 여섯(복원 실패면 같은 노드에서 다시 · cleanup만 실패 · 섞인 상태 · 전송 끊김 · reboot-required · 예정 없던 재부팅) · 블록의 읽기 파일은 `-Append`.
+- **실행**: F0 10:30(읽기) · F0b 10:51(지문 — 두 노드 같은 값 `1e34f3b1…` · 10줄 · 마지막 줄 `### END /etc/grub.d/41_custom ###`) · F2 노드 B `unpin` 10:51:53 · F3 노드 A 11:22:59(둘 다 `Sourcing file`에 고정 파일 없음 · `OK verify: grub.cfg default is "0" -> 7.0.0-1012-oracle` · `OK cleanup` · `RESULT: OK unpin`) · F4 11:23(지문이 F0b와 같음 · 다음 부팅의 커널 · initrd 시각 < 부팅 시각 · `/boot` 22% · apt 이력 없음 · 커널 OOM 0 · needrestart 설치됨 · GRUB 대기 0초) · F5 11:53 시험 파드 삭제 · F7 11:53 hold 해제(사용자 결정 ①) · F8 확인(메타 셋 `ii` · 보안 포켓 후보 1012 → 그날 밤 커널 설치 없음) · 마지막 스냅샷 11:54 관문 9/9.
+- **컨테이너 메모리(F4 10번 — 각 컨테이너 시작 뒤 누적)**: 노드 A의 ESO cert-controller만 회수가 있었다 — 123/128Mi · 최고 128 · 다시 읽기 708 · 회수 스캔 1,691 · `max_events` 0(컨테이너 cgroup의 `max`가 0인 것은 한도가 파드 cgroup에서 먼저 걸리기 때문으로 본다 — 미확인). 나머지 전부 회수 0. Vault 379/512Mi(최고 402) · cert-manager-webhook 68/80Mi(85%).
+- **K3s 자동 업그레이드의 사후 확인**: 런북 §6 「실행 기록」에 적은 대로 ①–⑥ 전부 통과. 업그레이드 직전 백업은 두 쌍(작업 파드가 K3s 재시작에 걸려 다시 만들어지며 prepare가 한 번 더 돌았다).
+- **플랫폼 하네스(11:27–11:31)**: infra 61/0 · cluster 39 통과 · 1 실패 · 10 건너뜀(`argo-4` — T056 전 통과 불가) · ingress 12/0 · reboot(평상시) 3/0/4. 백업 단언 셋은 `svc-verify` 세션이 열려 있어 통과.
+- **조회 경로 15분(관찰기 하나 · 5초 간격)**: 180/180 성공 · 중앙값 2.2초 · p99 4.2초 → §10.12의 2%는 관찰기 둘을 함께 돌린 조건 탓으로 본다.
+- **결정(사용자 · 한 번에 하나씩)**:
+  1. **커널 정책 = hold 해제(우분투 기본)** — 컨트롤러의 권장(hold 유지 + 창을 잡아 올림)과 다르다. 받아들인 위험: 보안 커널이 자동 설치된 뒤의 계획 없는 재부팅은 검증되지 않은 커널로 간다(6.17은 그때 apt가 지운다 · 직전 커널은 부팅된 적이 있어 남는다). 런북 §6 「커널(OS 패치) 재부팅」에 주간 확인 · 계획 재부팅 절차(시험 동안만 hold) · 부팅 실패 복구 경로를 적었다.
+  2. **KHO = 켜 둔 채 관찰** — §6 주간 확인에 `CmaFree` · 커널 OOM 줄.
+  3. **컨테이너 메모리 한도 = T048 뒤 별도 gitops PR(T049 전)** — ESO cert-controller 128 → 256Mi · cert-manager-webhook 80 → 128Mi · Vault 512Mi 유지(T098 경보 뒤 재검토).
+- **런북**: §3 요약(전체 순서 · 시간 · 시크릿 취급) · §3 T048 절 · §6 실행 기록(K3s 첫 실행) · §6 커널(OS 패치) 재부팅.
+- **남은 것**: §10.14 표(도구 수정은 노드 작업이 끝났으므로 이제 해도 된다) · 결정 3의 PR · `report.md` 항목.

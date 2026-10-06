@@ -147,6 +147,39 @@
 
 ## §3 K3s·Argo
 
+### §3 요약 — 전체 순서 · 시간 · 시크릿 취급(T048에서 확정, 2026-10-06)
+
+빈 노드 두 대(§2 — Ubuntu 24.04 · host-prep 끝)에서 플랫폼이 서기까지 실제로 거친 순서다. 아래 각 과제 절이 상세 기록이고, 이 표는 다시 세울 사람을 위한 지도다(복원 런북은 T114). 시간은 기록에 남은 실측값만 적었다 — 사람이 판단하고 기다린 시간은 넣지 않았다.
+
+| 순서 | 과제(날짜 KST) | 운영자가 한 일 | 실측 시간 | 시크릿 — 보관 위치 |
+|---|---|---|---|---|
+| 1 | T035 노드 A K3s server(09-04) | 서버 토큰 생성 · 배치 → 검토한 설치 스크립트로 `k3s-server.sh` 2회(멱등) → admin kubeconfig 반출 | 1회차 15:54:17 → 2회차 15:54:52(`changes 0`) · Ready 대기 ≈5초 | K3s 서버 토큰 → 비밀번호 관리자 + 노드 `/etc/rancher/k3s/token`(0600) · admin kubeconfig → 워크스테이션(소유자 전용) + 비밀번호 관리자 · 임시 사본 `shred -u` |
+| 2 | T036 노드 B 조인 + 백업(09-04) | 조인 토큰 복사 → `k3s-agent.sh` 2회 → `platform-backup` 서비스 · 타이머 · 수동 백업 2회 | 조인 18:48:47 → 재실행 18:51:15(`changes 0`) | 조인 토큰 → 노드 A 원본과 백업 번들에만(비밀번호 관리자에도 두지 않는다) · age 개인키 → 운영자 오프라인, 공개키만 노드 A |
+| 3 | T038 Traefik 설정(09-04) | `traefik-config.yaml`을 K3s manifests에 설치 | 헬름 Job 재실행 → 새 파드 | 없음 |
+| 4 | T039 cloudflared 터널 · 접속 전환(09-07) | Cloudflare 스택 apply → ns · 터널 토큰 Secret → 커넥터 배포 → SSH · kubectl을 Access 경유로 → 임시 22 규칙 제거 | QUIC 연결 4개 등록 03:24:42–45Z | `TUNNEL_TOKEN` → K8s Secret(임시 파일 없음 · T045부터 Vault kv가 원천) · SSH 키 `joshuatech-ops` · Access 토큰 캐시는 세션마다 삭제 |
+| 5 | T040 Argo CD + root(09-07) | `kubectl apply --server-side -k bootstrap/argocd` → root Application | 롤아웃 5/5 ≈70초 · root Synced 20초 뒤 | Argo admin 비밀번호 — 초기 Secret을 로그인 확인 전에 지워 잃었고 09-08 bcrypt로 재설정 |
+| 6 | T037 system-upgrade-controller(09-07) | 코드만(적용은 T041 첫 sync) | — | 없음 |
+| 7 | 파드 DNS 업스트림 전환(09-08) | `resolv-conf` → 공개 리졸버(T041 정책 전 게이트) | 기록 없음 | 없음 |
+| 8 | T041 AppProject · 정책 · 조회 권한(09-08) | 게이트 셋(VD-EP · VD-DNS · VD-P) → PR 4단계 적용 | 기록 없음(파드 불변으로 판정) | 조회 토큰 `agent-view`(8시간 · 조회 전용 kubeconfig에만) |
+| 9 | T042 cert-manager · 와일드카드 · TLSStore · sniStrict(09-09 – 09-10) | PR #11–#16 · 옛 `_acme-challenge` CNAME 삭제 · 판별 실험 뒤 sniStrict | DNS-01 정체 107분(원인 CNAME) · sniStrict 반영 ≈14초 · 443 순단 0초 | DNS 토큰 → 수동 K8s Secret(T045부터 Vault kv) · ACME 계정 키 → cert-manager 자동(운영자는 값을 모른다) |
+| 10 | T043 Origin Pull 강제 · Argo Ingress(09-11) | CA Secret을 manifests로 → Verify 관찰 → Require 승격 | Secret 반영 +7초 · Verify → Require 약 1시간 관찰 | Origin Pull CA는 공개 인증서(비밀 아님) |
+| 11 | T044 Vault(09-17) | 배포 → init(사고 뒤 재초기화) → 감사 장치 → kv · auth · 정책 → 백업 연결 | 재기동 드릴: unseal 8초 · 전체 20초 · 재init 약 2분 | recovery 키 3 + root 토큰 → 비밀번호 관리자 항목 4개에만(root는 revoke 보류 — T084 · ADR 0011) |
+| 12 | T045 ESO · store · kv 시드 · 수동 Secret 인수(09-17 – 09-22) | kv 시드 블록 → 드릴 → DNS · 터널 Secret을 ExternalSecret이 삭제 없이 인수 | 인수 198초 · Secret 재생성 302초(5분 주기) | `kv/platform/cloudflare/{dns-token,tunnel}` · `kv/platform/oci/s3` — 라이브 Secret · 비밀번호 관리자에서 파이프 · 보안 입력, 되읽기는 SHA-256만 |
+| 13 | T046 Reloader(09-22 – 09-29) | 시험 Secret 값 변경 → 관찰 → 시험 대상 삭제 | 머지 → 자동 동기화 ≈8분 · 롤아웃 1회 | 없음(시험 값) |
+| 14 | T047 gitops CI · 승인 관문(09-29 – 10-01) | ruleset · 저장소 · Environment 원격 설정 · 관문 실측 | validate job ≈5분 30초 | 새 시크릿 없음(승격 PR은 워크플로 토큰) |
+| 15 | T048 재부팅 리허설 · 백업 검증 · 커널 전환(10-01 – 10-06) | 백업 검증 스크립트 · 커널 고정 → 시험 부팅 → 측정 재부팅 → 고정 해제 | 백업 검증 16초 · 재부팅 → 전부 Healthy 78초 · 전부 재조정 6분 9초 · API 불통 ≈30초 | age 개인키는 운영자만 · 평문은 `state.db` · Vault 스냅샷만 작업 디렉터리에 두고 지운다 |
+
+**시크릿 취급 규칙(§3 전체에서 모음)**:
+- 값은 화면 · 로그 · 명령줄 인자 · 클립보드 기록에 남기지 않는다. 노드로는 파일로만 옮기고(root · 0600) 임시 사본은 `shred -u`. K8s Secret은 SecureString → base64 → `kubectl apply --server-side -f -`(임시 파일 없음), 확인은 키 이름과 SHA-256만.
+- 토큰을 서비스 환경 변수로 넘기지 않는다(`env -i` — `k3s*.service.env` 0바이트).
+- 보관처: 비밀번호 관리자 = K3s 서버 토큰 · admin kubeconfig · Vault recovery 키와 root 토큰 · OCI S3 키 쌍 / 노드에만 = 조인 토큰 / 운영자 오프라인 = 백업 복호화 age 개인키 / Vault kv = 플랫폼 런타임 시크릿(ESO가 Secret으로 동기화 — 인수 뒤 회전은 kv 먼저).
+- 일회성 원본(Argo 초기 비밀번호 등)은 비밀번호 관리자 저장 확인과 실제 로그인 성공 **뒤에** 지운다 — 삭제를 같은 블록에 넣지 않는다.
+- 시크릿 블록: 사람 동작마다 `Read-Host` 정지점, 되읽기 해시가 맞을 때만 소거, 읽기 전용 판정과 쓰기를 한 블록에 섞지 않는다(T044 사고 · T045 분리).
+- 에이전트는 운영자 자격을 쓰지 않는다 — `agent-view` 조회 토큰(8시간)과 OCI `svc-verify` 세션(60분)만. 읽기 전용 `tofu plan` 하네스가 유일한 예외(결정 C). 머지 · 승인처럼 GitHub에서 결정하는 동작은 운영자 전용.
+- 셸 자격 변수(`TF_VAR_*` · `CLOUDFLARE_API_TOKEN`)는 셸마다 보안 입력으로 넣고 코드에 기본값을 두지 않는다.
+- 세션을 닫을 때 `cloudflared access tcp`를 멈추고 `%USERPROFILE%\.cloudflared\*-token*`을 지운다(`cloudflared access logout`은 없다).
+- 공개 저장소에는 식별자(KMS OCID 등)만 올린다 — PR마다 gitleaks 0, 렌더링 diff 코멘트에 Secret 값을 싣지 않는다.
+
 ### T035 — 노드 A `joshtech-api` K3s server 설치 (2026-09-04)
 
 - **코드**: `infra/bootstrap/k3s-server.sh`(노드 A 전용·멱등, root; 입력 `K3S_TOKEN_FILE`(기본 `/etc/rancher/k3s/token`)·`NODE_PRIVATE_IP`(기본 10.0.7.78, IMDS 조회 없음)·`K3S_VERSION`(기본 `v1.36.4+k3s1`)·`TLS_SAN_HOST`(기본 `k8s.joshuatech.dev`)·`INSTALL_SCRIPT`(기본 `/tmp/install-k3s.sh`)·`INSTALL_SCRIPT_SHA256`(선택); 단계 전제 검증(host-prep 결과를 **검증만** — cgroup2fs·wireguard 모듈/modules-load·`rules.v4`의 6443/51820/10250·Asia/Seoul·ufw 비활성, 없으면 die "host-prep.sh 먼저") → 토큰 파일 검증(존재·root:root 0600·1줄·공백 없는 32자 이상·`K10` 보안 형식 거부; 내용은 읽지도 출력하지도 않는다) → `/etc/rancher/k3s/config.yaml` 렌더(`write_if_changed`, 0600, 같은 디렉터리 mktemp+mv 원자 교체; 키 7개 = `write-kubeconfig-mode "0600"`·`token-file`·`tls-san`(10.0.7.78, k8s.joshuatech.dev)·`node-label`(role=platform, svccontroller.k3s.cattle.io/enablelb=true)·`secrets-encryption: true`·`secrets-encryption-provider: secretbox`·`flannel-backend: wireguard-native`; `node-external-ip`·`disable` 없음 — K3S-D3) → 설치(운영자 검토 사본을 `env -i`로 격리 실행, `INSTALL_K3S_VERSION` + `INSTALL_K3S_EXEC=server`만, CLI 인자 0 — K3S-D1; 같은 버전+unit 있으면 skip, 다른 버전이면 die) → `systemctl enable --now k3s` 가드 → 노드 Ready 대기(최대 180 s, cordon 표기 `Ready,SchedulingDisabled` 허용) → 라벨·`secrets-encrypt status` 확인 → summary `changes this run: N`), `tests/infra/k3s-server.tests.ps1`(정적 69 단언, fail closed; 변이 19종 검출 확인), `tests/run-all.ps1` 슬롯 `k3s-server` — 커밋 `e227aa6` + 리뷰 반영 `b7d543f`(Approved, Minor 8 반영: Ready 판정 cordon 허용, install.sh 실패 die, `XSalsa20|secretbox` 매칭, 운영자 절차 3건, 토큰 유출·`set -x` 정적 단언 신설). 파드/서비스 CIDR는 K3s 기본값(10.42.0.0/16 / 10.43.0.0/16) — config.yaml에 지정하지 않으며 host-prep의 iptables 규칙과 같은 값이다.
@@ -600,7 +633,70 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
   7. 도구 함정: Git Bash는 `<ref>:<경로>` 인자를 파일 경로로 바꾼다(체크아웃된 파일을 읽는다) · yq 4.53.6은 별칭 노드의 kind를 `alias`로 보고하고(`explode(.)` 뒤에 판정) `-`를 오른쪽부터 묶는다 · 셸에서 `TMP`를 덮어쓰면 kustomize의 helm 인플레이트가 깨진다(`export -n TMP`) · 동시에 무거운 프로세스가 많으면 Git Bash의 fork가 고갈돼 긴 스크립트가 끊긴다.
 - **인계**: **운영자** — Environment 관리자 우회 끄기(2026-10-01 닫힘). **converge** — 설계 §6 표(H11-1–4 · H12-1–3 · H8-1 `secrets` 생성 권한 경로를 기준선으로 고정할지 결정). **T072** — copier 생성물을 `kubeconform-deploy.sh --generated`에 연결 · pod overlay의 첫 `images` 항목은 사람 PR. **T074** — Application `source.path`는 소문자 `apps/<pod>/overlays/prod` · App의 PR 생성(협력자 전용 정책 아래) · App push 거부와 실제 `sender` 값 · `gh attestation verify`의 러너 권한. **T115** — `promote.yml` 끝까지 · App의 승인 API 거부 · 관문 대기 중 App 머지 거부 · App이 워크플로를 옛 버전으로 되돌리는 push. **T116** — 모노레포 ruleset · `allowed_actions` · SHA 고정 · 에이전트 전용 토큰. **`report.md`** — VD-5 결과 · D8 편차 · 받아들인 위험 둘(관문 범위 밖 PR은 봇 토큰으로 머지될 수 있다 / `promote/**`의 짧은 경쟁).
 
-(T047 이후 기록은 이하에 추가)
+### T048 — 노드 A 재부팅 리허설 · 백업 복원 가능성 검증 · SC-001 시각 · 커널 전환 6.17 → 7.0 (2026-10-01 ~ 10-06)
+
+> **완료(2026-10-06).** 노드 A(control plane)를 재부팅해 **사람 손 없이 복구됨**을 측정했다 — 재부팅 하네스 8 passed · 0 failed, 운영자의 명령 시각 기준 재판정 PASS, 사후 스냅샷 관문 12개 통과(두 번). 최신 백업 둘(K3s 번들 · Vault 스냅샷)을 복호화해 무결성을 확인했다(13항목 통과). 이 재부팅은 대기 중이던 **메이저 커널 전환(6.17.0-1020 → 7.0.0-1012)** 을 품고 있어서, 먼저 "기본값을 검증된 커널로 고정하고 새 커널은 한 번만 부팅"하는 복구 경로를 만들고(`infra/bootstrap/kernel-trial.sh`) 노드 B → 노드 A 순으로 옮겼다. 끝 상태(10-06): 두 노드 모두 7.0.0-1012로 실행 · 기본 부팅 = 그 커널(고정 없음) · 6.17은 설치된 채 남아 있다(새 커널이 들어오면 apt가 지운다) · 커널 메타패키지 hold는 사용자 결정으로 풀었다(우분투 기본 — 새 보안 커널은 자동 설치되고 다음 재부팅에 적용된다; 계획된 재부팅은 §6 「커널(OS 패치) 재부팅」).
+>
+> **SC-001 근거(사용자 결정 안 A)와 한계**: 재부팅 명령 → 전 Application Healthy 관측 **78초**, 22개 전부가 재부팅 **뒤에** 재조정까지 마친 것을 확인한 시각 **6분 9초**(4분 15초에는 19/22). 문면 그대로의 구간("빈 클러스터에 root app을 적용한 뒤 30분 안에 전부 Healthy")은 재지 않았다 — root app은 2026-09-07에 빈 디렉터리로 적용됐고 Application은 3주에 걸쳐 PR 단위로 들어왔다. 재구축 리허설은 복원 런북(T058 · T114) 뒤의 후속이며 `report.md`에 한계로 적는다.
+
+- **설계**: `specs/003-platform-foundation/design/t048-design.md`(§2 사실 · §3 하네스의 틈과 결정 · §6 백업 검증 · §8 커널 전환과 복구 경로 · §10 2–3일차 실행과 검토 결과 · §10.14 후속 표).
+- **결정(사용자)**: SC-001 근거 = 안 A(10-01) · 커널 처리 = "노드 B 먼저 새 커널, B의 실제 exec 프로브 검증과 완전 복구를 A의 진행 조건으로, A에서 T048 전체 검증, 복구 경로가 없으면 먼저 준비"(10-01 원문은 설계 §8.2) · Vault 메모리 측정과 노드 A 진행 병행(10-02) · 끝 상태 = 고정 해제(10-02 결정 · 10-06 실행) · **커널 정책 = hold 해제, 우분투 기본**(10-06 — 컨트롤러 권장은 "hold 유지 + 창을 잡아 올림"이었다; 받아들인 위험은 §6) · KHO = 켜 둔 채 관찰(10-06) · 컨테이너 메모리 한도 = T048 뒤 별도 gitops PR(10-06 — ESO cert-controller 128 → 256Mi · cert-manager-webhook 80 → 128Mi · Vault 512Mi 유지, T098 경보 뒤 재검토).
+- **코드(모노레포)**: `56301c3`(재부팅 하네스 — 부팅 식별자 기준값 · 재부팅 뒤 기준 시각 · 마감 판정) · `2df4a3b`(`scripts/backup-verify.ps1` + 하네스) · `540998d`(`infra/bootstrap/kernel-trial.sh` + 모의 하네스 160 단언 · run-all 항목 `kernel-trial`) · `1cb32f3`(하네스 수정 3–6 — 실제 경로의 지연에 맞춘 상한 · 0초 기준점 = 옛 부팅의 마지막 관측 · 일시 실패 1회 재시도 · 절대 시각 · 단위 테스트 325 단언) · 설계 · 학습 로그 커밋들.
+- **백업 검증(단계 6 — 운영자 · 2026-10-01 15:35:44–15:36:00 KST · 16초)**: `pwsh -NoProfile -File "<모노레포>\scripts\backup-verify.ps1" -AgeKeyFile "<운영자 개인키 경로>"` — 버킷 `joshuatech-backup-platform`의 최신 객체를 `svc-verify` 세션으로 내려받아 13항목 통과. 과제가 요구한 두 출력:
+  - `PASS bv-k3s-4: state.db extracted alone and passes SQLite integrity_check with a non-empty table kine -- sqlite 3.50.4, kine rows 1867, max(id) 2537454, state.db 21880832 bytes`(객체 `k3s/k3s-20260930T173010Z.tar.age` · 번들 항목 67 = `state.db` 1 · `token` 1 · `cred` 10 · `tls` 47 · 복호화 인증 통과). 과제 문구의 `sqlite3 state.db 'PRAGMA integrity_check'`와 같은 엔진의 같은 검사를 파이썬 표준 모듈로 했다(워크스테이션에 `sqlite3` CLI가 없다 — 표기만 다르다).
+  - `PASS bv-vault-3: Vault snapshot passes raft snapshot inspect (offline) -- ID bolt-snapshot, Size 46469, Index 187495, Term 4, Version 1, keys 28, Total Size 45.2KB`(객체 `vault/vault-20260930T173010Z.snap.age`). 무결성 검증이지 복원 리허설이 아니다 — 스냅샷은 seal 래핑이라 복원에는 같은 KMS 키가 필요하다(T114 · `vault-unseal.md` §7).
+- **커널 전환의 순서(전부 운영자 실행 · 단계마다 사용자 재확인)** — 도구는 커밋된 blob을 바이트 그대로 넘긴다: `git -C D:\code\joshuatech_ver2 cat-file blob 42b7e49ab5c17deb2d02a1dd131a23a8aff8f7d2 | ssh <ssh-a|ssh-b> "sudo bash -s -- <하위 명령>"`(blob = 커밋 `540998d`의 리뷰한 판 · 노드에 파일을 남기지 않는다):
+
+  | 단계 | 시각(KST) | 무엇 | 결과 |
+  |---|---|---|---|
+  | K0 | 10-02 14:48 | 두 노드 읽기 전용 확인(설계 §8.8 블록) + `status` | 부트 구성 두 노드 동일 · `set partuuid=` 0 · 지금 커널의 initrd = 마지막 부팅에 쓰인 파일 · 7.0의 "없는 모듈 넷" = 상류의 이름 변경(설계 §10.6) |
+  | 고정 | 10-02 15:02 | 두 노드 `pin`(B → A) | 기본값 = 6.17 항목의 ID 경로 |
+  | B2 | 10-02 15:22:19 | 노드 B **그냥 재부팅**(고정의 실증) | 약 70초 뒤 **6.17로** 복귀 — 실제 arm64 장비에서 고정이 먹는다 |
+  | B3 | 10-02 16:21:30 | 노드 B `trial 7.0.0-1012-oracle --ignore-missing-modules` → 재부팅 | 16:21:47 7.0 부팅 · 관문 11/11 · 1회용 선택 소비 · exec 프로브 시험 파드 시작 26초 뒤 Ready |
+  | A1 | 10-02 17:06:18 | 노드 A `trial` → **측정 재부팅**(아래) | 하네스 PASS · 스냅샷 12/12 |
+  | hold | 10-02 19:08 | 두 노드 `apt-mark hold linux-oracle linux-image-oracle linux-headers-oracle` | 새 커널이 들어와 6.17을 지우지 못하게(아래 사실 3) |
+  | F | 10-06 10:51 · 11:22 | 노드 B · 노드 A `unpin` → 읽기 확인 → 시험 파드 삭제 | 기본 부팅 = 0번 항목 = 7.0.0-1012 · GRUB 설정 지문은 기본값 한 줄 말고 그대로 |
+  | unhold | 10-06 11:53 | 두 노드 `apt-mark unhold` 같은 세 이름(사용자 결정) | 메타 셋 `ii` · 보안 포켓 후보 = 1012라 그날 밤 커널 설치 없음 · 커널 autoremove 없음 |
+- **측정 재부팅(A1 · 2026-10-02 · 명령 17:06:18 KST)** — 하네스를 먼저 켜고(`armed:`) 운영자가 재부팅했다. 0초 기준점은 명령 10.8초 **전**이라 하네스가 그만큼 엄격하게 셌다. 아래 초는 운영자의 명령 시각 기준(관측의 시작–끝):
+
+  | 명령 뒤 | 일어난 것 |
+  |---|---|
+  | +9 – +39초 | 조회 불통(약 30초) |
+  | +16초 | 노드 A 부팅(7.0.0-1012) |
+  | +46.3 – 54.0초 | reboot-0 새 bootID + Ready |
+  | +53초 → +69초 | Vault 컨테이너 시작 → 파드 Ready(시작 직후 프로브 시간 초과 1회) |
+  | +54.0 – 71.6초 | reboot-1 Vault `sealed=false type=ocikms`(port-forward 수립 15.7초 포함) |
+  | +71.6 – 74.7초 | reboot-2 ClusterSecretStore 5개 Ready |
+  | +74.7 – 78.4초 | reboot-3 Application 22개 Healthy |
+  | +187.8 – 192.3초 | reboot-4 ExternalSecret 2개가 부팅 뒤에 갱신(갱신 주기 5분의 다음 차례) |
+  | +6분 9초 | 사후 스냅샷 — 22개 전부 재부팅 뒤 재조정 · 관문 12개 통과 · bootID = 하네스가 본 새 bootID |
+
+  수용 판정 = 하네스 exit 0 + 명령 시각 기준 재판정 PASS(`rejudge.ps1`) + 사후 스냅샷 관문 전부 OK(노드 A 커널 7.0 포함) + 스냅샷의 bootID = 하네스 PASS 줄의 새 bootID. 하네스는 "새 부팅"만 증명하고 "새 커널"은 증명하지 않는다 — 스냅샷이 그 몫이다.
+- **끝 상태 확인(2026-10-06 · 운영자 읽기)**: 두 노드 `RESULT: OK status -- pin absent; next boot 7.0.0-1012-oracle (default); later boots 7.0.0-1012-oracle` · hold 셋(`hi`) · 모의 업그레이드에서 메타 셋 kept back(`7.0.0-1013`은 noble-updates에만 있다) · 커널 autoremove 없음 · 다음 부팅의 커널 · initrd = 금요일에 부팅한 그 파일(시각 비교) · `/boot` 22% · 10-02 뒤 apt 이력 없음 · 커널 OOM 0 · GRUB 대기 0초(메뉴 없음). 무인 구간(10-02 저녁 – 10-06 아침) 동안 재부팅 없음 · unattended-upgrades 4회 모두 "설치할 것 없음" · 시험 파드는 7.0에서 3일 19시간 계속 Ready(11:53 삭제 확인). 마지막 스냅샷(11:54) 관문 9/9 · 플랫폼 하네스 cluster 39 통과 · 1 실패(`argo-4` — T056 전 통과 불가) · ingress 12/0 · 백업 단언 셋 통과.
+- **실측으로 확정한 사실**:
+  1. **고정과 1회용 선택이 실제 장비(arm64 UEFI · GRUB 2.12-1ubuntu7.3)에서 동작한다** — 드롭인 `/etc/default/grub.d/99-kernel-trial-pin.cfg`의 `GRUB_DEFAULT="<하위 메뉴 ID>><항목 ID>"`가 이기고, grubenv의 `next_entry`는 한 번 쓰인 뒤 빈 값(`next_entry=`)으로 남는다. 숨김 메뉴 · 대기 0초라 콘솔에서 커널을 고를 방법은 없다 — 이 도구가 유일한 경로다.
+  2. **재부팅 뒤 컨테이너 메모리 사용량이 2–7배가 된다** — cgroup v2는 파일 페이지를 처음 건드린 cgroup에 잡는다. 설치 직후에는 이미지를 푼 쪽에 잡혀 있던 실행 파일 페이지가, 재부팅 뒤에는 각 컨테이너의 한도 안에 잡힌다(Vault 146 → 359–379Mi/512Mi · ESO cert-controller 53 → 107–123Mi/128Mi). **한도는 재부팅 뒤 수치로 정한다.** 10-06에 ESO cert-controller는 한도에 붙어 회수 · 다시 읽기가 일어나고 있었다(OOM 0 — 후속).
+  3. **apt는 "부팅된 커널 + 그 밖의 가장 새 커널" 둘만 남긴다**(`APT::NeverAutoRemove::KernelCount` 2). 새 커널로 시험 부팅해 도는 동안 더 새 커널이 들어오면 고정해 둔 옛 커널이 지워진다 → 시험 중에는 커널 메타패키지를 hold한다.
+  4. **7.0의 성질**: 아키텍처별 암호화 모듈이 `lib/crypto`로 합쳐져 이름이 바뀌었다(`libcurve25519_generic` → `libcurve25519` 등 넷 — WireGuard는 그대로 동작) · `linux-modules-extra` 패키지가 없다 · **KHO가 기본으로 켜져 약 1.15 GiB를 옮길 수 있는 페이지 전용으로 예약**한다(`CmaFree` ≈ 1.23 GB · 끄려면 `kho=off`).
+  5. 노드 A 재부팅 동안 API 불통은 약 30초. 노드 B 재부팅 동안에는 조회 경로가 약 60초 끊겼다(CoreDNS가 노드 B에 하나뿐). 노드 A가 내려간 사이 노드 B의 cert-manager 컨트롤러가 한 번 재시작했다(종료 코드 1 — 리더 선출 갱신 기한으로 추정).
+  6. 부팅 초기의 패닉은 저절로 재부팅되지 않는다 — `kernel.panic=10`은 kubelet이 시작하면서 쓰는 값이고 두 커널 모두 `CONFIG_PANIC_TIMEOUT=0`이다. 그 구간의 유일한 수단은 OCI 콘솔의 강제 재시작이다.
+  7. 조회 경로의 일시 실패는 관찰기 둘을 동시에 돌린 구간에서 2%, 관찰기 하나로 다시 잰 15분(10-06)에는 0/180이었다(중앙값 2.2초) — 커널과 무관하다.
+- **시크릿 취급**:
+  - 백업 복호화 개인키(age)는 운영자만 쓴다 — 에이전트는 그 파일을 읽지 않고, 경로는 저장소 · 런북 · 커밋 · 학습 로그에 적지 않는다. 스크립트는 키 경로 · 내용 · 번들 항목 내용을 출력하지 않는다.
+  - 디스크에 닿는 평문은 `state.db`(번들에서 파이프로 그 항목만 꺼낸다 — 서버 토큰 · 인증서 개인키는 디스크에 풀지 않는다)와 Vault 스냅샷 파일 둘뿐이고, 작업 디렉터리는 성공 · 실패와 무관하게 지운다(`bv-clean`).
+  - 조회 토큰(`agent-view`, 8시간)은 발급 값을 화면에 내지 않는 블록으로 조회용 kubeconfig에만 넣는다. OCI `svc-verify` 세션은 60분이다. Cloudflare Access 로그인 URL(`token=`이 든 줄)은 붙여 넣지 않는다.
+  - 세션을 닫을 때 `cloudflared access tcp` 리스너를 멈추고 `%USERPROFILE%\.cloudflared\*-token*`을 지운다.
+- **절차 메모**:
+  1. **변수는 한 번에 하나씩 바꾼다.** 노드 B를 같은 커널로 먼저 재부팅(B2)한 덕에, 시험 파드의 재부팅 뒤 실패(한도 64Mi < 실행 파일 485 MB의 페이지 캐시 — 같은 6.17에서 재현)를 새 커널 탓으로 읽지 않았다.
+  2. 재부팅 신호는 하네스의 마지막 기준점 줄이 `armed:`일 때만 준다 — 운영자가 하네스 로그를 실시간으로 보다가 미리 입력해 둔 재부팅 블록을 실행한다. 재부팅 블록은 이 PC의 시계로 명령 시각(UTC)을 파일에 먼저 쓴다.
+  3. 재부팅 명령 뒤에는 "중립적인 재부팅"이 없다 — 어떤 재부팅이든 고정된 커널로의 되돌리기다. 하네스 FAIL만으로는 재부팅하지 않고 증거(커널 로그 · 컨테이너 상태)부터 본다.
+  4. 증거에는 수명이 있다 — 이벤트는 1시간, `reconciledAt`은 몇 분이면 덮인다. 한 번뿐인 사건 뒤에는 원본 조회 결과를 그 자리에서 파일로 저장한다.
+  5. 라이브 쓰기 블록은 독립 검토 결과를 받은 뒤에 준다(시험 파드 대조에서 한 번 어겼다 — 검토가 권한 대조 방법을 쓰지 못했다).
+  6. 도구의 쓰기 단계(`pin` · `trial` · `unpin`)는 apt 자동 실행 시각(06:00–07:10 KST · `apt-daily`)을 피한다. FAIL · INCONSISTENT · `RESULT:` 줄 없음이면 재부팅하지 않는다.
+- **무인 구간에 일어난 것 — K3s 자동 업그레이드의 첫 실행(2026-10-04 일 03:00–03:02 KST)**: 기록과 사후 확인은 §6 「실행 기록」.
+- **인계**: 설계 §10.14 표 — `kernel-trial.sh` 낮은 등급 넷 + 모듈 검사를 이름 대조에서 의존성 풀이(`modprobe -S <새 커널> --show-depends`)로 · 하네스 테스트 보강(못 잡는 변이 여섯) · 메모리 한도 PR(위 결정 — T049 전) · KHO 관찰(§6 사후 확인) · CoreDNS 단일 replica · `kernel.panic` 조기 적용(sysctl.d) · 부팅 실패 복구 경로(직렬 콘솔 · 부트 볼륨 구조) → T106 · T114. **`report.md`** — SC-001 한계 · 커널 전환과 그 발견 · K3s 자동 업그레이드(부트스트랩 스크립트의 설치 핀 1.36.4 ↔ 라이브 1.36.5).
+
+(T048 이후 기록은 이하에 추가)
 
 ## §4 Vault init·시크릿 시드
 
@@ -634,6 +730,19 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
 - **비상 정지(진행 중 Job을 세울 때)**: disabled 라벨로 applying이 비면 SUC가 applying에 없는 노드의 **진행 중 Job을 다음 Job 이벤트에 스스로 삭제한다**(`handle_batch.go` 145–149행) — 바이너리 교체 도중에 끊기지 않도록 **라벨을 붙이기 전에** 로그를 본다. 순서: ⓪ `kubectl -n system-upgrade logs <apply-… pod> -c upgrade` — `Deploying new k3s binary`가 보이면 `K3s binary has been replaced successfully`(수 초)까지 기다린다 → ① disabled 라벨(위 ①) → ② 남아 있으면 `kubectl -n system-upgrade delete job <apply-…>` → ③ `kubectl uncordon <node>` → ④ 원인 처리 뒤 라벨 제거(위 ④). Job만 먼저 지우면 Plan이 같은 Job을 다시 만든다. 사후 대조: 노드에서 `/usr/local/bin/k3s -v`가 기대 버전인지, `sha256sum /usr/local/bin/k3s`가 그 릴리스의 `sha256sum-arm64.txt`와 맞는지(라이브 미검증, VD). Plan 전체 정지 = 두 노드 모두 disabled 라벨; Plan 제거는 kustomization `resources`에서 빼는 PR(Argo `Prune=confirm`). 이 절차 역시 라이브 미검증(VD, T041 첫 창 뒤).
 - **롤백 불가(명시)**: `rancher/k3s-upgrade`는 다운그레이드를 거부한다(현재 버전이 더 높으면 Job 실패, cordon 유지) — Plan `version`을 낮춰도 되돌아가지 않는다. K3s를 이전 버전으로 되돌리는 길은 FR-041 `rollback` 런북(T106)의 절차(핀 재설치 → `systemctl stop k3s` → §7의 번들 복원 → start → 노드 B 재조인, `--cluster-reset` 금지)뿐이며 계획 다운타임이 든다. 그래서 prepare 게이트의 백업이 창의 복원점이다.
 - **마이너 승격(수동)**: 채널 `v1.36` → `v1.37`은 PR로 두 Plan의 `channel`을 바꾼다(마이너를 건너뛰지 않는다). Argo CD·플랫폼 차트 승격은 Renovate PR + 이 창에서만 머지(FR-048).
+- **실행 기록**:
+  - **2026-10-04(일) 03:00–03:02 KST — 첫 실제 실행: K3s v1.36.4+k3s1 → v1.36.5+k3s1(두 노드)**. T037의 예상("첫 창은 같은 버전의 리허설")과 달리 채널 `v1.36`이 그 사이 v1.36.5(2026-09-30 릴리스)를 가리켜 실제 교체가 일어났다. 무인 구간이었고 사후 확인은 10-06(T048 3일차)에 했다.
+    - 순서(노드 저널 · 버킷 · Plan 상태로 재구성): 03:00:11 노드 B의 agent Job 파드 생성(서버 완료 대기) → 03:00:57 노드 A의 server Job 파드 → prepare 백업 `k3s/k3s-20261003T180102Z.tar.age`(21,499,192 B) · `vault/vault-20261003T180102Z.snap.age`(43,987 B) → 03:01 바이너리 교체(`/usr/local/bin/k3s` 71,434,402 B · `k3s version v1.36.5+k3s1 (3dd98cc5)`) → 03:01:28 `k3s.service` 정지 — containerd-shim은 살아남아 **파드는 재시작되지 않았다** → Job이 파드를 다시 만들어 prepare가 한 번 더 돌았다(`k3s/…180153Z` 20,095,976 B · `vault/…180153Z` 43,975 B — 백업은 멱등이라 무해) → `k3s-server` Complete 03:02:13 → 노드 B `k3s-agent.service` 정지 03:01:57 → `k3s-agent` Complete 03:02:44. Job은 TTL로 지워져 로그가 남지 않는다(Loki는 T098 뒤).
+    - K3s 번들 구성요소가 함께 바뀌었다: Traefik 차트 `40.1.4` → `40.1.5+up40.1.0`(이미지 3.7.8 → 3.7.13) — `helm-install-traefik` Job 03:01:52–03:02:33(파드는 CRD Job을 기다리며 두 번 재시작한 뒤 성공 · revision 6 · 값 파일 둘 다 읽음) · CoreDNS 1.14.7 새 파드 03:01:50. 단일 replica라 Traefik 교체 순간 443이 잠깐 끊겼을 것이다(측정 없음).
+    - 사후 확인(10-06): ① 두 노드 `v1.36.5+k3s1` · `SchedulingDisabled` 없음 ② Plan 둘 `Complete=True` · `latestVersion v1.36.5-k3s1` · `applying` 빈 값 ③ Traefik 인자 네 종(accesslog · redirections · tracing · forwardedHeaders)이 T038과 같다 — 40.1.x 고유 키 `accesslog.fields.headers.defaultmode` · `accesslog.filters.statuscodes` 포함 · 라이브 TLSOption `default`의 `sniStrict: true` · `clientAuthType: RequireAndVerifyClientCert` · `secretNames: [cloudflare-origin-pull-ca]` · `minVersion: VersionTLS12`, TLSStore `default` 그대로 · 엣지 `auth` 404 · `argo` 302 ④ Vault `sealed=false type=ocikms` ⑤ 창 시각의 백업 객체 둘씩(위) ⑥ 파드 전부 Running · Application 22 Synced/Healthy. 플랫폼 하네스 cluster 39 통과 · 1 실패(`argo-4` — T056 전 통과 불가) · ingress 12/0.
+    - 남은 VD: 실패 뒤 재트리거 · prepare의 `privileged` 필요 여부 · 비상 정지 순서는 이번에 일어나지 않아 여전히 미실측이다.
+- **커널(OS 패치) 재부팅** — 도구 `infra/bootstrap/kernel-trial.sh`(`status` · `pin` · `trial <kver>` · `cancel-trial` · `unpin`), 첫 실행 기록은 §3 T048. 운영자는 저장소의 **커밋된 판**을 바이트 그대로 넘긴다: `$blob = git -C D:\code\joshuatech_ver2 rev-parse HEAD:infra/bootstrap/kernel-trial.sh; git -C D:\code\joshuatech_ver2 cat-file blob $blob | ssh <ssh-a|ssh-b> "sudo bash -s -- <하위 명령>"`(노드에 파일을 남기지 않는다 · 마지막 `RESULT:` 줄로 판정).
+  - **정책(사용자 결정 2026-10-06)**: 커널 메타패키지를 보류하지 않는다(우분투 기본). unattended-upgrades가 보안 포켓의 새 커널을 06:00–07:10 KST에 설치하고(자동 재부팅은 꺼져 있어 **다음 재부팅에 적용**), apt는 "부팅된 커널 + 그 밖의 가장 새 커널" 둘만 남긴다(`APT::NeverAutoRemove::KernelCount` 2). 그래서 새 커널이 설치된 뒤의 첫 재부팅은 검증되지 않은 커널로의 전환이다. **받아들인 위험**: 계획 없는 재부팅(클라우드 유지보수 · 패닉 · 실수)이 그 전환을 일으킬 수 있다 — 아래의 주간 확인과 계획 재부팅으로 그 창을 줄인다. (컨트롤러가 권한 안은 "hold 유지 + 창을 잡아 올림"이었다.)
+  - **주간 확인(일요일 사후 확인에 더한다)**: 두 노드 `status` — `INFO running:`과 `INFO next boot:`의 커널이 같은가, `INFO reboot-required:`에 `linux-image-…`가 있는가. 다르면 새 커널이 설치된 것이다 → 2주 안에 아래 계획 재부팅을 잡는다. 같은 자리에서 KHO 지표도 본다: `ssh <노드> "grep -E '^(CmaTotal|CmaFree):' /proc/meminfo; sudo journalctl -k -b -q --no-pager | grep -ciE 'oom-kill|out of memory'"`(7.0은 KHO를 기본으로 켜 약 1.15 GiB를 옮길 수 있는 페이지 전용으로 예약한다 — 사용자 결정 2026-10-06: 켜 둔 채 관찰. 커널 OOM이나 커널 할당 실패가 보이면 다음 계획 재부팅에 부팅 인자 `kho=off`를 넣는다).
+  - **계획 재부팅 — 새 커널이 설치돼 있을 때**(T048 순서의 축약 · 단계마다 사용자 재확인): ① 두 노드 `status`가 `RESULT: OK` · `next boot: <새 kver> (default)` · `package activity: none` ② 시험 동안 보류 `sudo apt-mark hold linux-oracle linux-image-oracle linux-headers-oracle`(시험 부팅 중에 더 새 커널이 들어오면 고정해 둔 커널이 지워진다) ③ 두 노드 `pin`(실행 중 = 검증된 커널) ④ 노드 B `trial <새 kver>` → 재부팅 → 스냅샷 관문 + 노드 확인(커널 · WireGuard 핸드셰이크 · AppArmor 거부 · 커널 OOM · 컨테이너 메모리 cgroup · `next_entry=` 빈 값 · `next boot:` = 고정된 커널) ⑤ 노드 A `trial` → 재부팅 하네스를 먼저 켜고(`armed:`) 측정 재부팅 → 하네스 PASS + 명령 시각 기준 재판정 + 사후 스냅샷(커널 · bootID) ⑥ 두 노드 `unpin` → 읽기 확인(GRUB 설정 지문은 기본값 한 줄 말고 그대로) ⑦ `sudo apt-mark unhold` 같은 세 이름. 쓰기 단계는 06:00–07:10 KST와 각 노드의 `apt-daily` 시각을 피하고 시험부터 해제까지 같은 날 끝낸다. FAIL · INCONSISTENT · `RESULT:` 줄 없음이면 재부팅하지 않는다 — `status`부터 다시 본다. 상세 실행표와 실패 분기는 설계 `specs/003-platform-foundation/design/t048-design.md` §8.7 · §10.4와 F 절차.
+  - **계획 재부팅 — 새 커널이 없을 때**(`next boot` = `running`): 그냥 재부팅해도 같은 커널이다. 노드 A면 재부팅 하네스로 잰다(§3 T048의 수용 판정).
+  - **계획 없는 재부팅 뒤**: `kubectl get nodes -o wide`의 KERNEL-VERSION이 바뀌었으면 새 커널로 부팅된 것이다 — 위 ④의 노드 확인을 돌리고 결과를 §3에 남긴다.
+  - **부팅 실패 복구 경로**(새 커널이 부팅되지 않을 때 — 라이브 미검증, T106 · T114에서 실증): 부팅 초기 패닉은 저절로 재부팅되지 않는다(두 커널 모두 `CONFIG_PANIC_TIMEOUT=0` · `kernel.panic=10`은 kubelet이 시작하면서 쓴다). GRUB 메뉴는 숨김 · 대기 0초(`GRUB_TIMEOUT=0` · `GRUB_RECORDFAIL_TIMEOUT=0`)라 콘솔에서 커널을 고를 수 없다. ① OCI 콘솔 → 인스턴스 → Console connection(직렬)으로 증상 확인 ② 인스턴스 Reset 1회(같은 커널로 다시 시도) ③ 계속 실패하면 부트 볼륨을 분리해 복구용 인스턴스에 붙이고 그 `/boot/grub/grubenv`에 `grub-editenv <grubenv> set next_entry="<하위 메뉴 ID>><직전 커널 항목 ID>"`(직전 커널은 부팅된 적이 있어 apt가 남겨 둔다 · ID는 `status`의 `grub.cfg default` 줄 모양) → 다시 붙여 부팅 ④ 올라오면 그 커널에 `pin`하고 원인을 본다. 업그레이드 뒤 nightly K3s 번들이 21.5 MB → 32.1 MB로 커졌다(기록). 부트스트랩 스크립트의 설치 핀은 `v1.36.4+k3s1` 그대로다(노드를 새로 만들면 1.36.4로 설치되고 다음 창에 올라간다 — 재구축 때는 라이브 버전을 `K3S_VERSION`으로 준다, T114).
 
 ## §7 K3s 번들 복원
 
