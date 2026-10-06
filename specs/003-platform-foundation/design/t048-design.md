@@ -603,4 +603,5 @@ ls -la /boot/grub/grub.cfg.new 2>/dev/null || echo "no grub.cfg.new"
   2. **KHO = 켜 둔 채 관찰** — §6 주간 확인에 `CmaFree` · 커널 OOM 줄.
   3. **컨테이너 메모리 한도 = T048 뒤 별도 gitops PR(T049 전)** — ESO cert-controller 128 → 256Mi · cert-manager-webhook 80 → 128Mi · Vault 512Mi 유지(T098 경보 뒤 재검토).
 - **런북**: §3 요약(전체 순서 · 시간 · 시크릿 취급) · §3 T048 절 · §6 실행 기록(K3s 첫 실행) · §6 커널(OS 패치) 재부팅.
-- **남은 것**: §10.14 표(도구 수정은 노드 작업이 끝났으므로 이제 해도 된다) · 결정 3의 PR · `report.md` 항목.
+- **결정 3의 PR(같은 날 완료)**: gitops #44 → main `1d1ddf8`(13:37 KST 머지). 로컬 validate PASS 38 · FAIL 0 · WARN 4(기존) · CI 전부 통과 · 렌더링 diff 코멘트 = 두 Deployment의 한도 한 줄씩. 반영: 13:42 두 Application Synced/Healthy · 새 파드 둘 Ready · 재시작 0 · 두 ns 경고 이벤트 0 · ESO 웹훅 "certs are valid"(cert-controller는 같은 CA를 webhook 설정 둘에 다시 넣었다) · 와일드카드 인증서 Ready · ExternalSecret 둘 머지 뒤 갱신 · 스냅샷 10/10. 운영자의 첫 머지 명령은 `--match-head-commit`에 짧은 커밋 ID를 줘서 거부됐다(40자 전체가 필요하다 — 머지는 일어나지 않았다).
+- **남은 것**: §10.14 표(도구 수정은 노드 작업이 끝났으므로 이제 해도 된다) · `report.md` 항목.
