@@ -128,7 +128,7 @@ description: "Task list for 003-platform-foundation (joshuatech override: tests 
 
 ### E2E for User Story 2 (MANDATORY — executed by the tester agent)
 
-- [ ] T049 [US2] E2E: US2 AC1–AC5 — `agent-view` 토큰 kubeconfig로 `tests/platform/{cluster,ingress,reboot}.tests.ps1` PASS, gitops validate.yml PASS + 시크릿 값 0(gitleaks 두 repo), `tofu plan`(oci·cloudflare) diff 0, root app apply 시각과 전부 Healthy 시각 기록(SC-001 ≤ 30분), 브라우저로 `argo.joshuatech.dev`·`vault.joshuatech.dev` Access → 임시 admin 로그인(AC3 후반 Authentik OIDC 로그인은 US4 T085로 이월) — evidence recorded in the tester report
+- [X] T049 [US2] E2E: US2 AC1–AC5 — `agent-view` 토큰 kubeconfig로 `tests/platform/{cluster,ingress,reboot}.tests.ps1` PASS, gitops validate.yml PASS + 시크릿 값 0(gitleaks 두 repo), `tofu plan`(oci·cloudflare) diff 0, root app apply 시각과 전부 Healthy 시각 기록(SC-001 ≤ 30분), 브라우저로 `argo.joshuatech.dev`·`vault.joshuatech.dev` Access → 임시 admin 로그인(AC3 후반 Authentik OIDC 로그인은 US4 T085로 이월) — evidence recorded in the tester report
 
 **Checkpoint**: 플랫폼 기반 완성 — 데이터·신원·앱 배포가 GitOps로 가능
 
