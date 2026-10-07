@@ -86,6 +86,14 @@ else { Check 'platform' ($c -eq 0 -and $o -match '(?m)^test files: \d+ passed, 0
 #     (madr: docs/decisions/00{02..10}-*.md 0/9, T018–T026 전; memory-docs: memory 2 파일 모두 부재, T027–T028 전).
 #     부분 존재 = 전체 단언(fail closed). 실행된 파일이 모두 그 SKIP이면 슬롯도 SKIP(FAIL 아님); 아니면 Check로 판정.
 $adrTests = @(@('tests/decisions/madr.tests.ps1', 'tests/memory/memory-docs.tests.ps1') | Where-Object { Test-Path -LiteralPath (Join-Path $repo $_) })
+# 1b4. ci-gitleaks (T049 AC5) — tests/scripts/ci-gitleaks.tests.ps1: .github/workflows/ci.yml job gitleaks 정적 검사(도구 불필요 · SKIP 없음 · fail closed —
+#       job id `gitleaks`가 ruleset(main)의 required check 이름 · 액션으로 되돌아가지 않음 · 버전+sha256 한 쌍 · 범위와 기대 수가 같은 옵션 · 탐지 설정 고정).
+#       1b3과 같은 양성 증거 규율: exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 · 크래시 = FAIL).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/ci-gitleaks.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'ci-gitleaks' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see ci-gitleaks test output above"
+
 if ($adrTests.Count -eq 0) {
     Write-Host 'SKIP adr-madr -- test files not written yet (US1: tests/decisions/madr.tests.ps1, tests/memory/memory-docs.tests.ps1)'
 } else {
