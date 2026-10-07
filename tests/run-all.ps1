@@ -48,6 +48,23 @@ $c = $LASTEXITCODE
 Write-Host ($o.TrimEnd())
 Check 'reboot-harness' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see reboot harness test output above"
 
+# 1b2a1. cluster-harness (T049) — tests/scripts/cluster-tests.tests.ps1: tests/platform/cluster.tests.ps1 단위 테스트(argo-4 범위 분리 · T049 허용 미배포
+#        목록 게이트 · 조회 오류 사유 · np-2 문구; 가짜 kubectl 심 · 픽스처 tasks.md · 실제 클러스터 · oci · curl · 실제 tasks.md 접근 없음 · 약 5–6분).
+#        1b2a와 같은 양성 증거 규율: exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 · 크래시 = FAIL). 선택 실행
+#        (CLUSTER_HARNESS_TESTS_ONLY) · 사본 시험(CLUSTER_HARNESS_SCRIPT)이면 요약 줄 끝에 접미가 붙어 이 판정을 통과하지 못한다.
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/cluster-tests.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'cluster-harness' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see cluster harness test output above"
+
+# 1b2a2. ingress-harness (T049) — tests/scripts/ingress-tests.tests.ps1: tests/platform/ingress.tests.ps1 단위 테스트(cert-2 notAfter UTC 처리 · 30일 경계;
+#        가짜 kubectl 심 · curl 없음 · 실제 클러스터 · 네트워크 접근 없음 · 약 1–2분). 1b2a1과 같은 규율(INGRESS_HARNESS_TESTS_ONLY · INGRESS_HARNESS_SCRIPT 접미).
+#        시간대가 UTC인 머신에서는 이 하네스가 예전 9시간 오차 회귀를 잡지 못한다(테스트 머리 주석) — 판정은 같다.
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/ingress-tests.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'ingress-harness' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see ingress harness test output above"
+
 # 1b2b. backup-verify (T048) — tests/scripts/backup-verify.tests.ps1: scripts/backup-verify.ps1 하네스(진짜 age · age-keygen · tar · vault ·
 #       파이썬 sqlite3 + 가짜 oci 심 · 실행마다 임시 픽스처 · 실제 OCI · 클러스터 · 개인키 접근 없음 · 약 3분). 하네스가 설정됐을 때 요약 줄에 접미를 붙이는 환경 변수가 하나 더 있다(BACKUP_VERIFY_SCRIPT).
 #       도구가 없으면 하네스가 첫 줄 'SKIP backup-verify tests -- ' + exit 0으로 끝난다 — 그때만 SKIP 허용(1b3과 같은 규율).
@@ -69,6 +86,14 @@ Write-Host ($o.TrimEnd())
 if ($c -eq 0 -and $o -match '\ASKIP kubeconform-deploy tests -- ') { Write-Host 'SKIP ci-kubeconform -- allowed (bash, kustomize or kubeconform not found; see SKIP line above)' }
 else { Check 'ci-kubeconform' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see kubeconform-deploy harness output above" }
 
+# 1b4. ci-gitleaks (T049 AC5) — tests/scripts/ci-gitleaks.tests.ps1: .github/workflows/ci.yml job gitleaks 정적 검사(도구 불필요 · SKIP 없음 · fail closed —
+#       job id `gitleaks`가 ruleset(main)의 required check 이름 · 액션으로 되돌아가지 않음 · 버전+sha256 한 쌍 · 범위와 기대 수가 같은 옵션 · 탐지 설정 고정).
+#       1b3과 같은 양성 증거 규율: exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 · 크래시 = FAIL).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/ci-gitleaks.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'ci-gitleaks' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see ci-gitleaks test output above"
+
 # 1c. specs index freshness — 이 검사는 낡은 인덱스를 발견하면 specs/README.md를 갱신하는 부작용이 있다(FAIL이면 diff를 검토하고 커밋한다)
 $o = pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/update-specs-index.ps1 2>&1 | Out-String
 Check 'specs-index-fresh' ($LASTEXITCODE -eq 0 -and $o -match '\(unchanged\)') ("exit=$LASTEXITCODE; $($o.Trim()) -- if stale: README was regenerated now, review and commit specs/README.md; if error: fix the spec header and rerun")
@@ -86,14 +111,6 @@ else { Check 'platform' ($c -eq 0 -and $o -match '(?m)^test files: \d+ passed, 0
 #     (madr: docs/decisions/00{02..10}-*.md 0/9, T018–T026 전; memory-docs: memory 2 파일 모두 부재, T027–T028 전).
 #     부분 존재 = 전체 단언(fail closed). 실행된 파일이 모두 그 SKIP이면 슬롯도 SKIP(FAIL 아님); 아니면 Check로 판정.
 $adrTests = @(@('tests/decisions/madr.tests.ps1', 'tests/memory/memory-docs.tests.ps1') | Where-Object { Test-Path -LiteralPath (Join-Path $repo $_) })
-# 1b4. ci-gitleaks (T049 AC5) — tests/scripts/ci-gitleaks.tests.ps1: .github/workflows/ci.yml job gitleaks 정적 검사(도구 불필요 · SKIP 없음 · fail closed —
-#       job id `gitleaks`가 ruleset(main)의 required check 이름 · 액션으로 되돌아가지 않음 · 버전+sha256 한 쌍 · 범위와 기대 수가 같은 옵션 · 탐지 설정 고정).
-#       1b3과 같은 양성 증거 규율: exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 · 크래시 = FAIL).
-$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/ci-gitleaks.tests.ps1 2>&1 | Out-String
-$c = $LASTEXITCODE
-Write-Host ($o.TrimEnd())
-Check 'ci-gitleaks' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see ci-gitleaks test output above"
-
 if ($adrTests.Count -eq 0) {
     Write-Host 'SKIP adr-madr -- test files not written yet (US1: tests/decisions/madr.tests.ps1, tests/memory/memory-docs.tests.ps1)'
 } else {

@@ -34,7 +34,8 @@
 #     대신 cert-manager Certificate(kube-system, spec.secretName = wildcard-joshuatech-dev-tls 정확히 1개)의 Ready=True·status.notAfter로
 #     판정한다(cert-manager는 Secret이 있고 유효할 때만 Ready=True). cert-manager 차트 기본 `global.rbac.aggregateClusterRoles=true`로
 #     `view`에 집계된 certificates get/list에 의존한다(T042가 값을 명시). cert-2는 남은 기간이 30일을 **초과**해야 한다(TotalDays > 30,
-#     내림 없음). 근거에는 Certificate 이름·notAfter·남은 일수만 적는다.
+#     내림 없음). 근거에는 Certificate 이름·notAfter(UTC)·남은 일수만 적는다. notAfter는 문자열로 왕복하지 않고 UTC로 바꾼다
+#     (ConvertTo-UtcInstant 주석 — T049에서 찾은 9시간 오차의 수정, 단위 테스트 tests/scripts/ingress-tests.tests.ps1).
 #   - 문자열 판정은 전부 ordinal([string]::Equals/EndsWith/IndexOf + StringComparison; 호스트명만 OrdinalIgnoreCase).
 #
 # 단언 ↔ T032 항목:
@@ -181,6 +182,32 @@ function Get-KubeJson([string[]]$getArgs) {
     if ($r.code -ne 0) { return @{ obj = $null; reason = "kubectl get $($getArgs -join ' ') exit=$($r.code) err=$($r.err)" } }
     try { return @{ obj = ($r.out | ConvertFrom-Json); reason = '' } }
     catch { return @{ obj = $null; reason = "kubectl get $($getArgs -join ' ') output did not parse: $($_.Exception.Message)" } }
+}
+
+# Certificate status.notAfter → UTC [DateTime](Kind=Utc). 반환 @{ utc = [DateTime] 또는 $null; error = 사유('status.notAfter ' 뒤에 붙는 말) }
+# 문자열로 왕복하지 않는다(T049 테스터 발견 2026-10-07): ConvertFrom-Json(기본 DateKind)은 ISO 8601 문자열을 [DateTime]으로 바꾼다 —
+#   'Z'는 Kind=Utc, 오프셋이 있으면 그 시각을 로컬 시각으로 바꾼 Kind=Local, 오프셋이 없으면 Kind=Unspecified. 예전 코드는 이 값을
+#   "$x"로 문자열화해(오프셋이 사라진다) RoundtripKind로 다시 읽었고, 오프셋 없는 문자열은 로컬로 읽히므로 Kind=Utc 값이 로컬 오프셋만큼
+#   틀렸다(+09:00 머신에서 9시간 이르다 — 남은 일수 0.375일 적음; UTC 머신에서는 우연히 맞았다).
+#   [DateTime]: Utc = 그대로 · Local = ToUniversalTime() · Unspecified = UTC로 간주한다 — 근거: cert-manager의 status.notAfter는 metav1.Time이고
+#     Kubernetes는 metav1.Time을 RFC 3339 UTC('Z')로 직렬화한다(오프셋 없는 값은 그 표기가 잘린 것이지 로컬 시각이 아니다).
+#   [DateTimeOffset]: UtcDateTime. 문자열(ConvertFrom-Json이 날짜로 알아보지 못한 표기): InvariantCulture + AssumeUniversal|AdjustToUniversal로
+#     파싱한다 — 오프셋이 있으면 그 오프셋으로, 없으면 UTC로 읽는다(오프셋 없는 문자열을 로컬로 읽는 경로는 없다). 그 밖의 형 · $null은 error.
+function ConvertTo-UtcInstant($value) {
+    if ($null -eq $value) { return @{ utc = $null; error = 'is absent' } }
+    if ($value -is [DateTimeOffset]) { return @{ utc = $value.UtcDateTime; error = $null } }
+    if ($value -is [DateTime]) {
+        if ($value.Kind -eq [DateTimeKind]::Utc) { return @{ utc = $value; error = $null } }
+        if ($value.Kind -eq [DateTimeKind]::Local) { return @{ utc = $value.ToUniversalTime(); error = $null } }
+        return @{ utc = [DateTime]::SpecifyKind($value, [DateTimeKind]::Utc); error = $null }   # Unspecified = UTC(위 근거)
+    }
+    if ($value -is [string]) {
+        $d = [DateTime]::MinValue
+        $styles = [Globalization.DateTimeStyles]::AssumeUniversal -bor [Globalization.DateTimeStyles]::AdjustToUniversal
+        if ([DateTime]::TryParse($value, [Globalization.CultureInfo]::InvariantCulture, $styles, [ref]$d)) { return @{ utc = $d; error = $null } }
+        return @{ utc = $null; error = "unparseable: [$value]" }
+    }
+    return @{ utc = $null; error = "has unexpected type $($value.GetType().FullName)" }
 }
 
 # Ingress 목록(-A JSON)에서 rules[].host가 hostName인 항목의 ns/name 목록.
@@ -341,13 +368,13 @@ Test-Group 'cert' {
         return
     }
     Assert $id1 $true "Certificate $cname Ready=True (Secret value never read; agent-view has no Secret get)"
-    $na = "$($c[0].status.notAfter)"
-    $parsed = [DateTimeOffset]::MinValue
-    if (-not [DateTimeOffset]::TryParse($na, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind, [ref]$parsed)) {
-        Assert $id2 $false "Certificate $cname status.notAfter unparseable: [$na]"
+    # notAfter → UTC: 문자열로 왕복하지 않는다(ConvertTo-UtcInstant 주석)
+    $conv = ConvertTo-UtcInstant $c[0].status.notAfter
+    if ($null -eq $conv.utc) {
+        Assert $id2 $false "Certificate $cname status.notAfter $($conv.error)"
         return
     }
-    $notAfterUtc = $parsed.UtcDateTime
+    $notAfterUtc = $conv.utc
     $daysLeft = ($notAfterUtc - [DateTime]::UtcNow).TotalDays   # 내림 없음 — 30일을 초과해야 PASS
     $naText = $notAfterUtc.ToString('yyyy-MM-ddTHH:mm:ssZ', [Globalization.CultureInfo]::InvariantCulture)
     Assert $id2 ($daysLeft -gt $MinCertDaysLeft) "notAfter=$naText daysLeft=$($daysLeft.ToString('0.00', [Globalization.CultureInfo]::InvariantCulture)) (must exceed $MinCertDaysLeft)"

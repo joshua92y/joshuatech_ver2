@@ -22,7 +22,18 @@
 #
 # 단계별 SKIP(실패로 세지 않음 — T102 E2E에서 전체 재실행):
 #   - ca-1      CA 미러 Secret(pg-main-ca, ns identity·jt-dev·jt-prod)이 셋 다 없으면 `SKIP ca-1: until T056`
-#   - np-2-*    platform/policies/tests/ assert Job(data-assert·kafka-assert·authz-assert, ns jt-dev)이 없으면 `SKIP … until T041`
+#   - np-2-*    platform/policies/tests/ assert Job(ns jt-dev)이 없고 job별 소유 과제(T050 · T051 · T078) 줄이 tasks.md에 정확히 1개이고 미체크일 때만
+#               SKIP — `SKIP np-2-data-assert: until T050 (…; Dragonfly section: T051; T050 unchecked in tasks.md)` · `SKIP np-2-kafka-assert: until T051 (…)`
+#               · `SKIP np-2-authz-assert: until T078 (…)`. 소유 과제가 체크됐는데 Job이 없으면 FAIL(`T0NN is checked in tasks.md but Job jt-dev/<job> is absent`) ·
+#               tasks.md 문제(읽기 실패 · 과제 줄 ≠ 1)도 FAIL — argo-4-* 게이트와 같은 규칙(T049 2라운드, 적대 리뷰 F2 범위 확장). Job이 있으면 과제 상태는 보지 않는다.
+#   - argo-4-cnpg-crd · argo-4-pg-main · argo-4-strimzi · argo-4-dragonfly(US3 범위의 Delete=false,Prune=false 보호):
+#               T049 허용 미배포 목록($argo4Allowlist)의 게이트가 네 조건을 모두 만족할 때만 SKIP — 목록에 있음 · Argo CD Application
+#               (platform-cnpg · platform-cnpg-cluster · platform-kafka · platform-dragonfly) 존재 · 그 status.resources가 비어 있음 · 소유 과제
+#               (T052 · T053 · T055 · T057) 줄이 tasks.md에 정확히 1개이고 미체크. 문구 `SKIP <id>: until <task> deploys <component> (T049 allowlist;
+#               Argo CD Application <name> has no resources; <task> unchecked in tasks.md)`. 소유 과제가 체크된 뒤의 빈 상태 · Application 없음 ·
+#               조회 오류 · tasks.md 문제는 FAIL이다(조회가 그 이름의 Application이 아닌 객체를 돌려줘도 FAIL — Resolve-Argo4Gate 주석). US2 범위
+#               argo-4에는 SKIP 경로가 없다. 라이브 SKIP의 뜻 = "Argo CD Application 자원 0 + 소유 과제 미체크"일 뿐이다 — 게이트가 skip이면 US3 객체
+#               (CRD · Cluster · Kafka · PVC)를 조회하지 않으므로(D2) 그 객체의 존재 여부는 SKIP이 확인하지 않는다.
 #   - limits-*  jt-dev·jt-prod에 Running pod가 하나도 없으면 `SKIP … until T075`
 #   - mon-1     ns monitoring의 DaemonSet/StatefulSet/Deployment 중 이름이 alloy-metrics로 끝나거나 라벨 app.kubernetes.io/name=alloy-metrics인
 #               워크로드가 0개면 `SKIP mon-1: until T098`(T098 실제 형상 = StatefulSet k8s-monitoring-alloy-metrics; 종류로 FAIL하지 않는다)
@@ -36,8 +47,13 @@
 #   argo-1..4   applications 전부 Synced/Healthy($argoExcludedApps 제외), appproject default sourceRepos·destinations 빈 배열,
 #               appproject dev·prod namespaceResourceBlacklist ⊇ {NetworkPolicy, ResourceQuota, LimitRange, Role, RoleBinding, ServiceAccount}
 #               (group도 대조: networking.k8s.io / "" / rbac.authorization.k8s.io, '*' 허용),
-#               Cluster pg-main · Kafka jt-kafka · KafkaNodePool · Vault/Dragonfly PVC · 오퍼레이터 CRD(그룹 접미 cnpg.io·strimzi.io·cert-manager.io·external-secrets.io)에
-#               argocd.argoproj.io/sync-options = "Delete=false,Prune=false"(정확 일치)
+#               argocd.argoproj.io/sync-options = "Delete=false,Prune=false"(정확 일치) — 범위별로 나눈다(T049 테스터 발견 2026-10-07):
+#   argo-4      US2 범위: ns vault의 PVC 전부 + 그룹 cert-manager.io · external-secrets.io(또는 .<그룹>으로 끝남) CRD 전부. 항목 0개도 FAIL
+#   argo-4-cnpg-crd  그룹 cnpg.io CRD 전부(게이트 platform-cnpg · T052)    argo-4-pg-main  ns data Cluster pg-main(platform-cnpg-cluster · T053)
+#   argo-4-strimzi   그룹 strimzi.io CRD 전부 + ns data Kafka jt-kafka + KafkaNodePool ≥ 1(platform-kafka · T055)
+#   argo-4-dragonfly ns data Dragonfly PVC(이름에 dragonfly 또는 라벨 app.kubernetes.io/name=dragonfly)(platform-dragonfly · T057)
+#               조회마다 예외를 잡아 그 항목의 사유로 바꾸고 나머지 항목을 계속 본다 — 사유는 항목마다 한 줄에 전부(상한 2000자).
+#               PASS는 확인한 객체 수와 범위를, SKIP은 소유 과제와 Application 이름을 적는다.
 #   vault-1..2  seal-status sealed=false · type=ocikms
 #   eso-1..4    clustersecretstore 정확히 5개(vault-platform·vault-dev·vault-prod·vault-data·k8s-data-ca)가 Ready=True + reason=Valid이고,
 #               vault store 4장은 spec provider.vault.auth.kubernetes.serviceAccountRef의 namespace=external-secrets·audiences=[vault],
@@ -76,10 +92,15 @@
 #               --reload-strategy=annotations] — 집합 비교가 아닌 이유: 값 없는 플래그가 뒤 인자를 삼키는 경우(--namespaces=… 소실 → 전역 모드) · 중복 플래그 합침(StringSlice) 방지
 #   backup-1..3 joshuatech-backup-platform k3s/ · vault/ 에 24h 내 .age 오브젝트 ≥ 1, 비-.age(평문) 오브젝트 0
 #
-# 단언 수: 50 = gate 3 + nodes 3 + argo 4 + vault 2 + eso 4 + ca 1 + ns 2 + psa 2 + np-set 5 + np-cond 2 + np 14 + mon 1 + limits 2 +
-#          reloader 2 + backup 3 (np 14 = np-1, np-2-data-assert, np-2-kafka-assert, np-2-authz-assert, np-2-manual, np-3, np-3-live,
-#          np-4, np-4-live, np-5, np-5-live, np-6, np-6-live, np-7). live/manual 5개는 항상 SKIP이므로 PASS 후보는 45, 그중 단계별
-#          SKIP 게이트는 ca-1 · np-2-* 3 · limits-* 2 · mon-1 의 7개.
+# 단언 수: 54 = gate 3 + nodes 3 + argo 8 + vault 2 + eso 4 + ca 1 + ns 2 + psa 2 + np-set 5 + np-cond 2 + np 14 + mon 1 + limits 2 +
+#          reloader 2 + backup 3 (argo 8 = argo-1, argo-2, argo-3, argo-4, argo-4-cnpg-crd, argo-4-pg-main, argo-4-strimzi, argo-4-dragonfly;
+#          np 14 = np-1, np-2-data-assert, np-2-kafka-assert, np-2-authz-assert, np-2-manual, np-3, np-3-live,
+#          np-4, np-4-live, np-5, np-5-live, np-6, np-6-live, np-7). live/manual 5개는 항상 SKIP이므로 PASS 후보는 49, 그중 단계별
+#          SKIP 게이트는 ca-1 · np-2-* 3 · limits-* 2 · mon-1 · argo-4-* 4 의 11개.
+#
+# 매개변수: -TasksMdPath <파일> — argo-4-* 게이트가 읽는 tasks.md를 바꾼다(단위 테스트 tests/scripts/cluster-tests.tests.ps1이 픽스처를
+#   가리킬 때만 쓴다). 기본값은 이 파일 기준 ../../specs/003-platform-foundation/tasks.md이고, 러너(run-platform-tests.ps1)는 인자 없이 실행한다.
+param([string]$TasksMdPath = '')
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false   # 자식 프로세스의 0이 아닌 종료 코드를 예외로 바꾸지 않는다
 $script:pass = 0
@@ -134,9 +155,26 @@ $caMirrorKeys = @('pg-main-ca', 'jt-kafka-cluster-ca-cert')
 $blacklistKinds = @('NetworkPolicy', 'ResourceQuota', 'LimitRange', 'Role', 'RoleBinding', 'ServiceAccount')
 # namespaceResourceBlacklist 항목의 group(정확 일치; '*'도 허용). core 그룹은 "" (JSON에 group 키가 없으면 ""로 본다)
 $blacklistGroups = @{ 'NetworkPolicy' = 'networking.k8s.io'; 'ResourceQuota' = ''; 'LimitRange' = ''; 'ServiceAccount' = ''; 'Role' = 'rbac.authorization.k8s.io'; 'RoleBinding' = 'rbac.authorization.k8s.io' }
-# 오퍼레이터 CRD 그룹: 정확 일치 또는 ".<접미>"로 끝남 — cnpg.io는 postgresql.cnpg.io·barmancloud.cnpg.io(플러그인) 둘 다 포함
-$operatorCrdGroups = @('cnpg.io', 'strimzi.io', 'cert-manager.io', 'external-secrets.io')
+# 오퍼레이터 CRD 그룹: 정확 일치 또는 ".<접미>"로 끝남 — cnpg.io는 postgresql.cnpg.io·barmancloud.cnpg.io(플러그인) 둘 다 포함.
+# US2 범위 argo-4가 보는 그룹은 아래 둘뿐이다(cnpg.io · strimzi.io는 argo-4-cnpg-crd · argo-4-strimzi가 본다).
+$argo4Us2CrdGroups = @('cert-manager.io', 'external-secrets.io')
+# T049 허용 미배포 목록(사용자 결정 6, 2026-10-07): argo-4 계열 가운데 아직 배포하지 않은 US3 항목만 — ID → Argo CD Application · 소유 과제
+# (component = SKIP 문구에 쓰는 배포 대상 이름). SKIP은 Resolve-Argo4Gate의 네 조건이 모두 맞을 때만 나온다. 소유 과제가 tasks.md에서
+# 체크되면 빈 Application은 저절로 FAIL이 되므로 항목을 손으로 지울 필요가 없다. 목록에 없는 ID에는 SKIP 경로가 없다.
+$argo4Allowlist = [ordered]@{
+    'argo-4-cnpg-crd'  = @{ app = 'platform-cnpg'; task = 'T052'; component = 'the cnpg.io CRDs' }
+    'argo-4-pg-main'   = @{ app = 'platform-cnpg-cluster'; task = 'T053'; component = 'Cluster data/pg-main' }
+    'argo-4-strimzi'   = @{ app = 'platform-kafka'; task = 'T055'; component = 'the strimzi.io CRDs and Kafka data/jt-kafka' }
+    'argo-4-dragonfly' = @{ app = 'platform-dragonfly'; task = 'T057'; component = 'the Dragonfly PVC in ns data' }
+}
+# argo-4-* 게이트가 읽는 tasks.md(머리 주석 「매개변수」). 사용자 제공 상대 경로는 PSPath로 해석한다(.NET cwd 아님 — CLAUDE.md Known Issues).
+# 변수 이름을 매개변수와 다르게 둔다: PowerShell 변수 이름은 대소문자를 가리지 않아 $script:tasksMdPath는 매개변수 $TasksMdPath 그 자체다.
+$script:argo4TasksPath =[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../specs/003-platform-foundation/tasks.md'))
+if (-not [string]::IsNullOrEmpty($TasksMdPath)) { $script:argo4TasksPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($TasksMdPath) }
 $assertJobs = @('data-assert', 'kafka-assert', 'authz-assert')
+# assert Job별 소유 과제(np-2-* SKIP 문구): data-assert = T050(그 Dragonfly 절은 T051) · kafka-assert = T051 · authz-assert = T078
+$assertJobOwner = @{ 'data-assert' = 'T050'; 'kafka-assert' = 'T051'; 'authz-assert' = 'T078' }
+$assertJobOwnerNote = @{ 'data-assert' = '; Dragonfly section: T051' }
 # assert Job이 실제로 증명하는 매트릭스 범위(np-2-* PASS 문구)
 $assertJobScope = @{ 'data-assert' = 'jt-dev -> data 5432 (pg-main) and 6379 (Dragonfly)'; 'kafka-assert' = 'jt-dev -> data 9093 (Kafka SCRAM/TLS)'; 'authz-assert' = 'jt-dev -> identity 8080 (OpenFGA)' }
 $vaultIngressNs = @('kube-system', 'monitoring', 'external-secrets')   # 매트릭스의 vault 8200 도착 행(노드 A ipBlock은 별도) — vault 자기 ns 없음(allow-same-namespace 대상 아님)
@@ -150,14 +188,15 @@ function Clip([string]$s, [int]$max = 400) {
     $s = ($s -replace "`r`n", ' ') -replace "`n", ' '
     if ($s.Length -gt $max) { return $s.Substring(0, $max) + '...' } else { return $s }
 }
-function Pass([string]$id, [string]$detail) { $script:pass++; Write-Host "PASS ${id}: $(Clip $detail)" }
-function Fail([string]$id, [string]$detail) { $script:fail++; Write-Host "FAIL ${id}: $(Clip $detail)" }
-function Skip([string]$id, [string]$detail) { $script:skip++; Write-Host "SKIP ${id}: $(Clip $detail)" }
+# $max = 줄 상한(기본 400). argo-4 계열만 더 길게 준다(사유를 한 줄에 전부 — ClusterAssert의 $clip).
+function Pass([string]$id, [string]$detail, [int]$max = 400) { $script:pass++; Write-Host "PASS ${id}: $(Clip $detail $max)" }
+function Fail([string]$id, [string]$detail, [int]$max = 400) { $script:fail++; Write-Host "FAIL ${id}: $(Clip $detail $max)" }
+function Skip([string]$id, [string]$detail, [int]$max = 400) { $script:skip++; Write-Host "SKIP ${id}: $(Clip $detail $max)" }
 
 # 클러스터 단언 래퍼: 게이트 실패면 사유와 함께 FAIL(fail closed). $body는 @('PASS'|'FAIL'|'SKIP', detail)을 돌려준다.
-# 예외(kubectl 실패·JSON 파싱 실패 등)는 FAIL이다.
-function ClusterAssert([string]$id, [scriptblock]$body) {
-    if ($null -ne $script:clusterReason) { Fail $id "cluster unavailable ($script:clusterReason)"; return }
+# 예외(kubectl 실패·JSON 파싱 실패 등)는 FAIL이다. $clip = 출력 줄 상한(기본 400 — argo-4 계열만 2000).
+function ClusterAssert([string]$id, [scriptblock]$body, [int]$clip = 400) {
+    if ($null -ne $script:clusterReason) { Fail $id "cluster unavailable ($script:clusterReason)" $clip; return }
     $status = 'FAIL'; $detail = ''
     try {
         $r = @(& $body)   # 마지막 두 원소가 (status, detail) — 본문의 우발적 파이프라인 출력이 앞에 섞여도 판정이 흔들리지 않는다
@@ -166,9 +205,9 @@ function ClusterAssert([string]$id, [scriptblock]$body) {
     }
     catch { $status = 'FAIL'; $detail = "unhandled $($_.Exception.GetType().Name): $($_.Exception.Message) (line $($_.InvocationInfo.ScriptLineNumber))" }
     switch ($status) {
-        'PASS' { Pass $id $detail }
-        'SKIP' { Skip $id $detail }
-        default { Fail $id $detail }
+        'PASS' { Pass $id $detail $clip }
+        'SKIP' { Skip $id $detail $clip }
+        default { Fail $id $detail $clip }
     }
 }
 
@@ -499,35 +538,166 @@ ClusterAssert 'argo-3' {
     if ($bad.Count -gt 0) { return @('FAIL', ($bad -join '; ')) }
     return @('PASS', "AppProject dev/prod namespaceResourceBlacklist covers $($blacklistKinds -join ', ') with matching group")
 }
-ClusterAssert 'argo-4' {
-    $bad = @(); $ok = 0
-    $check = { param($obj, [string]$label)
-        $v = Annotation $obj 'argocd.argoproj.io/sync-options'
-        if (Eq $v $syncOptions) { $script:tmpOk++ } else { $script:tmpBad += "${label}: sync-options='$v'" } }
-    $script:tmpOk = 0; $script:tmpBad = @()
-    $pg = Get-KubeOne 'data' 'clusters.postgresql.cnpg.io' 'pg-main'
-    if ($null -eq $pg) { $script:tmpBad += 'Cluster pg-main (ns data) not found' } else { & $check $pg 'Cluster pg-main' }
-    $kafka = Get-KubeOne 'data' 'kafkas.kafka.strimzi.io' 'jt-kafka'
-    if ($null -eq $kafka) { $script:tmpBad += 'Kafka jt-kafka (ns data) not found' } else { & $check $kafka 'Kafka jt-kafka' }
-    $pools = @(Items (Get-KubeList @('get', 'kafkanodepools.kafka.strimzi.io', '-n', 'data')))
-    if ($pools.Count -eq 0) { $script:tmpBad += 'no KafkaNodePool in ns data' }
-    foreach ($x in $pools) { & $check $x "KafkaNodePool $(Name $x)" }
-    $vaultPvc = @(Items (Get-KubeList @('get', 'persistentvolumeclaims', '-n', 'vault')))
-    if ($vaultPvc.Count -eq 0) { $script:tmpBad += 'no PVC in ns vault' }
-    foreach ($x in $vaultPvc) { & $check $x "PVC vault/$(Name $x)" }
-    $dfPvc = @(Items (Get-KubeList @('get', 'persistentvolumeclaims', '-n', 'data')) | Where-Object {
-            (IndexOrd (Name $_) 'dragonfly') -ge 0 -or (Eq (Label $_ 'app.kubernetes.io/name') 'dragonfly') })
-    if ($dfPvc.Count -eq 0) { $script:tmpBad += 'no Dragonfly PVC in ns data (name contains "dragonfly" or label app.kubernetes.io/name=dragonfly)' }
-    foreach ($x in $dfPvc) { & $check $x "PVC data/$(Name $x)" }
-    $crds = @(Items (Get-KubeList @('get', 'customresourcedefinitions.apiextensions.k8s.io')))
-    foreach ($g in $operatorCrdGroups) {
-        $mine = @($crds | Where-Object { $grp = [string](PropPath $_ @('spec', 'group')); (Eq $grp $g) -or (EndsOrd $grp ".$g") })
-        if ($mine.Count -eq 0) { $script:tmpBad += "no CRD for operator group $g" }
-        foreach ($x in $mine) { & $check $x "CRD $(Name $x)" }
+# ---------- argo-4 계열: argocd.argoproj.io/sync-options = "Delete=false,Prune=false" (T049 harness-fix 설계 D1–D5) ----------
+# 왜 나눴나(T049 테스터 발견 2026-10-07): 예전 argo-4 한 단언이 US2 객체(Vault PVC · cert-manager · ESO CRD)와 아직 배포하지 않은 US3 객체
+#   (CNPG · Strimzi · Dragonfly)를 함께 봤고, 첫 조회(Cluster pg-main)의 "리소스 타입 없음" 예외가 단언 전체를 FAIL 한 줄로 끝내 뒤의
+#   US2 검사가 한 번도 돌지 않았다. 지금은 US2 범위 argo-4(SKIP 경로 없음)와 US3 범위 argo-4-* 넷(배포 게이트 Resolve-Argo4Gate)으로 나눈다.
+# 조회마다 예외를 잡아 그 항목의 사유로 바꾸고 다음 항목으로 넘어간다(D4). Get-KubeOne · Get-KubeList가 예외를 던지는 계약은 다른
+#   단언이 쓰므로 그대로 둔다. 사유는 하나도 버리지 않고 한 줄에 모은다(조회 오류 240자 · 줄 2000자 상한 — 다른 단언은 400자 그대로).
+
+# tasks.md는 한 번만 읽는다 — 게이트가 필요할 때만(자원이 있는 Application · 존재하는 assert Job은 과제 상태를 보지 않는다). argo-4-* 게이트와
+#   np-2-* 게이트가 같은 캐시를 쓴다. 실패는 error 문자열(fail closed).
+$script:tasksRead = $null
+function Read-TasksMd {
+    if ($null -ne $script:tasksRead) { return $script:tasksRead }
+    $shown = Mask-Text $script:argo4TasksPath
+    $res = @{ lines = @(); error = $null }
+    try {
+        if (-not (Test-Path -LiteralPath $script:argo4TasksPath -PathType Leaf)) { $res.error = "tasks.md is not a readable file: $shown" }
+        else { $res.lines = @([IO.File]::ReadAllText($script:argo4TasksPath, [Text.Encoding]::UTF8) -split "`r?`n") }
+    } catch { $res.error = "tasks.md unreadable ($shown): $(Clip (Mask-Text $_.Exception.Message) 200)" }
+    $script:tasksRead = $res
+    return $res
+}
+# 소유 과제 줄 판정(순수 함수): 줄 맨 앞의 '- [ ] T0NN ' · '- [X] T0NN ' · '- [x] T0NN ' 모양만 센다(ordinal — 들여쓴 줄 · '* [ ]' · 공백 둘 ·
+#   더 긴 번호(T0NN0) · 뒤 공백 없는 줄 끝의 T0NN은 세지 않는다). [X]와 [x]는 같다(둘 다 체크됨 — FAIL로 가는 방향).
+#   정확히 1줄이어야 한다 — 0줄 · 2줄 이상은 error(fail closed). 반환 @{ state = 'unchecked' | 'checked' | $null; error }
+function Get-TaskLineState($lines, [string]$task) {
+    $unchecked = 0; $checked = 0
+    foreach ($l in @($lines)) {
+        $s = [string]$l
+        if (StartsOrd $s "- [ ] $task ") { $unchecked++ }
+        elseif ((StartsOrd $s "- [X] $task ") -or (StartsOrd $s "- [x] $task ")) { $checked++ }
     }
-    $bad = @($script:tmpBad); $ok = $script:tmpOk
-    if ($bad.Count -gt 0) { return @('FAIL', "sync-options '$syncOptions' missing/mismatch: $($bad -join '; ')") }
-    return @('PASS', "$ok resources carry argocd.argoproj.io/sync-options=$syncOptions")
+    $n = $unchecked + $checked
+    if ($n -ne 1) { return @{ state = $null; error = "tasks.md has $n task line(s) for $task (expected exactly 1 line starting with '- [ ] $task ', '- [X] $task ' or '- [x] $task ')" } }
+    if ($checked -eq 1) { return @{ state = 'checked'; error = $null } }
+    return @{ state = 'unchecked'; error = $null }
+}
+# argo-4-* 배포 게이트(D2 — 순수 함수: 조회는 주입한다; 단위 테스트가 허용 목록 · 조회를 바꿔 넘긴다). 반환 @{ decision; reason }
+#   'skip'  네 조건이 모두 맞음: (1) $id가 $allowlist에 있다 (2) Argo CD Application(ns argocd)이 있다 (3) 그 status.resources가 비어 있다
+#           (없음 · null · 빈 배열) (4) 소유 과제 줄이 tasks.md에 정확히 1개이고 미체크 — reason = SKIP 문구(정해진 모양)
+#   'check' D3 검사로 판정: Application에 자원이 1개 이상(과제 상태는 보지 않는다) · 또는 허용 목록에 없는 ID(SKIP 경로 없음)
+#   'fail'  게이트 자체의 FAIL 사유: Application 없음 · 조회 오류(권한 · 통신 · 파싱) · 조회가 Application argocd/<name> 하나가 아닌 것을 돌려줌 ·
+#           tasks.md를 읽지 못함 · 과제 줄이 정확히 1개가 아님 · 소유 과제 체크됨 + 자원 0(US3 이후의 빈 상태) · 목록 항목이 깨짐.
+#           호출 측은 D3 검사도 이어서 해 사유를 함께 보고한다(D4).
+#   $getApp : { param($name) } → @{ obj; error }(obj · error 둘 다 $null = 없음)    $getTasks : { } → @{ lines; error }
+function Resolve-Argo4Gate([string]$id, $allowlist, [scriptblock]$getApp, [scriptblock]$getTasks) {
+    $entry = $null
+    foreach ($k in @(PropNames $allowlist)) { if (Eq $k $id) { $entry = Prop $allowlist $k; break } }
+    if ($null -eq $entry) { return @{ decision = 'check'; reason = "$id is not in the T049 allowlist (no SKIP path)" } }
+    $appName = [string](Prop $entry 'app'); $task = [string](Prop $entry 'task'); $component = [string](Prop $entry 'component')
+    if ([string]::IsNullOrEmpty($appName) -or -not [regex]::IsMatch($task, '\AT[0-9]{3}\z') -or [string]::IsNullOrEmpty($component)) {
+        return @{ decision = 'fail'; reason = "T049 allowlist entry for $id is malformed (app='$appName' task='$task' component='$component')" }
+    }
+    $a = & $getApp $appName
+    if ($null -ne $a.error) { return @{ decision = 'fail'; reason = "Argo CD Application $appName lookup failed: $($a.error)" } }
+    if ($null -eq $a.obj) { return @{ decision = 'fail'; reason = "Argo CD Application $appName (ns argocd) not found" } }
+    # 돌아온 것이 그 이름의 Application 객체 하나인지 확인한다(fail closed — T049 2라운드, 적대 리뷰 F1): kind · metadata.name · metadata.namespace
+    #   가운데 하나라도 다르면(빈 객체 · 스칼라 · List · Status · 다른 이름 · 다른 ns · 객체 여러 개) "자원이 없는 Application"이 아니라 조회 오류다 —
+    #   SKIP 근거가 아니다. 사유에는 무엇이 왔는지(객체 수 · kind · name · namespace)를 적는다. tasks.md는 그 뒤에만 읽는다.
+    $objs = @($a.obj)
+    $gotKind = [string](Prop $objs[0] 'kind'); $gotName = Name $objs[0]; $gotNs = Ns $objs[0]
+    if ($objs.Count -ne 1 -or -not (Eq $gotKind 'Application') -or -not (Eq $gotName $appName) -or -not (Eq $gotNs 'argocd')) {
+        return @{ decision = 'fail'; reason = "Argo CD Application $appName lookup returned $($objs.Count) object(s) that are not Application argocd/$appName (kind='$gotKind' name='$gotName' namespace='$gotNs')" }
+    }
+    $res = @(PropArr $objs[0] @('status', 'resources'))
+    if ($res.Count -gt 0) { return @{ decision = 'check'; reason = "Argo CD Application $appName has $($res.Count) resource(s)" } }
+    $t = & $getTasks
+    if ($null -ne $t.error) { return @{ decision = 'fail'; reason = "Argo CD Application $appName has no resources and the state of $task is unknown: $($t.error)" } }
+    $st = Get-TaskLineState $t.lines $task
+    if ($null -ne $st.error) { return @{ decision = 'fail'; reason = "Argo CD Application $appName has no resources and $($st.error)" } }
+    if (Eq ([string]$st.state) 'checked') { return @{ decision = 'fail'; reason = "$task is checked in tasks.md but Argo CD Application $appName has no resources" } }
+    return @{ decision = 'skip'; reason = "until $task deploys $component (T049 allowlist; Argo CD Application $appName has no resources; $task unchecked in tasks.md)" }
+}
+# 항목 하나 = 조회 1회 + 객체마다 sync-options 정확 일치(D3). 반환 @{ item; ok; reason; scope; count }
+#   $fetch  : 객체를 내는 scriptblock(없으면 아무것도 내지 않는다 — @($null)이 1개로 세어지는 함정을 피한다). 예외 = 그 항목의 'lookup failed' 사유
+#   $empty  : 객체 0개의 사유(0개는 증거가 아니다 — FAIL)    $nameOf : 객체 → 표시 이름    $scopeOf : 객체 배열 → PASS 문구 조각(D5)
+#   scriptblock 안의 $group · $ns · $kind · $name · $label은 호출한 함수(Test-Argo4CrdGroup 등)의 변수다(동적 스코프 — 이 함수는 같은 이름을 쓰지 않는다).
+function Test-Argo4Item([string]$item, [scriptblock]$fetch, [string]$empty, [scriptblock]$nameOf, [scriptblock]$scopeOf) {
+    $objs = @()
+    try { $objs = @(& $fetch) }
+    catch { return @{ item = $item; ok = $false; reason = "${item}: lookup failed: $(Clip $_.Exception.Message 240)"; scope = ''; count = 0 } }
+    if ($objs.Count -eq 0) { return @{ item = $item; ok = $false; reason = "${item}: $empty"; scope = ''; count = 0 } }
+    $bad = [System.Collections.Generic.List[string]]::new()
+    foreach ($o in $objs) {
+        $v = Annotation $o 'argocd.argoproj.io/sync-options'
+        if (-not (Eq $v $syncOptions)) { $bad.Add("$(& $nameOf $o)=$(if ($null -eq $v) { '<absent>' } else { "'$v'" })") }
+    }
+    if ($bad.Count -gt 0) {
+        $more = if ($bad.Count -gt 3) { " (+$($bad.Count - 3) more)" } else { '' }
+        return @{ item = $item; ok = $false; reason = "${item}: $($bad.Count) of $($objs.Count) object(s) without sync-options exactly '$syncOptions': $((@($bad | Select-Object -First 3)) -join ', ')$more"; scope = ''; count = $objs.Count }
+    }
+    return @{ item = $item; ok = $true; reason = $null; scope = [string](& $scopeOf $objs); count = $objs.Count }
+}
+# CRD 그룹: spec.group = <g> 또는 *.<g>. 목록 조회는 캐시(argo-4 · argo-4-cnpg-crd · argo-4-strimzi가 같은 목록을 쓴다)
+function Test-Argo4CrdGroup([string]$group) {
+    return (Test-Argo4Item "CRD group $group" {
+            @(Items (Get-KubeList @('get', 'customresourcedefinitions.apiextensions.k8s.io'))) | Where-Object {
+                $grp = [string](PropPath $_ @('spec', 'group')); (Eq $grp $group) -or (EndsOrd $grp ".$group") }
+        } "no CRD with spec.group $group or *.$group" { param($o) Name $o } { param($objs) "CRD group $group $(@($objs).Count)" })
+}
+# 이름으로 하나(--ignore-not-found: 없으면 객체 0개 = 'not found')
+function Test-Argo4One([string]$ns, [string]$kind, [string]$name, [string]$label) {
+    return (Test-Argo4Item "$label $ns/$name" { $x = Get-KubeOne $ns $kind $name; if ($null -ne $x) { $x } } 'not found' { param($o) "$ns/$(Name $o)" } { param($objs) "$label $ns/$name" })
+}
+# ns 안의 목록(필터): 객체 표시 이름은 <ns>/<name>
+function Test-Argo4ListIn([string]$ns, [string]$kind, [string]$label, [scriptblock]$filter, [string]$empty) {
+    return (Test-Argo4Item "$label ns $ns" { @(Items (Get-KubeList @('get', $kind, '-n', $ns))) | Where-Object $filter } $empty { param($o) "$ns/$(Name $o)" } { param($objs) "$label $((@($objs) | ForEach-Object { "$ns/$(Name $_)" }) -join ', ')" })
+}
+# 항목 결과 + 게이트 사유 → @(status, detail). 사유를 하나도 버리지 않는다(D4). PASS는 확인한 객체 수와 범위를 적는다(D5).
+function Join-Argo4Result($items, [string]$gateFail, [string]$note) {
+    $items = @($items)
+    $problems = [System.Collections.Generic.List[string]]::new()
+    if (-not [string]::IsNullOrEmpty($gateFail)) { $problems.Add($gateFail) }
+    foreach ($i in $items) { if (-not [bool]$i.ok) { $problems.Add([string]$i.reason) } }
+    if ($items.Count -eq 0) { $problems.Add('no item was checked (harness bug -- fail closed)') }
+    if ($problems.Count -gt 0) { return @('FAIL', "$($problems.Count) problem(s): $($problems -join '; ')") }
+    $total = 0
+    foreach ($i in $items) { $total += [int]$i.count }
+    $noun = if ($total -eq 1) { 'object carries' } else { 'objects carry' }
+    $d = "$total $noun argocd.argoproj.io/sync-options=${syncOptions}: $((@($items | ForEach-Object { [string]$_.scope })) -join '; ')"
+    if (-not [string]::IsNullOrEmpty($note)) { $d += " ($note)" }
+    return @('PASS', $d)
+}
+
+# argo-4: US2 범위 — SKIP 경로 없음. 항목 = Vault PVC + CRD 그룹 둘(어느 항목이든 0개 = FAIL)
+ClusterAssert 'argo-4' {
+    $items = @(
+        Test-Argo4ListIn 'vault' 'persistentvolumeclaims' 'PVC' { $true } 'no PVC in ns vault'
+        foreach ($g in $argo4Us2CrdGroups) { Test-Argo4CrdGroup $g }
+    )
+    return (Join-Argo4Result $items '' '')
+} 2000
+# argo-4-*: US3 범위(D1). 검사 정의 = ID → 항목을 내는 scriptblock. 게이트가 'skip'이 아니면 실행한다(게이트 FAIL이어도 실행해 사유를 함께 보고).
+$argo4Checks = [ordered]@{
+    'argo-4-cnpg-crd'  = { Test-Argo4CrdGroup 'cnpg.io' }
+    'argo-4-pg-main'   = { Test-Argo4One 'data' 'clusters.postgresql.cnpg.io' 'pg-main' 'Cluster' }
+    'argo-4-strimzi'   = {
+        Test-Argo4CrdGroup 'strimzi.io'
+        Test-Argo4One 'data' 'kafkas.kafka.strimzi.io' 'jt-kafka' 'Kafka'
+        Test-Argo4ListIn 'data' 'kafkanodepools.kafka.strimzi.io' 'KafkaNodePool' { $true } 'no KafkaNodePool in ns data'
+    }
+    'argo-4-dragonfly' = {
+        Test-Argo4ListIn 'data' 'persistentvolumeclaims' 'Dragonfly PVC' { (IndexOrd (Name $_) 'dragonfly') -ge 0 -or (Eq (Label $_ 'app.kubernetes.io/name') 'dragonfly') } 'no Dragonfly PVC in ns data (name contains "dragonfly" or label app.kubernetes.io/name=dragonfly)'
+    }
+}
+# 게이트에 주입하는 조회 — 오류(권한 · 통신 · 파싱)는 error 문자열이 되어 게이트가 FAIL로 판정한다
+$argo4GetApp = { param([string]$appName)
+    try { return @{ obj = (Get-KubeOne 'argocd' 'applications.argoproj.io' $appName); error = $null } }
+    catch { return @{ obj = $null; error = (Clip $_.Exception.Message 240) } }
+}
+$argo4GetTasks = { return (Read-TasksMd) }
+foreach ($gid in @($argo4Checks.Keys | ForEach-Object { "$_" })) {
+    # 본문은 루프 안에서 즉시 실행되므로 $gid는 동적 스코프로 보인다(np-2-*와 같은 방식)
+    ClusterAssert $gid {
+        $gate = Resolve-Argo4Gate $gid $argo4Allowlist $argo4GetApp $argo4GetTasks
+        if (Eq ([string]$gate.decision) 'skip') { return @('SKIP', [string]$gate.reason) }
+        $items = @(& $argo4Checks[$gid])
+        $gateFail = if (Eq ([string]$gate.decision) 'fail') { [string]$gate.reason } else { '' }
+        $note = if (Eq ([string]$gate.decision) 'check') { [string]$gate.reason } else { '' }
+        return (Join-Argo4Result $items $gateFail $note)
+    } 2000
 }
 
 # ---------- 3. Vault seal(port-forward + GET /v1/sys/seal-status, exec 미사용) ----------
@@ -979,7 +1149,17 @@ foreach ($job in $assertJobs) {
     # 본문은 루프 안에서 즉시 실행되므로 $job은 동적 스코프로 보인다(클로저 불필요)
     ClusterAssert "np-2-$job" {
         $j = Get-KubeOne 'jt-dev' 'jobs.batch' $job
-        if ($null -eq $j) { return @('SKIP', "until T041 (assert Job jt-dev/$job from platform/policies/tests not present)") }
+        # 소유 과제는 job별(머리 주석 「단계별 SKIP」 — $assertJobOwner · $assertJobOwnerNote). Job이 없을 때만 tasks.md를 본다(있으면 과제 상태 무관).
+        if ($null -eq $j) {
+            # 소유 과제가 체크됐는데 Job이 없으면 FAIL(US3 이후의 빈 상태 — argo-4-* 게이트와 같은 규칙) · tasks.md 문제도 FAIL(fail closed)
+            $owner = [string]$assertJobOwner[$job]
+            $t = Read-TasksMd
+            if ($null -ne $t.error) { return @('FAIL', "assert Job jt-dev/$job not present and the state of $owner is unknown: $($t.error)") }
+            $st = Get-TaskLineState $t.lines $owner
+            if ($null -ne $st.error) { return @('FAIL', "assert Job jt-dev/$job not present and $($st.error)") }
+            if (Eq ([string]$st.state) 'checked') { return @('FAIL', "$owner is checked in tasks.md but Job jt-dev/$job is absent") }
+            return @('SKIP', "until $owner (assert Job jt-dev/$job from platform/policies/tests not present$($assertJobOwnerNote[$job]); $owner unchecked in tasks.md)")
+        }
         $succeeded = PropPath $j @('status', 'succeeded')
         if ($null -eq $succeeded -or [int]$succeeded -lt 1) { return @('FAIL', "Job jt-dev/$job has not succeeded (status.succeeded='$succeeded')") }
         $r = Invoke-Kubectl @('-n', 'jt-dev', 'logs', "job/$job", '--tail=50')
