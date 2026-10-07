@@ -29,20 +29,51 @@
 #   FAIL 줄에 적는다.
 #   패키지 작업(리뷰 #1): grub-mkconfig 에는 잠금이 없어 다른 update-grub(커널 · grub 패키지 훅)과 겹치면 메뉴 항목이 0 개인 grub.cfg 가 남을 수
 #     있다. 그래서 pin · unpin · trial 은 쓰기 전에, pin · unpin 은 update-grub 직전에 한 번 더 본다(되돌리기 · 복원의 update-grub 앞에서는
-#     프로세스만 — 방금 실패한 우리 update-grub 이 남긴 grub.cfg.new 는 겹칠 상대가 아니다):
-#     pgrep -x 가 dpkg · apt · apt-get · unattended-upgr · grub-mkconfig · update-grub 가운데 하나라도 찾거나 /boot/grub/grub.cfg.new 가 있으면
+#     프로세스만 — 방금 실패한 우리 update-grub 이 남긴 grub.cfg.new 는 겹칠 상대가 아니다). pin · unpin 은 update-grub 이 exit 0 으로 돌아온
+#     직후(사후 검증 전)에도 프로세스를 한 번 더 보고, 보이면 FAIL 한다(수정 2 L1 — 훅의 update-grub 이 우리 것보다 늦게 시작해 쓰다 멈춘 파일이
+#     grub.cfg 로 설치되면 꼬리 섹션이 빠져도 기본값과 0 번 항목은 맞아 보인다). 그때는 되돌리지 않는다(겹친 훅이 아직 쓰고 있을 수 있다 —
+#     unpin 은 치워 둔 고정 파일만 지운다). 판정: pgrep -x 가 dpkg · apt · apt-get · unattended-upgr · grub-mkconfig · update-grub 가운데 하나라도 찾거나 /boot/grub/grub.cfg.new 가 있으면
 #     작업 중이다(프로세스 없이 grub.cfg.new 만 있으면 실패하거나 죽은 grub-mkconfig 의 잔여물이고, 성공한 update-grub 한 번이 치운다 — 줄에
 #     그 방법을 적는다). pgrep 이 없거나 0 · 1 이 아닌 코드로 끝나면 판단 불가 = 작업 중. 예외는 하나뿐이다 — 우분투의 unattended-upgrades.service 가
 #     늘 띄워 두는 종료 대기 도우미(명령 줄이 정확히 UU_IDLE_HELPER 인 unattended-upgr; 2026-10-02 ubuntu:24.04 실측: 패키지가 단위를 enable
 #     하고 pgrep -x unattended-upgr 가 이 프로세스를 찾는다)는 패키지 작업이 아니다. update-grub 직전에 작업이 보이면 쓴 것만 되돌린다(grub.cfg
-#     는 아직 그대로다). cancel-trial 은 막지 않는다(next_entry 를 지우는 것은 안전한 방향이다).
+#     는 아직 그대로다) — 이미 고정 파일을 읽은 훅이 끝나며 기본값을 바꿀 수 있어 OK 줄에 "작업이 끝난 뒤 status 를 다시"를 적는다(수정 2 L2).
+#     cancel-trial 은 막지 않는다(next_entry 를 지우는 것은 안전한 방향이다).
 #   initrd 없는 부팅 폴백(리뷰 #2): grub.cfg 에 'set partuuid=' 가 있으면 하위 메뉴 안의 항목(이 도구가 쓰는 경로)은 언제나 initrd 없이
 #     부팅하고 재시도가 없다 — 고정된 복구 커널도, 시험 부팅도 평소 부팅과 같지 않으므로 pin · trial 을 하지 않는다(status 는 FAIL 줄).
 #   grubenv 의 initrdfail · prev_entry(리뷰 #9): 하나라도 값이 있으면 GRUB 이 다음 부팅을 바꿀 수 있다 — status 는 INCONSISTENT, pin · trial 은
-#     거부한다. 빈 값(GRUB 이 남기는 'x=')은 없음으로 읽는다.
+#     거부한다. 빈 값(GRUB 이 남기는 'x=')은 없음으로 읽는다. 그 줄에 할 일을 적는다(수정 2 L3 · INITRD_HINT): grub-common 2.12-1ubuntu7.3 에서
+#     값을 쓰는 것은 GRUB 뿐이고('set partuuid=' 가 있을 때만 — 00_header 의 initrdfail 함수), grub-initrd-fallback.service 가 부팅마다 둘 다
+#     지운다(grub-editenv … unset initrdfail · unset prev_entry). 메뉴에 커널 항목이 하나도 없는 grub.cfg(겹친 grub-mkconfig 의 잔여)도
+#     거부 줄에 할 일을 적는다(EMPTY_MENU_HINT).
 #   복구용 커널(리뷰 #6): trial 은 고정 값이 pin 이 지금 쓸 값(실행 중 커널의 -advanced- 항목)과 정확히 같고 그 커널의 vmlinuz · initrd 가
 #     비어 있지 않을 때만 쓴다. status 는 고정된 커널의 -advanced- 항목 · 파일까지 보고 OK 를 낸다(고정된 커널이 실행 중 커널과 다른 것은
 #     시험 커널로 부팅한 뒤의 정상 상태다).
+#   모듈 검사(수정 2 M1 + 후속 F-A · F-B · F-C + 3라운드 R3-1 · R3-2 + R3c F1–F4 — trial 의 가드 · status 의 커널별 줄): 지금 적재된 모듈의 이름을 대상 커널 k 에서
+#     modinfo -k 로 찾고, 못 찾은 모듈 m 은 지금 커널의 lsmod 한 줄(3열 사용 수 · 4열 사용자)과 modprobe -S <k> --show-depends 로 나눈다 —
+#     대체됨(사용자 경로: 사용자가 있고 그 전부가 k 의 modules.dep 에 있다(exit 0 + insmod/builtin 줄 — depmod 는 풀리지 않는 심볼을 경고만 하고 의존
+#     목록에서 빼므로, 트리가 온전하다는 전제의 판정이다) → 'm->u1+u2') ·
+#     대체됨(별칭 경로: 사용자가 없고 부팅 때 이름으로 적재되는 목록에 없으며, 지금 커널의 modinfo -F alias 가운데 glob 글자가 없는 별칭 a 하나가
+#     k 에서 풀리고 그 답의 모듈(insmod · builtin 줄) 가운데 m 의 계승자가 있다 — 계승자는 k 에서 a 를 스스로 선언하고, 지금 커널에 같은 이름으로
+#     있으면서 이미 a 를 선언하던 형제가 아니다(R3-1: 풀리기만 해서는 m 의 기능이 k 에 있다는 근거가 아니다 — MODULE_ALIAS_CRYPTO 가 함께 선언하는
+#     맨 이름 sm4 · crc32 는 이름이 같은 다른 모듈로 풀리고, 7.0 의 crypto-stdrng 는 6.17 에도 내장이던 drbg 로 풀린다; 지금 커널 쪽 조회가 'not found'
+#     아닌 이유로 실패하면 형제인지 알 수 없으므로 세지 않는다 — R3c F1) → 'm=<처음 그렇게 풀린 별칭>'; 설계 한계(R3c F3): 여럿이 선언하는 가족
+#     별칭(net-pf-N · crypto-stdrng)은 새 구성원이 생기면 m 의 기능과 무관해도 계승자로 센다 — 노드의 모듈(crypto · wireguard · btrfs)에는 그런 별칭이
+#     없고, 실제 6.17 ↔ 7.0 · 7.0.0-1012 ↔ 1013 트리에도 그런 짝은 없다(2026-10-07 실측);
+#     사용 수는 보지 않는다 — 노드의 wireguard 는 쓰는 중에도 사용 수 0 이다) · 없음(그 밖 전부 — fail-closed). 부팅 목록은 systemd 가 읽는
+#     modules-load.d 넷 · /etc/modules · /etc/initramfs-tools/modules · /usr/share/initramfs-tools/modules.d/* · 지금 명령 줄의 modules_load= ·
+#     rd.modules_load= 이다 — EFI 변수 SystemdOptions(systemd 가 명령 줄 뒤에 덧붙인다)는 보지 않는다(R3c F4). trial 은 없음이 0 이면 옵션 없이
+#     진행하고, 없음이 있으면 --accept-missing-modules <없음 목록> 이 사전순으로 정확히 같을 때만 진행한다(--ignore-missing-modules 는 전부
+#     받아들이되 그렇다고 한 줄 알린다). modprobe 가 없거나 -S 를 모르거나 답을 믿을 수 없으면(이름으로 못 찾은 첫 모듈을 먼저 물어 'not found' 를
+#     확인한다) 이름 기준만 쓴다.
+#     판정의 근거는 노드의 실제 모듈 트리다: modprobe -S <k> 는 /lib/modules/<k>/modules.dep(.bin) · modules.builtin 을 읽는다(-d 없이 기본 경로).
+#     판정의 범위(R3-4): 사용자 경로는 부팅 목록 · m 자신의 별칭 · 이름 없는 사용 수를 보지 않는다. 실제 6.17 ↔ 7.0 트리에서 이 경로로 대체될 수
+#     있는 모듈(이름으로 없고 사용자 하나 이상이 k 에서 풀리는 것 — 23개: 6.17 → 7.0 넷 · 7.0 → 6.17 열아홉; 사용자가 될 수 있는 모듈이 전부 적재돼
+#     있으면 대체되는 것은 둘 · 열하나)은 전부 구체적인 별칭이 없다(2026-10-07 실측: 사용자가 있는 이름 없는 모듈 다섯 · 서른넷 가운데 구체적인 별칭이
+#     있는 것은 nhpoly1305 하나이고, 그 사용자 nhpoly1305_neon 도 7.0 에 없어 이 경로로 대체되지 않는다). 별칭이 있는 모듈이 이 경로로 대체되면 그 별칭의 기능은 따로 확인한다.
+#     실행 중에 사용자 공간이 이름으로 적재하는 모듈(k3s · containerd 의 'modprobe <이름>' · systemd 의 modprobe@<이름>.service)은 보지 않는다 —
+#     별칭 · 사용자 경로로 대체된 모듈은 k 에서 이름으로는 적재되지 않는다(그래서 이름 검사에 걸렸다). 노드의 wireguard 는 infra/bootstrap/host-prep.sh 가
+#     /etc/modules-load.d/wireguard.conf 에 적으므로 부팅 목록 규칙이 판정한다.
 # 접속이 끊겨도 끝까지 간다(리뷰 #3): trap '' HUP PIPE — 출력이 닫힌 뒤에도(SSH 세션 끊김) 쓰기 단계와 되돌리기가 끝까지 실행된다. 출력 실패는
 #   흐름을 바꾸지 않는다(출력 함수의 종료 코드로 분기하지 않는다). 도중에 죽은 실행(전원 · kill -9)이 남긴 과도 상태(고정 파일은 있는데
 #   grub.cfg 가 옛 값 / 고정 파일은 없는데 grub.cfg 기본값이 ID)는 이어 끝내지 않는다 — 쓰기 명령은 거부하고, 그 FAIL 줄과 status 의
@@ -62,8 +93,9 @@
 #   kernel.panic=10 → 시험 커널이 패닉하면 사람 없이도 재부팅되어 고정된 커널로 돌아온다.
 #
 # 시험 훅: KT_ROOT 가 설정돼 있으면 모든 경로 앞에 붙이고 첫 줄에 'INFO note: KT_ROOT=<값> (test root)' 를 낸다(tests/infra/kernel-trial.tests.ps1 이
-#   가짜 루트 + 가짜 명령으로 실제 실행한다). sudo 는 환경을 초기화하므로 노드에서는 비어 있다. 외부 명령은 PATH 에서 찾는다:
-#   uname · id · update-grub · grub-editenv · lsmod · modinfo · dmesg · apt-config · pgrep · sort · awk(+ coreutils mktemp · mv · rm · chmod).
+#   가짜 루트 + 가짜 명령으로 실제 실행한다 — 부팅 때의 모듈 목록(modules-load.d · /etc/modules)도 KT_ROOT 아래에서 읽는다). sudo 는 환경을
+#   초기화하므로 노드에서는 비어 있다. 외부 명령은 PATH 에서 찾는다: uname · id · update-grub · grub-editenv · lsmod · modinfo · modprobe(없어도
+#   된다 — 이름 기준으로 되돌아간다) · dmesg · apt-config · pgrep · sort · awk(+ coreutils mktemp · mv · rm · chmod).
 #   awk 프로그램은 POSIX 문법만 쓴다(노드의 awk 는 mawk).
 #
 # 절대 하지 않는 것: grub.cfg 직접 수정(update-grub 만이 쓴다), /etc/default/grub · 기존 드롭인 수정, 재부팅 · 전원 조작, 패키지 설치/삭제,
@@ -105,6 +137,15 @@ UU_IDLE_HELPER='/usr/bin/python3 /usr/share/unattended-upgrades/unattended-upgra
 # 수동 복구 한 줄(과도 상태 · 검증 실패 · 끝내지 못한 되돌리기). 조건은 "패키지 프로세스가 없을 때"다 — 홀로 남은 오래된 grub.cfg.new 는
 #   성공한 update-grub 만이 치우므로, "package activity: none" 을 기다리라고 하면 끝나지 않는다.
 FIX_LINE="manual fix: when status lists no package process, run 'sudo update-grub' one time, then run status again"
+# 메뉴에 커널 항목이 하나도 없는 grub.cfg(겹친 grub-mkconfig 가 남기는 모양 — 수정 2 L3 (a))의 거부 줄에 붙이는 할 일.
+EMPTY_MENU_HINT="grub.cfg has no kernel menu entry (a partial grub-mkconfig output?): do not reboot -- $FIX_LINE"
+# grubenv 의 initrdfail · prev_entry 에 값이 있을 때의 할 일(수정 2 L3 (b)). 근거(grub-common 2.12-1ubuntu7.3):
+#   /lib/systemd/system/grub-initrd-fallback.service 10–11행 — 부팅마다 grub-editenv /boot/grub/grubenv unset initrdfail · unset prev_entry;
+#   /etc/grub.d/00_header 117–128행 — 값은 'set partuuid=' 가 있을 때 GRUB 의 initrdfail 함수만 쓴다; 54–63행 — initrdfail=1 이면 다음 부팅이
+#   prev_entry 를 한 번 쓴다.
+INITRD_HINT="unexpected (grub-initrd-fallback.service clears both at every boot): before any reboot, check 'systemctl status grub-initrd-fallback.service', clear them as that unit does with 'sudo systemctl start grub-initrd-fallback.service', then run status"
+# lsmod 사용자 열에서 받는 모듈 이름(그 밖의 글자가 하나라도 있으면 그 모듈은 '없음' — fail-closed).
+MODNAME_RE='^[A-Za-z0-9_-]+$'
 
 # ---------- 실행 상태 ----------
 # 함수들이 주고받는 전역은 전부 여기서 먼저 정한다 — set -u 에서 읽기 전 대입이 빠지면 bash 가 쓰기 도중에 끝나 되돌리기를 건너뛴다.
@@ -121,6 +162,9 @@ RESOLVED=""; RESOLVE_ERR=""; SUB_ID=""; ENTRY_ID=""; ID_PATH=""; IDS_ERR=""
 PIN_PRESENT=0; PIN_VALUE=""; PIN_ERR=""
 GE_OK=0; GE_LIST=""; NEXT_ENTRY=""; INITRDFAIL=""; PREV_ENTRY=""; GE_ERR=""
 RUNNING=""; KERNELS=(); LOADED=(); LOADED_ERR=""; MISSING=()
+LOADED_CNT=(); LOADED_BY=(); ACCOUNTED=(); NAME_MISS=0; MP_FALLBACK=""; MP_NOTED=""; MPQ=""; MPQ_WHY=""
+BOOTMODS=""; BOOTMODS_READ=0; BOOTMODS_ERR=""; SORTED=(); USERS=()
+ACCEPT_SET=0; ACCEPT_LIST=(); ACCEPT_DIFF=""; ALIAS_HIT=""; MPQ_MODS=""
 V_NEXT=unknown; V_NEXT_HOW=default; V_LATER=unknown; V_PIN_OK=0; V_PIN_TEXT=""
 PKG_BUSY=0; PKG_ITEMS=""; PKG_IGNORED=""; PKG_CFGNEW_ONLY=0; LEFTOVERS=""; KF_ERR=""; PE_ERR=""
 
@@ -226,6 +270,16 @@ split_row() {
 
 # 유일성 판정은 전부 이 함수 하나를 지난다(메뉴 ID 가 "정확히 하나"인가).
 exactly_one() { [ "$1" -eq 1 ]; }
+
+# grub.cfg 에 커널 항목(linux 줄이 있는 menuentry)이 하나라도 있는가(load_menu 뒤 — RK 등 split_row 의 전역을 바꾼다).
+menu_has_kernel() {
+  local row
+  for row in "${MENU[@]}"; do
+    split_row "$row"
+    if [ "$RK" = M ] && [ -n "$RV" ]; then return 0; fi
+  done
+  return 1
+}
 
 count_id() {
   local row
@@ -364,27 +418,296 @@ list_kernels() {
   return 0
 }
 
+# lsmod → LOADED(이름) · LOADED_CNT(3열 사용 수, 원문) · LOADED_BY(4열 사용자 열, 원문 — 없으면 빈 값). 같은 첨자끼리 한 줄이다.
 read_loaded_modules() {
-  LOADED=(); LOADED_ERR=""
-  local out rc line name first=1
+  LOADED=(); LOADED_CNT=(); LOADED_BY=(); LOADED_ERR=""
+  local out rc line name cnt by first=1
   out=$(lsmod 2>&1)
   rc=$?
   if [ "$rc" -ne 0 ]; then first_line "$out"; LOADED_ERR="lsmod exit $rc: $FIRST"; return 1; fi
   while IFS= read -r line; do
     if [ "$first" = 1 ]; then first=0; [[ $line == Module[[:space:]]* ]] && continue; fi
     name=${line%%[[:space:]]*}
-    [ -n "$name" ] && LOADED+=("$name")
+    [ -n "$name" ] || continue
+    cnt=""; by=""
+    read -r name _ cnt by _ <<< "$line"
+    LOADED+=("$name"); LOADED_CNT+=("$cnt"); LOADED_BY+=("$by")
   done <<< "$out"
   return 0
 }
 
-# 지금 적재된 모듈 가운데 커널 $1 에서 modinfo 가 찾지 못하는 것(내장 모듈은 modinfo 가 modules.builtin 으로 찾는다) → MISSING
-missing_modules_for() {
-  MISSING=()
-  local m
-  for m in "${LOADED[@]}"; do
-    modinfo -k "$1" "$m" >/dev/null 2>&1 || MISSING+=("$m")
+# 값들을 사전순(LC_ALL=C — 바이트 순)으로 SORTED 에 담는다. 같은 값은 한 번만.
+sort_words() {
+  SORTED=()
+  local w s i dup
+  for w in "$@"; do
+    dup=0
+    for s in "${SORTED[@]}"; do if [ "$s" = "$w" ]; then dup=1; break; fi; done
+    [ "$dup" = 0 ] || continue
+    i=${#SORTED[@]}
+    SORTED+=("$w")
+    while [ "$i" -gt 0 ] && [[ ${SORTED[i-1]} > "$w" ]]; do SORTED[i]=${SORTED[i-1]}; i=$((i - 1)); done
+    SORTED[i]=$w
   done
+  return 0
+}
+
+# lsmod 4열(사용자 열) → USERS. 없음 · '-' → 빈 목록. 쉼표로 나눈 토큰 가운데 빈 것(끝의 쉼표)과 '[...]'(예: [permanent])는 버린다.
+#   MODNAME_RE 밖의 글자가 든 토큰이 하나라도 있으면 1 — 그 모듈은 '없음'(fail-closed).
+parse_users() {
+  local col=$1 t
+  local -a toks=()
+  USERS=()
+  if [ -z "$col" ] || [ "$col" = - ]; then return 0; fi
+  IFS=, read -r -a toks <<< "$col"
+  for t in "${toks[@]}"; do
+    [ -n "$t" ] || continue
+    case $t in '['*']') continue ;; esac
+    [[ $t =~ $MODNAME_RE ]] || return 1
+    USERS+=("$t")
+  done
+  return 0
+}
+
+# 부팅 때 이름으로 적재되는 모듈 → BOOTMODS(' 이름 이름 ... ' — '-' 는 '_' 로). systemd-modules-load 가 읽는 자리(systemd 255.4-1ubuntu8.17:
+#   /etc · /run · /usr/local/lib · /usr/lib 의 modules-load.d/*.conf)와 /etc/modules 를 KT_ROOT 아래에서 읽는다(합집합 — 같은 이름으로 가린
+#   파일도 넣는다). 빈 줄과 앞 공백 뒤 첫 글자가 # · ; 인 줄은 버리고, 각 줄의 첫 낱말만 쓴다(CR 도 [[:space:]] 라 떨어진다). /dev/null 로 가린 것(문자
+#   장치)은 빈 목록이다. 정규 파일이 아니거나 읽을 수 없는 것이 있으면 판단 불가 → BOOTMODS_ERR · INFO 한 줄 · 1(부른 쪽은 '목록에 있다'로
+#   본다 — fail-closed). 한 번만 읽는다.
+#   후속 F-C: /etc/initramfs-tools/modules 와 /usr/share/initramfs-tools/modules.d/*(initrd 에 들어가 부팅 때 이름으로 적재되는 목록 —
+#   initramfs-tools-core 0.142ubuntu25.8 의 mkinitramfs 351–355행이 둘을 함께 읽는다; 같은 해석)와 지금 커널 명령 줄(KT_ROOT 아래 /proc/cmdline)의
+#   modules_load= · rd.modules_load=(systemd-modules-load 가 읽는다; 키의 - 와 _ 는 같게 본다 — modules-load= 도; 값은 쉼표 목록; 낱말은 systemd 와
+#   같게 나눈다 — 따옴표 밖의 공백 · 탭에서 나누고, 낱말 안의 큰따옴표 · 작은따옴표는 자리를 가리지 않고 벗기되 따옴표 안의 공백은 낱말을 잇는다:
+#   낱말 전체를 감싼 '"modules_load=a,b"' 도, 값 중간의 'modules_load=a,"b"' 도, 작은따옴표의 "'modules_load=c'" 도, 'modules_load="a b",c' 의 c 도
+#   부팅 목록이다 — 3라운드 R3-2 · R3b F6 · R3c F2)도 넣는다. 시험 부팅도 같은 명령 줄(GRUB_CMDLINE_LINUX)로 올라오므로 지금 명령 줄이 그 근사다.
+read_boot_modules() {
+  if [ "$BOOTMODS_READ" = 1 ]; then [ -z "$BOOTMODS_ERR" ]; return; fi
+  BOOTMODS_READ=1; BOOTMODS=" "; BOOTMODS_ERR=""
+  local f line w cl="" tok key val rest item i ch q word inw
+  local -a toks=()
+  for f in "$R"/etc/modules-load.d/*.conf "$R"/run/modules-load.d/*.conf "$R"/usr/local/lib/modules-load.d/*.conf "$R"/usr/lib/modules-load.d/*.conf "$R"/etc/modules "$R"/etc/initramfs-tools/modules "$R"/usr/share/initramfs-tools/modules.d/*; do
+    if [ ! -e "$f" ] && [ ! -L "$f" ]; then continue; fi
+    if [ -c "$f" ]; then continue; fi
+    if [ ! -f "$f" ] || [ ! -r "$f" ]; then BOOTMODS_ERR="${f#"$R"} is not a readable regular file"; break; fi
+    if ! { while IFS= read -r line || [ -n "$line" ]; do
+             line=${line#"${line%%[![:space:]]*}"}
+             case $line in ''|'#'*|';'*) continue ;; esac
+             w=${line%%[[:space:]]*}
+             BOOTMODS="$BOOTMODS${w//-/_} "
+           done < "$f"; } 2>/dev/null; then
+      BOOTMODS_ERR="cannot read ${f#"$R"}"; break
+    fi
+  done
+  if [ -z "$BOOTMODS_ERR" ]; then
+    if [ ! -r "$CMDLINE_FILE" ]; then
+      BOOTMODS_ERR="cannot read ${CMDLINE_FILE#"$R"}"
+    else
+      # 끝에 줄바꿈이 없어도 read 는 값을 채운다(종료 코드는 보지 않는다).
+      IFS= read -r cl < "$CMDLINE_FILE"
+      # systemd 255.4-1ubuntu8.17 의 낱말 나누기(proc_cmdline_extract_first = extract_first_word(EXTRACT_UNQUOTE|EXTRACT_RELAX|EXTRACT_RETAIN_ESCAPE))와
+      #   같게 자른다: 따옴표 밖의 공백 · 탭에서 낱말을 나누고, 낱말 안의 " 와 ' 는 어디에 있든 벗기되 따옴표 안의 공백은 낱말을 잇는다(그래서
+      #   'modules_load="a b",c' 의 c 도 부팅 목록이다 — read -a 는 따옴표 안의 공백에서 먼저 잘라 c 를 놓쳤다). 닫히지 않은 따옴표는 줄 끝에서 닫히고
+      #   (EXTRACT_RELAX), 역슬래시는 글자 그대로다(EXTRACT_RETAIN_ESCAPE). 2026-10-07 systemd-modules-load 실측 50 모양과 같다.
+      toks=(); word=""; q=""; inw=0
+      for ((i = 0; i < ${#cl}; i++)); do
+        ch=${cl:i:1}
+        if [ -n "$q" ]; then
+          if [ "$ch" = "$q" ]; then q=""; else word=$word$ch; fi
+        elif [ "$ch" = '"' ] || [ "$ch" = "'" ]; then q=$ch; inw=1
+        elif [ "$ch" = ' ' ] || [ "$ch" = $'\t' ] || [ "$ch" = $'\r' ]; then
+          if [ "$inw" = 1 ]; then toks+=("$word"); fi
+          word=""; inw=0
+        else word=$word$ch; inw=1; fi
+      done
+      if [ "$inw" = 1 ]; then toks+=("$word"); fi
+      for tok in "${toks[@]}"; do
+        case $tok in *=*) ;; *) continue ;; esac
+        key=${tok%%=*}; key=${key//-/_}
+        case $key in modules_load|rd.modules_load) ;; *) continue ;; esac
+        val=${tok#*=}
+        rest=$val
+        while :; do
+          item=${rest%%,*}
+          # 빈 항목과 따옴표 안의 공백을 품은 항목('"a b"' — 모듈 이름이 될 수 없고 systemd 도 적재에 실패한다)은 목록에 넣지 않는다.
+          case $item in ''|*[[:space:]]*) ;; *) BOOTMODS="$BOOTMODS${item//-/_} " ;; esac
+          [ "$rest" != "$item" ] || break
+          rest=${rest#*,}
+        done
+      done
+    fi
+  fi
+  if [ -n "$BOOTMODS_ERR" ]; then
+    info modules "boot-time module lists unreadable ($BOOTMODS_ERR) -- loaded modules without users count as missing"
+    return 1
+  fi
+  return 0
+}
+
+# 사용자 없는 모듈 $2 의 별칭 경로(후속 F-A · 3라운드 R3-1): 지금 커널의 modinfo -k <RUNNING> -F alias 가운데 glob 글자(* ? [)가 없는 구체적인
+#   별칭을 나온 순서대로 modprobe -S <$1> --show-depends 에 물어, 풀리고(MPQ=ok — exit 0 + insmod/builtin 줄만) 그 답의 모듈 가운데 m 의 계승자가
+#   있는(alias_successor) 첫 별칭 → ALIAS_HIT 와 0. modinfo 가 실패하거나 · 구체적인 별칭이 없거나 · 그런 별칭이 하나도 없으면 1(없음 —
+#   fail-closed). 풀리기만 해서는 세지 않는다 — MODULE_ALIAS_CRYPTO 가 함께 선언하는 맨 이름(sm4 · crc32)은 이름이 같은 다른 모듈로 풀리고, 여럿이
+#   선언하는 별칭(crypto-stdrng · net-pf-40)은 지금 커널에도 있던 형제로 풀린다; 둘 다 m 의 기능을 잇는다는 근거가 아니다. '-' 로 시작하는 별칭은
+#   modprobe 가 옵션으로 읽으므로 묻지 않는다. 별칭에 대한 이상한 답(bad — 예: 블랙리스트된 별칭의 대상은 exit 0 · 빈 출력)은 그 별칭이 풀리지 않은
+#   것으로 본다(modprobe 자체는 확인 질의가 이미 확인했다).
+alias_resolves() {
+  local k=$1 m=$2 out rc a
+  local -a als=()
+  ALIAS_HIT=""
+  out=$(modinfo -k "$RUNNING" -F alias "$m" 2>/dev/null)
+  rc=$?
+  [ "$rc" -eq 0 ] || return 1
+  mapfile -t als <<< "$out"
+  for a in "${als[@]}"; do
+    case $a in ''|-*|*'*'*|*'?'*|*'['*) continue ;; esac
+    mp_query "$k" "$a"
+    if [ "$MPQ" = ok ] && alias_successor "$k" "$a"; then ALIAS_HIT=$a; return 0; fi
+  done
+  return 1
+}
+
+# alias_resolves 의 mp_query 직후(MPQ_MODS = 별칭 $2 의 답이 k 에서 적재할 모듈 · 내장): 그 가운데 하나라도 m 의 계승자면 0 — k 에서 별칭 $2 를
+#   스스로 선언하고(modinfo -k <k> -F alias), 지금 커널에 같은 이름으로 있으면서 이미 그 별칭을 선언하던 형제가 아니다. 계승자가 아닌 예(2026-10-07
+#   실제 6.17.0-1020 · 7.0.0-1012 oracle 트리): 'sm4' = SM4 라이브러리 모듈(별칭 없음) · 'crc32' = crc32_cryptoapi 가 빠진 커널에서는 내장
+#   lib crc32(별칭 없음) · crypto-stdrng = 6.17 에도 내장이던 drbg · net-pf-40 = 두 커널에 다 있는 vsock 전송 셋. 계승자인 예:
+#   crypto-blake2b-512 = 7.0 에 새로 생긴 blake2b · crypto-sha3-512 = 7.0 의 내장 sha3. modinfo -F name 은 이름이 별칭으로 풀리면 다른 이름이나 여러
+#   줄을 낸다(6.17 의 crc32 → crc32_cryptoapi · net-pf-40 → 셋) — 정확히 같은 한 줄일 때만 '같은 이름의 모듈'로 본다.
+alias_successor() {
+  local k=$1 a=$2 x ka rn ra rc
+  for x in $MPQ_MODS; do
+    ka=$(modinfo -k "$k" -F alias "$x" 2>/dev/null) || continue
+    case $NL$ka$NL in *"$NL$a$NL"*) ;; *) continue ;; esac
+    # 지금 커널 쪽 조회의 실패는 둘로 나눈다: 'Module <x> not found.'(kmod 31 — 지금 커널에 그 이름이 없다 = 새 모듈)만 계승자 후보이고, 그 밖의
+    #   실패(모듈 파일 · modules.builtin.modinfo 를 읽지 못함 — 'could not get modinfo from ...')는 형제인지 알 수 없으므로 세지 않는다(fail-closed —
+    #   2026-10-07 실측: 손상된 지금 커널 트리에서 이 실패는 형제를 '새 모듈'로 보이게 해 잘못된 대체됨을 냈다).
+    rn=$(modinfo -k "$RUNNING" -F name "$x" 2>&1); rc=$?
+    if [ "$rc" -ne 0 ]; then
+      [ "$rn" = "modinfo: ERROR: Module $x not found." ] || continue
+    else
+      case $NL$rn in *"${NL}modinfo:"*) continue ;; esac
+      if [ "${rn//-/_}" = "$x" ]; then
+        ra=$(modinfo -k "$RUNNING" -F alias "$x" 2>/dev/null) || continue
+        case $NL$ra$NL in *"$NL$a$NL"*) continue ;; esac
+      fi
+    fi
+    return 0
+  done
+  return 1
+}
+
+# 모듈 $1 이 부팅 때 이름으로 적재되는 목록에 없다(목록을 판단할 수 없으면 '있다'로 본다 — fail-closed).
+boot_unlisted() {
+  read_boot_modules || return 1
+  [[ $BOOTMODS != *" ${1//-/_} "* ]]
+}
+
+# modprobe -S <k> --show-depends <이름> 한 번 → MPQ: ok(exit 0 · insmod/builtin 줄만, 하나 이상 — k 의 modules.dep 이 아는 사슬이다; depmod 가 뺀
+#   풀리지 않는 심볼 의존은 여기에 보이지 않는다) · no(exit 1 · 'modprobe: FATAL: Module ... not found in directory ...' 줄) · bad(그 밖 — 이
+#   modprobe 의 답을 믿을 수 없다; 사유는 MPQ_WHY). MPQ_MODS = 그 답이 k 에서 적재할 모듈 · 내장의 이름(insmod 경로의 파일 이름 · builtin 줄의 이름,
+#   '-' 는 '_' 로, 나온 순서대로 — 별칭 경로의 계승자 확인(alias_successor)이 쓴다; MPQ=ok 일 때만 뜻이 있다).
+#   모양은 2026-10-06 kmod 31(noble)과 실제 6.17.0-1020 · 7.0.0-1012 oracle 모듈 트리로 확인했다(-S 를 모르는 modprobe 는 exit 1 'invalid option';
+#   insmod 줄은 '<경로> ' 처럼 끝에 공백이 붙고, builtin 줄은 'builtin drbg' 처럼 이름만 — 2026-10-07 재확인).
+mp_query() {
+  local k=$1 n=$2 out rc line x good=0 nf=0 odd=""
+  MPQ=bad; MPQ_WHY=""; MPQ_MODS=""
+  out=$(modprobe -S "$k" --show-depends "$n" 2>&1)
+  rc=$?
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    case $line in
+      'insmod /'*) good=$((good + 1)); x=${line#insmod }; x=${x%% *}; x=${x##*/}; x=${x%%.ko*}; MPQ_MODS="$MPQ_MODS ${x//-/_}" ;;
+      'builtin '*) good=$((good + 1)); x=${line#builtin }; x=${x%% *}; MPQ_MODS="$MPQ_MODS ${x//-/_}" ;;
+      'modprobe: FATAL: Module '*' not found in directory '*) nf=$((nf + 1)) ;;
+      *) [ -n "$odd" ] || odd=$line ;;
+    esac
+  done <<< "$out"
+  if [ "$rc" -eq 0 ] && [ "$good" -gt 0 ] && [ "$nf" -eq 0 ] && [ -z "$odd" ]; then MPQ=ok; return 0; fi
+  if [ "$rc" -eq 1 ] && [ "$nf" -gt 0 ] && [ "$good" -eq 0 ]; then MPQ=no; return 0; fi
+  if [ -z "$odd" ]; then first_line "$out"; odd=${FIRST:-no output}; fi
+  MPQ_WHY="modprobe -S $k --show-depends $n: exit $rc: $odd"
+  return 0
+}
+
+# 지금 적재된 모듈을 커널 $1 에 대해 판정한다(머리 주석의 '모듈 검사') → MISSING(없음) · ACCOUNTED('m->u1+u2' 사용자 경로 · 'm=<별칭>' 별칭
+#   경로 — 둘 다 대체됨) · NAME_MISS(이름으로 못 찾은 수 = 둘의 합) · MP_FALLBACK(비어 있지 않으면 modprobe 를 쓸 수 없어 이름 기준만 썼다 — 그 사유; INFO
+#   한 줄을 사유마다 한 번 낸다). 이름 · 사용자는 사전순. 내장 모듈은 modinfo 가 modules.builtin 으로 찾는다.
+missing_modules_for() {
+  local k=$1 m u i j c entry ok_all
+  local -a names=()
+  MISSING=(); ACCOUNTED=(); NAME_MISS=0; MP_FALLBACK=""
+  for m in "${LOADED[@]}"; do
+    modinfo -k "$k" "$m" >/dev/null 2>&1 || names+=("$m")
+  done
+  NAME_MISS=${#names[@]}
+  [ "$NAME_MISS" -gt 0 ] || return 0
+  sort_words "${names[@]}"; names=("${SORTED[@]}")
+  # modprobe 를 믿을 수 있는가: 없거나, 이름으로 못 찾은 첫 모듈을 물었을 때 'not found' 로 답하지 않으면(-S 를 모른다 · modinfo 와 어긋난다)
+  #   이름 기준만 쓴다.
+  if ! command -v modprobe >/dev/null 2>&1; then MP_FALLBACK="not on PATH"
+  else
+    mp_query "$k" "${names[0]}"
+    case $MPQ in
+      no) ;;
+      ok) MP_FALLBACK="modprobe -S $k finds ${names[0]} but modinfo -k $k does not" ;;
+      *) MP_FALLBACK=$MPQ_WHY ;;
+    esac
+  fi
+  if [ -z "$MP_FALLBACK" ]; then
+    for m in "${names[@]}"; do
+      j=-1
+      for i in "${!LOADED[@]}"; do if [ "${LOADED[i]}" = "$m" ]; then j=$i; break; fi; done
+      if [ "$j" -lt 0 ]; then MISSING+=("$m"); continue; fi
+      c=${LOADED_CNT[j]}
+      if ! [[ $c =~ ^[0-9]+$ ]] || ! parse_users "${LOADED_BY[j]}"; then MISSING+=("$m"); continue; fi
+      if [ "${#USERS[@]}" -gt 0 ]; then
+        # 대체됨: 사용자 전부가 k 의 modules.dep 에 있다(하나라도 'not found' 면 없음; modprobe 의 답을 믿을 수 없으면 이 커널 전체가 이름 기준).
+        sort_words "${USERS[@]}"
+        entry=""; ok_all=1
+        for u in "${SORTED[@]}"; do
+          mp_query "$k" "$u"
+          case $MPQ in
+            ok) entry="$entry+$u" ;;
+            no) ok_all=0; break ;;
+            *) MP_FALLBACK=$MPQ_WHY; break 2 ;;
+          esac
+        done
+        if [ "$ok_all" = 1 ]; then ACCOUNTED+=("$m->${entry#+}"); else MISSING+=("$m"); fi
+      elif ! boot_unlisted "$m"; then
+        # 사용자 없음 + 부팅 때 이름으로 적재된다(또는 목록을 판단할 수 없다) → 없음.
+        MISSING+=("$m")
+      elif alias_resolves "$k" "$m"; then
+        # 사용자 없음: 사용 수와 무관하게 별칭으로 판정한다(후속 F-A — 사용 수 0 은 '안 쓰임'이 아니다: 노드의 wireguard 는 쓰는 중에도 0).
+        ACCOUNTED+=("$m=$ALIAS_HIT")
+      else
+        MISSING+=("$m")
+      fi
+    done
+  fi
+  if [ -n "$MP_FALLBACK" ]; then
+    MISSING=("${names[@]}"); ACCOUNTED=()
+    case $MP_NOTED in
+      *"|$MP_FALLBACK|"*) ;;
+      *) MP_NOTED="$MP_NOTED|$MP_FALLBACK|"; info modules "modprobe unavailable ($MP_FALLBACK) -- name check only" ;;
+    esac
+  fi
+  return 0
+}
+
+# MISSING 과 ACCEPT_LIST 의 차이 → ACCEPT_DIFF('missing but not accepted: a b; accepted but not missing: c' — 빈 쪽은 뺀다; 메시지용 — 판정은
+#   부른 쪽이 사전순 목록을 그대로 비교한다).
+accept_diff() {
+  local m a hit notacc="" notmiss=""
+  for m in "${MISSING[@]}"; do
+    hit=0; for a in "${ACCEPT_LIST[@]}"; do if [ "$a" = "$m" ]; then hit=1; break; fi; done
+    [ "$hit" = 1 ] || notacc="$notacc $m"
+  done
+  for a in "${ACCEPT_LIST[@]}"; do
+    hit=0; for m in "${MISSING[@]}"; do if [ "$m" = "$a" ]; then hit=1; break; fi; done
+    [ "$hit" = 1 ] || notmiss="$notmiss $a"
+  done
+  ACCEPT_DIFF=""
+  if [ -n "$notacc" ]; then ACCEPT_DIFF="missing but not accepted:$notacc"; fi
+  if [ -n "$notmiss" ]; then ACCEPT_DIFF="${ACCEPT_DIFF:+$ACCEPT_DIFF; }accepted but not missing:$notmiss"; fi
   return 0
 }
 
@@ -472,6 +795,16 @@ recheck_package_activity() {
   return 0
 }
 
+# update-grub 이 exit 0 으로 돌아온 직후(사후 검증 전) 재확인(수정 2 L1): 패키지 프로세스가 보이면 그 훅의 update-grub 이 우리 것과 겹쳤을 수
+#   있다 — 늦게 시작한 쪽이 쓰다 멈춘 파일이 grub.cfg 로 설치되면 꼬리 섹션이 빠지는데 기본값과 0 번 항목은 맞아 사후 검증을 통과한다.
+#   보이면 FAIL 과 1 — 부른 쪽은 검증 · 되돌리기를 하지 않는다(겹친 훅이 아직 쓰고 있을 수 있다). 프로세스만 본다(grub.cfg.new 는 그 훅의 것이다).
+postcheck_package_activity() {
+  check_package_activity procs
+  if [ "$PKG_BUSY" = 1 ]; then fail "package activity" "$PKG_ITEMS while update-grub ran -- grub.cfg may be partial; do not reboot -- $FIX_LINE"; return 1; fi
+  ok "package activity" "none right after update-grub"
+  return 0
+}
+
 # 죽은 실행이 남길 수 있는 것: 고정 파일의 임시 이름(.kernel-trial-pin.XXXXXX) · 치워 둔 이름(.kernel-trial-pin.aside.XXXXXX) · grub.cfg.new.
 #   점으로 시작하고 .cfg 가 아니라 grub-mkconfig 는 읽지 않는다(GRUB 에는 해가 없다) → LEFTOVERS(표시용 경로).
 list_leftovers() {
@@ -495,7 +828,7 @@ report_partuuid() {
 initrd_fallback_set() { [ -n "$INITRDFAIL" ] || [ -n "$PREV_ENTRY" ]; }
 check_initrd_fallback() {
   if initrd_fallback_set; then
-    fail "initrd fallback" "grubenv initrdfail=\"$INITRDFAIL\" prev_entry=\"$PREV_ENTRY\" -- GRUB's initrd-less boot fallback may override the next boot; pin/trial refuse while either is set"
+    fail "initrd fallback" "grubenv initrdfail=\"$INITRDFAIL\" prev_entry=\"$PREV_ENTRY\" -- GRUB's initrd-less boot fallback may override the next boot; pin/trial refuse while either is set -- $INITRD_HINT"
     return 1
   fi
   ok "initrd fallback" "grubenv initrdfail and prev_entry are empty"
@@ -594,7 +927,8 @@ undo_pin_write() {
     SUMMARY="refused: package activity right before update-grub, and the pin file could not be removed; state now: $STATE_TEXT"
     return 1
   fi
-  ok undo "pin file removed again; grub.cfg untouched"
+  # 이미 고정 파일을 읽은 훅이 끝나며 기본값을 고정 ID 로 쓸 수 있다(부팅은 안전 · 다음 status 가 INCONSISTENT 로 잡는다 — 수정 2 L2).
+  ok undo "pin file removed again; grub.cfg untouched -- run status again after the package work ends"
   SUMMARY="refused: package activity right before update-grub ($PKG_ITEMS); pin file removed again; nothing changed"
   return 0
 }
@@ -661,7 +995,8 @@ undo_unpin_aside() {
     SUMMARY="refused: package activity right before update-grub, and the pin file could not be moved back; state now: $STATE_TEXT"
     return 1
   fi
-  ok undo "pin file moved back; grub.cfg untouched"
+  # 고정 파일이 없던 사이에 그것을 읽은 훅이 끝나며 기본값을 "0" 으로 쓸 수 있다(다음 status 가 INCONSISTENT 로 잡는다 — 수정 2 L2).
+  ok undo "pin file moved back; grub.cfg untouched -- run status again after the package work ends"
   SUMMARY="refused: package activity right before update-grub ($PKG_ITEMS); pin file moved back; nothing changed"
   return 0
 }
@@ -761,9 +1096,10 @@ evaluate_verdict() {
   elif [ "$PIN_PRESENT" = 1 ] && [ "$PIN_VALUE" != "$CFG_DEFAULT" ]; then reason="pin file says \"$PIN_VALUE\" but grub.cfg default is \"$CFG_DEFAULT\" (update-grub not run or failed) -- $FIX_LINE"
   elif [ "$PIN_PRESENT" = 0 ] && [ "$CFG_DEFAULT" != 0 ]; then reason="no pin file but grub.cfg default is \"$CFG_DEFAULT\" (want \"0\") -- $FIX_LINE"
   elif [ "$dres" -ne 0 ]; then reason="grub.cfg default \"$CFG_DEFAULT\" does not resolve to one kernel entry: $derr"
+    menu_has_kernel || reason="$reason -- $EMPTY_MENU_HINT"
   elif [ "$GE_OK" != 1 ]; then reason="cannot read grubenv: $GE_ERR"
   elif [ -n "$NEXT_ENTRY" ] && [ "$nres" -ne 0 ]; then reason="next_entry \"$NEXT_ENTRY\" does not resolve to one kernel entry: $nerr"
-  elif initrd_fallback_set; then reason="grubenv initrdfail=\"$INITRDFAIL\" prev_entry=\"$PREV_ENTRY\" (GRUB's initrd-less boot fallback may override the next boot shown here)"
+  elif initrd_fallback_set; then reason="grubenv initrdfail=\"$INITRDFAIL\" prev_entry=\"$PREV_ENTRY\" (GRUB's initrd-less boot fallback may override the next boot shown here) -- $INITRD_HINT"
   elif [ "$PIN_PRESENT" = 1 ] && ! pin_entry_ok "$V_LATER"; then reason=$PE_ERR
   fi
   if [ -n "$reason" ]; then V_PIN_TEXT="INCONSISTENT ($reason)"; return 1; fi
@@ -784,7 +1120,7 @@ cmd_status() {
   if read_running; then info running "$RUNNING"; else fail running "uname -r gave '$RUNNING' (not a kernel version)"; fi
   if list_kernels; then info kernels "${#KERNELS[@]} installed (/boot/vmlinuz-*, sort -V): ${KERNELS[*]:-none}"; else KERNELS=(); fail kernels "cannot sort the /boot/vmlinuz-* list"; fi
   load_menu || fail grub.cfg "$MENU_ERR"
-  local have_mods=0 newest="" k row ids miss tags vz ird md
+  local have_mods=0 newest="" k row ids miss acc tags vz ird md
   if ! command -v lsmod >/dev/null 2>&1 || ! command -v modinfo >/dev/null 2>&1; then LOADED_ERR="lsmod or modinfo not on PATH"
   elif read_loaded_modules; then have_mods=1; fi
   [ "${#KERNELS[@]}" -gt 0 ] && newest=${KERNELS[$((${#KERNELS[@]} - 1))]}
@@ -794,12 +1130,15 @@ cmd_status() {
       split_row "$row"
       if [ "$RK" = M ] && [[ $RI == "gnulinux-$k-advanced-"* ]]; then ids=$((ids + 1)); fi
     done
+    # missing-loaded-modules = 없음(키 · 모양은 수정 2 전과 같다), accounted = 이름으로 못 찾았지만 대체됨으로 설명된 것('m->u1+u2' · 'm=<별칭>').
     if [ "$have_mods" = 1 ]; then
       missing_modules_for "$k"
       miss=${#MISSING[@]}
       [ "${#MISSING[@]}" -gt 0 ] && miss="$miss (${MISSING[*]})"
+      acc=${#ACCOUNTED[@]}
+      [ "${#ACCOUNTED[@]}" -gt 0 ] && acc="$acc (${ACCOUNTED[*]})"
     else
-      miss="unknown ($LOADED_ERR)"
+      miss="unknown ($LOADED_ERR)"; acc=unknown
     fi
     tags=""
     [ "$k" = "$RUNNING" ] && tags="$tags [running]"
@@ -807,7 +1146,7 @@ cmd_status() {
     file_yn "$BOOT_DIR/vmlinuz-$k"; vz=$YN
     file_yn "$BOOT_DIR/initrd.img-$k"; ird=$YN
     dir_yn "$MODULES_DIR/$k"; md=$YN
-    info "kernel $k" "vmlinuz=$vz initrd=$ird modules-dir=$md menu-entry-ids=$ids missing-loaded-modules=$miss$tags"
+    info "kernel $k" "vmlinuz=$vz initrd=$ird modules-dir=$md menu-entry-ids=$ids missing-loaded-modules=$miss accounted=$acc$tags"
   done
 
   local p pkgs=""
@@ -910,7 +1249,15 @@ cmd_pin() {
   local k=$RUNNING
   if ! check_kernel_files "$k"; then SUMMARY="refused: files of the running kernel $k missing or empty; nothing changed"; return; fi
   if ! load_menu; then fail grub.cfg "$MENU_ERR"; SUMMARY="refused: cannot read $D_GRUB_CFG; nothing changed"; return; fi
-  if ! find_ids "$k"; then fail "menu ids" "$IDS_ERR"; SUMMARY="refused: menu ids for $k are not unique; nothing changed"; return; fi
+  if ! find_ids "$k"; then
+    # 커널 항목이 하나도 없는 grub.cfg(겹친 grub-mkconfig 의 잔여)면 할 일을 붙인다(수정 2 L3 (a)).
+    if menu_has_kernel; then
+      fail "menu ids" "$IDS_ERR"; SUMMARY="refused: menu ids for $k are not unique; nothing changed"
+    else
+      fail "menu ids" "$IDS_ERR -- $EMPTY_MENU_HINT"; SUMMARY="refused: grub.cfg has no kernel menu entry; nothing changed -- do not reboot"
+    fi
+    return
+  fi
   ok "menu ids" "submenu $SUB_ID x1, entry $ENTRY_ID x1"
   if [ "$NE_BLOCKS" -ne 1 ]; then fail "next_entry logic" "found $NE_BLOCKS blocks in $D_GRUB_CFG (want exactly 1)"; SUMMARY="refused: no next_entry logic in $D_GRUB_CFG; nothing changed"; return; fi
   ok "next_entry logic" "present in $D_GRUB_CFG (default \"$CFG_DEFAULT\")"
@@ -949,6 +1296,11 @@ cmd_pin() {
   run_update_grub
   local rc=$UG_RC
   if [ "$rc" -eq 0 ]; then ok update-grub "exit 0"; else fail update-grub "exit $rc"; fi
+  # update-grub 직후: 패키지 작업이 보이면 FAIL — 검증도 되돌리기도 하지 않는다(수정 2 L1).
+  if [ "$rc" -eq 0 ] && ! postcheck_package_activity; then
+    SUMMARY="package activity while update-grub ran ($PKG_ITEMS); pin file written, not verified, not rolled back -- do not reboot; see the FAIL lines"
+    return
+  fi
   if [ "$rc" -eq 0 ] && verify_pinned "$k"; then
     SUMMARY="default boot pinned to the running kernel $k"
     return
@@ -1015,18 +1367,33 @@ cmd_trial() {
   ok grubenv "$D_GRUBENV readable"
   # 가드: grubenv 의 initrdfail · prev_entry 가 비어 있다.
   if ! check_initrd_fallback; then SUMMARY="refused: grubenv holds initrdfail/prev_entry; nothing changed"; return; fi
-  # 가드: 지금 적재된 모듈이 전부 대상 커널에 있다(없으면 그 기능이 시험 부팅에서 빠진다).
+  # 가드: 지금 적재된 모듈이 대상 커널에서 이름으로 있거나, 없으면 대체됨(사용자 경로 · 별칭 경로)으로 설명된다. 없음이 남으면 그 기능이 시험
+  #   부팅에서 빠진다 — 진행하려면 --accept-missing-modules 로 없음 목록을 정확히(사전순으로 같게) 적는다(후속 F-B). --ignore-missing-modules 는
+  #   그대로 전부 받아들이되 그렇다고 한 줄 알린다.
   if ! read_loaded_modules; then fail modules "$LOADED_ERR"; SUMMARY="refused: cannot list loaded modules; nothing changed"; return; fi
   if [ "${#LOADED[@]}" -eq 0 ]; then fail modules "lsmod listed no modules (cannot judge)"; SUMMARY="refused: cannot judge the modules; nothing changed"; return; fi
   missing_modules_for "$k"
-  if [ "${#MISSING[@]}" -gt 0 ]; then
+  if [ "$IGNORE_MISSING" = 1 ]; then info modules "--ignore-missing-modules accepts every missing module; prefer --accept-missing-modules <names>"; fi
+  local mtext="${#MISSING[@]} of ${#LOADED[@]} loaded modules missing for $k: ${MISSING[*]:-none}" mlist=${MISSING[*]}
+  if [ "$ACCEPT_SET" = 1 ]; then
+    # 둘 다 사전순이고 중복이 없다 — 문자열로 정확히 같아야 한다.
+    if [ "${MISSING[*]}" != "${ACCEPT_LIST[*]}" ]; then
+      accept_diff
+      fail modules "$mtext -- --accept-missing-modules differs: $ACCEPT_DIFF"
+      SUMMARY="refused: the missing modules for $k differ from --accept-missing-modules; nothing changed"
+      return
+    fi
+    info modules "accepted exactly: ${ACCEPT_LIST[*]} (${#MISSING[@]} of ${#LOADED[@]} loaded modules missing for $k)"
+  elif [ "${#MISSING[@]}" -gt 0 ]; then
     if [ "$IGNORE_MISSING" = 1 ]; then
-      info modules "${#MISSING[@]} of ${#LOADED[@]} loaded modules missing for $k: ${MISSING[*]} (accepted: --ignore-missing-modules)"
+      info modules "$mtext (accepted: --ignore-missing-modules)"
     else
-      fail modules "${#MISSING[@]} of ${#LOADED[@]} loaded modules missing for $k: ${MISSING[*]} (rerun with --ignore-missing-modules to accept)"
+      fail modules "$mtext (rerun with --accept-missing-modules ${mlist// /,} to accept exactly these)"
       SUMMARY="refused: loaded modules missing for $k; nothing changed"
       return
     fi
+  elif [ "$NAME_MISS" -gt 0 ]; then
+    ok modules "$NAME_MISS of ${#LOADED[@]} loaded modules not found by name in $k; all accounted for: ${ACCOUNTED[*]}"
   else
     ok modules "all ${#LOADED[@]} loaded modules exist for $k"
   fi
@@ -1123,22 +1490,58 @@ cmd_unpin() {
   run_update_grub
   rc=$UG_RC
   if [ "$rc" -eq 0 ]; then ok update-grub "exit 0"; else fail update-grub "exit $rc"; fi
+  # update-grub 직후: 패키지 작업이 보이면 FAIL — 검증도 복원도 하지 않고 치워 둔 고정 파일만 지운다(고정을 푸는 것이 목표 상태이고, 수동 복구의
+  #   update-grub 한 번이 고정 없는 설정으로 grub.cfg 를 다시 만든다 — 수정 2 L1).
+  if [ "$rc" -eq 0 ] && ! postcheck_package_activity; then
+    remove_aside "$aside"
+    SUMMARY="package activity while update-grub ran ($PKG_ITEMS); pin file removed, not verified -- do not reboot; see the FAIL lines"
+    return
+  fi
   if [ "$rc" -eq 0 ] && verify_unpinned; then
-    out=$(rm -f -- "$aside" 2>&1)
-    if [ -e "$aside" ]; then first_line "$out"; fail cleanup "cannot remove ${aside#"$R"} ($FIRST) -- harmless to GRUB, remove it by hand"
-    else ok cleanup "removed the set-aside pin file"; fi
+    remove_aside "$aside"
     SUMMARY="pin removed; default boot is entry 0 ($RUNNING)"
     return
   fi
   restore_pin "$aside"
 }
 
+# unpin 이 치워 둔 고정 파일(.kernel-trial-pin.aside.*)을 지운다. 지우지 못해도 GRUB 에는 해가 없다(점으로 시작 · .cfg 아님).
+remove_aside() {
+  local out
+  out=$(rm -f -- "$1" 2>&1)
+  if [ -e "$1" ]; then first_line "$out"; fail cleanup "cannot remove ${1#"$R"} ($FIRST) -- harmless to GRUB, remove it by hand"
+  else ok cleanup "removed the set-aside pin file"; fi
+  return 0
+}
+
 # ---------- 인자 ----------
 usage_error() {
   fail usage "$1"
-  info usage "kernel-trial.sh status | pin | trial <kver> [--ignore-missing-modules] | cancel-trial | unpin"
+  info usage "kernel-trial.sh status | pin | trial <kver> [--accept-missing-modules <m1,m2,...> | --ignore-missing-modules] | cancel-trial | unpin"
   info usage "run as root on the node: Get-Content -Raw infra/bootstrap/kernel-trial.sh | ssh <node> \"sudo bash -s -- <subcommand>\""
   emit "RESULT: FAIL usage -- $1"
+}
+
+# --accept-missing-modules 의 값(쉼표 목록) → ACCEPT_LIST(사전순). 빈 목록 · 빈 이름 · MODNAME_RE 밖의 이름 · 중복은 사용법 오류(usage_error 를
+#   내고 1). 쉼표로 직접 자른다 — read 는 끝의 빈 이름을 버리고 줄바꿈에서 멈춘다.
+parse_accept_list() {
+  local raw=$1 rest t s
+  ACCEPT_LIST=()
+  if [ -z "$raw" ]; then usage_error "--accept-missing-modules got an empty list"; return 1; fi
+  case $raw in ,*|*,|*,,*) usage_error "--accept-missing-modules: empty name in '$raw'"; return 1 ;; esac
+  rest=$raw
+  while :; do
+    t=${rest%%,*}
+    if ! [[ $t =~ $MODNAME_RE ]]; then usage_error "--accept-missing-modules: '$t' is not a module name"; return 1; fi
+    for s in "${ACCEPT_LIST[@]}"; do
+      if [ "$s" = "$t" ]; then usage_error "--accept-missing-modules: '$t' listed twice"; return 1; fi
+    done
+    ACCEPT_LIST+=("$t")
+    [ "$rest" != "$t" ] || break
+    rest=${rest#*,}
+  done
+  sort_words "${ACCEPT_LIST[@]}"; ACCEPT_LIST=("${SORTED[@]}")
+  return 0
 }
 
 parse_args() {
@@ -1148,19 +1551,32 @@ parse_args() {
       if [ "$#" -ne 1 ]; then usage_error "$CMD takes no arguments"; return 2; fi ;;
     trial)
       shift
-      local a seen=0
+      local a seen=0 want=0 raw=""
       for a in "$@"; do
+        # --accept-missing-modules 의 값은 다음 인자다. '-' 로 시작하면 값이 아니다(모듈 이름은 '-' 로 시작하지 않는다).
+        if [ "$want" = 1 ]; then
+          want=0
+          case $a in -*) usage_error "--accept-missing-modules needs a comma-separated list of module names"; return 2 ;; esac
+          raw=$a
+          continue
+        fi
         case $a in
           --ignore-missing-modules)
             if [ "$IGNORE_MISSING" = 1 ]; then usage_error "--ignore-missing-modules given twice"; return 2; fi
             IGNORE_MISSING=1 ;;
+          --accept-missing-modules)
+            if [ "$ACCEPT_SET" = 1 ]; then usage_error "--accept-missing-modules given twice"; return 2; fi
+            ACCEPT_SET=1; want=1 ;;
           --*) usage_error "unknown option '$a'"; return 2 ;;
           *)
             if [ "$seen" = 1 ]; then usage_error "trial takes exactly one kernel version"; return 2; fi
             TRIAL_KVER=$a; seen=1 ;;
         esac
       done
-      if [ "$seen" != 1 ]; then usage_error "trial takes exactly one kernel version"; return 2; fi ;;
+      if [ "$want" = 1 ]; then usage_error "--accept-missing-modules needs a comma-separated list of module names"; return 2; fi
+      if [ "$IGNORE_MISSING" = 1 ] && [ "$ACCEPT_SET" = 1 ]; then usage_error "--accept-missing-modules and --ignore-missing-modules cannot be combined"; return 2; fi
+      if [ "$seen" != 1 ]; then usage_error "trial takes exactly one kernel version"; return 2; fi
+      if [ "$ACCEPT_SET" = 1 ] && ! parse_accept_list "$raw"; then return 2; fi ;;
     '') usage_error "missing subcommand"; return 2 ;;
     *) usage_error "unknown subcommand '$CMD'"; return 2 ;;
   esac

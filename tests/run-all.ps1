@@ -200,7 +200,7 @@ Write-Host ($o.TrimEnd())
 Check 'cloudflare-origin-pull-ca' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see cloudflare-origin-pull-ca test output above"
 
 # 1m. kernel-trial (T048) — tests/infra/kernel-trial.tests.ps1: infra/bootstrap/kernel-trial.sh 하네스(가짜 루트 KT_ROOT + 상태를 가진 가짜 명령으로
-#     Git/POSIX bash에서 실제 실행 · 실제 부트로더 · /boot · 노드 접근 없음 · 약 2.5–4분). bash가 없으면 하네스가 첫 줄 'SKIP kernel-trial tests -- ' + exit 0으로
+#     Git/POSIX bash에서 실제 실행 · 실제 부트로더 · /boot · 노드 접근 없음 · 약 4.5–5분 — T048 후속의 모듈 판정 재설계로 235 단언 · 214 실행). bash가 없으면 하네스가 첫 줄 'SKIP kernel-trial tests -- ' + exit 0으로
 #     끝난다 — 그때만 SKIP 허용(1b3과 같은 규율). 그 밖에는 exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 · 크래시 = FAIL).
 #     선택 실행(KERNEL_TRIAL_TESTS_ONLY) · 사본 시험(KERNEL_TRIAL_SCRIPT)이면 요약 줄 끝에 접미가 붙어 이 판정을 통과하지 못한다.
 $o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/infra/kernel-trial.tests.ps1 2>&1 | Out-String
