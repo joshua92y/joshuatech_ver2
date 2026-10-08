@@ -1,0 +1,45 @@
+{
+  "description": "Codex lifecycle hooks for JoshuaTech workflow gates.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"$(git rev-parse --show-toplevel)/.codex/hooks/approval-review.ps1\"",
+            "commandWindows": "pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"& { $repoRoot = (git rev-parse --show-toplevel).Trim(); & (Join-Path $repoRoot '.codex/hooks/approval-review.ps1') }\"",
+            "timeout": 10,
+            "statusMessage": "Checking approval workflow"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"$(git rev-parse --show-toplevel)/.codex/hooks/command-policy.ps1\"",
+            "commandWindows": "pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"& { $repoRoot = (git rev-parse --show-toplevel).Trim(); & (Join-Path $repoRoot '.codex/hooks/command-policy.ps1') }\"",
+            "timeout": 5,
+            "statusMessage": "Checking destructive command policy"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"$(git rev-parse --show-toplevel)/.codex/hooks/finish-gate.ps1\"",
+            "commandWindows": "pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"& { $repoRoot = (git rev-parse --show-toplevel).Trim(); & (Join-Path $repoRoot '.codex/hooks/finish-gate.ps1') }\"",
+            "timeout": 10,
+            "statusMessage": "Checking finish readiness"
+          }
+        ]
+      }
+    ]
+  }
+}

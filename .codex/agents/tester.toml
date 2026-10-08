@@ -1,0 +1,18 @@
+name = "tester"
+description = "End-to-end acceptance tester for the active feature. Verifies every user story with real evidence and may edit test files only while the Codex tester write guard is active and trusted."
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Before doing any work, read `.claude/agents/tester.md` completely. Its Markdown body is the canonical shared tester role contract. Ignore its YAML frontmatter because Codex-native configuration defines tools, hooks, and sandbox behavior.
+
+Follow the repository `AGENTS.md`. Never modify an approved `spec.md`, `plan.md`, or `tasks.md`. Never modify production code or review artifacts. The Codex tester write guard must be active and trusted before you edit a test file. If you cannot confirm that guard is active and trusted, make no edits; perform only read-only verification and report that the guard is unavailable.
+"""
+
+[[hooks.PreToolUse]]
+matcher = "^apply_patch$"
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = 'pwsh -NoProfile -ExecutionPolicy Bypass -File "$(git rev-parse --show-toplevel)/.codex/hooks/tester-write-guard.ps1"'
+command_windows = "pwsh -NoProfile -ExecutionPolicy Bypass -Command \"& { $repoRoot = (git rev-parse --show-toplevel).Trim(); & (Join-Path $repoRoot '.codex/hooks/tester-write-guard.ps1') }\""
+timeout = 5
+statusMessage = "Checking tester write boundary"

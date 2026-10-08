@@ -1,0 +1,13 @@
+exit1-no-evidence PASS RUNNER-ERROR
+exit2-with-evidence PASS RUNNER-ERROR
+exit0 PASS ESCAPED
+case-failure PASS CAUGHT
+lint-failure PASS CAUGHT
+bash-failure PASS CAUGHT
+exit1-no-evidence PARALLEL PASS RUNNER-ERROR
+exit2-with-evidence PARALLEL PASS RUNNER-ERROR
+exit0 PARALLEL PASS ESCAPED
+case-failure PARALLEL PASS CAUGHT
+lint-failure PARALLEL PASS CAUGHT
+bash-failure PARALLEL PASS CAUGHT
+RECLASSIFIED 223/223 CAUGHT, RUNNER-ERROR 0; original raw rc not persisted

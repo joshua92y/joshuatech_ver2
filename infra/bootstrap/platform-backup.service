@@ -1,0 +1,19 @@
+# infra/bootstrap/platform-backup.service — 노드 A /etc/systemd/system/platform-backup.service (T036, FR-047)
+# platform-backup.timer 가 매일 02:30 KST 에 이 oneshot 을 기동한다. 수동: systemctl start platform-backup.service (journalctl -u platform-backup).
+# 설치: 운영자 절차 2(infra/bootstrap/platform-backup.sh 머리 주석). 자격은 instance principal 뿐 — 이 unit 에 Environment= 로 자격을 두지 않는다.
+[Unit]
+Description=JoshuaTech platform backup: K3s SQLite bundle + Vault raft snapshot -> age -> OCI Object Storage (FR-047)
+Documentation=file:///usr/local/bin/platform-backup.sh
+After=network-online.target k3s.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# T044 전에는 BACKUP_COMPONENTS=k3s, TLS 리스너 확정 시 VAULT_ADDR_SCHEME/VAULT_CACERT — 파일이 없으면 무시된다(- 접두사). 비밀은 넣지 않는다.
+EnvironmentFile=-/etc/platform-backup/env
+ExecStart=/usr/local/bin/platform-backup.sh
+TimeoutStartSec=30min
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+SyslogIdentifier=platform-backup

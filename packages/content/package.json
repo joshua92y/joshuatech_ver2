@@ -1,0 +1,9 @@
+{
+  "name": "@jt/content",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Content loaders and schemas (skeleton, T015)",
+  "scripts": {
+    "build": "echo @jt/content: skeleton, no build step"
+  }
+}

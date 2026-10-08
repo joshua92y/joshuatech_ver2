@@ -57,14 +57,17 @@ Agent files (this file, `AGENTS.md`, the constitution, rules, agents, project sk
 - PowerShell 7.6.5 (`pwsh`) — hooks, tests, and repository scripts (`.claude/hooks/*.ps1`, `tests/**/*.ps1`, `scripts/*.ps1`)
 - Spec Kit `specify` 1.0.2.dev0 (integration `claude`, script `ps`) with extensions git, agent-context, archive
 - superpowers 5.1.0 (`superpowers@superpowers-dev`, the only enabled superpowers plugin)
-- No application stack yet — decided in SP-1
+- SP-1 stack (recorded in ADR 0002–0010): Node 24 + pnpm 10 workspace (apps/web, packages) · Python 3.13 + uv (Django 6.1 / Ninja 1.7 pods)
+- OpenTofu (oci, cloudflare, vault, grafana) · K3s v1.36.4 + Argo CD 3.5.2 GitOps (platform-gitops repo)
 
 ## Project Structure
-Layout table: `AGENTS.md` (imported above). Added since: `scripts/` (`update-specs-index.ps1`), `tests/scripts/` (its tests and fixtures), `specs/002-smoke/`.
+Layout table: `AGENTS.md` (imported above). Added since: `scripts/` (`update-specs-index.ps1`), `tests/scripts/` (its tests and fixtures), `specs/002-smoke/`; SP-1 (003): `apps/ packages/ templates/ infra/ e2e/` (see the AGENTS.md Layout rows), path-scoped rules `.claude/rules/{web,django-pod,fastapi-pod,infra,events}.md`, builder agents `.claude/agents/{web,api,infra}-builder.md`.
 
 ## Commands
 Commands table: `AGENTS.md`. Archive a merged feature: `/speckit-archive-run specs/<NNN-slug>`.
 Regenerate the specs index: `pwsh -NoProfile -File scripts/update-specs-index.ps1` (fail-closed, idempotent; `tests/run-all.ps1` check `specs-index-fresh` runs it for real, so a stale `specs/README.md` FAILs and is regenerated as a side effect — commit the result).
+Platform tests (agent-view gated; SKIP summary without `KUBECONFIG`): `pwsh -NoProfile -File tests/platform/run-platform-tests.ps1`.
+SP-1 toolchain entry points: pnpm (`pnpm install`, `pnpm -r test`), uv (`uv sync`), OpenTofu (`tofu -chdir=infra/<stack> plan`); `AGENTS.md` remains the canonical command table.
 
 ## Recent Changes
 - specs/002-smoke: specs index regeneration script (`scripts/update-specs-index.ps1`, fail-closed, atomic, idempotent) + 40-assertion harness + run-all checks `scripts`/`specs-index-fresh`; first full lifecycle run (approval-review → SDD → converge → tester → finish)
@@ -114,5 +117,5 @@ Regenerate the specs index: `pwsh -NoProfile -File scripts/update-specs-index.ps
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at specs/002-smoke/plan.md
+at specs/003-platform-foundation/plan.md
 <!-- SPECKIT END -->

@@ -12,13 +12,217 @@ function Check([string]$name, [bool]$ok, [string]$detail) {
 pwsh -NoProfile -ExecutionPolicy Bypass -File tests/hooks/run-hook-tests.ps1 | Out-Host
 Check 'hooks' ($LASTEXITCODE -eq 0) 'see hook test output'
 
+# 1a2. Codex-native hook contract (separate from the preserved Claude harness).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/hooks/run-codex-hook-tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'codex-hooks' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see Codex hook test output above"
+
+# 1a3. Codex destructive-command handler contract, including wrapper and option-placement cases.
+#       This direct harness does not prove that a given OS/runtime dispatches PreToolUse.
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/hooks/run-codex-command-policy-tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'codex-command-policy-handler' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see Codex command-policy handler test output above"
+
 # 1b. scripts tests
 pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/update-specs-index.tests.ps1 | Out-Host
 Check 'scripts' ($LASTEXITCODE -eq 0) 'see scripts test output'
 
+# 1b1. Codex Spec Kit policy-sidecar synchronizer harness.
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/sync-codex-skill-policies.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'codex-skill-policy-sync' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see Codex skill policy test output above"
+
+# 1b2. platform runner harness tests (tests/platform/run-platform-tests.ps1 단위 테스트)
+pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/run-platform-tests.tests.ps1 | Out-Host
+Check 'platform-harness' ($LASTEXITCODE -eq 0) 'see platform runner harness output'
+
+# 1b2a. reboot-harness (T048 선행) — tests/scripts/reboot-tests.tests.ps1: tests/platform/reboot.tests.ps1 단위 테스트
+#       (가짜 kubectl 심 · 시나리오로 과도 상태 재현 · 실제 클러스터 접근 없음 · 약 12분 — 가짜 kubectl 프로세스를 호출마다 띄우고, 기본 폴링 간격을 그대로 쓰는 경계 케이스가 있다). 1b3과 같은 양성 증거 규율:
+#       exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 · 크래시 = FAIL). 선택 실행(REBOOT_HARNESS_TESTS_ONLY)이면
+#       요약 줄 끝에 ' (filtered: …)'가 붙어 이 판정을 통과하지 못한다(부분 실행이 전체 통과로 보이지 않게).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/reboot-tests.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'reboot-harness' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see reboot harness test output above"
+
+# 1b2a1. cluster-harness (T049) — tests/scripts/cluster-tests.tests.ps1: tests/platform/cluster.tests.ps1 단위 테스트(argo-4 범위 분리 · T049 허용 미배포
+#        목록 게이트 · 조회 오류 사유 · np-2 문구; 가짜 kubectl 심 · 픽스처 tasks.md · 실제 클러스터 · oci · curl · 실제 tasks.md 접근 없음 · 약 5–6분).
+#        1b2a와 같은 양성 증거 규율: exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 · 크래시 = FAIL). 선택 실행
+#        (CLUSTER_HARNESS_TESTS_ONLY) · 사본 시험(CLUSTER_HARNESS_SCRIPT)이면 요약 줄 끝에 접미가 붙어 이 판정을 통과하지 못한다.
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/cluster-tests.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'cluster-harness' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see cluster harness test output above"
+
+# 1b2a2. ingress-harness (T049) — tests/scripts/ingress-tests.tests.ps1: tests/platform/ingress.tests.ps1 단위 테스트(cert-2 notAfter UTC 처리 · 30일 경계;
+#        가짜 kubectl 심 · curl 없음 · 실제 클러스터 · 네트워크 접근 없음 · 약 1–2분). 1b2a1과 같은 규율(INGRESS_HARNESS_TESTS_ONLY · INGRESS_HARNESS_SCRIPT 접미).
+#        시간대가 UTC인 머신에서는 이 하네스가 예전 9시간 오차 회귀를 잡지 못한다(테스트 머리 주석) — 판정은 같다.
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/ingress-tests.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'ingress-harness' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see ingress harness test output above"
+
+# 1b2a3. data-harness (T050) — tests/scripts/data-tests.tests.ps1: tests/platform/data.tests.ps1 단위 테스트(US3 CNPG · 백업 · 버킷 · 검사 Job 로그 단언;
+#        가짜 kubectl · 가짜 oci 심 · 픽스처 tasks.md · 실제 클러스터 · OCI 접근 없음 · 무부하 약 2.5분, 혼잡 시 5분 이상). 1b2a1과 같은 규율(DATA_HARNESS_TESTS_ONLY · DATA_HARNESS_SCRIPT 접미).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/data-tests.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'data-harness' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see data harness test output above"
+
+# 1b2a4. kafka-harness (T051) — tests/scripts/kafka-tests.tests.ps1: tests/platform/kafka.tests.ps1 단위 테스트(US3 Strimzi · Dragonfly · 검사 Job 로그 단언;
+#        가짜 kubectl 심 · 실제 클러스터 접근 없음 · 87 케이스 — 무부하 약 10분, 혼잡 시 15분; 심을 컴파일하면 약 2–3분(후속, build-notes)).
+#        1b2a1과 같은 규율(KAFKA_HARNESS_TESTS_ONLY · KAFKA_HARNESS_SCRIPT 접미).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/kafka-tests.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'kafka-harness' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see kafka harness test output above"
+
+# 1b2b. backup-verify (T048) — tests/scripts/backup-verify.tests.ps1: scripts/backup-verify.ps1 하네스(진짜 age · age-keygen · tar · vault ·
+#       파이썬 sqlite3 + 가짜 oci 심 · 실행마다 임시 픽스처 · 실제 OCI · 클러스터 · 개인키 접근 없음 · 약 3분). 하네스가 설정됐을 때 요약 줄에 접미를 붙이는 환경 변수가 하나 더 있다(BACKUP_VERIFY_SCRIPT).
+#       도구가 없으면 하네스가 첫 줄 'SKIP backup-verify tests -- ' + exit 0으로 끝난다 — 그때만 SKIP 허용(1b3과 같은 규율).
+#       그 밖에는 exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 · 크래시 = FAIL). 선택 실행(BACKUP_VERIFY_TESTS_ONLY)이면
+#       요약 줄 끝에 ' (filtered: …)'가 붙어 이 판정을 통과하지 못한다(부분 실행이 전체 통과로 보이지 않게).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/backup-verify.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+if ($c -eq 0 -and $o -match '\ASKIP backup-verify tests -- ') { Write-Host 'SKIP backup-verify -- allowed (age, age-keygen, tar, vault or python with sqlite3 not found; see SKIP line above)' }
+else { Check 'backup-verify' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see backup-verify harness output above" }
+
+# 1b3. ci-kubeconform (T047 M1) — tests/scripts/kubeconform-deploy.tests.ps1: scripts/ci/kubeconform-deploy.sh 하네스
+#       (임시 픽스처 실행 + .github/workflows/ci.yml job kubeconform 정적 검사 · 네트워크 필요 — 스키마 내려받기).
+#       도구(bash · kustomize · kubeconform)가 없으면 하네스가 첫 줄 'SKIP kubeconform-deploy tests -- ' + exit 0으로 끝난다 — 그때만 SKIP 허용.
+#       그 밖에는 1d · 1e와 같은 양성 증거 규율: exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 · 크래시 = FAIL).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/kubeconform-deploy.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+if ($c -eq 0 -and $o -match '\ASKIP kubeconform-deploy tests -- ') { Write-Host 'SKIP ci-kubeconform -- allowed (bash, kustomize or kubeconform not found; see SKIP line above)' }
+else { Check 'ci-kubeconform' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see kubeconform-deploy harness output above" }
+
+# 1b4. ci-gitleaks (T049 AC5) — tests/scripts/ci-gitleaks.tests.ps1: .github/workflows/ci.yml job gitleaks 정적 검사(도구 불필요 · SKIP 없음 · fail closed —
+#       job id `gitleaks`가 ruleset(main)의 required check 이름 · 액션으로 되돌아가지 않음 · 버전+sha256 한 쌍 · 범위와 기대 수가 같은 옵션 · 탐지 설정 고정).
+#       1b3과 같은 양성 증거 규율: exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 · 크래시 = FAIL).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/ci-gitleaks.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'ci-gitleaks' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see ci-gitleaks test output above"
+
 # 1c. specs index freshness — 이 검사는 낡은 인덱스를 발견하면 specs/README.md를 갱신하는 부작용이 있다(FAIL이면 diff를 검토하고 커밋한다)
 $o = pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/update-specs-index.ps1 2>&1 | Out-String
 Check 'specs-index-fresh' ($LASTEXITCODE -eq 0 -and $o -match '\(unchanged\)') ("exit=$LASTEXITCODE; $($o.Trim()) -- if stale: README was regenerated now, review and commit specs/README.md; if error: fix the spec header and rerun")
+
+# 1d. platform tests (T004) — KUBECONFIG 없으면 러너가 SKIP 요약 후 0으로 끝난다(SKIP 허용).
+#     러너는 agent-view 신원 게이트를 통과해야만 tests/platform/*.tests.ps1을 실행한다(검사 본체는 US 단계에서 작성).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/platform/run-platform-tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+if ($c -eq 0 -and $o -match '(?m)^(SKIP platform tests -- |0 test files \(SKIP\))') { Write-Host 'SKIP platform -- allowed (no KUBECONFIG or no platform test files)' }
+else { Check 'platform' ($c -eq 0 -and $o -match '(?m)^test files: \d+ passed, 0 failed\r?$') "exit=$c; see platform test output above" }
+
+# 1e. adr-madr (T004 자리, 본체 T016·T017) — tests/decisions/madr.tests.ps1 + tests/memory/memory-docs.tests.ps1.
+#     각 테스트 파일은 자기 대상 문서가 "전부" 없을 때만 첫 줄 'SKIP <name> tests -- ' + exit 0으로 끝난다
+#     (madr: docs/decisions/00{02..10}-*.md 0/9, T018–T026 전; memory-docs: memory 2 파일 모두 부재, T027–T028 전).
+#     부분 존재 = 전체 단언(fail closed). 실행된 파일이 모두 그 SKIP이면 슬롯도 SKIP(FAIL 아님); 아니면 Check로 판정.
+$adrTests = @(@('tests/decisions/madr.tests.ps1', 'tests/memory/memory-docs.tests.ps1') | Where-Object { Test-Path -LiteralPath (Join-Path $repo $_) })
+if ($adrTests.Count -eq 0) {
+    Write-Host 'SKIP adr-madr -- test files not written yet (US1: tests/decisions/madr.tests.ps1, tests/memory/memory-docs.tests.ps1)'
+} else {
+    $adrFail = 0; $adrSkip = 0; $adrNoEvidence = 0
+    foreach ($t in $adrTests) {
+        $o = pwsh -NoProfile -ExecutionPolicy Bypass -File $t 2>&1 | Out-String
+        $c = $LASTEXITCODE
+        Write-Host ($o.TrimEnd())
+        if ($c -ne 0) { $adrFail++ }
+        elseif ($o -match '(?m)^SKIP (madr|memory-docs) tests -- ') { $adrSkip++ }
+        elseif ($o -notmatch '(?m)^\d+ passed, 0 failed\r?$') { $adrFail++; $adrNoEvidence++ }   # exit 0인데 요약도 SKIP 마커도 없음(크래시/마커 표류) — 양성 증거 요구, fail closed (1d와 같은 규율)
+    }
+    if ($adrFail -eq 0 -and $adrSkip -eq $adrTests.Count) { Write-Host 'SKIP adr-madr -- allowed (subject docs not written yet; see SKIP lines above)' }
+    else {
+        $adrName = if ($adrSkip -gt 0) { "adr-madr ($adrSkip skipped)" } else { 'adr-madr' }
+        $adrDetail = "$adrFail of $($adrTests.Count) test file(s) failed"
+        if ($adrNoEvidence -gt 0) { $adrDetail += " ($adrNoEvidence exited 0 with no summary/SKIP marker)" }
+        Check $adrName ($adrFail -eq 0) $adrDetail
+    }
+}
+
+# 1f. agent-layer (T108 자리, 본체 T109·T110·T112) — tests/agents/agent-layer.tests.ps1.
+#     이 스위트는 SKIP 없이 fail closed(대상 rules 5·builder 3·kr 미러가 없으면 FAIL이 정상 — RED 창구간).
+#     1d·1e와 같은 양성 증거 규율: exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 = FAIL).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/agents/agent-layer.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'agent-layer' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see agent-layer test output above"
+
+# 1f2. Codex + Claude Spec Kit integration contract.
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/agents/codex-integration.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'codex-integration' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see Codex integration test output above"
+
+# 1f3. Codex project-layer parity: policies, argument shim, project skills, agents, and rules.
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/agents/codex-parity.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'codex-parity' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see Codex parity test output above"
+
+# 1g. host-prep (T014) — tests/infra/host-prep.tests.ps1: infra/bootstrap/host-prep.sh 정적 검사(원문만; 노드 실행 없음).
+#     SKIP 없이 fail closed(스크립트 부재 = 전 단언 FAIL; 유일한 SKIP 줄은 bash 부재 시 syntax-1 뿐이며 합계에 들어가지 않는다).
+#     1f와 같은 양성 증거 규율: exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 = FAIL).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/infra/host-prep.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'host-prep' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see host-prep test output above"
+
+# 1h. k3s-server (T035) — tests/infra/k3s-server.tests.ps1: infra/bootstrap/k3s-server.sh 정적 검사(원문만; 노드 실행·K3s 설치 없음).
+#     1g와 같은 규율: SKIP 없이 fail closed(스크립트 부재 = 전 단언 FAIL; 유일한 SKIP 줄은 bash 부재 시 syntax-1 뿐이며 합계에 들어가지 않는다),
+#     exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 = FAIL).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/infra/k3s-server.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'k3s-server' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see k3s-server test output above"
+
+# 1i. k3s-agent (T036) — tests/infra/k3s-agent.tests.ps1: infra/bootstrap/k3s-agent.sh 정적 검사(원문만; 노드 실행·조인 없음).
+#     1h와 같은 규율: SKIP 없이 fail closed(스크립트 부재 = 전 단언 FAIL; 유일한 SKIP 줄은 bash 부재 시 syntax-1 뿐이며 합계에 들어가지 않는다),
+#     exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 = FAIL).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/infra/k3s-agent.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'k3s-agent' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see k3s-agent test output above"
+
+# 1j. platform-backup (T036, FR-047) — tests/infra/platform-backup.tests.ps1: infra/bootstrap/platform-backup.{sh,service,timer} 정적 검사
+#     (원문만; 백업 실행·kubectl·oci·age 호출 없음). 세 파일 중 하나라도 없으면 전 단언 FAIL(fail closed), 1i와 같은 양성 증거 규율.
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/infra/platform-backup.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'platform-backup' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see platform-backup test output above"
+
+# 1k. traefik-config (T038) — tests/infra/traefik-config.tests.ps1: infra/bootstrap/traefik-config.yaml(HelmChartConfig) 정적 검사
+#     (원문만; 노드·kubectl·helm 실행 없음 — 적용은 운영자 절차). 1j와 같은 규율: SKIP 없이 fail closed(파일 부재 = 전 단언 FAIL),
+#     exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 = FAIL).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/infra/traefik-config.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'traefik-config' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see traefik-config test output above"
+
+# 1l. cloudflare-origin-pull-ca (T043) — tests/infra/cloudflare-origin-pull-ca.tests.ps1: infra/bootstrap/cloudflare-origin-pull-ca.yaml(공개 AOP 루트 CA Secret)
+#     정적 검사(ns·키·PEM 1블록·개인키 없음·sha256 지문·notAfter 2029-11-01). 1k와 같은 규율: SKIP 없이 fail closed,
+#     exit 0 이면서 'N passed, 0 failed'가 있어야 PASS. 잔여일은 WARN 출력만(시한 FAIL 없음) — 교체 감시는 T114 월간 점검·분기 지문 대조.
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/infra/cloudflare-origin-pull-ca.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'cloudflare-origin-pull-ca' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see cloudflare-origin-pull-ca test output above"
+
+# 1m. kernel-trial (T048) — tests/infra/kernel-trial.tests.ps1: infra/bootstrap/kernel-trial.sh 하네스(가짜 루트 KT_ROOT + 상태를 가진 가짜 명령으로
+#     Git/POSIX bash에서 실제 실행 · 실제 부트로더 · /boot · 노드 접근 없음 · 약 4.5–5분 — T048 후속의 모듈 판정 재설계로 235 단언 · 214 실행). bash가 없으면 하네스가 첫 줄 'SKIP kernel-trial tests -- ' + exit 0으로
+#     끝난다 — 그때만 SKIP 허용(1b3과 같은 규율). 그 밖에는 exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 · 크래시 = FAIL).
+#     선택 실행(KERNEL_TRIAL_TESTS_ONLY) · 사본 시험(KERNEL_TRIAL_SCRIPT)이면 요약 줄 끝에 접미가 붙어 이 판정을 통과하지 못한다.
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/infra/kernel-trial.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+if ($c -eq 0 -and $o -match '\ASKIP kernel-trial tests -- ') { Write-Host 'SKIP kernel-trial -- allowed (no POSIX bash found; see SKIP line above)' }
+else { Check 'kernel-trial' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see kernel-trial harness output above" }
 
 # 2. CLAUDE.md <= 200 lines
 $n = if (Test-Path CLAUDE.md) { (Get-Content CLAUDE.md).Count } else { -1 }
