@@ -14,7 +14,8 @@
 #   - 게이트가 FAIL이어도 D3 검사는 이어서 돌아 사유가 한 줄에 함께 나온다(C04-5) · 허용 목록 항목 형식 검사(F02-5) · 항목 0개 가드(F05).
 #   - 한 조회의 오류는 그 항목의 사유가 될 뿐, 같은 단언의 다른 항목 사유를 가리지 않는다(사유는 한 줄에 전부).
 #   - PASS는 무엇을 몇 개 확인했는지 적고, SKIP은 소유 과제와 Application 이름을 적는다. np-2-* SKIP은 job별 소유 과제를 적는다.
-#   - np-2-*는 Job이 없을 때 소유 과제(T050 · T051 · T078)가 tasks.md에서 미체크일 때만 SKIP(C02-5), 체크됐으면 FAIL(C14), tasks.md 문제도 FAIL
+#   - np-2-*는 Job이 없을 때 소유 과제(data-assert · kafka-assert = T059, authz-assert = T085 — Job이 존재·성공해야 하는 E2E 과제; 하네스 작성 과제
+#     T050 · T051 · T078이 아니다, 2026-10-08 라이브 FAIL로 정정)가 tasks.md에서 미체크일 때만 SKIP(C02-5), 체크됐으면 FAIL(C14), tasks.md 문제도 FAIL
 #     (C07–C09 · C14); Job이 있으면 tasks.md를 보지 않는다(C06-6) — 2라운드 적대 리뷰 F2(컨트롤러 범위 확장).
 #
 # 방식 1 — E2E 케이스(C*): 케이스마다 임시 픽스처(%TEMP%/clustertest-<guid>)에
@@ -289,9 +290,10 @@ function New-Responses {
     return $r
 }
 
-# np-2-* 소유 과제 줄(T050 · T051 · T078) — 기본은 미체크(실제 tasks.md와 같다). 케이스가 바꿀 때는 New-TasksText의 둘째 인자로 넘긴다.
-$np2Unchecked = @('- [ ] T050 [P] [US3] `tests/platform/data.tests.ps1` + data-assert Job', '- [ ] T051 [P] [US3] `tests/platform/kafka.tests.ps1` + kafka-assert Job (and the data-assert Dragonfly section)',
-    '- [ ] T078 [P] [US4] `tests/platform/identity.tests.ps1` + authz-assert Job')
+# np-2-* 소유 과제 줄(data-assert · kafka-assert = T059 · authz-assert = T085 — Job이 존재·성공해야 하는 E2E 과제; 하네스 작성 과제 T050 · T051 · T078이 아니다,
+#   2026-10-08 정정) — 기본은 미체크(실제 tasks.md와 같다). T059 줄은 하나만 둔다(두 Job이 같은 줄을 읽고 Get-TaskLineState는 정확히 1줄을 요구한다).
+#   케이스가 바꿀 때는 New-TasksText의 둘째 인자로 넘긴다.
+$np2Unchecked = @('- [ ] T059 [US3] E2E: data-assert and kafka-assert Jobs must be present and succeeded', '- [ ] T085 [US4] E2E: authz-assert Job must be present and succeeded')
 $np2Checked = @($np2Unchecked | ForEach-Object { '- [X] ' + $_.Substring(6) })
 # tasks.md 픽스처: 머리 + 앞뒤 과제 줄(잡음) + np-2-* 소유 과제 줄 + 케이스의 argo-4-* 소유 과제 줄. LF.
 function New-TasksText([string[]]$lines, [string[]]$np2Lines = $script:np2Unchecked) {
@@ -311,9 +313,9 @@ $skipText = @{
 }
 $us2PassDetail = "15 objects carry argocd.argoproj.io/sync-options=${sync}: PVC vault/data-vault-0; CRD group cert-manager.io 6; CRD group external-secrets.io 8"
 $np2Text = @{
-    'data-assert'  = 'until T050 (assert Job jt-dev/data-assert from platform/policies/tests not present; Dragonfly section: T051; T050 unchecked in tasks.md)'
-    'kafka-assert' = 'until T051 (assert Job jt-dev/kafka-assert from platform/policies/tests not present; T051 unchecked in tasks.md)'
-    'authz-assert' = 'until T078 (assert Job jt-dev/authz-assert from platform/policies/tests not present; T078 unchecked in tasks.md)'
+    'data-assert'  = 'until T059 (assert Job jt-dev/data-assert from platform/policies/tests not present; deployed with the tests Application after T054-T057; T059 unchecked in tasks.md)'
+    'kafka-assert' = 'until T059 (assert Job jt-dev/kafka-assert from platform/policies/tests not present; deployed with the tests Application after T055-T056; T059 unchecked in tasks.md)'
+    'authz-assert' = 'until T085 (assert Job jt-dev/authz-assert from platform/policies/tests not present; deployed with the tests Application after T082; T085 unchecked in tasks.md)'
 }
 
 # ---------- 픽스처 ----------
@@ -522,7 +524,7 @@ try {
         $resp[(AppKey 'platform-cnpg')] = R-Json (New-App 'platform-cnpg' 'absent')            # status 없음
         $resp[(AppKey 'platform-cnpg-cluster')] = R-Json (New-App 'platform-cnpg-cluster' 'null')   # status.resources = null
         # platform-kafka · platform-dragonfly = 빈 배열(기본값)
-        # 기본 위치의 tasks.md는 전부 체크됨(argo-4-* 소유 과제 넷 + np-2-* 소유 과제 셋) — -TasksMdPath(전부 미체크)를 따르지 않으면 일곱 다 FAIL이 된다
+        # 기본 위치의 tasks.md는 전부 체크됨(argo-4-* 소유 과제 넷 + np-2-* 소유 과제 둘 T059 · T085) — -TasksMdPath(전부 미체크)를 따르지 않으면 argo-4-* 넷 + np-2-* 셋 일곱 항목 다 FAIL이 된다
         $d = New-Fixture $resp (New-TasksText $tChecked $np2Checked) @{ 'alt-tasks.md' = (New-TasksText $tUnchecked) }
         $r = Invoke-Harness $d @('-TasksMdPath', (Join-Path $d 'alt-tasks.md'))
         Assert-Run 'C02' $r $d
@@ -619,7 +621,7 @@ try {
         Assert-Id 'C06-3: argo-4-strimzi (deployed) FAIL with both "resource type" errors on one line; the right CRD group is not a problem' $r 'argo-4-strimzi' 'FAIL' @('2 problem(s)', 'Kafka data/jt-kafka: lookup failed', 'resource type "kafkas"', 'KafkaNodePool ns data: lookup failed', 'resource type "kafkanodepools"') @('CRD group strimzi.io:', 'tasks.md')
         Assert-IdExact 'C06-4: argo-4-dragonfly (deployed) PASS -- the PVC labelled app.kubernetes.io/name=dragonfly counts, other PVCs in ns data do not' $r 'argo-4-dragonfly' 'PASS' "1 object carries argocd.argoproj.io/sync-options=${sync}: Dragonfly PVC data/df-0 (Argo CD Application platform-dragonfly has 3 resource(s))"
         Assert-IdExact 'C06-5: argo-4 (US2) PASS (strimzi CRDs are not part of its scope)' $r 'argo-4' 'PASS' $us2PassDetail
-        Assert-Id 'C06-6: np-2-data-assert PASS -- the Job is present (succeeded, logs readable), so the absent tasks.md is never consulted' $r 'np-2-data-assert' 'PASS' @('Job jt-dev/data-assert succeeded') @('tasks.md', 'until T050')
+        Assert-Id 'C06-6: np-2-data-assert PASS -- the Job is present (succeeded, logs readable), so the absent tasks.md is never consulted' $r 'np-2-data-assert' 'PASS' @('Job jt-dev/data-assert succeeded') @('tasks.md', 'until T059')
     }
     # tasks.md 없음 · 읽기 실패(배타 잠금) · 파일이 아니라 디렉터리 → 자원 0인 넷 다 FAIL(fail closed), argo-4는 영향 없음
     Test-Case 'C07' 'gate: tasks.md missing -> FAIL for every empty Application (fail closed); argo-4 unaffected' {
@@ -695,15 +697,16 @@ try {
     }
 
     # ================= np-2-* 게이트(2라운드 적대 리뷰 F2 — 컨트롤러 범위 확장) =================
-    # Job 없음 + 소유 과제 체크됨([X] · [x]) → FAIL(SKIP 아님) · 과제 줄 0개(비슷한 줄은 세지 않는다) → FAIL. 미체크 → SKIP은 C02-5, tasks.md 문제는 C07–C09.
+    # Job 없음 + 소유 과제 체크됨(소문자 [x] — 대문자 [X]는 같은 Get-TaskLineState를 argo-4-* 게이트 C03 · F04가 덮는다) → FAIL(SKIP 아님) · 과제 줄 0개(비슷한 줄은
+    # 세지 않는다) → FAIL. data-assert · kafka-assert는 같은 T059 줄 하나를 읽으므로 둘 다 FAIL. 미체크 → SKIP은 C02-5, tasks.md 문제는 C07–C09.
     Test-Case 'C14' 'np-2 gate: Job absent + owner task checked -> FAIL (never SKIP); owner task line missing -> FAIL; argo-4-* and argo-4 unaffected' {
-        $np2 = @('- [X] T050 [US3] data-assert (checked)', '- [x] T051 [US3] kafka-assert (lowercase check mark)', '  - [ ] T078 indented (not the task-line shape)')
+        $np2 = @('- [x] T059 [US3] E2E (lowercase check mark)', '  - [ ] T085 indented (not the task-line shape)')
         $d = New-Fixture (New-Responses) (New-TasksText $tUnchecked $np2)
         $r = Invoke-Harness $d
         Assert-Run 'C14' $r $d
-        Assert-IdExact 'C14-1: np-2-data-assert FAIL -- T050 is checked but the Job is absent' $r 'np-2-data-assert' 'FAIL' 'T050 is checked in tasks.md but Job jt-dev/data-assert is absent'
-        Assert-IdExact 'C14-2: np-2-kafka-assert FAIL -- "[x]" counts as checked' $r 'np-2-kafka-assert' 'FAIL' 'T051 is checked in tasks.md but Job jt-dev/kafka-assert is absent'
-        Assert-Id 'C14-3: np-2-authz-assert FAIL -- no line has the exact owner-task shape for T078' $r 'np-2-authz-assert' 'FAIL' @('assert Job jt-dev/authz-assert not present', 'tasks.md has 0 task line(s) for T078') @('until T078')
+        Assert-IdExact 'C14-1: np-2-data-assert FAIL -- T059 is checked ("[x]" counts as checked) but the Job is absent' $r 'np-2-data-assert' 'FAIL' 'T059 is checked in tasks.md but Job jt-dev/data-assert is absent'
+        Assert-IdExact 'C14-2: np-2-kafka-assert FAIL -- the same checked T059 line gates kafka-assert too' $r 'np-2-kafka-assert' 'FAIL' 'T059 is checked in tasks.md but Job jt-dev/kafka-assert is absent'
+        Assert-Id 'C14-3: np-2-authz-assert FAIL -- no line has the exact owner-task shape for T085' $r 'np-2-authz-assert' 'FAIL' @('assert Job jt-dev/authz-assert not present', 'tasks.md has 0 task line(s) for T085') @('until T085')
         foreach ($id in $gatedIds) { Assert-IdExact "C14-4 ${id}: SKIP unchanged (the np-2 owner lines do not affect the argo-4-* gate)" $r $id 'SKIP' $skipText[$id] }
         Assert-IdExact 'C14-5: argo-4 (US2) PASS in the same run' $r 'argo-4' 'PASS' $us2PassDetail
     }
@@ -735,8 +738,8 @@ try {
         $hdr = [Collections.Generic.List[string]]::new()
         foreach ($l in @($src -split "`r?`n")) { if ($l.StartsWith('#', [StringComparison]::Ordinal)) { $hdr.Add($l) } else { break } }
         $header = $hdr -join "`n"
-        $missing = @(@($gatedIds + @('until T050', 'until T051', 'until T078')) | Where-Object { -not (Has-Text $header $_) })
-        Assert 'S01-1: the header comment names argo-4-cnpg-crd, argo-4-pg-main, argo-4-strimzi, argo-4-dragonfly and the np-2 owners T050/T051/T078' ($src.Length -gt 0 -and $missing.Count -eq 0) "missing in header: $($missing -join ', ')"
+        $missing = @(@($gatedIds + @('until T059', 'until T085')) | Where-Object { -not (Has-Text $header $_) })
+        Assert 'S01-1: the header comment names argo-4-cnpg-crd, argo-4-pg-main, argo-4-strimzi, argo-4-dragonfly and the np-2 owners T059/T085' ($src.Length -gt 0 -and $missing.Count -eq 0) "missing in header: $($missing -join ', ')"
         Assert 'S01-2: the harness source no longer contains "until T041"' ($src.Length -gt 0 -and -not (Has-Text $src 'until T041')) 'found "until T041" (or harness missing)'
     }
 

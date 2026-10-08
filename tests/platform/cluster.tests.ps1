@@ -22,9 +22,12 @@
 #
 # 단계별 SKIP(실패로 세지 않음 — T102 E2E에서 전체 재실행):
 #   - ca-1      CA 미러 Secret(pg-main-ca, ns identity·jt-dev·jt-prod)이 셋 다 없으면 `SKIP ca-1: until T056`
-#   - np-2-*    platform/policies/tests/ assert Job(ns jt-dev)이 없고 job별 소유 과제(T050 · T051 · T078) 줄이 tasks.md에 정확히 1개이고 미체크일 때만
-#               SKIP — `SKIP np-2-data-assert: until T050 (…; Dragonfly section: T051; T050 unchecked in tasks.md)` · `SKIP np-2-kafka-assert: until T051 (…)`
-#               · `SKIP np-2-authz-assert: until T078 (…)`. 소유 과제가 체크됐는데 Job이 없으면 FAIL(`T0NN is checked in tasks.md but Job jt-dev/<job> is absent`) ·
+#   - np-2-*    platform/policies/tests/ assert Job(ns jt-dev)이 없고 job별 소유 과제(data-assert · kafka-assert = T059(US3 E2E), authz-assert = T085(US4 E2E)) 줄이
+#               tasks.md에 정확히 1개이고 미체크일 때만 SKIP — 소유 과제 = Job이 존재·성공해야 하는 E2E 과제이지 하네스를 작성하는 과제(T050 · T051 · T078)가
+#               아니다(Job 매니페스트는 T041, tests Application은 검사 대상이 생긴 뒤에야 만들어진다 — 2026-10-08 T050·T051 체크 직후 라이브 FAIL로 정정).
+#               `SKIP np-2-data-assert: until T059 (…; deployed with the tests Application after T054-T057; T059 unchecked in tasks.md)` ·
+#               `SKIP np-2-kafka-assert: until T059 (…; deployed with the tests Application after T055-T056; …)` · `SKIP np-2-authz-assert: until T085 (…; deployed with the tests Application after T082; …)`.
+#               소유 과제가 체크됐는데 Job이 없으면 FAIL(`T0NN is checked in tasks.md but Job jt-dev/<job> is absent`) ·
 #               tasks.md 문제(읽기 실패 · 과제 줄 ≠ 1)도 FAIL — argo-4-* 게이트와 같은 규칙(T049 2라운드, 적대 리뷰 F2 범위 확장). Job이 있으면 과제 상태는 보지 않는다.
 #   - argo-4-cnpg-crd · argo-4-pg-main · argo-4-strimzi · argo-4-dragonfly(US3 범위의 Delete=false,Prune=false 보호):
 #               T049 허용 미배포 목록($argo4Allowlist)의 게이트가 네 조건을 모두 만족할 때만 SKIP — 목록에 있음 · Argo CD Application
@@ -172,9 +175,11 @@ $argo4Allowlist = [ordered]@{
 $script:argo4TasksPath =[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../specs/003-platform-foundation/tasks.md'))
 if (-not [string]::IsNullOrEmpty($TasksMdPath)) { $script:argo4TasksPath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($TasksMdPath) }
 $assertJobs = @('data-assert', 'kafka-assert', 'authz-assert')
-# assert Job별 소유 과제(np-2-* SKIP 문구): data-assert = T050(그 Dragonfly 절은 T051) · kafka-assert = T051 · authz-assert = T078
-$assertJobOwner = @{ 'data-assert' = 'T050'; 'kafka-assert' = 'T051'; 'authz-assert' = 'T078' }
-$assertJobOwnerNote = @{ 'data-assert' = '; Dragonfly section: T051' }
+# assert Job별 소유 과제(np-2-* SKIP 문구): data-assert = T059 · kafka-assert = T059(둘 다 US3 E2E) · authz-assert = T085(US4 E2E)
+#   소유 과제 = Job이 존재·성공해야 하는 E2E 과제 — 하네스 작성 과제(T050·T051·T078)가 아니다(2026-10-08 라이브 FAIL로 정정: T050·T051이 체크됐지만
+#   Job은 tests Application이 검사 대상 뒤에 만들어지므로 아직 없었다). note는 SKIP 문구에 Job이 생기는 시점을 덧붙인다(세 Job 전부).
+$assertJobOwner = @{ 'data-assert' = 'T059'; 'kafka-assert' = 'T059'; 'authz-assert' = 'T085' }
+$assertJobOwnerNote = @{ 'data-assert' = '; deployed with the tests Application after T054-T057'; 'kafka-assert' = '; deployed with the tests Application after T055-T056'; 'authz-assert' = '; deployed with the tests Application after T082' }
 # assert Job이 실제로 증명하는 매트릭스 범위(np-2-* PASS 문구)
 $assertJobScope = @{ 'data-assert' = 'jt-dev -> data 5432 (pg-main) and 6379 (Dragonfly)'; 'kafka-assert' = 'jt-dev -> data 9093 (Kafka SCRAM/TLS)'; 'authz-assert' = 'jt-dev -> identity 8080 (OpenFGA)' }
 $vaultIngressNs = @('kube-system', 'monitoring', 'external-secrets')   # 매트릭스의 vault 8200 도착 행(노드 A ipBlock은 별도) — vault 자기 ns 없음(allow-same-namespace 대상 아님)
