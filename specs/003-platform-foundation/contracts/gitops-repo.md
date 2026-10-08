@@ -200,6 +200,8 @@ Authentik·OpenFGA는 pod가 아니라 환경 공유 컴포넌트이므로 env �
      | `external-secrets` | `https://charts.external-secrets.io` | `platform/external-secrets` |
      | `reloader` | `https://stakater.github.io/stakater-charts` | `platform/reloader` |
      | `vault` | `https://helm.releases.hashicorp.com` | `platform/vault` |
+     | `cloudnative-pg` | `https://cloudnative-pg.github.io/charts` | `platform/cnpg`(T052 — CNPG operator) |
+     | `plugin-barman-cloud` | `https://cloudnative-pg.github.io/charts` | `platform/cnpg`(T052 — 같은 디렉터리의 둘째 `helmCharts` 항목 · operator와 같은 ns 필수) |
    - (T047) **`charts/`라는 이름의 디렉터리는 helm 인플레이트 캐시 전용이다**: `helmCharts`를 쓰는 kustomization 디렉터리 **바로 아래**에만 있을 수 있다(거기는 `.gitignore` 대상인 빌드 산출물이다). 그 밖의 위치에 `charts` 디렉터리가 있으면 실패 — 파일 열거와 7.4의 파일 찾기는 경로에 `/charts/`가 든 곳을 통째로 건너뛰므로, 이름이 `charts`인 pod(`apps/charts/…`)나 컴포넌트는 모든 검사의 시야 밖으로 빠진다.
    - (T047) **`helmCharts`를 쓰는 kustomization이 하나라도 있으면** `bootstrap/argocd`의 `argocd-cm` `kustomize.buildOptions`에 `--enable-helm`이 있어야 한다(없으면 Argo가 그 컴포넌트를 렌더하지 못한다). 판정은 pflag의 뜻을 따른다(2026-09-30 G4 리뷰): 값을 공백(Go `unicode.IsSpace` 전 집합)으로 나눈 낱말 가운데 `--enable-helm` 또는 `--enable-helm=<참값: true·1·t·T·TRUE·True>`가 있고, 같은 플래그가 여러 번이면 **마지막 값**이 이기며, 읽지 못하는 값(`=yes` 등)이 하나라도 있으면 실패 · `--enable-helmfoo`는 다른 낱말이다.
    - (T047) **권한 경계 — 문자열이 아니라 규칙 구조로 본다**(전 kustomization 렌더를 합쳐서 · 2026-09-29 main `82dd85e` 실측값이 기준선):
