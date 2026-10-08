@@ -72,6 +72,14 @@ $c = $LASTEXITCODE
 Write-Host ($o.TrimEnd())
 Check 'data-harness' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see data harness test output above"
 
+# 1b2a4. kafka-harness (T051) — tests/scripts/kafka-tests.tests.ps1: tests/platform/kafka.tests.ps1 단위 테스트(US3 Strimzi · Dragonfly · 검사 Job 로그 단언;
+#        가짜 kubectl 심 · 실제 클러스터 접근 없음 · 87 케이스 — 무부하 약 10분, 혼잡 시 15분; 심을 컴파일하면 약 2–3분(후속, build-notes)).
+#        1b2a1과 같은 규율(KAFKA_HARNESS_TESTS_ONLY · KAFKA_HARNESS_SCRIPT 접미).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/kafka-tests.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'kafka-harness' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see kafka harness test output above"
+
 # 1b2b. backup-verify (T048) — tests/scripts/backup-verify.tests.ps1: scripts/backup-verify.ps1 하네스(진짜 age · age-keygen · tar · vault ·
 #       파이썬 sqlite3 + 가짜 oci 심 · 실행마다 임시 픽스처 · 실제 OCI · 클러스터 · 개인키 접근 없음 · 약 3분). 하네스가 설정됐을 때 요약 줄에 접미를 붙이는 환경 변수가 하나 더 있다(BACKUP_VERIFY_SCRIPT).
 #       도구가 없으면 하네스가 첫 줄 'SKIP backup-verify tests -- ' + exit 0으로 끝난다 — 그때만 SKIP 허용(1b3과 같은 규율).
