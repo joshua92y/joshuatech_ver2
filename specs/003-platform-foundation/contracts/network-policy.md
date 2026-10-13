@@ -88,7 +88,7 @@ egress:
 | `jt-dev` · `jt-prod` | `identity` | 9000 · 8080 | Authentik(JWKS·revoke API, svc DNS) · OpenFGA |
 | `jt-dev` · `jt-prod` | `monitoring` | 4317 · 4318 | OTLP(gRPC·HTTP) → Alloy |
 | `identity` | `data` | 5432 | Authentik·OpenFGA DB |
-| `cnpg-system`(operator pod만 — `app.kubernetes.io/name=cloudnative-pg`) | `data` | 8000 | CNPG operator → PostgreSQL 인스턴스 manager API(`/pg/status` 상태 수집 · 백업 요청 · in-place update). CNPG 1.30 문서(security.md · networking.md): "the operator needs to communicate to each instance on TCP port 8000 … in case you add any network policy". 5432는 문서 문면에만 있고 operator는 쓰지 않는 것으로 보아 **열지 않는다**(VD — T053에서 operator 로그로 판정). 2026-10-13 추가(2026-10-08 T052 리뷰 K1) |
+| `cnpg-system`(operator pod만 — `app.kubernetes.io/name=cloudnative-pg`) | `data` | 8000 | CNPG operator → PostgreSQL 인스턴스 manager API(`/pg/status` 상태 수집 · in-place update — 백업 **시작**은 `pods/exec` 스트림이라 이 포트가 아니다: CNPG 1.30 `backup_controller.go` `startInstanceManagerBackup` → `ExecCommand`; 2026-10-13 T053 r2 리뷰 K10 정정). CNPG 1.30 문서(security.md · networking.md): "the operator needs to communicate to each instance on TCP port 8000 … in case you add any network policy". 5432는 문서 문면에만 있고 operator는 쓰지 않는 것으로 보아 **열지 않는다**(VD — T053에서 operator 로그로 판정). 2026-10-13 추가(2026-10-08 T052 리뷰 K1) |
 | `identity` | `jt-prod` | 8000 | Authentik → identity-admin prod 웹훅(`/webhooks/authentik`, svc DNS) |
 | `identity` | `jt-dev` | 8000 | Authentik → identity-admin **dev** 웹훅(dev NotificationTransport, svc DNS) |
 | `external-secrets` | `vault` | 8200 | kv 읽기 |
