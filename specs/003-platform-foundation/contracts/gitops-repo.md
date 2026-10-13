@@ -45,9 +45,9 @@ platform-gitops/
 | 이름 | `platform-<component>` · `<pod>-<env>` |
 | project | 플랫폼 → `platform`, 앱 → `dev`·`prod`, 검증 Job(`platform/policies/tests/`) → `tests` |
 | sync-wave | 아래 **§sync-wave 단일 표**가 정본(`-20` … `60`, 앱 `100`). 다른 곳에 wave 번호를 중복 기재하지 않는다 |
-| syncPolicy | 플랫폼: `automated: { prune: false, selfHeal: true }`, syncOptions `ServerSideApply=true`, `CreateNamespace=true`, `Prune=confirm`, `Delete=confirm`, `SkipDryRunOnMissingResource=true`. dev 앱: prune·selfHeal true. prod 앱: automated이되 변경은 PR로만 |
+| syncPolicy | 플랫폼: `automated: { prune: false, selfHeal: true }`, syncOptions `ServerSideApply=true`, `CreateNamespace=true`, `Prune=confirm`, `Delete=confirm`, `SkipDryRunOnMissingResource=true`. dev 앱: prune·selfHeal true. prod 앱: automated이되 변경은 PR로만. **예외(2026-10-13 T053)** — Argo가 health를 추적하는 CR을 다단계 wave로 가진 플랫폼 Application(첫 사례 `platform-cnpg-cluster`: CNPG `Cluster`는 Argo CD v3.5.2 내장 health.lua가 `Applying configuration` · in-place 재시작 · switchover · failover 등을 **Degraded**로 매핑)은 `ApplyOutOfSyncOnly=true`와 `retry`(limit 5 · backoff 30s ×2 · maxDuration 5m)를 더한다. 이유: 다단계 sync는 다음 wave로 가기 전 health를 기다리고 Degraded 전이에서 task Failed → operation Failed가 되며, 같은 리비전은 자동 재시도되지 않는다(gitops-engine `sync_context.go` · `appcontroller.go` 소스 판독 — 라이브 미실측, T053 VD-11로 기록). `ApplyOutOfSyncOnly`는 한 장 변경을 단일 step으로 만들어 health 대기 자체를 없애고(첫 배포는 모두 OutOfSync라 wave 순서 유지), retry는 두 장 이상 변경이 남긴 다단계의 안전망이다 |
 | AppProject | `platform`: sourceRepos [gitops, 차트 저장소], destinations = 플랫폼 네임스페이스(network-policy.md 표), clusterResourceWhitelist(CRD·Namespace·ClusterRole…). `dev`/`prod`: 자기 네임스페이스만, cluster 리소스 금지, **`namespaceResourceBlacklist`: NetworkPolicy · ResourceQuota · LimitRange · Role · RoleBinding · ServiceAccount**(정책 객체는 `platform/policies/`만 쓴다). **`tests`**: sourceRepos = [gitops]만, destination = `jt-dev`만, cluster 리소스 금지 — `platform/policies/tests/`의 검증 Job 3종 전용(destination을 Application 한정으로 좁힐 수 없어 `platform`에 `jt-dev`를 넣지 않는다). `default`: sourceRepos·destinations 비움 |
-| 삭제 보호 | `Cluster pg-main` · `Kafka jt-kafka` · `KafkaNodePool` · Vault/Dragonfly PVC · 모든 오퍼레이터 CRD(CNPG·Strimzi·cert-manager·ESO)에 `argocd.argoproj.io/sync-options: Delete=false,Prune=false` |
+| 삭제 보호 | `Cluster pg-main` · `ObjectStore oci-backups`(2026-10-13 T053 추가 — 지우면 WAL 아카이브가 즉시 멈추고 백업 카탈로그 접근을 잃는다) · `Kafka jt-kafka` · `KafkaNodePool` · Vault/Dragonfly PVC · 모든 오퍼레이터 CRD(CNPG·Strimzi·cert-manager·ESO)에 `argocd.argoproj.io/sync-options: Delete=false,Prune=false` |
 | 워크로드 강화 | 템플릿 pod·cloudflared·dragonfly Deployment: `automountServiceAccountToken: false` + securityContext(`runAsNonRoot`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `seccompProfile: RuntimeDefault`, `readOnlyRootFilesystem: true` + `/tmp` emptyDir). helm 차트 컴포넌트(Vault·External Secrets·Authentik·OpenFGA·Reloader)는 values에 securityContext 4항목(`runAsNonRoot`·`allowPrivilegeEscalation`·`capabilities.drop`·`seccompProfile`)을 명시한다 |
 
 ## sync-wave 단일 표
@@ -171,7 +171,7 @@ Authentik·OpenFGA는 pod가 아니라 환경 공유 컴포넌트이므로 env �
 
 ## validate.yml (required check `validate`)
 
-1. `kustomize build`(모든 overlay·platform) → `kubeconform -strict -ignore-missing-schemas`(CRD 스키마는 datreeio 카탈로그).
+1. `kustomize build`(모든 overlay·platform) → `kubeconform -strict -ignore-missing-schemas`(CRD 스키마: **저장소 렌더에 나온 `CustomResourceDefinition`에서 파생한 스키마가 1순위**, 렌더에 없는 kind만 datreeio 카탈로그 폴백 — 2026-10-13 T053 개정: datreeio의 ObjectStore 사본(2025-06-17)이 라이브 차트 CRD가 받는 `data.compression: lz4`를 거부한 거짓 음성을 겪었다. 저장소가 인플레이트하는 차트 버전 = 라이브 admission이므로 파생 스키마는 드리프트가 없다).
 2. `helm template`(helmCharts 사용 컴포넌트).
 3. 시크릿·경계 검사: `gitleaks`, 위 **§validate.yml ExternalSecret 검사** 7항목, `images[].newTag` 금지, `platform/**` `image:` digest 부재 경고.
 4. 정책 검사: `platform/policies` Namespace 목록 = contracts/network-policy.md 표(14개); ns마다 해당 공통 정책 세트 존재; 모든 egress `ipBlock` 규칙에 `ports` + `except` 4개(IMDS·RFC 1918 3종); helm values의 포트 ↔ 정책 포트 일치; LimitRange에 `default.cpu`·`max.cpu` 없음.
