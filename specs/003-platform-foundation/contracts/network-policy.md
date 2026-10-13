@@ -44,7 +44,7 @@
 | `allow-imds` | egress → `ipBlock 169.254.169.254/32` 80 | **`vault` 전용**(인스턴스 프린시펄) |
 
 - `kube-system`에는 default-deny를 걸지 않는다(K3s 번들 컴포넌트). 그래서 IMDS 차단만 `deny-imds` 한 장으로 표현한다 — allow-only 모델에서 `except`가 있는 egress 규칙은 그 규칙 안에서만 의미가 있으므로, **default-deny가 있는 나머지 13 ns에서는 `deny-imds` 같은 별도 정책이 아무것도 막지 못한다**. 따라서 그 13 ns의 IMDS 차단은 아래 "외부 egress 규칙 형식"으로 규칙마다 표현한다.
-- `allow-same-namespace`가 필요한 이유: Strimzi operator ↔ broker ↔ entity-operator, CNPG operator ↔ instance, Argo server ↔ repo-server ↔ redis ↔ controller, Alloy 내부, Authentik server ↔ worker는 전부 같은 ns 안 통신인데 default-deny가 이를 끊는다.
+- `allow-same-namespace`가 필요한 이유: Strimzi operator ↔ broker ↔ entity-operator, CNPG operator ↔ barman-cloud 플러그인(gRPC 9090, 둘 다 `cnpg-system`), Argo server ↔ repo-server ↔ redis ↔ controller, Alloy 내부, Authentik server ↔ worker는 전부 같은 ns 안 통신인데 default-deny가 이를 끊는다. **CNPG operator ↔ 인스턴스는 같은 ns가 아니다**(operator `cnpg-system` · 인스턴스 `data`) — 그 경로는 아래 내부 매트릭스 행 `cnpg-system`(operator) → `data` 8000으로 연다(2026-10-13 정정: 초판은 이 통신을 같은-ns로 오분류했다 — T052 리뷰 K1).
 - `allow-apiserver-webhook`의 `vault` 8200 행은 admission webhook이 아니라 `kubectl port-forward svc/vault 8200`(운영자 seal 확인, `platform-backup.sh`의 Vault 스냅샷)의 도착 경로다. `platform-backup.sh`는 **반드시 port-forward를 경유**하고 공개 호스트(`vault.joshuatech.dev`)나 pod IP를 직접 쓰지 않는다.
 - **이 정책의 두 행은 메커니즘이 다르다**(2026-09-09 VD-W 실측으로 확인, T042):
   - **webhook 행**(`cert-manager` · `external-secrets` · `cnpg-system`) — API 서버가 **엔드포인트 pod IP로 직접 dial** 한다. K3s 기본 `--egress-selector-mode: agent`에서 터널에 등록되는 것은 노드 IP와 kubelet 포트뿐이라 pod IP는 터널 대상이 아니고, 연결은 API 서버가 도는 노드의 호스트 네임스페이스에서 나간다. `flannel-backend: wireguard-native`에서는 pod CIDR이 `dev flannel-wg scope link` 라우트이고 그 장치의 유일한 주소가 **그 노드 pod CIDR의 네트워크 주소(/32)**이므로, 출발 IP는 노드 private IP가 **아니다**. 따라서 노드 B에 배치된 webhook에는 flannel 터널 장치 주소를 함께 허용해야 한다. `flannel-backend: host-gw`였다면 노드 private IP가 정확히 옳다 — 이 항목은 백엔드 선택에 딸린 것이지 주소를 잘못 적은 것이 아니다.
@@ -88,6 +88,7 @@ egress:
 | `jt-dev` · `jt-prod` | `identity` | 9000 · 8080 | Authentik(JWKS·revoke API, svc DNS) · OpenFGA |
 | `jt-dev` · `jt-prod` | `monitoring` | 4317 · 4318 | OTLP(gRPC·HTTP) → Alloy |
 | `identity` | `data` | 5432 | Authentik·OpenFGA DB |
+| `cnpg-system`(operator pod만 — `app.kubernetes.io/name=cloudnative-pg`) | `data` | 8000 | CNPG operator → PostgreSQL 인스턴스 manager API(`/pg/status` 상태 수집 · 백업 요청 · in-place update). CNPG 1.30 문서(security.md · networking.md): "the operator needs to communicate to each instance on TCP port 8000 … in case you add any network policy". 5432는 문서 문면에만 있고 operator는 쓰지 않는 것으로 보아 **열지 않는다**(VD — T053에서 operator 로그로 판정). 2026-10-13 추가(2026-10-08 T052 리뷰 K1) |
 | `identity` | `jt-prod` | 8000 | Authentik → identity-admin prod 웹훅(`/webhooks/authentik`, svc DNS) |
 | `identity` | `jt-dev` | 8000 | Authentik → identity-admin **dev** 웹훅(dev NotificationTransport, svc DNS) |
 | `external-secrets` | `vault` | 8200 | kv 읽기 |
@@ -148,7 +149,7 @@ hostNetwork pod에는 IMDS 차단이 미치지 않으므로 IMDS 보호는 인�
 
 ## 포트 출처 각주
 
-매트릭스의 포트는 각 컴포넌트 **helm 차트 기본값** 기준이다: cert-manager webhook 10250 · ESO webhook 10250 · CNPG webhook 9443 · Argo CD metrics 8082/8083/8084 · ESO metrics 8080 · cert-manager metrics 9402 · CNPG operator metrics 8080 · CNPG instance exporter 9187 · Strimzi kafka-exporter 9404 · Vault 8200 · Authentik 9000 · OpenFGA 8080 · pod web 8000/9100 · relay 9464. 차트 values에서 포트를 바꾸면 이 표와 정책도 함께 바꾼다 — T033 lint가 `platform/**` helm values의 포트 설정과 `platform/policies`의 정책 포트가 일치하는지 검사한다.
+매트릭스의 포트는 각 컴포넌트 **helm 차트 기본값** 기준이다: cert-manager webhook 10250 · ESO webhook 10250 · CNPG webhook 9443 · Argo CD metrics 8082/8083/8084 · ESO metrics 8080 · cert-manager metrics 9402 · CNPG operator metrics 8080 · CNPG instance manager 8000(operator → 인스턴스 — `pkg/management/url` StatusPort, ingress는 `data`) · CNPG instance exporter 9187 · Strimzi kafka-exporter 9404 · Vault 8200 · Authentik 9000 · OpenFGA 8080 · pod web 8000/9100 · relay 9464. 차트 values에서 포트를 바꾸면 이 표와 정책도 함께 바꾼다 — T033 lint가 `platform/**` helm values의 포트 설정과 `platform/policies`의 정책 포트가 일치하는지 검사한다.
 
 ## 검증 (tests-first)
 
