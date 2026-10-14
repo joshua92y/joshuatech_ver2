@@ -1173,7 +1173,7 @@ foreach ($job in $assertJobs) {
         return @('PASS', "Job jt-dev/$job succeeded and logs readable — proves only $($assertJobScope[$job])")
     }
 }
-Skip 'np-2-manual' '운영자 수동 — assert Job이 증명하지 못하는 매트릭스 행: jt-dev → identity 9000(Authentik JWKS/revoke) · jt-dev·jt-prod → monitoring 4317·4318(OTLP) · jt-prod 출발 행 전부(data 5432·9093·6379, identity 9000·8080, monitoring 4317·4318) · kube-system(traefik) → argocd 8080/vault 8200/identity 9000/jt-dev·jt-prod 8000/monitoring 4317 · identity → data 5432, jt-dev 8000, jt-prod 8000 · external-secrets → vault 8200 · monitoring → scrape 대상(argocd 8082-8084, vault 8200, external-secrets 8080, cert-manager 9402, cnpg-system 8080, data 9187·9404, jt-* 9100·9464). ns 내부 출발 프로브 필요(agent-view에 exec·pod 생성 권한 없음), 명령 출력을 report에 첨부'
+Skip 'np-2-manual' '운영자 수동 — assert Job이 증명하지 못하는 매트릭스 행: jt-dev → identity 9000(Authentik JWKS/revoke) · jt-dev·jt-prod → monitoring 4317·4318(OTLP) · jt-prod 출발 행 전부(data 5432·9093·6379, identity 9000·8080, monitoring 4317·4318) · kube-system(traefik) → argocd 8080/vault 8200/identity 9000/jt-dev·jt-prod 8000/monitoring 4317 · identity → data 5432, jt-dev 8000, jt-prod 8000 · external-secrets → vault 8200 · cnpg-system(operator pod) → data 8000(CNPG instance manager — T053 선행 정책 쌍; 판정은 operator 로그 = T053 VD-5) · monitoring → scrape 대상(argocd 8082-8084, vault 8200, external-secrets 8080, cert-manager 9402, cnpg-system 8080, data 9187·9404, jt-* 9100·9464). ns 내부 출발 프로브 필요(agent-view에 exec·pod 생성 권한 없음), 명령 출력을 report에 첨부'
 ClusterAssert 'np-3' {
     $bad = @()
     foreach ($pair in @(@('jt-prod', 'jt-dev'), @('jt-dev', 'data'))) {
