@@ -24,6 +24,7 @@
    ```powershell
    $env:VAULT_ADDR  = 'http://127.0.0.1:18200'
    $env:VAULT_TOKEN = (Read-Host -AsSecureString 'VAULT_TOKEN' | ConvertFrom-SecureString -AsPlainText).TrimEnd("`r", "`n")   # PM에서 붙여넣기
+   Set-Clipboard -Value ' '   # 붙여넣은 토큰을 클립보드에서 지운다(클립보드 기록 0 전제 — 아래 체크리스트)
    ```
 2. `VAULT_ADDR`는 항상 `http://127.0.0.1:18200`을 **명시**한다(CLI 기본값은 `https://127.0.0.1:8200` — 리스너는 평문 8200, TLS 종단은 Traefik websecure + Cloudflare AOP).
 3. PowerShell에서 `-flag=value` 형태 인자는 **따옴표**로 감싼다: `vault operator init "-status"` · `"-recovery-shares=3"` · `tofu plan "-out=t044.tfplan"`. 따옴표 없이 쓰면 인자가 분리되어 다른 동작을 한다(VD-03 실측: 따옴표 사용 시 `init "-status"` exit 2 정상 · `-out=` 분리 함정 실측 2026-09-17).
@@ -32,12 +33,13 @@
 6. Ingress `vault.joshuatech.dev`는 `/` Prefix라 Access를 통과한 브라우저 세션에 `/v1/*` API 전체가 열린다. **US4(Authentik OIDC) 전까지 Cloudflare Access(GitHub IdP) + AOP가 UI의 유일한 방어선**이다 — Access 앱 `vault` 존재(단계 0 실측).
 7. 원격 명령(`ssh ssh-a "…"`)에 `$?`·`$p`를 넣지 않는다 — PowerShell이 먼저 치환한다(`echo exit=\$?` 실측). 원격 명령은 리터럴 here-string(`@'…'@`)으로.
 
-### 비밀이 새는 5곳
+### 비밀이 새는 6곳
 | 곳 | 닫는 방법 |
 |---|---|
 | PSReadLine 히스토리 | 모든 새 창 첫 줄 `Set-PSReadLineOption -HistorySaveStyle SaveNothing` |
-| `Start-Transcript` | `$Transcript`는 **자동 변수가 아니다**(비어 있다고 전사 없음이 아님) → `try { Stop-Transcript } catch {}`로 프로브하고 정책 전사 레지스트리를 읽는다(아래 체크리스트) |
-| 클립보드 기록(Windows 클립보드 히스토리) | `EnableClipboardHistory`가 0이어야 `Set-Clipboard` 경로를 쓴다(단계 0 실측 ON → 2026-09-16 결정: **OFF로 바꾼 뒤** `Set-Clipboard` 경로; 단계 9 직전 0 재확인) |
+| `Start-Transcript` · 정책 전사 | `$Transcript`는 **자동 변수가 아니다**(비어 있다고 전사 없음이 아님) → `try { Stop-Transcript } catch {}`로 프로브하고 정책 전사 레지스트리를 읽는다(아래 체크리스트). pwsh 7은 **PowerShellCore 키**(`HKLM`/`HKCU:\SOFTWARE\Policies\Microsoft\PowerShellCore\Transcription`)를 따르고, 그 키의 `UseWindowsPowerShellPolicySetting`이 1일 때만 Windows PowerShell 키(`…\Microsoft\Windows\PowerShell\Transcription`)를 본다 — 2026-10-15까지의 체크리스트는 Windows PowerShell 키만 읽어 pwsh 7 전사 정책을 보지 못했다(T054 리뷰 r2 O10 · 결정 C7). `-MaskInput` 정지점 입력이 전사에 남는지는 미실측 — 정책이 꺼져 있음을 확인하는 것이 방어다 |
+| PowerShell 모듈 로깅(이벤트 4103 ParameterBinding) | 켜져 있으면 `ConvertFrom-Json` 등 cmdlet의 **입력 원문**(kv 응답의 password · url · `token lookup` 응답의 root 토큰)이 이벤트 로그에 남는다. 정책 키 4개(`…\PowerShellCore\ModuleLogging` HKLM·HKCU + `UseWindowsPowerShellPolicySetting`=1이면 `…\Windows\PowerShell\ModuleLogging` HKLM·HKCU)의 `EnableModuleLogging`이 값 없음/0이어야 한다(아래 체크리스트 — 2026-10-15 추가). T054 시드 블록(`t054-blocks/op1-seed-db.ps1`)은 이 4개를 스스로 검사해 하나라도 1이면 **토큰을 묻기 전에** 멈춘다(전사 정책은 블록이 보지 않는다 — 이 체크리스트 몫) |
+| 클립보드 기록(Windows 클립보드 히스토리) | `EnableClipboardHistory`가 0이어야 `Set-Clipboard` 경로를 쓴다(단계 0 실측 ON → 2026-09-16 결정: **OFF로 바꾼 뒤** `Set-Clipboard` 경로; 단계 9 직전 0 재확인) · 규칙 1로 토큰을 붙인 뒤와 T054 「정리 판단」 두 블록 첫머리에서도 `Set-Clipboard -Value ' '`로 비운다(붙여 넣은 토큰이 클립보드에 남은 채 평문 프롬프트에 오붙임되는 경로 — 2026-10-15 T054 리뷰 r6) |
 | SSH 스크롤백(노드 A `ssh-a` 세션) | 노드에서는 비밀을 출력하지 않는다(init·토큰 작업은 노드 A가 아니라 워크스테이션) |
 | 대화 로그(에이전트 세션) | 에이전트는 admin kubeconfig·root 토큰을 받지 않는다; 값을 채팅에 붙여 넣지 않는다 |
 
@@ -45,7 +47,10 @@
 ```powershell
 Set-PSReadLineOption -HistorySaveStyle SaveNothing
 try { Stop-Transcript } catch {}      # "현재 전사 중이 아닙니다" 오류가 정상. 경로가 출력되면 전사가 켜져 있던 것 → 그 파일 삭제 후 새 창
-Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription','HKCU:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription' -ErrorAction SilentlyContinue | ForEach-Object EnableTranscripting   # 값 없음/0
+# 정책 키(pwsh 7 = PowerShellCore 키 · 2026-10-15 개정): Transcription · ModuleLogging · ScriptBlockLogging × HKLM · HKCU — 전부 값 없음/0 이어야 한다
+foreach ($r in 'HKLM', 'HKCU') { foreach ($f in 'Transcription', 'ModuleLogging', 'ScriptBlockLogging') { Get-ItemProperty "${r}:\SOFTWARE\Policies\Microsoft\PowerShellCore\$f" -ErrorAction SilentlyContinue | Select-Object @{ n = 'key'; e = { "$r PowerShellCore\$f" } }, EnableTranscripting, EnableModuleLogging, EnableScriptBlockLogging, UseWindowsPowerShellPolicySetting } }   # 출력 없음 = 키 없음(정상)
+# 위 출력에 UseWindowsPowerShellPolicySetting = 1 이 하나라도 있으면 pwsh 7 이 그 기능의 Windows PowerShell 키를 따른다 → 그 키도 읽는다(값 없음/0). 없으면(0 또는 키 없음) 이 줄은 건너뛴다
+foreach ($r in 'HKLM', 'HKCU') { foreach ($f in 'Transcription', 'ModuleLogging', 'ScriptBlockLogging') { Get-ItemProperty "${r}:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\$f" -ErrorAction SilentlyContinue | Select-Object @{ n = 'key'; e = { "$r Windows\PowerShell\$f" } }, EnableTranscripting, EnableModuleLogging, EnableScriptBlockLogging } }
 (Get-ItemProperty HKCU:\Software\Microsoft\Clipboard -ErrorAction SilentlyContinue).EnableClipboardHistory   # 0 이어야 비밀 취급 진행
 $env:KUBECONFIG = "$HOME\.kube\joshuatech-admin.yaml"; kubectl config current-context                        # default (빈 컨텍스트면 create token이 localhost:8080 404)
 ```

@@ -776,6 +776,190 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
 
 - **T043 절차 한 줄(US6 준비, tasks T043 문면)**: T044 Vault 가동 뒤 US6 배포 전에 운영자가 `kv/{env}/authentik/*`·`kv/{env}/openfga/*`에 플레이스홀더 값을 `vault kv put`으로 투입해 둔다(실값 교체는 US4 T081·T082 — T075 참조). 투입 시각·경로 목록은 T044 절에 기록한다.
 
+### T054 — DB 자격 시드(kv 6경로 · 랜덤)
+
+**목적**: gitops T054 PR(`platform/cnpg-databases/` — ExternalSecret 6 → `DatabaseRole` 6의 `passwordSecret`)이 처음부터 `SecretSynced`가 되도록, **머지 전에** Vault kv 6경로에 DB role 자격(`username`·`password`·`url`)을 경로마다 따로 랜덤 생성해 넣는다. 블록 정본은 `specs/003-platform-foundation/design/t054-blocks/op1-seed-db.ps1`이고, 결정 대응·모의 하네스(`harness.ps1` — 시나리오 92 · 단언 2771 전부 PASS, 2026-10-15 수정 라운드 6: 시드 블록 68 + 아래 「정리 판단」 두 블록 24)·남은 위험은 같은 디렉터리 `README.md`에 있다.
+
+- **언제**: gitops T054 PR **머지 전**(gitops `platform/cnpg-databases/README.md` §0 선행 조건 P3). 머지가 먼저 되면 ExternalSecret 6장이 kv 없음으로 `SecretSyncedError`(Degraded)가 되고 Argo operation이 Failed로 닫힌다. 이때 **"retry가 도는 동안 시드하면 다음 재시도에서 저절로 회복한다"고 기대하지 않는다**: Application `retry`(5회 · 30s ×2 · 최대 5m — 창 ≈ 12.5분 · gitops T054 결정 D8)는 ES가 회복했는지 다시 기다리지 않아 그사이 PostSync Job이 Secret 없음으로 실패하며 재시도를 소모하고, ESO의 ES 재조정은 실패가 이어질수록 지수 백오프로 벌어져(controller-runtime 기본값 — 수 분 실패한 뒤에는 다음 시도가 5–16분 뒤일 수 있다 · 2026-10-14 리뷰 K5의 ESO v2.10.0 코드 근거) retry 창을 넘길 수 있다. 머지가 먼저 됐다면 아래 「늦은 시드」 절차를 따른다.
+- **경로·값**:
+
+  | kv 경로 | `username`(PG role) | DB | 읽는 store |
+  |---|---|---|---|
+  | `kv/prod/db/identity_admin/owner` | `identity_admin_owner` | `identity_admin` | `vault-data` |
+  | `kv/prod/db/identity_admin/app` | `identity_admin_app` | `identity_admin` | `vault-data` |
+  | `kv/dev/db/dev_identity_admin/owner` | `dev_identity_admin_owner` | `dev_identity_admin` | `vault-data` |
+  | `kv/dev/db/dev_identity_admin/app` | `dev_identity_admin_app` | `dev_identity_admin` | `vault-data` |
+  | `kv/platform/db/authentik/owner` | `authentik_owner` | `authentik` | `vault-platform` |
+  | `kv/platform/db/openfga/owner` | `openfga_owner` | `openfga` | `vault-platform` |
+
+  `password` = `RandomNumberGenerator` 32바이트 → base64url(패딩 없음 · 43자 · `A–Z a–z 0–9 - _` — URL·libpq·셸에서 인코딩이 필요 없다). `url` = `postgresql://<username>:<password>@pg-main-rw.data.svc:5432/<db>?sslmode=verify-full&sslrootcert=/etc/pg/ca.crt`(data-model §8 · contracts/pod-template.md 런타임 계약 DB 연결 행).
+- **사전**(블록 밖 — 창 표기는 `docs/runbooks/vault-unseal.md` §0: 창 A = cloudflared 터널 · 창 B = admin kubectl · 창 C = port-forward · 창 D = vault CLI, 이 블록은 창 D):
+  1. 창 C·D에서 `vault-unseal.md` §0 **창 시작 체크리스트**(`SaveNothing` · 전사 없음 — 전사 정책은 그 체크리스트가 PowerShellCore 키(+ `UseWindowsPowerShellPolicySetting` 분기)로 본다(2026-10-15 개정 · 블록은 전사 정책을 보지 않는다) · **클립보드 기록 0** — 켜져 있으면 블록이 첫 검사에서 멈춘다). PowerShell **모듈 로깅 정책**(`HKLM`/`HKCU:\SOFTWARE\Policies\Microsoft\PowerShellCore\ModuleLogging`의 `EnableModuleLogging` — 그 키의 `UseWindowsPowerShellPolicySetting`이 1이면 Windows PowerShell 쪽 키도)이 켜져 있어도 블록이 첫 검사에서 멈춘다: 켜진 채로는 `ConvertFrom-Json`에 넘기는 kv · 토큰 조회 응답 원문이 이벤트 4103에 남는다(이 PC 2026-10-14 읽기 전용 확인: PowerShellCore · Windows PowerShell의 ModuleLogging · ScriptBlockLogging · Transcription 정책 키 12개 모두 없음 · `$PSHOME\powershell.config.json`에 `PowerShellPolicies` 없음 · 사용자 `powershell.config.json` 없음). 창 D에서는 체크리스트의 마지막 줄(`$env:KUBECONFIG` 설정 · `kubectl config current-context`)을 건너뛴다 — 이 블록과 아래 「정리 판단」 두 블록은 kubectl을 쓰지 않는다(사전 2 — 창 D에는 관리자 kubeconfig가 필요 없다).
+  2. 창 C: 관리자 kubeconfig로 `kubectl -n vault port-forward svc/vault 18200:8200`. 블록 자신은 kubectl을 쓰지 않는다(창 D에는 관리자 kubeconfig가 필요 없다).
+  3. 창 D: `Get-ChildItem Env:VAULT_*` 결과 없음(`VAULT_ADDR=http://127.0.0.1:18200`만 허용 — 다른 `VAULT_*`가 있으면 블록은 그 변수를 건드리지 않고 멈춘다) · `~/.vault-token` 없음.
+  4. 비밀번호 관리자(PM)의 root 토큰 항목(§0 토큰 표 ⑥ — T044 D4: 시드는 root로, revoke 보류).
+  5. 붙여넣기로 실행할 때만: 창 D를 `pwsh -NoProfile`로 **새로 연 창**으로 쓴다(프로필이 `vault`·`Read-Host`·`ConvertFrom-Json`을 함수·별칭으로 가리거나 `Set-PSDebug -Trace`·중단점을 켜 두는 경로가 없는 창) + PSReadLine 로드 확인 1줄(블록 머리 주석 ⑤).
+- **실행**(창 D, 저장소 루트에서 — 둘 중 하나):
+
+  ```powershell
+  pwsh -NoProfile -File .\specs\003-platform-foundation\design\t054-blocks\op1-seed-db.ps1   # 권장: 새 프로세스 — env·변수가 프로세스와 함께 사라진다
+  ```
+
+  또는 파일 전문 붙여넣기(전체가 `& { … }` 한 문 · 빈 줄 0 — §3 T045 절차 메모 6의 v2 규약과 같다). **붙여넣기는 위 사전 5의 새 창(`pwsh -NoProfile`)에서만 한다**: 블록은 첫 문장에서 `Set-PSDebug -Off`를 한다(창에 `Set-PSDebug -Trace 2`가 켜져 있으면 뒤의 모든 대입 — root 토큰 · 비밀번호 · url — 이 값과 함께 화면에 찍힌다, 2026-10-14 리뷰 O6 실측). 그러나 프로필이 정의한 함수 · 별칭 · 중단점은 블록이 막지 못한다. `Set-PSDebug -Off`는 그 창의 전역 strict 모드도 끈다(부수 효과 — 창은 끝나면 닫는다). **root 토큰을 붙이기 전에** 화면의 `INFO vault CLI` 줄에서 명령 종류가 `Application`인지 본다. 그리고 경로가 `vault.exe`로 끝나는지 본다(`.cmd`/`.bat` 래퍼도 `Application`으로 보인다). 아니면(함수 · 별칭 · 래퍼가 `vault`를 가리고 있다) 토큰을 붙이지 말고 Ctrl+C로 끝낸 뒤 원인을 확인한다(`-File` 실행에서도 같다). **소요** ≈ 1분 미만(Vault 호출 ≈ 27회 — `version` 1 · `status` 1 · `token lookup` 1 · 판정 `metadata get` 6 · 경로마다 put · 되읽기 `kv get` · `metadata get` 3×6; 재실행(전부 live-ok)은 15회). 한 줄에서 1분 넘게 멈추면 창 C port-forward를 본다 — 끊겼으면 연결 거부 또는 CLI 타임아웃 뒤 STOP으로 끝난다(재실행은 안전 — 아래 실패 표). **정지점(입력 순서)**: ① **root 토큰** — 보안 입력(빈 입력 = 중단 · 붙여넣은 직후 클립보드를 비운다 · `hvs.`로 시작하지 않으면 Vault로 보내지 않고 중단) ② **`seed`** — 쓸 경로 목록(값 없음)을 보여 준 뒤의 쓰기 확인(쓸 경로가 0이면 나오지 않는다). 입력은 가려진다(`-MaskInput` — `*`로 보인다: 토큰이 들어갔는지 불안해 PM의 값을 이 프롬프트에 다시 붙여도 화면 · 스크롤백에 남지 않고 중단으로 끝난다). 그 밖의 입력 · 빈 Enter · 앞뒤 공백 · 대문자(`SEED`)는 쓰기 0으로 중단한다.
+- **기대 출력**(첫 실행 — 값·해시·토큰은 어디에도 나오지 않는다):
+
+  ```text
+  INFO vault CLI: Vault v… · Application ~\…\vault.exe — JSON stdin 형식 실측(VD-6)은 T045 블록이 2026-09-21 에 CLI v2.1.0 으로 했다(…)
+  OK   Vault 도달 · 초기화됨 · unsealed(seal type=ocikms · server 2.0.4)
+  OK   토큰 정책에 root 포함 — 판정(읽기 전용)을 시작한다
+  PLAN kv/prod/db/identity_admin/owner — absent → 생성 예정            ← 6경로
+  판정 결과: 생성 예정 6 · 건너뜀(live-ok) 0 · 중단 0
+  쓸 경로 6개 — 값은 이 블록이 경로마다 따로 랜덤 생성한다(화면에 나오지 않는다):
+    - kv/prod/db/identity_admin/owner  (username=identity_admin_owner · db=identity_admin)   ← 6경로
+  (정지점 ② seed)
+  OK   kv/prod/db/identity_admin/owner v1 — 생성 · 되읽기 해시 일치(username·password·url)   ← 6경로
+  --- T054 DB 자격 시드 결과 요약(값 없음 — 런북 bootstrap.md §4 T054 소절에 그대로 기록) ---
+  (경로 6행)
+  이 실행이 kv 에 새로 쓴 경로: 6건(생성·검증 완료 6 · 응답 유실 뒤 재판정으로 검증 완료 0 · 기록 후 검증 실패 0) · 결과 미확인 0 · 건너뜀 0 · 중단 0 · 미실행 0
+  판정: kv 6경로 준비 완료(생성 또는 live-ok) — gitops T054 PR 머지 전제 충족 · …
+  창 종료 체크리스트(docs/runbooks/vault-unseal.md §0 · 창 D): …
+  ```
+
+  재실행이면 같은 경로가 `SKIP … — live-ok(…)`로 나오고 쓰기 확인 정지점이 없다(값을 다시 만들지 않는다 — 회전이 아니다).
+- **판정**: 요약 6행이 전부 `생성 v1 · 되읽기 해시 일치(…)` · `기록됨(응답 유실 — 이 실행의 값 …) · 되읽기 해시 일치(…)`(put 응답 유실 뒤 재판정으로 검증된 경로 — 정상 완료와 같다, 아래 실패 시 표) 또는 `건너뜀(live-ok …)`이고 `판정: kv 6경로 준비 완료` 줄이 나오면 머지로 진행한다. 이 소절 끝 「실행 기록」에 날짜 · 요약 6행 · `INFO vault CLI` 줄(실행 파일 종류 · 경로 포함 — 사용자 프로필 경로는 블록이 `~`로 줄여 낸다)을 옮겨 적고(값 없음), `vault-unseal.md` §0 창 종료 체크리스트를 한다(`INFO` 줄의 종류 확인은 위 「실행」에서 토큰을 붙이기 전에 끝났다).
+- **실패 시**(`STOP` 사유별 조치 — 수동 확인은 `vault-unseal.md` §0 절대 규칙 1로 `VAULT_ADDR`·`VAULT_TOKEN`을 다시 넣고 하며, **값을 출력하는 명령은 쓰지 않는다**):
+
+  | 출력 | 뜻 | 조치 |
+  |---|---|---|
+  | `클립보드 기록 …` · `~/.vault-token 존재` · `VAULT_* 환경 변수가 이미 있다: <이름>` · `PowerShell 7.5 이상` · `vault CLI 를 찾을 수 없다` | 창 전제 미충족 — 아무것도 묻지 않았다 | 창 시작 체크리스트 · 이름이 나온 변수를 확인한 뒤 `Remove-Item Env:<이름>` · 재실행 |
+  | `PowerShell 모듈 로깅 정책이 켜져 있다(<키>)` | 그룹 정책(GPO)의 모듈 로깅 — 켜진 채로 실행하면 응답 원문(비밀번호 · url · root 토큰)이 이벤트 로그 4103에 남는다 · 아무것도 묻지 않았다 | 정책을 끌 수 있으면 끄고 새 창에서, 끌 수 없으면 정책이 없는 PC에서 실행한다(정책을 우회하지 않는다) |
+  | `Vault 도달 실패 또는 status 응답 해석 실패` · `Vault sealed` · `Vault 미초기화` · `vault status 가 unsealed 인데 exit=…` | 창 C port-forward 끊김(파드 교체 뒤 끊긴다 — §3 T044 절차 메모 4) 또는 Vault 상태 — 토큰을 묻기 전이다 | 창 C 재수립 · `vault-unseal.md` §1 · 재실행 |
+  | 경고 `클립보드를 비우지 못했다 — root 토큰이 클립보드에 남아 있을 수 있다 …`(STOP 아님 — 시드는 계속된다) | 다른 프로그램(원격 데스크톱 `rdpclip` · 클립보드 관리자)이 클립보드를 잡고 있어 블록이 비우지 못했다. 토큰 입력 직후에 나왔으면 root 토큰이 클립보드에 남아 있을 수 있다 | 보는 즉시 PM의 클립보드 지우기 또는 아무 텍스트 복사로 직접 덮어쓴다(다른 창에 붙여 넣지 않는다) · 원인 프로그램을 닫는다 · 실행 기록에 경고가 나왔다고 적는다 |
+  | `입력이 Vault 토큰 형식…` · `root 토큰 확인 실패` · `토큰 정책에 root 가 없다` | 다른 PM 항목을 붙였거나 토큰이 무효 — 쓰기 0. `입력이 Vault 토큰 형식…`은 root 토큰이 `hvs.` 접두가 아닐 때도 나온다(블록의 가정 — `t054-blocks/README.md` §5 VD) | PM 항목 확인 · 재실행. 맞는 항목인데도 같은 줄이 나오면 더 시도하지 않고 멈춘다(블록의 토큰 형식 가정을 고쳐야 한다) |
+  | `STOP <경로> — 판정 불가: …` | 일시 오류 · 권한 · 응답 해석 실패(`kv get 응답을 해석하지 못했다(원문 미출력)` — 잘린 JSON 등) — 판정 단계라 쓰기 0 | 재실행. 반복되면 값 없는 진단만 한다: metadata 쪽(`metadata 조회 exit=…` 등)은 `vault kv metadata get "-format=json" <경로>`의 종료 코드와 오류 첫 줄, kv get 쪽(`kv get exit=…` · `kv get 응답을 해석하지 못했다`)은 `vault kv get "-format=json" <경로> > $null; "exit=$LASTEXITCODE"`(stdout은 버린다 — 성공하면 값이 stdout으로 나온다 · 오류 줄은 stderr로 화면에 남는다). 표 형식 `vault kv get <경로>`는 쓰지 않는다(성공하면 password · url이 화면에 나온다) |
+  | `STOP <경로> — dead: …` | 현재 버전이 soft-delete · destroy이거나 메타데이터만 있다 — 쓰기 0 | 버전 상태만 본다: `(vault kv metadata get "-format=json" <경로> \| ConvertFrom-Json).data.versions`(값 없음) → 아래 「정리 판단」 |
+  | `STOP <경로> — live-mismatch: …` | 이미 값이 있는데 모양(키 · username · url 구성 · 비밀번호 형식)이 다르다 — 쓰기 0 · 덮어쓰지 않는다 | 키 이름만 본다: `(vault kv get "-format=json" <경로> \| ConvertFrom-Json).data.data.PSObject.Properties.Name` + 위 버전 명령 → 아래 「정리 판단」(정정 블록은 이 과제 범위 밖) |
+  | `STOP <경로> — put 거부(exit=…) · 재판정 absent` · 요약 `중단(put 거부 … — 재판정 absent · 쓰지 않았다)` | `-cas=0` put이 비 0으로 끝났고 **값 없이 다시 판정해도 경로가 없다 = 쓰지 않았다**(권한 · 연결 · CLI 오류 — CAS 거부가 아니다 · 2026-10-15 리뷰 O6: put 비 0은 응답 유실 뒤 CLI 자동 재시도의 자기 CAS 충돌일 수도 있어 재판정 전에는 "쓰지 않았다"고 말하지 않는다) · 뒤 경로 미실행 | 토큰 정책(`root`) · 창 C port-forward · `INFO vault CLI` 줄을 확인한 뒤 재실행. 같은 STOP이 반복되면 더 시도하지 않고 멈춘다 |
+  | `STOP <경로> — put 거부(exit=…) · CAS 충돌(다른 값)` · 요약 `중단(put 거부 … 재판정 live v1 · 되읽기 값이 이 실행의 것과 다르다 = CAS 충돌 · 덮어쓰지 않았다)` | put 비 0 뒤 재판정이 live v1인데 되읽기 값(해시)이 이 실행의 값과 다르다 — 판정 뒤 다른 기록자가 그 경로를 썼다(판정 단계의 일시 `No value found` 오판 포함) · 덮어쓰지 않았다 | 재실행 — 이번엔 판정이 그 경로를 live로 본다(모양이 맞으면 SKIP · 아니면 live-mismatch) + 같은 시각에 이 경로를 쓴 다른 창 · 작업자를 확인한다 |
+  | `OK   <경로> v1 — 기록됨(응답 유실 — 이 실행의 값 · put exit=… 뒤 재판정) · 되읽기 해시 일치(…)` · 집계 `응답 유실 뒤 재판정으로 검증 완료 1`(STOP 아님 — 뒤 경로 계속) | put 응답이 유실돼 CLI 자동 재시도(`VAULT_MAX_RETRIES` 기본 2)가 자기 기록과 CAS 충돌했지만, kv의 v1이 이 실행의 값임을 되읽기 해시로 확인했다 — 정상 완료와 같다 | 조치 없음. 실행 기록에 그 줄을 그대로 옮긴다(창 C 순단 신호 — 반복되면 port-forward를 다시 세운다) |
+  | `STOP <경로> — 되읽기 실패(exit=…)` · `되읽기 응답을 해석하지 못했다` | put은 됐다(v1) — 되읽기만 실패(put 비 0 뒤 재판정 live v1에서 났다면 요약은 `결과 미확인(…)`) | **재실행이 복구다**(그 경로를 live로 판정 → 모양이 맞으면 SKIP) |
+  | 요약 행 `결과 미확인(put 진행 중 중단 …)` · `결과 미확인(put exit=… — 재판정 <종류> …)` · 집계 `결과 미확인 1` | put이 도는 동안 중지됐다(Ctrl+C 등 — STOP 줄 없음) 또는 put 비 0 뒤 재판정 자체가 일시 오류 · dead · `current_version≠1`이어서 이 실행의 값이 기록됐는지 모른다(`STOP … put 거부(exit=…) · 재판정 error(…)`) | 지우지 않고 **재실행한다**(있으면 live로 판정 → 모양이 맞으면 SKIP · 없으면 생성). 재판정이 dead였다면 재실행도 dead로 멈춘다 → dead 행 |
+  | 요약 행 `생성 예정(판정 absent — 쓰기 확인 전)` · STOP 줄 없음 | 정지점 ②(`seed`)에서 중지했다(Ctrl+C · 창 닫기) — 쓰기 확인 전이라 쓰기 0 · 값을 만들지도 않았다 | 재실행(판정부터 다시 — 되돌릴 것이 없다) |
+  | `STOP <경로> — 되읽기 해시 불일치(…)` · `되읽기 키 집합 불일치(…)` | 기록된 값(v1)이 블록이 만든 값과 다르다(CLI 동작 변화 의심 — `INFO vault CLI` 줄을 T045 VD-6 기록과 대조) | 재실행하면 대개 live-mismatch로 멈춘다 → 아래 「정리 판단」 |
+  | `STOP <경로> — 쓰기 뒤 메타데이터가 current_version=1 · 삭제 없음이 아니다(<종류> · current_version=<n> …)` · 요약 `기록됨 — 메타데이터 확인 실패(…)` | 값은 되읽기 해시 대조까지 일치했다(v1 기록 · 대조 끝) — 그 뒤 metadata 판정만 어긋났다. 괄호 안 종류별로 조치가 다르다 | `error`(일시 오류) → 재실행(판정이 live로 보고 SKIP). `live · current_version=2`(다른 기록자가 v2를 썼다) → 재실행(판정이 v2를 본다 — 모양이 맞으면 SKIP, 다르면 live-mismatch) + 같은 시각에 이 경로를 쓴 다른 창 · 작업자를 확인한다. `dead`(현재 버전에 `deletion_time` — 키나 마운트의 `delete_version_after` 삭제 예약) → 값 없는 두 명령으로 설정을 본다: `(vault kv metadata get "-format=json" <경로> \| ConvertFrom-Json).data.delete_version_after` · `(vault read "-format=json" kv/config \| ConvertFrom-Json).data.delete_version_after`. `infra/vault`는 이 설정을 선언하지 않는다(기본 `0s` — OpenTofu plan에도 보이지 않는다). `0s`가 아니면 키 수준 설정이나 외부 변경 신호다. **`0s`로 고치기 전에는 정리하지 않는다**(정리 뒤 재시드해도 같은 STOP이 반복되고, 그대로 두면 예약 시각에 그 버전이 지워진다): 원인을 확인한 뒤 운영자가 키 수준이면 `vault kv metadata put "-delete-version-after=0s" <경로>`, 마운트 수준이면 `vault write kv/config delete_version_after=0s` → 아래 「정리 판단」 → 재실행 |
+
+  **정리 판단(운영자 · 머지 전에만)**: gitops T054 PR이 **머지되기 전**(ExternalSecret이 아직 그 경로를 읽지 않는다)이고 그 경로가 이 블록의 실패한 실행이 만든 것(요약 표 · 버전 이력으로 확인)일 때만, 운영자 판단으로 그 경로의 모든 버전과 메타데이터를 지운 뒤(**되돌릴 수 없다**) 블록을 재실행한다. 경로를 손으로 넣는 한 줄 `vault kv metadata delete <경로>`는 쓰지 않는다 — 오타 · 복사 실수로 6경로 밖(예: 이미 소비 중인 `kv/platform/cloudflare/tunnel`)을 넣으면 그 경로의 모든 버전이 영구 삭제된다. 판정(읽기)과 변경(삭제)은 **한 블록에 섞지 않는다**(2026-09-22 메모리 규칙 · 결정 C6 2026-10-14): 아래 **① 점검 블록**(읽기 전용 — vault 쓰기 명령 0 · 상태 · 버전 이력 · 키 이름만, 값 출력 0)으로 먼저 보고 운영자가 판단한 뒤, **② 삭제 블록**(6경로 허용 목록 Ordinal · 지울 경로를 다시 그대로 타자 · 삭제 뒤 `No value found` 확인 · 조회/삭제 실패 · 잔존 · 삭제 뒤 조회 오류 = 중단)만 쓴다. 둘 다 창 D(`VAULT_ADDR`·`VAULT_TOKEN`은 `vault-unseal.md` §0 절대 규칙 1로 넣은 상태 — 블록은 둘을 만들지도 지우지도 않는다) · 통째로 붙여 넣어도 안전(`& { … }` 한 문 · 빈 줄 0 · TAB 0) · 한 번에 한 경로다. 두 블록은 저장소 하네스가 **이 코드 펜스에서 그대로 추출해** 모의로 시험한다(`t054-blocks/harness.ps1` R1 · R2 정적 → GA · GB 런타임 — 펜스 안을 고치면 하네스를 다시 돌린다). **머지 뒤에는 지우지 않는다** — 그때의 값 교체는 회전 절차다(아래).
+
+  ① 점검 블록(읽기 전용 — 지우지 않는다):
+
+  ```powershell
+  & {
+    # [t054-cleanup-inspect] 읽기 전용 — vault 쓰기 명령 0 · 값 출력 0(상태 · 버전 이력 · 키 이름만) · 한 번에 한 경로 · 첫 Read-Host 전 클립보드 비움(§0 규칙 1로 붙인 토큰 잔류 방어)
+    $ErrorActionPreference = 'Stop'
+    $PSNativeCommandUseErrorActionPreference = $false
+    try { Set-Clipboard -Value ' ' } catch { Write-Warning '클립보드를 비우지 못했다 — root 토큰이 클립보드에 남아 있을 수 있다. 직접 비운 뒤 계속한다' }
+    $six = @('kv/prod/db/identity_admin/owner', 'kv/prod/db/identity_admin/app', 'kv/dev/db/dev_identity_admin/owner', 'kv/dev/db/dev_identity_admin/app', 'kv/platform/db/authentik/owner', 'kv/platform/db/openfga/owner')
+    try { $Host.UI.RawUI.FlushInputBuffer() } catch { }
+    $p = Read-Host '점검할 kv 경로(STOP 줄의 경로 그대로 — T054 6경로 중 하나)'
+    if (-not @($six | Where-Object { [string]::Equals($_, $p, [StringComparison]::Ordinal) }).Count) { throw '6경로 밖이다 — 중단(아무것도 조회하지 않았다)' }
+    $raw = @(vault kv metadata get "-format=json" $p 2>&1)
+    $rc = $LASTEXITCODE
+    if ($rc -ne 0) {
+      if (@($raw | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] -and ([string]$_).StartsWith('No value found at ', [StringComparison]::Ordinal) }).Count) { Write-Host "$p — absent(메타데이터 없음 — 지울 것이 없다 · 시드 블록이 absent 로 판정해 생성한다)"; return }
+      throw "metadata 조회 실패(exit=$rc) — 판정 불가(창 C port-forward · 토큰 확인 뒤 재실행)" }
+    $d = ((@($raw | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }) -join "`n") | ConvertFrom-Json -DateKind String).data
+    Write-Host "$p — current_version=$($d.current_version) · delete_version_after=$($d.delete_version_after) · 버전 이력(값 없음):"
+    foreach ($v in $d.versions.PSObject.Properties) { Write-Host ('  v{0}  created={1}  deletion_time={2}  destroyed={3}' -f $v.Name, $v.Value.created_time, $v.Value.deletion_time, $v.Value.destroyed) }
+    $o = @(vault kv get "-format=json" $p 2>$null)
+    if ($LASTEXITCODE -ne 0) { Write-Host '  현재 버전 데이터: 읽지 못했다(exit≠0 — soft-delete · destroy · 버전 없음이면 정상)'; Write-Host '점검 끝 — 이 블록은 아무것도 쓰지 않았다. 지우려면 아래 ② 삭제 블록(머지 전에만)'; return }
+    $dd = (($o -join "`n") | ConvertFrom-Json -DateKind String).data.data
+    $o = $null
+    if ($null -eq $dd) { Write-Host '  현재 버전 데이터: 없음(soft-delete · destroy)' }
+    else { Write-Host ('  현재 버전 키 이름(값 미출력): ' + (@($dd.PSObject.Properties | ForEach-Object { $_.Name } | Sort-Object) -join ' · ')) }
+    $dd = $null
+    Write-Host '점검 끝 — 이 블록은 아무것도 쓰지 않았다. 지우려면 아래 ② 삭제 블록(머지 전에만)'
+  }
+  ```
+
+  ② 삭제 블록(되돌릴 수 없다 — ①로 확인한 경로만 · 머지 전에만):
+
+  ```powershell
+  & {
+    # [t054-cleanup-delete] 되돌릴 수 없다 — ① 점검 블록으로 확인한 경로만 · 6경로 허용 목록(Ordinal) · 경로 재입력 · 삭제 뒤 No value found 확인 · 한 번에 한 경로 · 첫 Read-Host 전 클립보드 비움(§0 규칙 1로 붙인 토큰 잔류 방어)
+    $ErrorActionPreference = 'Stop'
+    $PSNativeCommandUseErrorActionPreference = $false
+    try { Set-Clipboard -Value ' ' } catch { Write-Warning '클립보드를 비우지 못했다 — root 토큰이 클립보드에 남아 있을 수 있다. 직접 비운 뒤 계속한다' }
+    $six = @('kv/prod/db/identity_admin/owner', 'kv/prod/db/identity_admin/app', 'kv/dev/db/dev_identity_admin/owner', 'kv/dev/db/dev_identity_admin/app', 'kv/platform/db/authentik/owner', 'kv/platform/db/openfga/owner')
+    try { $Host.UI.RawUI.FlushInputBuffer() } catch { }
+    $p = Read-Host '지울 kv 경로(① 점검 블록으로 확인한 경로 그대로 — T054 6경로 중 하나)'
+    if (-not @($six | Where-Object { [string]::Equals($_, $p, [StringComparison]::Ordinal) }).Count) { throw '6경로 밖이다 — 중단(아무것도 지우지 않았다)' }
+    $raw = @(vault kv metadata get "-format=json" $p 2>&1)
+    $rc = $LASTEXITCODE
+    if ($rc -ne 0) {
+      if (@($raw | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] -and ([string]$_).StartsWith('No value found at ', [StringComparison]::Ordinal) }).Count) { throw "$p 는 이미 없다(absent) — 지울 것이 없다 · 중단(아무것도 지우지 않았다)" }
+      throw "metadata 조회 실패(exit=$rc) — 중단(아무것도 지우지 않았다)" }
+    $cv = ((@($raw | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }) -join "`n") | ConvertFrom-Json -DateKind String).data.current_version
+    $raw = $null
+    try { $Host.UI.RawUI.FlushInputBuffer() } catch { }
+    $again = Read-Host "되돌릴 수 없다 — $p (current_version=$cv) 의 모든 버전과 메타데이터를 지운다. 진행하려면 이 경로를 다시 그대로 타자로 입력(그 외 = 중단)"
+    if (-not [string]::Equals($again, $p, [StringComparison]::Ordinal)) { throw '입력이 경로와 다르다 — 중단(아무것도 지우지 않았다)' }
+    $null = @(vault kv metadata delete $p 2>&1)
+    $rc = $LASTEXITCODE
+    if ($rc -ne 0) { throw "삭제 실패(exit=$rc) — 수동 확인: $p" }
+    $chk = @(vault kv metadata get "-format=json" $p 2>&1)
+    if ($LASTEXITCODE -eq 0 -or -not @($chk | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] -and ([string]$_).StartsWith('No value found at ', [StringComparison]::Ordinal) }).Count) { throw "삭제 확인 실패(경로가 남았거나 조회 오류) — 수동 확인: $p" }
+    Write-Host "OK   $p — 모든 버전 · 메타데이터 삭제(No value found 확인). op1-seed-db.ps1 을 새 프로세스로 재실행한다(이 경로는 absent 로 판정돼 새로 생성된다)"
+  }
+  ```
+
+  끝나면 `Remove-Item Env:VAULT_TOKEN, Env:VAULT_ADDR`만 하고(창 C port-forward · 창 A 터널은 그대로 둔다 — 재실행이 쓴다) 블록을 새 프로세스(`-File`)로 재실행한다(블록은 시작 전 `VAULT_TOKEN`이 있으면 멈춘다). 전체 창 종료 체크리스트(`vault-unseal.md` §0 — 창 C · 창 A 종료 포함)는 재실행이 끝난 뒤에 한다.
+- **머지 뒤 확인**(agent-view kubeconfig — 값은 보지 않는다. Secret은 agent-view가 읽지 못한다):
+
+  ```powershell
+  kubectl -n data get externalsecret pg-main-identity-admin-owner pg-main-identity-admin-app pg-main-dev-identity-admin-owner pg-main-dev-identity-admin-app pg-main-authentik-owner pg-main-openfga-owner
+  ```
+
+  6행 전부 STATUS `SecretSynced` · READY `True`이면 kv 6경로의 실재와 키 이름(`username`·`password`)이 증명된 것이다(ns `data`에는 T053의 `oci-s3-backup`도 있으므로 이름을 지정한다 · ES 이름 = gitops T054 결정 D2). 이어지는 `DatabaseRole`·`Database`·PostSync Job 확인은 gitops `platform/cnpg-databases/README.md` §2.
+- **늦은 시드(머지가 먼저 된 경우만 — 원칙은 위 「언제」의 머지 전 시드)**:
+  1. 창 D에서 이 블록을 평소대로 실행한다(판정 · 생성 · 되읽기는 같다 — 요약 6행과 `판정: kv 6경로 준비 완료`까지 확인).
+  2. 창 B(관리자 kubeconfig)에서 ES 6장에 `force-sync` 어노테이션을 건다. ESO는 ES 어노테이션이 바뀌면 백오프를 기다리지 않고 곧바로 다시 읽는다(`force-sync` 값 = 실행 시각 epoch — kv 값과 무관한 깨우기 표식이다):
+
+     ```powershell
+     $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+     kubectl -n data annotate externalsecret pg-main-identity-admin-owner pg-main-identity-admin-app pg-main-dev-identity-admin-owner pg-main-dev-identity-admin-app pg-main-authentik-owner pg-main-openfga-owner "force-sync=$ts" --overwrite
+     ```
+
+  3. agent-view로 위 「머지 뒤 확인」 명령을 돌려 6행 전부 `SecretSynced` · `True`를 본다(값은 보지 않는다).
+  4. Application `platform-cnpg-databases`의 retry를 다 썼으면(operation Failed · 더 이상 재시도 없음) 운영자가 Argo CD에서 수동 Sync한다(gitops `platform/cnpg-databases/README.md` §1 증상표의 Argo operation Failed 행). retry가 아직 남아 있으면 다음 재시도가 Secret이 생긴 뒤에 돈다 — 그 재시도도 Failed로 끝나면 수동 Sync한다.
+- **수동 대체 ① — app role 세션 기본값**(평소에는 gitops PostSync Job이 **전체 sync마다**(selfHeal 부분 sync · 리소스 선택 Sync · Apply only는 hook을 건너뛴다 — gitops `platform/cnpg-databases/README.md` §1) app role 자신의 자격으로 `ALTER ROLE CURRENT_USER SET …`을 한다 — data-model §7 app role 행. **그 Job이 실패하거나 쓸 수 없을 때만**): 운영자가 창 B(관리자 kubeconfig)에서 **primary 파드 안의 `psql`**로 실행한다 — 파드 안 로컬 소켓은 OS 사용자 `postgres`의 peer 인증이라 superuser 비밀번호가 필요 없다(CNPG 문서 · 결정 C13 2026-10-14: `kubectl cnpg` 플러그인이 운영자 PC에 있다고 가정하지 않는다). primary는 지금 `pg-main-1`(인스턴스 1)이고, 바뀌었으면 `kubectl -n data get cluster pg-main -o jsonpath='{.status.currentPrimary}'`로 찾는다. 확인은 비밀이 아닌 `rolconfig`.
+
+  ```powershell
+  kubectl -n data exec pg-main-1 -c postgres -- psql -X -c "ALTER ROLE identity_admin_app SET statement_timeout = '15s'; ALTER ROLE identity_admin_app SET idle_in_transaction_session_timeout = '30s'; ALTER ROLE dev_identity_admin_app SET statement_timeout = '15s'; ALTER ROLE dev_identity_admin_app SET idle_in_transaction_session_timeout = '30s';"
+  kubectl -n data exec pg-main-1 -c postgres -- psql -X -tAc "SELECT rolname, rolconfig FROM pg_roles WHERE rolname IN ('identity_admin_app', 'dev_identity_admin_app') ORDER BY 1"
+  ```
+
+  기대: 두 행 모두 `rolconfig`에 `statement_timeout=15s`와 `idle_in_transaction_session_timeout=30s`가 있다(순서 무관). 세션 기본값은 **새 연결**부터 적용된다. 대안(플러그인이 설치된 PC에서만): `kubectl cnpg psql pg-main -n data -- -c "…"`(같은 SQL — 플러그인이 primary를 찾아 같은 로컬 접속을 연다).
+- **수동 대체 ② — pod DB CONNECT 제한**(평소에는 같은 PostSync Job의 init 컨테이너 ⓪이 pod DB 두 개에 각 pod owner 자격으로 멱등 실행한다 — 결정 C1 2026-10-14 · T072 migrate Job 첫 단계와 이중 멱등. **그 Job이 실패하거나 쓸 수 없을 때만** — 그동안 pod DB의 PUBLIC CONNECT는 열려 있다): 같은 방법(primary 파드 안 `psql` · superuser)으로 실행한다. 한 `-c` 문자열의 네 문장은 한 트랜잭션이다 — GRANT 대상 role이 아직 없으면(`DatabaseRole`이 `applied`가 아니다) REVOKE까지 함께 취소되므로 PUBLIC을 닫은 채 app을 잠그지 않는다(role부터 확인한다 — gitops README §1 증상표).
+
+  ```powershell
+  kubectl -n data exec pg-main-1 -c postgres -- psql -X -c "REVOKE CONNECT ON DATABASE identity_admin FROM PUBLIC; GRANT CONNECT ON DATABASE identity_admin TO identity_admin_app, identity_admin_owner; REVOKE CONNECT ON DATABASE dev_identity_admin FROM PUBLIC; GRANT CONNECT ON DATABASE dev_identity_admin TO dev_identity_admin_app, dev_identity_admin_owner;"
+  kubectl -n data exec pg-main-1 -c postgres -- psql -X -tAc "SELECT datname, datacl FROM pg_database WHERE datname IN ('identity_admin', 'dev_identity_admin') ORDER BY 1"
+  kubectl -n data exec pg-main-1 -c postgres -- psql -X -tAc "SELECT d, r, has_database_privilege(r, d, 'CONNECT') FROM (VALUES ('identity_admin', 'identity_admin_app'), ('identity_admin', 'dev_identity_admin_app'), ('dev_identity_admin', 'dev_identity_admin_app'), ('dev_identity_admin', 'identity_admin_app')) AS t(d, r) ORDER BY 1, 2"
+  ```
+
+  기대(gitops `platform/cnpg-databases/README.md` §2 운영자 블록과 같은 모양): `datacl` = `{=T/<db>_owner,<db>_owner=CTc/<db>_owner,<db>_app=c/<db>_owner}` — PUBLIC 항목(`=T/…`)에 `c`가 없고 `<db>_app`에 `c`가 있다(superuser가 낸 GRANT도 소유자 `<db>_owner`가 grantor로 기록된다) · `has_database_privilege`는 자기 DB의 app role만 `t`, 교차(`identity_admin` ↔ `dev_identity_admin_app`)는 `f`. 대안은 ①과 같다(`kubectl cnpg psql pg-main -n data -- -c "…"`).
+
+  공유 DB(`authentik` · `openfga` — 같은 Job의 init 컨테이너 ①의 몫 · GRANT 대상은 owner만 — app role이 없다)도 같은 방법:
+
+  ```powershell
+  kubectl -n data exec pg-main-1 -c postgres -- psql -X -c "REVOKE CONNECT ON DATABASE authentik FROM PUBLIC; GRANT CONNECT ON DATABASE authentik TO authentik_owner; REVOKE CONNECT ON DATABASE openfga FROM PUBLIC; GRANT CONNECT ON DATABASE openfga TO openfga_owner;"
+  kubectl -n data exec pg-main-1 -c postgres -- psql -X -tAc "SELECT datname, datacl FROM pg_database WHERE datname IN ('authentik', 'openfga') ORDER BY 1"
+  ```
+
+  기대 `datacl` = `{=T/<db>_owner,<db>_owner=CTc/<db>_owner}` — PUBLIC 항목(`=T/…`)에 `c`가 없고 `<db>_app` 항목이 없다(gitops `platform/cnpg-databases/README.md` §2의 공유 DB 기대 모양 · 같은 Job의 init 컨테이너 ① SQL과 같은 문장). 네 문장은 한 트랜잭션 — `<db>_owner`가 아직 없으면(`DatabaseRole`이 `applied`가 아니다) 통째로 취소된다.
+- **회전은 이 소절 범위 밖**: kv 값 교체 → ESO `refreshInterval` 5m 안에 Secret 갱신 → `cnpg.io/reload` 라벨로 인스턴스 매니저가 role 비밀번호를 다시 적용 → pod `-env` 갱신(Reloader). 절차 정본은 `docs/runbooks/secret-rotation.md`(T084에서 작성 — 아직 없다). 이 블록의 재실행은 회전이 아니다(live-ok는 건너뛴다).
+- **실행 기록**: (운영자 실행 뒤 이 줄 아래에 추가 — 날짜·시각(KST, Z 병기) · 요약 6행 · `INFO vault CLI` 줄 · 머지 뒤 ExternalSecret 6장 `SecretSynced` 확인 시각. 값·해시·토큰은 적지 않는다)
+
 ## §5 v1 삭제 기록
 
 (T104–T105에서 작성)
