@@ -11,13 +11,14 @@
 #   없음이면 throw = 그 단언의 FAIL; Get-KubeOne: 기대 kind 불일치는 throw). 쓰지 않는 SetEq · PropNames는 복사하지 않았다. 문자열 판정은 전부 ordinal.
 # 출력: 항목별 `PASS|FAIL|SKIP <id>: …` 한 줄, 마지막 줄 `N passed, N failed, N skipped`.
 #
-# 현재 상태(T050 시점 — FAIL이 기대값): CNPG operator(T052) · Cluster pg-main + ObjectStore + ScheduledBackup(T053) · Database/DatabaseRole(T054) ·
-#   data-assert Job의 Argo CD Application이 아직 없다. 그래서 pg/db/role/backup 단언은 "CRD not installed (T052 …)"로, bucket-1/2는
-#   오브젝트 0으로, job-1/2는 Job 없음으로 FAIL하고, env-1만 D3 게이트로 SKIP한다. T052–T054가 끝나면 PASS 후보가 된다(이 하네스는 바뀌지 않는다).
+# 현재 상태(T054 머지 시점 2026-10-15 — 라이브 13 PASS / 2 FAIL / 1 SKIP): CNPG operator(T052) · Cluster pg-main + ObjectStore + ScheduledBackup(T053) ·
+#   Database 4 · DatabaseRole 6 · PostSync Job(T054 · gitops PR #48)까지 라이브다. 남은 FAIL은 job-1/2 — data-assert Job의 Argo CD Application(tests)이
+#   T059까지 없다. env-1만 D3 게이트로 SKIP한다. T059가 tests Application을 배포하면 job-1/2가 PASS 후보가 된다(이 하네스는 바뀌지 않는다).
+#   (T050 시점에는 pg/db/role/backup 단언이 "CRD not installed (T052 …)"로, bucket-1/2가 오브젝트 0으로 FAIL했다 — 3 PASS / 12 FAIL / 1 SKIP.)
 #   소유 과제(tasks.md 문면): ScheduledBackup(immediate 첫 백업 포함) · ObjectStore · 버킷 오브젝트 = T053($scheduledBackupTask),
 #   Database · DatabaseRole · Job 검사 id 2개 = T054($dataObjectsTask).
-#   Job 검사 id role-attrs · app-session-timeouts 둘은 지금 Job(gitops platform/policies/tests/job-data-assert.yaml, T041)이 내지 않는다 —
-#   Job에 더하는 것은 T054의 슬라이스(build-notes). 그때까지 job-2는 "missing RESULT line for role-attrs (…T054…)"로 FAIL한다.
+#   Job 검사 id role-attrs · app-session-timeouts 둘은 T054(gitops PR #48 · platform/policies/tests/job-data-assert.yaml)가 더했다 —
+#   pending 집합은 비어 있다($jobPendingIds = @()); 어떤 id가 빠지면 사유 없이 "missing RESULT line for <id>"로 FAIL한다.
 #
 # 접근 계약(contracts/hostnames-and-access.md §에이전트 자격):
 #   - `$env:KUBECONFIG`(SA agent-view 8h 토큰)로만 접근한다. 미설정 · 파일 없음 · kubectl 부재 · whoami ≠ agent-view는 전부 FAIL(fail closed)
@@ -157,8 +158,8 @@ $expectedSchedule = '0 0 17 * * *'
 $assertJobNs = 'jt-dev'
 $assertJobName = 'data-assert'
 $jobCheckIds = @('pg-cross-db-denied', 'catalog-connect-false', 'revoke-public', 'ssl-verify-full', 'role-attrs', 'app-session-timeouts')
-$jobPendingIds = @('role-attrs', 'app-session-timeouts')   # 지금 Job이 내지 않는 id — T054가 더한다(사유에 적는다)
-$jobPendingNote = "the Job does not emit this check id yet -- $dataObjectsTask adds role-attrs and app-session-timeouts to job-data-assert.yaml"
+$jobPendingIds = @()   # T054(gitops PR #48)가 role-attrs · app-session-timeouts를 Job에 더했다 — 지금 Job이 내지 않는 id 없음(2026-10-15 · 결정 C12)
+$jobPendingNote = "no pending check id -- $dataObjectsTask (gitops PR #48) added role-attrs and app-session-timeouts to job-data-assert.yaml"
 $runtimeNs = @('jt-dev', 'jt-prod')
 $migrateSuffix = '-migrate'
 $envGateTask = 'T075'
