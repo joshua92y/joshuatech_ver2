@@ -157,7 +157,7 @@ Authentik·OpenFGA는 pod가 아니라 환경 공유 컴포넌트이므로 env �
 - 인수 해제 절차(플랫폼 Application은 `prune: false`라 파일 revert만으로는 해제되지 않는다): revert PR 머지 → Git 제거가 Argo에 반영됐는지 확인 → `kubectl delete externalsecret` → Secret 잔존·UID·값 확인. 정본은 런북 `bootstrap.md` §3 T045 절.
 - pod마다 ExternalSecret 2개: **`<pod>-env`**(app DB · kafka · dragonfly · authentik · openfga · sentry — Deployment·celery `envFrom`) / **`<pod>-migrate`**(owner DB만 — PreSync migrate Job 전용). Deployment `envFrom`에 `-migrate`가 있으면 validate 실패(T033).
 - 비밀이 아닌 값(`ACCESS_AUD_M2M`·`ACCESS_AUD_ADMIN`·`ADMIN_HOST`·`ALLOWED_HOSTS`·`IDENTITY_M2M_URL` 류)은 ConfigMap.
-- **CA 미러**(`k8s-data-ca`): `pg-main-ca`(CNPG CA)와 `jt-kafka-cluster-ca-cert`(Strimzi CA)를 `identity`·`jt-dev`·`jt-prod`에 복제한다(값은 Vault를 거치지 않는다). CNPG의 `<cluster>-ca` Secret에는 **`ca.key`가 함께 들어 있으므로** ExternalSecret은 `remoteRef.property: ca.crt`만 쓰고 `dataFrom`(전체 복사)을 쓰지 않는다. 미러된 Secret에 `ca.key`가 있으면 T031 FAIL — CA 개인키가 앱 ns에 있으면 서버 인증서와 `streaming_replica` 인증서를 위조할 수 있어 `sslmode=verify-full`이 무력화된다.
+- **CA 미러**(`k8s-data-ca`): `pg-main-ca`(CNPG CA)는 `identity`·`jt-dev`·`jt-prod`에, `jt-kafka-cluster-ca-cert`(Strimzi CA)는 `jt-dev`·`jt-prod`에 복제한다(`identity`에는 Kafka 소비자가 없다 — tasks.md T056 문면 · 2026-10-16 정정; 값은 Vault를 거치지 않는다). 미러 Secret 이름 = 원본 이름(`pg-main-ca` · `jt-kafka-cluster-ca-cert`) — 검사 Job(`platform/policies/tests/`)과 하네스 `ca-1`이 그 이름으로 마운트·판정한다. 소유 디렉터리는 `platform/kafka-topics/`(§sync-wave 40번 행 · T056). CNPG의 `<cluster>-ca` Secret에는 **`ca.key`가 함께 들어 있으므로** ExternalSecret은 `remoteRef.property: ca.crt`만 쓰고 `dataFrom`(전체 복사)을 쓰지 않는다. 미러된 Secret에 `ca.key`가 있으면 T031 FAIL — CA 개인키가 앱 ns에 있으면 서버 인증서와 `streaming_replica` 인증서를 위조할 수 있어 `sslmode=verify-full`이 무력화된다.
 
 ### validate.yml ExternalSecret 검사 (T033)
 
