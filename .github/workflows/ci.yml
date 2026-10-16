@@ -1,0 +1,347 @@
+# CI 골격(T002) — FR-037 공급망 강화 정책 반영
+# - runs-on: ubuntu-24.04-arm — 운영 노드(OCI Ampere A1)와 이미지/도구가 모두 arm64이므로
+#   퍼블릭 arm64 러너에서 같은 아키텍처로 검사한다.
+# - 모든 액션은 전체 커밋 SHA로 핀한다(주석의 vX.Y.Z는 사람용 표기).
+#   태그→SHA 갱신은 Renovate(config:best-practices의 pinGitHubActionDigests)가 유지한다.
+# - 설치는 pnpm install --frozen-lockfile --ignore-scripts · uv sync --locked 만 허용
+#   (잠금파일이 정본, 라이프사이클 스크립트 실행 금지).
+# - job kubeconform(T047 M1): pod 배포 매니페스트(생성물의 deploy/base — gitops apps/<pod>/base로 복사된다)를
+#   kustomize build → kubeconform -strict로 검사한다(scripts/ci/kubeconform-deploy.sh — 대상이 없으면 "대상 없음"으로 통과).
+# - job gitleaks(T049 AC5): job id `gitleaks`는 ruleset(main)의 required check 이름이다 — 바꾸지 않는다.
+#   gitleaks-action(v3.0.0)을 쓰지 않는다. 그 판의 PR 경로는 PR 커밋 목록(GET /pulls/{n}/commits)을 per_page · 페이지 넘김
+#   없이 한 번만 불러 첫 30개(기본 페이지)만 받고, 범위를 `--no-merges --first-parent <첫 커밋>^..<30번째 커밋>`으로 자른다
+#   (src/gitleaks.js 160–171행 · dist/index.js 127929–127941행 — 이 브랜치의 PR 295커밋이면 약 10%). push 경로도 push된 커밋만 본다.
+#   대신 gitleaks 8.30.1 linux_arm64 바이너리를 버전 + sha256으로 고정해 직접 받는다(릴리스의 공식 checksums 파일 값 —
+#   gitops validate.yml 스텝 3과 같은 값). 이 job이 받은 전체 이력(모든 ref + HEAD)을 --log-opts로 명시해 스캔하고,
+#   같은 범위를 git으로 센 기대 커밋 수와 gitleaks가 보고한 검사 커밋 수가 다르면 실패한다(조용한 부분 검사 방지 — 규칙은 job 주석).
+#   일일 schedule(새 규칙으로 옛 이력을 다시 보는 정기 실행)은 아직 없다 — 그 소유는 별도 항목이다.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gitleaks:
+    # 커밋 히스토리 비밀 스캔(머리 주석 「job gitleaks」). checkout 뒤에는 고정한 gitleaks와 러너의 git만 돈다 —
+    # 저장소의 코드를 실행하지 않고 토큰도 쓰지 않는다.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    env:
+      # gitleaks 8.30.1 linux_arm64 릴리스 자산의 sha256 — 릴리스의 gitleaks_8.30.1_checksums.txt 값(gitops validate.yml과 같은 값).
+      # 버전을 바꾸면 sha256도 함께 바꾼다 — 둘 중 하나만 바꾸면 설치 스텝이 실패한다.
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 전체 이력: 모든 브랜치(refs/remotes/origin/*) · 태그를 받고, PR 이벤트에서는 merge 커밋을
+          # refs/remotes/pull/<N>/merge로 받아 HEAD로 둔다(checkout v7.0.1 src/ref-helper.ts getRefSpecForAllHistory).
+          # 얕은 체크아웃이면 스캔 스텝이 실패한다
+          fetch-depth: 0
+          # 뒤 스텝은 push · fetch를 하지 않는다 — .git/config에 토큰을 남기지 않는다
+          persist-credentials: false
+      - name: gitleaks 설치(버전 고정 + sha256 대조)
+        run: |
+          set -euo pipefail
+          bin="$RUNNER_TEMP/bin"
+          dl="$RUNNER_TEMP/dl"
+          mkdir -p "$bin" "$dl"
+          # fetch <url> <파일 이름> <sha256> — 받은 파일을 sha256으로 대조한다. 맞지 않으면 실패(풀지도 설치하지도 않는다)
+          fetch() {
+            if [[ ! $3 =~ ^[0-9a-f]{64}$ ]]; then
+              printf '::error::%s: sha256 값의 형식이 틀렸다: %q\n' "$2" "$3"
+              return 1
+            fi
+            # 멈춘 내려받기가 job 제한 시간까지 붙잡지 않게 시간 한도를 둔다. --proto · --proto-redir: 리다이렉트(릴리스 자산은
+            # objects.githubusercontent.com으로 302)까지 https만 허용한다 — gitops validate.yml의 fetch()와 이 두 옵션만 다르다
+            curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 --connect-timeout 10 --max-time 120 -o "$dl/$2" "$1"
+            printf '%s  %s\n' "$3" "$dl/$2" | sha256sum -c -
+          }
+          fetch "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_arm64.tar.gz" gitleaks.tar.gz "$GITLEAKS_SHA256"
+          tar -xzf "$dl/gitleaks.tar.gz" -C "$bin" gitleaks
+          chmod 0755 "$bin/gitleaks"
+          # 버전 확인 — 설치한 바이너리가 기대 버전이 아니면 실패
+          got=$("$bin/gitleaks" version || true)
+          if [[ $got != "$GITLEAKS_VERSION" ]]; then
+            printf '::error::gitleaks 버전 불일치: 실제 %q · 기대 %s\n' "$got" "$GITLEAKS_VERSION"
+            exit 1
+          fi
+          printf '  %-12s %s\n' gitleaks "$got"
+      # 대조 규칙(gitleaks 8.30.1 소스 + 로컬 실측 — T049 AC5)
+      # - 셈: gitleaks는 `git log -p -U0 <--log-opts>` 출력의 텍스트 hunk마다 그 커밋을 센다(detect/detect.go 216–221행 →
+      #   262행 "N commits scanned."). 삭제된 파일과 바이너리는 hunk 전에 건너뛴다(sources/git.go 323–334행). 그래서 세지 않는
+      #   커밋은 빈 커밋 · 삭제만 · 바이너리만 · 이름 바꾸기나 모드만 · 빈 파일 추가만이다. 줄을 지우기만 한 수정은 센다(hunk가 있다).
+      #   머지는 --remerge-diff(git ≥ 2.35)로 자동 재머지 대비 차이만 낸다 — 충돌 해결로 들어온 내용이 스캔되고, 깨끗한 머지는
+      #   차이가 없어 세지 않는다.
+      #   한계: git 모드는 추가된 텍스트 줄만 본다 — NUL이 든 "바이너리" 텍스트 · 압축 파일 내용(--max-archive-depth 0) · 커밋 메시지 ·
+      #   기본 allowlist 경로(gitleaks.toml · 잠금 파일 · pdf/docx/bin 등)의 비밀은 잡지 못한다(T049 로컬 실측). --max-archive-depth는
+      #   양쪽 셈이 어긋나므로 git 모드에 켜지 않는다.
+      # - 범위: --log-opts를 주면 기본값(--full-history --all --diff-filter=tuxdb — sources/git.go 93–94행)이 통째로 빠지고
+      #   그 값만 공백으로 나뉘어 git log에 붙는다. 그래서 범위 --all(refs/ 아래 모든 ref + HEAD)을 직접 적는다. diff-filter는
+      #   기본값에서 t(형식 변경)만 뺀 uxdb다 — 기본값으로는 심볼릭 링크 → 파일 같은 형식 변경으로 들어온 내용을 보지 않는다.
+      # - 기대 커밋 수: 같은 범위 · 같은 옵션의 `git log --numstat`에서 바이너리('-')가 아니고 추가 + 삭제 줄이 1 이상인 파일이
+      #   하나라도 있는 커밋 수. git rev-list --all 범위의 부분집합이어야 하고(머지는 재머지 차이가 있을 때만 든다), 나머지(텍스트
+      #   변경 없는 커밋 — 깨끗한 머지 포함)는 로그에 목록으로 남긴다. 범위는 gitleaks 호출과 따로 적는다 — --log-opts만 좁히면
+      #   대조가 실패한다.
+      # - 실패: 검사 커밋 수 줄이 정확히 하나가 아니거나 · 값이 기대 수와 다르거나 · gitleaks 로그에 ERR 줄이 있거나 · 누출이
+      #   있거나 · 결과 줄 없이 끝나면. ERR: 8.30.1은 git이 stderr에 오류를 내면 그 자리에서 스캔을 멈추고도 "no leaks found"와
+      #   exit 0으로 끝난다(sources/git.go 414–420행 — 로컬 실측: 0 commits scanned · exit 0).
+      # - 속성: 작업 트리의 .gitattributes를 읽지 않는다(GIT_ATTR_SOURCE = 빈 트리, git 2.41+). PR이 diff 속성(-diff · binary)으로
+      #   파일을 바이너리로 돌리면 gitleaks는 그 내용을 건너뛰고, 기대 수도 같은 속성을 따르므로 대조로는 잡지 못한다
+      #   (로컬 실측: 오래된 커밋의 가짜 비밀이 통과했다).
+      # - 설정: 규칙은 워크플로가 고정한다(--config = 기본 규칙 확장, --ignore-gitleaks-allow). 작업 트리에 .gitleaks.toml ·
+      #   .gitleaksignore가 있으면 실패 — gitleaks가 둘을 무조건 읽고(root.go 178–190 · 317–321), .gitleaks.toml 내용은 기본 allowlist라
+      #   스캔되지도 않는다. 예외는 이 파일(ci.yml)에서만 준다.
+      # - 출력: --redact로 값을 가린다(공개 저장소의 로그). PR이 고른 글자(경로 · 커밋 제목)가 찍히는 구간은 워크플로 명령
+      #   해석을 막는다(stop-commands). 버전 · 범위 · 기대 커밋 수 · 검사 커밋 수 · 결과를 job 요약에 한 줄씩 남긴다.
+      - name: 전체 이력 스캔 + 검사 커밋 수 대조
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          gl="$RUNNER_TEMP/bin/gitleaks"
+          work="$RUNNER_TEMP/gitleaks-scan"
+          mkdir -p "$work"
+          # 요약 다섯 줄 — 성공 · 실패와 무관하게 끝에 남긴다(구하지 못한 값은 '—')
+          ver='—' range='—' expected='—' scanned='—' result='실패 — 스캔 전에 멈춤'
+          # on_exit는 아래 trap on_exit EXIT로 불린다 — shellcheck는 trap 호출을 세지 않는다(SC2329)
+          # shellcheck disable=SC2329
+          on_exit() {
+            local rc=$?
+            {
+              printf -- '- **gitleaks 버전** · %s\n' "$ver"
+              printf -- '- **범위** · %s\n' "$range"
+              printf -- '- **기대 커밋 수** · %s\n' "$expected"
+              printf -- '- **검사 커밋 수** · %s\n' "$scanned"
+              printf -- '- **결과** · %s · exit %d\n' "$result" "$rc"
+            } >> "$GITHUB_STEP_SUMMARY" || true
+            exit "$rc"
+          }
+          trap on_exit EXIT
+          ver="$("$gl" version) · linux_arm64 · sha256 ${GITLEAKS_SHA256:0:12}… · $(git --version)"
+
+          # --- 1 체크아웃: 전체 이력이고 HEAD가 이 이벤트의 커밋이다 ---
+          if [[ $(git rev-parse --is-shallow-repository) != false ]]; then
+            printf '::error::얕은 체크아웃이다 — 전체 이력이 아니다(checkout의 fetch-depth: 0 필요)\n'
+            exit 1
+          fi
+          head_sha=$(git rev-parse --verify 'HEAD^{commit}')
+          if [[ $head_sha != "$GITHUB_SHA" ]]; then
+            printf '::error::HEAD %s 가 이벤트 커밋(GITHUB_SHA %s)이 아니다\n' "$head_sha" "$GITHUB_SHA"
+            exit 1
+          fi
+          what='push'
+          if [[ $EVENT_NAME == pull_request ]]; then
+            # merge 커밋 ref가 HEAD이고 PR head가 그 이력 위에 있어야 PR의 커밋 전부가 --all 범위에 든다
+            merge_ref="refs/remotes/${GITHUB_REF#refs/}"
+            if [[ $GITHUB_REF != refs/pull/*/merge || $(git rev-parse --verify --quiet "${merge_ref}^{commit}" || true) != "$head_sha" ]]; then
+              printf '::error::PR merge 커밋 ref %s 가 HEAD가 아니다(GITHUB_REF %s)\n' "$merge_ref" "$GITHUB_REF"
+              exit 1
+            fi
+            if [[ ! $PR_HEAD_SHA =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || ! git merge-base --is-ancestor "$PR_HEAD_SHA" "$head_sha"; then
+              printf '::error::PR head %q 가 HEAD(merge 커밋)의 이력 위에 없다\n' "$PR_HEAD_SHA"
+              exit 1
+            fi
+            # 전제: GitHub의 merge ref는 부모 둘(첫째 base 끝 · 둘째 PR head)인 머지 커밋이다 — 러너에서만 확인된다(초안 PR 실행)
+            if [[ $(git rev-parse --verify --quiet 'HEAD^2' || true) != "$PR_HEAD_SHA" ]]; then
+              printf '::error::PR head %q 가 HEAD(merge 커밋)의 둘째 부모가 아니다 — 전제: GitHub의 merge ref는 부모 둘(base 끝 · PR head)\n' "$PR_HEAD_SHA"
+              exit 1
+            fi
+            what="PR merge 커밋 $merge_ref"
+          fi
+
+          # --- 1b 탐지 설정은 워크플로가 고정한다 — PR 내용(.gitleaks.toml · .gitleaksignore · gitleaks:allow)으로 끌 수 없다 ---
+          for f in .gitleaks.toml .gitleaksignore; do
+            if [[ -e $f || -L $f ]]; then
+              printf '::error::%s 가 체크아웃에 있다 — gitleaks는 작업 트리의 이 파일을 무조건 읽는다(cmd/root.go 178–190 · 317–321). 탐지 설정은 워크플로가 고정한다\n' "$f"
+              exit 1
+            fi
+          done
+          printf '[extend]\nuseDefault = true\n' > "$work/gitleaks.toml"
+
+          # --- 2 기대 커밋 수: 같은 범위를 git으로 센다(작업 트리의 .gitattributes 무시) ---
+          empty_tree=$(git hash-object -t tree /dev/null)
+          export GIT_ATTR_SOURCE="$empty_tree"
+          total=$(git rev-list --count --all)
+          merges=$(git rev-list --count --merges --all)
+          git rev-list --all | LC_ALL=C sort > "$work/range"
+          # --attr-source는 git 2.41 미만에서 알 수 없는 옵션이라 실패한다 — 속성 무시가 조용히 꺼지지 않는다
+          git --attr-source="$empty_tree" log --numstat --format='format:@%H' --all --full-history --diff-filter=uxdb --remerge-diff \
+            | awk -F '\t' '/^@/ { c = substr($0, 2); next } NF >= 3 && $1 != "-" && ($1 + $2) > 0 { print c }' \
+            | LC_ALL=C sort -u > "$work/expected"
+          if [[ -n $(LC_ALL=C comm -13 "$work/range" "$work/expected") ]]; then
+            printf '::error::기대 커밋 목록에 git rev-list --all 범위 밖의 커밋이 있다\n'
+            exit 1
+          fi
+          LC_ALL=C comm -23 "$work/range" "$work/expected" > "$work/no-text"
+          expected_n=$(wc -l < "$work/expected")
+          none_n=$(wc -l < "$work/no-text")
+          # 머지는 재머지 차이(--remerge-diff)가 있을 때만 기대 목록에 든다 — 깨끗한 머지는 텍스트 변경 없는 커밋 쪽이다
+          merges_text_n=$(git rev-list --merges --all | LC_ALL=C sort | LC_ALL=C comm -12 - "$work/expected" | wc -l)
+          expected="$expected_n (git rev-list --all $total − 텍스트 변경 없는 커밋 $none_n · 머지 $merges개 중 재머지 차이가 있는 $merges_text_n개를 센다)"
+          range="--log-opts='--all --full-history --diff-filter=uxdb --remerge-diff' · ref $(git for-each-ref | wc -l)개 + HEAD ${head_sha:0:12}($what) · 속성 출처 빈 트리"
+          printf '범위: %s\n기대 커밋 수: %s\n' "$range" "$expected"
+          if [[ $expected_n -eq 0 ]]; then
+            printf '::error::기대 커밋 수가 0이다 — 스캔할 이력이 없다\n'
+            exit 1
+          fi
+
+          # --- 3 스캔: PR이 고른 글자가 찍히는 구간은 워크플로 명령 해석을 막는다(토큰은 실행마다 새로 만든다) ---
+          token=$(cat /proc/sys/kernel/random/uuid 2> /dev/null || printf 'stop-%s-%s%s%s' "$(date -u +%s%N)" "$RANDOM" "$RANDOM" "$RANDOM")
+          printf '::stop-commands::%s\n' "$token"
+          if [[ $none_n -gt 0 ]]; then
+            printf '텍스트 변경 없는 커밋 %d개(깨끗한 머지 포함 — gitleaks가 세지 않는다 — 앞 50개):\n' "$none_n"
+            head -n 50 "$work/no-text" | git log --no-walk=unsorted --stdin --format='  %h %s'
+          fi
+          scan_rc=0
+          "$gl" git --no-banner --no-color --redact -v --config "$work/gitleaks.toml" --ignore-gitleaks-allow --log-opts='--all --full-history --diff-filter=uxdb --remerge-diff' . 2> "$work/log" || scan_rc=$?
+          sed 's/\x1b\[[0-9;]*m//g' "$work/log" > "$work/log.plain"
+          cat "$work/log.plain"
+          printf '::%s::\n' "$token"
+
+          # --- 4 판정 ---
+          fail=0 notes=''
+          mapfile -t count_lines < <(grep -E '^[^ ]+ INF [0-9]+ commits scanned\.$' "$work/log.plain" || true)
+          if [[ ${#count_lines[@]} -eq 1 ]]; then
+            scanned_n=${count_lines[0]% commits scanned.}
+            scanned_n=${scanned_n##* }
+            scanned=$scanned_n
+            if [[ $scanned_n -ne $expected_n ]]; then
+              printf '::error::검사 커밋 수 %s ≠ 기대 %s — 범위 전체를 검사하지 않았다\n' "$scanned_n" "$expected_n"
+              fail=1 notes+=' · 검사 커밋 수 불일치'
+            fi
+          else
+            printf '::error::gitleaks 로그에서 검사 커밋 수 줄("<n> commits scanned.")이 %d개다 — 1개여야 한다\n' "${#count_lines[@]}"
+            fail=1 notes+=" · 검사 커밋 수 줄 ${#count_lines[@]}개"
+          fi
+          if grep -Eq '^[^ ]+ (ERR|FTL|PNC) ' "$work/log.plain"; then
+            printf '::error::gitleaks 로그에 오류 줄이 있다 — git 오류로 스캔이 중간에 멈췄을 수 있다\n'
+            fail=1 notes+=' · gitleaks 오류 줄'
+          fi
+          leaks=$(sed -n 's/^[^ ]* WRN leaks found: \([0-9][0-9]*\)$/\1/p' "$work/log.plain")
+          if [[ $scan_rc -eq 0 ]] && grep -Eq '^[^ ]+ INF no leaks found$' "$work/log.plain"; then
+            found='누출 0건'
+          elif [[ $leaks =~ ^[0-9]+$ ]]; then
+            found="누출 ${leaks}건"
+            printf '::error::gitleaks가 비밀 %s건을 찾았다 — 값은 가렸다(위 Finding 블록의 File · Line · Commit)\n' "$leaks"
+            fail=1
+          else
+            found="판정 불가(gitleaks exit $scan_rc)"
+            printf '::error::gitleaks가 exit %d로 끝났고 결과 줄이 없다\n' "$scan_rc"
+            fail=1
+          fi
+          if [[ $fail -eq 0 ]]; then
+            result="통과 — $found · 검사 커밋 수 일치"
+          else
+            result="실패 — $found$notes"
+          fi
+          printf '결과: %s\n' "$result"
+          exit "$fail"
+
+  lint:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version-file: '.node-version'
+          cache: pnpm
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          # uv 버전 핀(plan Technical Context: uv 0.12.8). Renovate가 이 version 입력을
+          # 추적해 astral-sh/uv 릴리스 기준 bump PR을 연다(automerge 전역 off).
+          # 그 PR을 머지할 때는 plan Technical Context의 uv 핀과 uv Docker 이미지 태그
+          # (uv:<ver>-python3.13-trixie-slim)를 같은 변경에서 함께 올려 desync를 막는다.
+          version: "0.12.8"
+      - name: 의존성 설치(잠금파일 고정 · 스크립트 실행 금지)
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          uv sync --locked
+      - name: lint 자리(placeholder) — US 단계에서 채움
+        run: echo "lint 자리(placeholder) — US 단계에서 채움"
+
+  test:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version-file: '.node-version'
+          cache: pnpm
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          # uv 버전 핀(plan Technical Context: uv 0.12.8). Renovate가 이 version 입력을
+          # 추적해 astral-sh/uv 릴리스 기준 bump PR을 연다(automerge 전역 off).
+          # 그 PR을 머지할 때는 plan Technical Context의 uv 핀과 uv Docker 이미지 태그
+          # (uv:<ver>-python3.13-trixie-slim)를 같은 변경에서 함께 올려 desync를 막는다.
+          version: "0.12.8"
+      - name: 의존성 설치(잠금파일 고정 · 스크립트 실행 금지)
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          uv sync --locked
+      - name: test 자리(placeholder) — US 단계에서 채움
+        run: echo "test 자리(placeholder) — US 단계에서 채움"
+
+  kubeconform:
+    # pod 배포 매니페스트 스키마 검사(T047 M1). 대상 규칙 · 판정 · 경보선(템플릿에 매니페스트가 생겼는데 생성 단계가
+    # 연결되지 않으면 실패 — T072가 연결한다)은 scripts/ci/kubeconform-deploy.sh 머리 주석이 정본이다.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 뒤 스텝이 저장소의 스크립트를 실행한다 — .git/config에 토큰을 남기지 않는다(push · fetch를 하는 스텝이 없다)
+          persist-credentials: false
+      - name: 도구 설치 — kustomize · kubeconform(버전 고정 + sha256 대조)
+        env:
+          # linux arm64 공식 릴리스 자산의 sha256(각 릴리스의 체크섬 파일 값).
+          # 버전을 바꾸면 sha256도 함께 — gitops 저장소 validate.yml의 값과 같이 움직인다.
+          KUSTOMIZE_VERSION: v5.8.1
+          KUSTOMIZE_SHA256: 0953ea3e476f66d6ddfcd911d750f5167b9365aa9491b2326398e289fef2c142
+          KUBECONFORM_VERSION: v0.8.0
+          KUBECONFORM_SHA256: 1f53fc8e81258197a35e8603054162a5af1de8c5af13746c71ab680d9534ed87
+        run: |
+          set -euo pipefail
+          bin="$RUNNER_TEMP/bin"
+          dl="$RUNNER_TEMP/dl"
+          mkdir -p "$bin" "$dl"
+          # fetch <url> <파일 이름> <sha256> — 받은 파일을 sha256으로 대조한다. 맞지 않으면 실패(풀지도 설치하지도 않는다)
+          fetch() {
+            if [[ ! $3 =~ ^[0-9a-f]{64}$ ]]; then
+              printf '::error::%s: sha256 값의 형식이 틀렸다\n' "$2"
+              return 1
+            fi
+            curl -fsSL --retry 3 --connect-timeout 10 --max-time 120 -o "$dl/$2" "$1"
+            printf '%s  %s\n' "$3" "$dl/$2" | sha256sum -c -
+          }
+          fetch "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_arm64.tar.gz" kustomize.tar.gz "$KUSTOMIZE_SHA256"
+          tar -xzf "$dl/kustomize.tar.gz" -C "$bin" kustomize
+          fetch "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-arm64.tar.gz" kubeconform.tar.gz "$KUBECONFORM_SHA256"
+          tar -xzf "$dl/kubeconform.tar.gz" -C "$bin" kubeconform
+          chmod 0755 "$bin/kustomize" "$bin/kubeconform"
+          # 버전 확인 — 설치한 바이너리가 기대 버전이 아니면 실패
+          want_got() {
+            if [[ $3 != "$2" ]]; then
+              printf '::error::%s 버전 불일치: 실제 %q · 기대 %s\n' "$1" "$3" "$2"
+              return 1
+            fi
+            printf '  %-12s %s\n' "$1" "$3"
+          }
+          want_got kustomize "$KUSTOMIZE_VERSION" "$("$bin/kustomize" version)"
+          want_got kubeconform "$KUBECONFORM_VERSION" "$("$bin/kubeconform" -v)"
+          # 다음 스텝부터 PATH 맨 앞에 온다(GITHUB_PATH는 앞에 붙인다)
+          printf '%s\n' "$bin" >> "$GITHUB_PATH"
+      - name: pod 배포 매니페스트 스키마 검사 — scripts/ci/kubeconform-deploy.sh
+        run: bash scripts/ci/kubeconform-deploy.sh

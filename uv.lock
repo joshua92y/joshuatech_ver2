@@ -1,0 +1,19 @@
+version = 1
+revision = 3
+requires-python = ">=3.13"
+
+[manifest]
+members = [
+    "django-common",
+    "identity-admin",
+]
+
+[[package]]
+name = "django-common"
+version = "0.0.0"
+source = { editable = "packages/django-common" }
+
+[[package]]
+name = "identity-admin"
+version = "0.0.0"
+source = { virtual = "apps/identity-admin" }

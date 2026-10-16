@@ -1,0 +1,22 @@
+{
+  "format_version": "1.2",
+  "planned_values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "oci_core_instance.node_a",
+          "type": "oci_core_instance",
+          "name": "node_a",
+          "values": {
+            "shape": "VM.Standard.A1.Flex",
+            "shape_config": [
+              {
+                "processor_description": "3.0 GHz Ampere® Altra™ processor"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
