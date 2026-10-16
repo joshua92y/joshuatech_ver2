@@ -330,9 +330,9 @@ function New-Job([string]$name, $succeeded = 1, $failed = $null) {
     if ($null -ne $failed) { $st['failed'] = [int]$failed }
     return [ordered]@{ apiVersion = 'batch/v1'; kind = 'Job'; metadata = (New-Meta 'jt-dev' $name); spec = [ordered]@{ backoffLimit = 0 }; status = $st }
 }
-# kafka-assert 로그(gitops job-kafka-assert.yaml의 실제 줄 모양 + T056이 더할 latency 토큰). o.sec = 벽시계 경과 초(기본 23 — JVM 2회 기동 + 컨슈머
-#   --timeout-ms 20000 유휴 대기라 라이브에서 항상 ≥ 20), o.ms = 메시지 경로 지연 latency=<n>ms(기본 120; '<absent>' = 토큰 없음 = 지금 Job 모양),
-#   o.roundtrip/cross = 'PASS'|'FAIL'|'none'|'dup', o.summary = 요약 줄('' = 없음)
+# kafka-assert 로그(gitops job-kafka-assert.yaml의 실제 줄 모양 + T056이 더할 latency 토큰). o.sec = 벽시계 경과 초(기본 23 — 판정에 쓰지 않는 사유 표기값; T056 Job의
+#   벽시계 = produce 시작 ~ 마커 수신(프로듀서 JVM 기동 포함 · 컨슈머 선기동이라 유휴 대기 없음) · 23은 T051 시점 모양(컨슈머 --timeout-ms 20000 유휴 대기 포함 · ≥ 20)의 값),
+#   o.ms = 메시지 경로 지연 latency=<n>ms(기본 120; '<absent>' = 토큰 없음 = T056 전 Job 모양), o.roundtrip/cross = 'PASS'|'FAIL'|'none'|'dup', o.summary = 요약 줄('' = 없음)
 function KafkaLog([hashtable]$o = @{}) {
     $sec = [int](Opt $o 'sec' 23); $rt = [string](Opt $o 'roundtrip' 'PASS'); $cross = [string](Opt $o 'cross' 'PASS')
     $ms = Opt $o 'ms' 120
@@ -459,7 +459,7 @@ $passText = @{
     'df-2'    = 'Services data/dragonfly-dev, data/dragonfly-prod expose port 6379'
     'job-k-1' = 'Job jt-dev/kafka-assert succeeded=1'
     'job-k-2' = 'roundtrip PASS, cross-env-denied PASS, SUMMARY pass=2 fail=0 matches 2 RESULT line(s) (last 50 log lines)'
-    'job-k-3' = "roundtrip latency 120ms <= 5000ms (message path, spec US3 AC3; the Job's wall clock 23s includes JVM startup and the consumer idle wait)"
+    'job-k-3' = "roundtrip latency 120ms <= 5000ms (message path, spec US3 AC3; the Job's wall clock 23s spans produce start to marker receipt, including producer JVM startup)"
     'job-d-1' = 'Job jt-dev/data-assert succeeded=1'
     'job-d-2' = 'acl-list, noperm, noauth, writer-set, reader-get, reader-set-denied, reader-cross-denied PASS; pattern %R~revoked:* present on the sample-pod row (VD-4); SUMMARY pass=11 fail=0 matches 11 RESULT line(s)'
 }
@@ -692,7 +692,7 @@ try {
         Assert-IdExact 'C02-3 topic-1: spec.topicName and numeric retention.ms accepted' $r 'topic-1' 'PASS' $passText['topic-1']
         Assert-IdExact 'C02-4 user-2: literal names, the old single operation and All count as Write' $r 'user-2' 'PASS' 'identity-admin: topic Write on identity-admin.* only (2 of 3 ACLs); dev-identity-admin: topic Write on dev.identity-admin.* only (2 of 2 ACLs) -- no cross-env Write'
         Assert-IdExact 'C02-5 df-1: split --maxmemory and --aclfile=… accepted' $r 'df-1' 'PASS' $passText['df-1']
-        Assert-IdExact 'C02-7 job-k-3: latency exactly 5000ms PASSes (boundary) and the 41s wall clock is reported, not judged' $r 'job-k-3' 'PASS' "roundtrip latency 5000ms <= 5000ms (message path, spec US3 AC3; the Job's wall clock 41s includes JVM startup and the consumer idle wait)"
+        Assert-IdExact 'C02-7 job-k-3: latency exactly 5000ms PASSes (boundary) and the 41s wall clock is reported, not judged' $r 'job-k-3' 'PASS' "roundtrip latency 5000ms <= 5000ms (message path, spec US3 AC3; the Job's wall clock 41s spans produce start to marker receipt, including producer JVM startup)"
         $s = Get-Summary $r
         Assert 'C02-6: summary 17 passed, 0 failed, exit 0' ($s.ok -and $s.pass -eq 17 -and $s.fail -eq 0 -and $r.code -eq 0) (Format-Result $r)
     }
@@ -748,7 +748,7 @@ try {
     Test-Case 'C24' 'df-2: dragonfly-prod Service port 6380 -> only df-2 FAILs' { Test-Mutation 'C24' 'df-2' @('1 problem(s): Service data/dragonfly-prod: ports [6380] lack 6379') { param($resp) $resp[(SvcKey 'dragonfly-prod')] = R-Json (New-Service 'dragonfly-prod' @(6380)) } }
     Test-Case 'C25' 'job-k-1: kafka-assert failed (succeeded 0, failed 1) while its log still reads PASS -> only job-k-1 FAILs' { Test-Mutation 'C25' 'job-k-1' @('Job jt-dev/kafka-assert has not succeeded (status.succeeded=0, status.failed=1)') { param($resp) $resp[(JobKey 'kafka-assert')] = R-Json (New-Job 'kafka-assert' 0 1) } }
     Test-Case 'C26' 'job-k-3: latency 7000ms (the Job PASSes under its 30s wall-clock deadline) -> only job-k-3 FAILs' { Test-Mutation 'C26' 'job-k-3' @("roundtrip latency 7000ms > 5000ms (spec US3 AC3: produce->consume within 5 s; the Job's own 30 s wall-clock deadline is a separate check)") { param($resp) $resp[(LogsKey 'kafka-assert')] = R-Raw (KafkaLog @{ ms = 7000 }) } }
-    Test-Case 'C26b' 'job-k-3: the current Job shape (wall clock 23s, no latency token) -> only job-k-3 FAILs naming the missing token and the wall clock' { Test-Mutation 'C26b' 'job-k-3' @('roundtrip evidence has no latency=<n>ms token (the Job does not emit it yet -- T056 adds it; wall-clock 23s includes JVM startup and the consumer idle wait): dev.identity-admin.session.revoked produce→consume 23s (상한 30s, JVM 기동 포함)') { param($resp) $resp[(LogsKey 'kafka-assert')] = R-Raw (KafkaLog @{ ms = '<absent>' }) } }
+    Test-Case 'C26b' 'job-k-3: the pre-T056 Job shape (wall clock 23s, no latency token) -> only job-k-3 FAILs naming the missing token and the wall clock' { Test-Mutation 'C26b' 'job-k-3' @('roundtrip evidence has no latency=<n>ms token (the Job does not emit it -- T056 adds it; the wall clock 23s is not the message-path latency): dev.identity-admin.session.revoked produce→consume 23s (상한 30s, JVM 기동 포함)') { param($resp) $resp[(LogsKey 'kafka-assert')] = R-Raw (KafkaLog @{ ms = '<absent>' }) } }
     Test-Case 'C27' 'job-k-2: SUMMARY fail=1 with both RESULT lines PASS -> only job-k-2 FAILs (fail!=0 and the count mismatch)' { Test-Mutation 'C27' 'job-k-2' @('Job jt-dev/kafka-assert log: 2 problem(s): SUMMARY fail=1 (expected 0): SUMMARY: pass=2 fail=1; SUMMARY pass=2 fail=1 does not match the RESULT lines seen (2 PASS, 0 FAIL) -- log truncated by --tail=50 or inconsistent Job output') { param($resp) $resp[(LogsKey 'kafka-assert')] = R-Raw (KafkaLog @{ summary = 'SUMMARY: pass=2 fail=1' }) } }
     Test-Case 'C27b' 'job-k-2: SUMMARY pass=3 fail=0 while only 2 RESULT lines are visible (truncated log) -> only job-k-2 FAILs' { Test-Mutation 'C27b' 'job-k-2' @('Job jt-dev/kafka-assert log: 1 problem(s): SUMMARY pass=3 fail=0 does not match the RESULT lines seen (2 PASS, 0 FAIL) -- log truncated by --tail=50 or inconsistent Job output') { param($resp) $resp[(LogsKey 'kafka-assert')] = R-Raw (KafkaLog @{ summary = 'SUMMARY: pass=3 fail=0' }) } }
     Test-Case 'C28' 'job-k-2: cross-env-denied RESULT FAIL + SUMMARY missing -> only job-k-2 FAILs with both reasons; job-k-3 still reads roundtrip' { Test-Mutation 'C28' 'job-k-2' @('2 problem(s)', 'cross-env-denied: RESULT FAIL -- dev', '0 SUMMARY line(s) in the last 50 log lines (expected exactly 1)') { param($resp) $resp[(LogsKey 'kafka-assert')] = R-Raw (KafkaLog @{ cross = 'FAIL'; summary = '' }) } }

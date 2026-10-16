@@ -749,7 +749,7 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
   - **2026-10-14 마무리(토큰 재발급 · OCI 재인증 뒤, agent-view · svc-verify)**: ① **예약 백업이 돌았다** — `pg-main-daily-20261013170000`(17:00:00Z = 02:00 KST · 1초 · backupId `20261013T170000` · WAL `0…06`) completed → ScheduledBackup `lastScheduleTime` 17:00Z · next 10-14 17:00Z. ② **VD-3 PASS** — 버킷 `pg-main/pg-main/` 아래 13 오브젝트만: `base/<backupId>/{backup.info, data.tar.lz4}` 2세트(≈ 6.3 MB — 빈 DB) · `wals/0000000100000000/0000000100000000000000{01…07}.zst` 7 + `.backup.zst` 2 · 다른 접두 0 · 전부 zstd. ③ `firstRecoverabilityPoint` · `lastSuccessfulBackup(ByMethod)`는 예약 백업 뒤에도 **빈 값**(플러그인 경로 미갱신 — 확정 · T059/T098 신호 선택에 반영). ④ **하네스**: `data.tests.ps1` **9 PASS / 6 FAIL / 1 SKIP** = 기대값(FAIL 6 = db-1/2 · role-1/2 · job-1/2 전부 "T054 deploys them" 사유 · `bucket-1` 베이스 4 오브젝트 · `bucket-2` WAL 7 최신 3 연속 · env-1 SKIP T075) · `cluster.tests.ps1` 1차 40/1/13(`mon-1`이 터널 연결 리셋 `wsarecv: forcibly closed`로 조회 실패 — 일시 오류) → 재실행 **40 PASS / 0 FAIL / 14 SKIP** = T052 기준선(39/0/15)에서 **`argo-4-pg-main` SKIP → PASS** 1건만 바뀜 · `mon-1` SKIP until T098 · backup-1/2/3 PASS. 로그 `.superpowers/t053/evidence/live/{data-tests,cluster-tests,cluster-tests-…-rerun}-2026-10-14.log` · `bucket-objects-2026-10-14.txt`. 하네스 강화 후보: 터널 조회 일시 오류(0.7–2%)를 단언 안에서 2–3회 재시도(mon-1처럼 한 번뿐인 조회) — T098/T097 때. ⑤ **반증 검증자 2명(10-14 10:59–11:19 KST · 읽기 전용 · `reviews/live-vd-verifier-{backup,argo-net}-2026-10-14.md`)**: 관찰자 PASS 9건 **전부 confirmed · 반증 0**(16시간 뒤 재조회라 안정성 주장은 강화 — Argo Synced/Healthy ≈ 16.3h · 재시작 0 · 사이드카 로그 오류 0) · VD-3는 검증자도 버킷 13 오브젝트로 직접 닫음 · VD-10은 이름까지(Role/RoleBinding `pg-main-barman-cloud` · SA `pg-main`) · unverifiable = VD-9/12(권한 경계 — 간접 증거 전부 양성) · VD-13(미도래) · Events 기반 세부(**이벤트 TTL 1시간으로 소멸** · Argo 컨트롤러 로그 보존도 22:02Z부터) · refuted 1 = 관찰자의 "유휴에도 300초마다 WAL"(위 ③으로 정정됨). **검증자 추가 발견**: (a) operator 로그 `level=error` 2행(15:33Z · 00:35Z `Error while connecting to plugin (logical) … context canceled` — 플러그인 재등록 경합 · 무해) + 백업 컨트롤러 requeue 노이즈(`Backup is already running … startedAt <nil>` ×2 · `retrying in 60 seconds`) = 백업 1건당 정상 로그 → T098 로그 grep 거짓 양성 목록 (b) **사이드카 지표(:8080 `Serving metrics server`)는 containerPort 미선언 + 정책 9187/9404만이라 스크레이프 불가** → T098 입력(monitoring → data 8080 정책 또는 다른 경로) (c) `status.resources[].health` 빈 값은 **22개 Application 전부**(`argocd-cmd-params-cm`에 `controller.resource.health.persist` 미설정 = Argo 3.x 기본 비영속) → README §2 정정 · 하네스는 앱 health · CR phase로 (d) ScheduledBackup webhook 검증이 약 1시간마다 기록돼도 Argo Synced 16h 유지 = VD-11 안정 (e) PITR 체인: WAL 01–07 연속 · 공백 0 · 버킷 15.3 MB (f) Argo 컨트롤러 `DiffFromCache … cache: key is missing` ×4 — 무해. **절차 교정**: 머지 뒤 Events 기반 판정(Backup Starting/Completed · health 전이 · PSA FailedCreate)은 **+60분 안에 `get events -o json`을 저장**해야 뒤에 재검증할 수 있다(이번엔 관찰자 사본만 남음).
 - **실측으로 확정한 사실**:
   1. **검사 관문도 오래될 수 있다** — 공개 CRD 카탈로그 사본은 라이브 CRD보다 늦다. 저장소가 인플레이트하는 차트의 CRD에서 스키마를 파생하면 출처가 라이브와 항상 같다(이제 ESO·cert-manager·Traefik·Argo·CNPG CR 전부 그 스키마로 판정된다). 범위 밖 발견: kubeconform `default` 카탈로그(`master`)에는 `CustomResourceDefinition` 스키마가 없어 CRD 문서 자체는 Skipped다(기존 동작).
-  2. **Argo 내장 CNPG Cluster health는 정상 운영 phase를 Degraded로 매핑한다**(`Applying configuration` · in-place 재시작 · switchover · failover · 사용자 조치 대기 · major 업그레이드). 다단계 wave sync는 Degraded 전이에서 Failed로 닫히고, 자동 sync는 **기본 retry 5회(5s ×2 · 3m ≈ 2.6분)**를 소진하면 같은 리비전으로 다시 시작하지 않는다 — 소스 판독(gitops-engine `sync_context.go` · `appcontroller.go`). 첫 배포에서는 전이가 없었다(VD-11 첫 항목) — 파라미터 변경 PR이 첫 실측(계약 예외 `ApplyOutOfSyncOnly`가 한 장 변경을 단일 step으로 만든다).
+  2. **Argo 내장 CNPG Cluster health는 정상 운영 phase를 Degraded로 매핑한다**(`Applying configuration` · in-place 재시작 · switchover · failover · 사용자 조치 대기 · major 업그레이드). 다단계 wave sync는 Degraded 전이에서 Failed로 닫히고, 자동 sync는 **기본 retry 5회(5s ×2 · 3m — 대기 10·20·40·80·160 s ≈ 5분 · 2026-10-16 정정: 이전 표기 ≈ 2.6분은 증가 전 지수로 셈한 값)**를 소진하면 같은 리비전으로 다시 시작하지 않는다 — 소스 판독(gitops-engine `sync_context.go` · `appcontroller.go`). 첫 배포에서는 전이가 없었다(VD-11 첫 항목) — 파라미터 변경 PR이 첫 실측(계약 예외 `ApplyOutOfSyncOnly`가 한 장 변경을 단일 step으로 만든다).
   3. **파드 QoS는 파드 단위다** — Cluster 컨테이너 requests = limits여도 플러그인 사이드카(requests ≠ limits · CPU limit 없음)가 들어오면 Burstable. CNPG의 `PG_OOM_ADJUST_VALUE=0`(Guaranteed 조건)은 기대하지 않는다. 사이드카 CPU 상한은 백업 압축을 늦추고 requests 상향은 노드 B 예산(T055·T057 동거)이라 **T097에서 VD-6 실측 뒤 결정**.
   4. **플러그인 사이드카는 `spec.initContainers`의 native sidecar**(restartPolicy Always · 고정 이름 `plugin-barman-cloud`) — `spec.containers`만 보는 명령은 빈 값을 낸다. 사이드카 ↔ 인스턴스 매니저는 파드 안 unix 소켓(`/plugins`), 밖으로는 kube-api 6443 · OCI 443만 — data → cnpg-system 9090은 필요 없다.
   5. **8000은 상태 수집(`/pg/status`) · in-place update 경로다. 백업 시작은 `pods/exec`** — `method: plugin`도 같다(`IsManagedByInstance` → `ExecCommand`). 5432는 operator가 쓰지 않는다(열지 않은 채 첫 백업·상태 수집이 됐다 — 로그 판정은 VD-5).
@@ -826,7 +826,7 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
 
 **목적**: gitops T054 PR(`platform/cnpg-databases/` — ExternalSecret 6 → `DatabaseRole` 6의 `passwordSecret`)이 처음부터 `SecretSynced`가 되도록, **머지 전에** Vault kv 6경로에 DB role 자격(`username`·`password`·`url`)을 경로마다 따로 랜덤 생성해 넣는다. 블록 정본은 `specs/003-platform-foundation/design/t054-blocks/op1-seed-db.ps1`이고, 결정 대응·모의 하네스(`harness.ps1` — 시나리오 92 · 단언 2771 전부 PASS, 2026-10-15 수정 라운드 6: 시드 블록 68 + 아래 「정리 판단」 두 블록 24)·남은 위험은 같은 디렉터리 `README.md`에 있다.
 
-- **언제**: gitops T054 PR **머지 전**(gitops `platform/cnpg-databases/README.md` §0 선행 조건 P3). 머지가 먼저 되면 ExternalSecret 6장이 kv 없음으로 `SecretSyncedError`(Degraded)가 되고 Argo operation이 Failed로 닫힌다. 이때 **"retry가 도는 동안 시드하면 다음 재시도에서 저절로 회복한다"고 기대하지 않는다**: Application `retry`(5회 · 30s ×2 · 최대 5m — 창 ≈ 12.5분 · gitops T054 결정 D8)는 ES가 회복했는지 다시 기다리지 않아 그사이 PostSync Job이 Secret 없음으로 실패하며 재시도를 소모하고, ESO의 ES 재조정은 실패가 이어질수록 지수 백오프로 벌어져(controller-runtime 기본값 — 수 분 실패한 뒤에는 다음 시도가 5–16분 뒤일 수 있다 · 2026-10-14 리뷰 K5의 ESO v2.10.0 코드 근거) retry 창을 넘길 수 있다. 머지가 먼저 됐다면 아래 「늦은 시드」 절차를 따른다.
+- **언제**: gitops T054 PR **머지 전**(gitops `platform/cnpg-databases/README.md` §0 선행 조건 P3). 머지가 먼저 되면 ExternalSecret 6장이 kv 없음으로 `SecretSyncedError`(Degraded)가 되고 Argo operation이 Failed로 닫힌다. 이때 **"retry가 도는 동안 시드하면 다음 재시도에서 저절로 회복한다"고 기대하지 않는다**: Application `retry`(5회 · 30s ×2 · 최대 5m — 대기 60·120·240·300·300 s, 창 ≈ 17분 · gitops T054 결정 D8 · 2026-10-16 정정: 이전 표기 ≈ 12.5분은 증가 전 지수로 셈한 값)는 ES가 회복했는지 다시 기다리지 않아 그사이 PostSync Job이 Secret 없음으로 실패하며 재시도를 소모하고, ESO의 ES 재조정은 실패가 이어질수록 지수 백오프로 벌어져(controller-runtime 기본값 — 수 분 실패한 뒤에는 다음 시도가 5–16분 뒤일 수 있다 · 2026-10-14 리뷰 K5의 ESO v2.10.0 코드 근거) retry 창을 넘길 수 있다. 머지가 먼저 됐다면 아래 「늦은 시드」 절차를 따른다.
 - **경로·값**:
 
   | kv 경로 | `username`(PG role) | DB | 읽는 store |
@@ -1011,6 +1011,167 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
     - 요약 6행(전부 `생성 v1 · 되읽기 해시 일치(username·password·url)`): `kv/prod/db/identity_admin/owner` · `kv/prod/db/identity_admin/app` · `kv/dev/db/dev_identity_admin/owner` · `kv/dev/db/dev_identity_admin/app` · `kv/platform/db/authentik/owner` · `kv/platform/db/openfga/owner`
     - 집계: `이 실행이 kv 에 새로 쓴 경로: 6건(생성·검증 완료 6 · 응답 유실 뒤 재판정으로 검증 완료 0 · 기록 후 검증 실패 0) · 결과 미확인 0 · 건너뜀 0 · 중단 0 · 미실행 0` · `판정: kv 6경로 준비 완료(생성 또는 live-ok) — gitops T054 PR 머지 전제 충족`
     - 머지 뒤 ExternalSecret 6장 `SecretSynced` 확인 시각: PR #48 머지 07:35:46Z(16:35:46 KST) → Argo operation 시작 **07:38:25Z** → ES 6장 `refreshTime` **07:38:25–26Z**(Ready=True · SecretSynced — operation 시작 1초 안 · kv 6경로 실재 증명) → 컨트롤러 폴러 07:38:58Z 관측 · `t054-verify.ps1 -Stage post` 07:39:30Z es-* 6 PASS(§3 T054)
+
+### T056 — Kafka SCRAM 비밀번호 시드(kv 2경로 · 랜덤)
+
+**목적**: gitops T056 PR(`platform/kafka-topics/` — wave 0 ExternalSecret 2 → wave 1 `KafkaUser` 2의 `spec.authentication.password.valueFrom.secretKeyRef`)이 처음부터 `SecretSynced`가 되도록, **머지 전에** Vault kv 2경로에 Kafka SCRAM-SHA-512 비밀번호(키 `password` 하나)를 경로마다 따로 랜덤 생성해 넣는다 — 그래야 User Operator(UO)가 첫 조정에서 그 Secret으로 SCRAM 자격을 만들고 KafkaUser가 `Ready`가 된다. 블록 정본은 `specs/003-platform-foundation/design/t056-blocks/op1-seed-kafka.ps1`(T054 `op1-seed-db.ps1`의 파생 — 원칙 (a)–(h) · 정지점 · 판정/쓰기 단계 분리 · `-cas=0` JSON stdin · 되읽기 SHA-256 대조 · 조건부 정리 · 요약 표는 같고, 경로 · 키 · live 판정 규칙만 다르다)이고, 결정 대응 · 모의 하네스(`harness.ps1` — 시나리오 100 · 단언 2608 전부 PASS, 2026-10-16 수정 라운드 r1: 시드 블록 72 + 아래 「정리 판단」 두 블록 28) · 남은 위험은 같은 디렉터리 `README.md`에 있다.
+
+- **언제**: gitops T056 PR **머지 전**(gitops `platform/kafka-topics/README.md` §0 선행 조건 P1). 머지가 먼저 되면 wave 0의 ExternalSecret 2장이 kv 없음으로 `SecretSyncedError`(Degraded)가 되고, operation은 wave 1(KafkaUser 2 · KafkaTopic 4 · CA 미러 ExternalSecret 5)을 적용하지 못한 채 Failed로 닫힌다. Application `platform-kafka-topics`는 예외 없는 표준 syncPolicy라 기본 재시도(대기 10·20·40·80·160 s ≈ 5분 — gitops T056 결정 D6 · 리뷰 r3 B1 정정)가 끝나면 더 시도하지 않는다. 재시도가 도는 동안 시드해도 저절로 회복한다고 기대하지 않는다 — ESO의 ES 재조정은 실패가 이어질수록 지수 백오프로 벌어진다(§4 T054 「언제」와 같은 이유). 머지가 먼저 됐다면 아래 「늦은 시드」 절차를 따른다.
+- **경로·값**:
+
+  | kv 경로 | 키 | KafkaUser(= SCRAM 사용자 이름 · 비밀 아님) | 읽는 ExternalSecret(ns `data` · store `vault-data`) | 같은 값을 읽는 그 밖의 소비자 |
+  |---|---|---|---|---|
+  | `kv/prod/kafka/identity-admin` | `password` | `identity-admin` | `kafka-user-identity-admin` | 뒤에 `jt-prod`의 `identity-admin-env`(store `vault-prod` · T072 — 아직 없다) |
+  | `kv/dev/kafka/identity-admin` | `password` | `dev-identity-admin` | `kafka-user-dev-identity-admin` | 검사 Job용 `jt-dev`의 `assert-env`(store `vault-dev` · `property: password` → `KAFKA_PASSWORD` · tests Application 배포는 T059) · 뒤에 `jt-dev`의 `identity-admin-env`(T072) |
+
+  `password` = `RandomNumberGenerator` 32바이트 → base64url(패딩 없음 · 43자 · `A–Z a–z 0–9 - _` — SASL/JAAS 문자열 · URL · 셸에서 인코딩이 필요 없다 · T054와 같은 생성기). `username`은 kv에 두지 않는다 — SCRAM 사용자 이름은 KafkaUser 이름이고 비밀이 아니다(data-model §8 `kv/{env}/kafka/<pod>` 키 `password`). ExternalSecret 이름이 `kafka-user-<KafkaUser>`인 것은 UO가 만드는 자격 Secret(이름 = KafkaUser 이름)과 겹치지 않게 하려는 것이다(gitops T056 결정 D2).
+- **사전**(블록 밖 — 창 표기는 `docs/runbooks/vault-unseal.md` §0, 이 블록은 창 D · §4 T054 「사전」 1–5와 같다):
+  1. 창 C·D에서 `vault-unseal.md` §0 **창 시작 체크리스트**(`SaveNothing` · 전사 없음 — 전사 정책은 그 체크리스트가 PowerShellCore 키(+ `UseWindowsPowerShellPolicySetting` 분기)로 본다 · **클립보드 기록 0** — 켜져 있으면 블록이 첫 검사에서 멈춘다). PowerShell **모듈 로깅 정책**(`HKLM`/`HKCU:\SOFTWARE\Policies\Microsoft\PowerShellCore\ModuleLogging`의 `EnableModuleLogging` — 그 키의 `UseWindowsPowerShellPolicySetting`이 1이면 Windows PowerShell 쪽 키도)이 켜져 있어도 블록이 첫 검사에서 멈춘다(켜진 채로는 kv · 토큰 조회 응답 원문이 이벤트 4103에 남는다). 창 D에서는 체크리스트의 마지막 줄(`$env:KUBECONFIG` 설정 · `kubectl config current-context`)을 건너뛴다 — 이 블록과 아래 「정리 판단」 두 블록은 kubectl을 쓰지 않는다.
+  2. 창 C: 관리자 kubeconfig로 `kubectl -n vault port-forward svc/vault 18200:8200`. 블록 자신은 kubectl을 쓰지 않는다(창 D에는 관리자 kubeconfig가 필요 없다).
+  3. 창 D: `Get-ChildItem Env:VAULT_*` 결과 없음(`VAULT_ADDR=http://127.0.0.1:18200`만 허용 — 다른 `VAULT_*`가 있으면 블록은 그 변수를 건드리지 않고 멈춘다) · `~/.vault-token` 없음.
+  4. 비밀번호 관리자(PM)의 root 토큰 항목(§0 토큰 표 ⑥ — T044 D4: 시드는 root로, revoke 보류).
+  5. 붙여넣기로 실행할 때만: 창 D를 `pwsh -NoProfile`로 **새로 연 창**으로 쓴다(프로필이 `vault`·`Read-Host`·`ConvertFrom-Json`을 함수·별칭으로 가리거나 `Set-PSDebug -Trace`·중단점을 켜 두는 경로가 없는 창) + PSReadLine 로드 확인 1줄(블록 머리 주석 ⑤).
+- **실행**(창 D — 둘 중 하나):
+
+  ```powershell
+  pwsh -NoProfile -File D:\code\joshuatech_ver2\specs\003-platform-foundation\design\t056-blocks\op1-seed-kafka.ps1   # 권장: 새 프로세스 — env·변수가 프로세스와 함께 사라진다
+  ```
+
+  또는 파일 전문 붙여넣기(전체가 `& { … }` 한 문 · 빈 줄 0). **붙여넣기는 위 사전 5의 새 창(`pwsh -NoProfile`)에서만 한다** — 블록 첫 문장 `Set-PSDebug -Off`(창에 켜져 있던 `-Trace`가 root 토큰 · 비밀번호 대입을 찍지 않게)와 그 부수 효과(그 창의 전역 strict 모드도 꺼진다 — 창은 끝나면 닫는다)는 §4 T054 「실행」과 같다. **root 토큰을 붙이기 전에** 화면의 `INFO vault CLI` 줄에서 명령 종류가 `Application`이고 경로가 `vault.exe`로 끝나는지 본다(`.cmd`/`.bat` 래퍼도 `Application`으로 보인다). 아니면(함수 · 별칭 · 래퍼가 `vault`를 가리고 있다) 토큰을 붙이지 말고 Ctrl+C로 끝낸 뒤 원인을 확인한다(`-File` 실행에서도 같다). **소요** ≈ 1분 미만(Vault 호출 11회 — `version` 1 · `status` 1 · `token lookup` 1 · 판정 `metadata get` 2 · 경로마다 put · 되읽기 `kv get` · `metadata get` 3×2; 재실행(전부 live-ok)은 7회 — 하네스 S01 · S17이 센다). 한 줄에서 1분 넘게 멈추면 창 C port-forward를 본다 — 끊겼으면 연결 거부 또는 CLI 타임아웃 뒤 STOP으로 끝난다(재실행은 안전 — 아래 실패 표). **정지점(입력 순서)**: ① **root 토큰** — 보안 입력(빈 입력 = 중단 · 붙여넣은 직후 클립보드를 비운다 · `hvs.`로 시작하지 않으면 Vault로 보내지 않고 중단) ② **`seed`** — 쓸 경로 목록(값 없음 · 경로마다 KafkaUser · ExternalSecret 이름)을 보여 준 뒤의 쓰기 확인(쓸 경로가 0이면 나오지 않는다). 입력은 가려진다(`-MaskInput` — `*`로 보인다). 그 밖의 입력 · 빈 Enter · 앞뒤 공백 · 대문자(`SEED`)는 쓰기 0으로 중단한다.
+- **기대 출력**(첫 실행 — 값·해시·토큰은 어디에도 나오지 않는다 · 하네스 S01의 화면 출력에서 `INFO` · `OK Vault` 줄만 실물 모양으로 바꿨다 · 블록은 `쓸 경로` 줄과 요약 머리 앞에 빈 줄을 하나씩 낸다):
+
+  ```text
+  INFO vault CLI: Vault v… · Application ~\…\vault.exe — JSON stdin 형식은 T045 블록(2026-09-21 · VD-6 실측)과 T054 블록(2026-10-15 · 6경로 되읽기 해시 일치)이 CLI v2.1.0 으로 확인했다(…)
+  OK   Vault 도달 · 초기화됨 · unsealed(seal type=ocikms · server 2.0.4)
+  OK   토큰 정책에 root 포함 — 판정(읽기 전용)을 시작한다
+  PLAN kv/prod/kafka/identity-admin — absent → 생성 예정
+  PLAN kv/dev/kafka/identity-admin — absent → 생성 예정
+  판정 결과: 생성 예정 2 · 건너뜀(live-ok) 0 · 중단 0
+  쓸 경로 2개 — 값(password)은 이 블록이 경로마다 따로 랜덤 생성한다(화면에 나오지 않는다):
+    - kv/prod/kafka/identity-admin  (KafkaUser=identity-admin · ExternalSecret=kafka-user-identity-admin)
+    - kv/dev/kafka/identity-admin  (KafkaUser=dev-identity-admin · ExternalSecret=kafka-user-dev-identity-admin)
+  (정지점 ② seed)
+  OK   kv/prod/kafka/identity-admin v1 — 생성 · 되읽기 해시 일치(password)
+  OK   kv/dev/kafka/identity-admin v1 — 생성 · 되읽기 해시 일치(password)
+  --- T056 Kafka SCRAM 비밀번호 시드 결과 요약(값 없음 — 런북 bootstrap.md §4 T056 소절에 그대로 기록) ---
+  kv/prod/kafka/identity-admin   생성 v1 · 되읽기 해시 일치(password)
+  kv/dev/kafka/identity-admin    생성 v1 · 되읽기 해시 일치(password)
+  이 실행이 kv 에 새로 쓴 경로: 2건(생성·검증 완료 2 · 응답 유실 뒤 재판정으로 검증 완료 0 · 기록 후 검증 실패 0) · 결과 미확인 0 · 건너뜀 0 · 중단 0 · 미실행 0
+  판정: kv 2경로 준비 완료(생성 또는 live-ok) — gitops T056 PR 머지 전제 충족 · …
+  창 종료 체크리스트(docs/runbooks/vault-unseal.md §0 · 창 D): …
+  ```
+
+  재실행이면 두 경로가 `SKIP … — live-ok(키 1 = password · base64url 43자 형식 확인 — 값 미출력 · 덮어쓰지 않는다)`로 나오고 `INFO 쓸 경로 없음 — 2경로 모두 live-ok(…)` 뒤 쓰기 확인 정지점이 없다(값을 다시 만들지 않는다 — 회전이 아니다).
+- **판정**: 요약 2행이 전부 `생성 v1 · 되읽기 해시 일치(password)` · `기록됨(응답 유실 — 이 실행의 값 …) · 되읽기 해시 일치(password)`(put 응답 유실 뒤 재판정으로 검증된 경로 — 정상 완료와 같다, 아래 실패 시 표) 또는 `건너뜀(live-ok — 덮어쓰지 않았다)`이고 `판정: kv 2경로 준비 완료` 줄이 나오면 머지로 진행한다. 이 소절 끝 「실행 기록」에 날짜 · 요약 2행 · `INFO vault CLI` 줄(실행 파일 종류 · 경로 포함 — 사용자 프로필 경로는 블록이 `~`로 줄여 낸다)을 옮겨 적고(값 없음), `vault-unseal.md` §0 창 종료 체크리스트를 한다.
+- **실패 시**(`STOP` 사유별 조치 — 수동 확인은 `vault-unseal.md` §0 절대 규칙 1로 `VAULT_ADDR`·`VAULT_TOKEN`을 다시 넣고 하며, **값을 출력하는 명령은 쓰지 않는다**. 문구와 뜻은 §4 T054 실패 표와 같고, 이 표는 Kafka 2경로 · 키 `password` 하나에 맞춘 판이다 — 「prod 와 dev 의 password 가 같다」 행만 T056에 새로 있다(리뷰 r1 C1)):
+
+  | 출력 | 뜻 | 조치 |
+  |---|---|---|
+  | `클립보드 기록 …` · `~/.vault-token 존재` · `VAULT_* 환경 변수가 이미 있다: <이름>` · `PowerShell 7.5 이상` · `vault CLI 를 찾을 수 없다` | 창 전제 미충족 — 아무것도 묻지 않았다 | 창 시작 체크리스트 · 이름이 나온 변수를 확인한 뒤 `Remove-Item Env:<이름>` · 재실행 |
+  | `PowerShell 모듈 로깅 정책이 켜져 있다(<키>)` | 그룹 정책(GPO)의 모듈 로깅 — 켜진 채로 실행하면 응답 원문(비밀번호 · root 토큰)이 이벤트 로그 4103에 남는다 · 아무것도 묻지 않았다 | 정책을 끌 수 있으면 끄고 새 창에서, 끌 수 없으면 정책이 없는 PC에서 실행한다(정책을 우회하지 않는다) |
+  | `Vault 도달 실패 또는 status 응답 해석 실패` · `Vault sealed` · `Vault 미초기화` · `vault status 가 unsealed 인데 exit=…` | 창 C port-forward 끊김(파드 교체 뒤 끊긴다) 또는 Vault 상태 — 토큰을 묻기 전이다 | 창 C 재수립 · `vault-unseal.md` §1 · 재실행 |
+  | 경고 `클립보드를 비우지 못했다 — root 토큰이 클립보드에 남아 있을 수 있다 …`(STOP 아님 — 시드는 계속된다) | 다른 프로그램(원격 데스크톱 `rdpclip` · 클립보드 관리자)이 클립보드를 잡고 있어 블록이 비우지 못했다. 토큰 입력 직후에 나왔으면 root 토큰이 클립보드에 남아 있을 수 있다 | 보는 즉시 PM의 클립보드 지우기 또는 아무 텍스트 복사로 직접 덮어쓴다(다른 창에 붙여 넣지 않는다) · 원인 프로그램을 닫는다 · 실행 기록에 경고가 나왔다고 적는다 |
+  | `입력이 Vault 토큰 형식…` · `root 토큰 확인 실패` · `토큰 정책에 root 가 없다` | 다른 PM 항목을 붙였거나 토큰이 무효 — 쓰기 0. `입력이 Vault 토큰 형식…`은 root 토큰이 `hvs.` 접두가 아닐 때도 나온다(블록의 가정 — `t056-blocks/README.md` §5 · T054 첫 실행 2026-10-15에서는 통과했다) | PM 항목 확인 · 재실행. 맞는 항목인데도 같은 줄이 나오면 더 시도하지 않고 멈춘다(블록의 토큰 형식 가정을 고쳐야 한다) |
+  | `STOP <경로> — 판정 불가: …` | 일시 오류 · 권한 · 응답 해석 실패(`kv get 응답을 해석하지 못했다(원문 미출력)` — 잘린 JSON 등. 재실행해도 반복되면 `password`와 대소문자만 다른 키(`Password` 등)가 함께 있는 값일 수 있다 — PowerShell JSON 해석이 그런 응답을 거부한다 · 하네스 S04i) — 판정 단계라 쓰기 0 | 재실행. 반복되면 값 없는 진단만 한다: 아래 ① 점검 블록(상태 · 버전 이력 · 키 이름 — 대소문자만 다른 키가 함께 있으면 키 이름만 담은 JSON 변환 오류로 끝난다 · 하네스 GA09) 또는 kv get 쪽 종료 코드만 `vault kv get "-format=json" <경로> > $null; "exit=$LASTEXITCODE"`(stdout은 버린다 — 성공하면 값이 stdout으로 나온다). 표 형식 `vault kv get <경로>`는 쓰지 않는다(성공하면 password가 화면에 나온다) |
+  | `STOP <경로> — dead: …` | 현재 버전이 soft-delete · destroy이거나 메타데이터만 있다 — 쓰기 0 | 아래 ① 점검 블록으로 버전 상태만 본다(값 없음) → 「정리 판단」 |
+  | `STOP <경로> — live-mismatch: …` | 이미 값이 있는데 키 집합이 정확히 `password` 하나가 아니거나(여분 키 `username` · T054 모양 `username`·`password`·`url` · 대소문자만 다른 `Password` 포함) `password`가 base64url 43자 문자열이 아니다(길이 · 문자 · 끝 개행 · 숫자형) — 쓰기 0 · 덮어쓰지 않는다 · 자동으로 고치지 않는다 | 아래 ① 점검 블록으로 키 이름만 본다 → 「정리 판단」(정정 블록은 이 과제 범위 밖). 이 블록은 `password` 하나만 쓰므로 다른 키가 있으면 그 값은 이 블록이 만든 것이 아니다 — 넣은 사람 · 작업을 먼저 확인한다(「정리 판단」은 이 블록의 실패한 실행이 만든 경로에만 쓴다) |
+  | `STOP <경로> — prod 와 dev 의 password 가 같다 — dev 값은 jt-dev assert-env 로도 복사되므로 dev 노출이 prod SCRAM 노출이 된다 · 값 미출력 · 쓰기 0`(두 경로 모두 — 경로별 `SKIP … live-ok` 2줄 뒤) · `판정 결과: 생성 예정 0 · 건너뜀(live-ok) 0 · 중단 2` · 요약 2행 `중단(prod 와 dev 의 password 가 같다 — 값 미출력 · 쓰기 0)` | 두 경로 모두 live-ok 모양인데 `password`가 서로 같다(블록이 두 값의 SHA-256을 Ordinal로 비교 — 값 · 해시 미출력 · 리뷰 r1 C1). 앞의 SKIP 2줄은 경로별 모양 판정이고 이 STOP이 두 경로 쌍 판정이다. 이 블록은 경로마다 독립 RNG로 만들므로 같은 값은 블록 밖에서 들어간 것이다. dev 값은 `jt-dev`의 `assert-env`로도 복사되므로 dev 노출이 곧 prod SCRAM 자격 노출이 된다 — 판정 단계라 쓰기 0 | 어느 쪽이 블록 밖에서 들어갔는지 확인해 실행 기록에 남긴다(아래 ① 점검 블록 — 버전 이력 · 키 이름만 + 그 시각에 넣은 사람 · 작업) → **두 경로 모두** ② 삭제 블록으로 지운다(한 번에 한 경로) → 이 블록을 재실행한다(두 경로가 absent로 판정되어 독립 RNG 새 값 2개). 근거: 같은 값은 블록 밖(화면 · argv · 클립보드)을 거쳤다는 뜻이라 **남기는 쪽도 노출로 본다** — 블록이 만든 prod 값을 dev로 옮긴 경우 dev만 지우면 옮기려고 읽어 낸 그 prod 값이 SCRAM 자격으로 남는다(리뷰 r2 R3 · K7). 머지 전에는 소비자가 없어(ES는 머지 때 · `assert-env`는 T059 · `identity-admin-env`는 T072) 둘 다 지워도 비용이 없다. 이 행은 「정리 판단」의 "이 블록의 실패한 실행이 만든 경로" 조건의 예외다. **머지 뒤에는 ② 삭제를 쓰지 않는다** — 값 교체는 회전(정식 절차 `secret-rotation.md` 후속 — T084)이므로 컨트롤러 · 사용자가 판단한다(소비자 반영은 ES 5분 · UO ≤ 120초) |
+  | `STOP <경로> — put 거부(exit=…) · 재판정 absent` · 요약 `중단(put 거부 … — 재판정 absent · 쓰지 않았다)` | `-cas=0` put이 비 0으로 끝났고 **값 없이 다시 판정해도 경로가 없다 = 쓰지 않았다**(권한 · 연결 · CLI 오류 — CAS 거부가 아니다) · 뒤 경로 미실행 | 토큰 정책(`root`) · 창 C port-forward · `INFO vault CLI` 줄을 확인한 뒤 재실행. 같은 STOP이 반복되면 더 시도하지 않고 멈춘다 |
+  | `STOP <경로> — put 거부(exit=…) · CAS 충돌(다른 값)` · 요약 `중단(put 거부 … 재판정 live v1 · 되읽기 값이 이 실행의 것과 다르다 = CAS 충돌 · 덮어쓰지 않았다)` | put 비 0 뒤 재판정이 live v1인데 되읽기 값(해시)이 이 실행의 값과 다르다 — 판정 뒤 다른 기록자가 그 경로를 썼다(판정 단계의 일시 `No value found` 오판 포함) · 덮어쓰지 않았다 | 재실행 — 이번엔 판정이 그 경로를 live로 본다(모양이 맞으면 SKIP · 아니면 live-mismatch) + 같은 시각에 이 경로를 쓴 다른 창 · 작업자를 확인한다 |
+  | `OK   <경로> v1 — 기록됨(응답 유실 — 이 실행의 값 · put exit=… 뒤 재판정) · 되읽기 해시 일치(password)` · 집계 `응답 유실 뒤 재판정으로 검증 완료 1`(STOP 아님 — 뒤 경로 계속) | put 응답이 유실돼 CLI 자동 재시도(`VAULT_MAX_RETRIES` 기본 2)가 자기 기록과 CAS 충돌했지만, kv의 v1이 이 실행의 값임을 되읽기 해시로 확인했다 — 정상 완료와 같다 | 조치 없음. 실행 기록에 그 줄을 그대로 옮긴다(창 C 순단 신호 — 반복되면 port-forward를 다시 세운다) |
+  | `STOP <경로> — 되읽기 실패(exit=…)` · `되읽기 응답을 해석하지 못했다` | put은 됐다(v1) — 되읽기만 실패(put 비 0 뒤 재판정 live v1에서 났다면 요약은 `결과 미확인(…)`) | **재실행이 복구다**(그 경로를 live로 판정 → 모양이 맞으면 SKIP) |
+  | 요약 행 `결과 미확인(put 진행 중 중단 …)` · `결과 미확인(put exit=… — 재판정 <종류> …)` · 집계 `결과 미확인 1` | put이 도는 동안 중지됐다(Ctrl+C 등 — STOP 줄 없음) 또는 put 비 0 뒤 재판정 자체가 일시 오류 · dead · `current_version≠1`이어서 이 실행의 값이 기록됐는지 모른다 | 지우지 않고 **재실행한다**(있으면 live로 판정 → 모양이 맞으면 SKIP · 없으면 생성). 재판정이 dead였다면 재실행도 dead로 멈춘다 → dead 행 |
+  | 요약 행 `생성 예정(판정 absent — 쓰기 확인 전)` · STOP 줄 없음 | 정지점 ②(`seed`)에서 중지했다(Ctrl+C · 창 닫기) — 쓰기 확인 전이라 쓰기 0 · 값을 만들지도 않았다 | 재실행(판정부터 다시 — 되돌릴 것이 없다) |
+  | `STOP <경로> — 되읽기 해시 불일치(password)` · `되읽기 키 집합 불일치(…)` | 기록된 값(v1)이 블록이 만든 값과 다르다(CLI 동작 변화 의심 — `INFO vault CLI` 줄을 T045 VD-6 기록 · §4 T054 실행 기록(CLI v2.1.0)과 대조) | 재실행하면 대개 live-mismatch로 멈춘다 → 아래 「정리 판단」 |
+  | `STOP <경로> — 쓰기 뒤 메타데이터가 current_version=1 · 삭제 없음이 아니다(<종류> · current_version=<n> …)` · 요약 `기록됨 — 메타데이터 확인 실패(…)` | 값은 되읽기 해시 대조까지 일치했다(v1 기록 · 대조 끝) — 그 뒤 metadata 판정만 어긋났다. 괄호 안 종류별로 조치가 다르다 | §4 T054 실패 표의 같은 행과 같다: `error` → 재실행(판정이 live로 보고 SKIP) · `live · current_version=2` → 재실행 + 같은 시각에 이 경로를 쓴 다른 창 · 작업자 확인 · `dead`(`delete_version_after` 삭제 예약) → 그 행의 값 없는 두 명령으로 키 · 마운트 설정을 보고, **`0s`로 고치기 전에는 정리하지 않는다** |
+
+  **정리 판단(운영자 · 머지 전에만)**: gitops T056 PR이 **머지되기 전**(ExternalSecret이 아직 그 경로를 읽지 않는다)이고 그 경로가 이 블록의 실패한 실행이 만든 것(요약 표 · 버전 이력으로 확인 — 예외: 위 실패 표 「prod 와 dev 의 password 가 같다」 행의 두 경로)일 때만, 운영자 판단으로 그 경로의 모든 버전과 메타데이터를 지운 뒤(**되돌릴 수 없다**) 블록을 재실행한다. 경로를 손으로 넣는 한 줄 `vault kv metadata delete <경로>`는 쓰지 않는다 — 오타 · 복사 실수로 2경로 밖(예: 이미 소비 중인 `kv/platform/cloudflare/tunnel` · T054의 `kv/prod/db/identity_admin/owner`)을 넣으면 그 경로의 모든 버전이 영구 삭제된다. 판정(읽기)과 변경(삭제)은 **한 블록에 섞지 않는다**(2026-09-22 메모리 규칙 · T054 결정 C6): 아래 **① 점검 블록**(읽기 전용 — vault 쓰기 명령 0 · 상태 · 버전 이력 · 키 이름만, 값 출력 0)으로 먼저 보고 운영자가 판단한 뒤, **② 삭제 블록**(2경로 허용 목록 Ordinal · 지울 경로를 다시 그대로 타자 · 삭제 뒤 `No value found` 확인 · 조회/삭제 실패 · 잔존 · 삭제 뒤 조회 오류 = 중단)만 쓴다. 둘 다 창 D(`VAULT_ADDR`·`VAULT_TOKEN`은 `vault-unseal.md` §0 절대 규칙 1로 넣은 상태 — 블록은 둘을 만들지도 지우지도 않는다) · 통째로 붙여 넣어도 안전(`& { … }` 한 문 · 빈 줄 0 · TAB 0) · 한 번에 한 경로 · 첫 `Read-Host` 전에 클립보드를 비운다. 두 블록은 저장소 하네스가 **이 코드 펜스에서 그대로 추출해** 모의로 시험한다(`t056-blocks/harness.ps1` R1 · R2 정적 → GA · GB 런타임 — 펜스 안을 고치면 하네스를 다시 돌린다). **머지 뒤에는 지우지 않는다** — 그때의 값 교체는 회전 절차다(아래).
+
+  ① 점검 블록(읽기 전용 — 지우지 않는다):
+
+  ```powershell
+  & {
+    # [t056-cleanup-inspect] 읽기 전용 — vault 쓰기 명령 0 · 값 출력 0(상태 · 버전 이력 · 키 이름만) · 한 번에 한 경로 · 첫 Read-Host 전 클립보드 비움(§0 규칙 1로 붙인 토큰 잔류 방어)
+    $ErrorActionPreference = 'Stop'
+    $PSNativeCommandUseErrorActionPreference = $false
+    try { Set-Clipboard -Value ' ' } catch { Write-Warning '클립보드를 비우지 못했다 — root 토큰이 클립보드에 남아 있을 수 있다. 직접 비운 뒤 계속한다' }
+    $two = @('kv/prod/kafka/identity-admin', 'kv/dev/kafka/identity-admin')
+    try { $Host.UI.RawUI.FlushInputBuffer() } catch { }
+    $p = Read-Host '점검할 kv 경로(STOP 줄의 경로 그대로 — T056 2경로 중 하나)'
+    if (-not @($two | Where-Object { [string]::Equals($_, $p, [StringComparison]::Ordinal) }).Count) { throw '2경로 밖이다 — 중단(아무것도 조회하지 않았다)' }
+    $raw = @(vault kv metadata get "-format=json" $p 2>&1)
+    $rc = $LASTEXITCODE
+    if ($rc -ne 0) {
+      if (@($raw | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] -and ([string]$_).StartsWith('No value found at ', [StringComparison]::Ordinal) }).Count) { Write-Host "$p — absent(메타데이터 없음 — 지울 것이 없다 · 시드 블록이 absent 로 판정해 생성한다)"; return }
+      throw "metadata 조회 실패(exit=$rc) — 판정 불가(창 C port-forward · 토큰 확인 뒤 재실행)" }
+    $d = ((@($raw | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }) -join "`n") | ConvertFrom-Json -DateKind String).data
+    Write-Host "$p — current_version=$($d.current_version) · delete_version_after=$($d.delete_version_after) · 버전 이력(값 없음):"
+    foreach ($v in $d.versions.PSObject.Properties) { Write-Host ('  v{0}  created={1}  deletion_time={2}  destroyed={3}' -f $v.Name, $v.Value.created_time, $v.Value.deletion_time, $v.Value.destroyed) }
+    $o = @(vault kv get "-format=json" $p 2>$null)
+    if ($LASTEXITCODE -ne 0) { Write-Host '  현재 버전 데이터: 읽지 못했다(exit≠0 — soft-delete · destroy · 버전 없음이면 정상)'; Write-Host '점검 끝 — 이 블록은 아무것도 쓰지 않았다. 지우려면 아래 ② 삭제 블록(머지 전에만)'; return }
+    $dd = (($o -join "`n") | ConvertFrom-Json -DateKind String).data.data
+    $o = $null
+    if ($null -eq $dd) { Write-Host '  현재 버전 데이터: 없음(soft-delete · destroy)' }
+    else { Write-Host ('  현재 버전 키 이름(값 미출력): ' + (@($dd.PSObject.Properties | ForEach-Object { $_.Name } | Sort-Object) -join ' · ')) }
+    $dd = $null
+    Write-Host '점검 끝 — 이 블록은 아무것도 쓰지 않았다. 지우려면 아래 ② 삭제 블록(머지 전에만)'
+  }
+  ```
+
+  ② 삭제 블록(되돌릴 수 없다 — ①로 확인한 경로만 · 머지 전에만):
+
+  ```powershell
+  & {
+    # [t056-cleanup-delete] 되돌릴 수 없다 — ① 점검 블록으로 확인한 경로만 · 2경로 허용 목록(Ordinal) · 경로 재입력 · 삭제 뒤 No value found 확인 · 한 번에 한 경로 · 첫 Read-Host 전 클립보드 비움(§0 규칙 1로 붙인 토큰 잔류 방어)
+    $ErrorActionPreference = 'Stop'
+    $PSNativeCommandUseErrorActionPreference = $false
+    try { Set-Clipboard -Value ' ' } catch { Write-Warning '클립보드를 비우지 못했다 — root 토큰이 클립보드에 남아 있을 수 있다. 직접 비운 뒤 계속한다' }
+    $two = @('kv/prod/kafka/identity-admin', 'kv/dev/kafka/identity-admin')
+    try { $Host.UI.RawUI.FlushInputBuffer() } catch { }
+    $p = Read-Host '지울 kv 경로(① 점검 블록으로 확인한 경로 그대로 — T056 2경로 중 하나)'
+    if (-not @($two | Where-Object { [string]::Equals($_, $p, [StringComparison]::Ordinal) }).Count) { throw '2경로 밖이다 — 중단(아무것도 지우지 않았다)' }
+    $raw = @(vault kv metadata get "-format=json" $p 2>&1)
+    $rc = $LASTEXITCODE
+    if ($rc -ne 0) {
+      if (@($raw | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] -and ([string]$_).StartsWith('No value found at ', [StringComparison]::Ordinal) }).Count) { throw "$p 는 이미 없다(absent) — 지울 것이 없다 · 중단(아무것도 지우지 않았다)" }
+      throw "metadata 조회 실패(exit=$rc) — 중단(아무것도 지우지 않았다)" }
+    $cv = ((@($raw | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }) -join "`n") | ConvertFrom-Json -DateKind String).data.current_version
+    $raw = $null
+    try { $Host.UI.RawUI.FlushInputBuffer() } catch { }
+    $again = Read-Host "되돌릴 수 없다 — $p (current_version=$cv) 의 모든 버전과 메타데이터를 지운다. 진행하려면 이 경로를 다시 그대로 타자로 입력(그 외 = 중단)"
+    if (-not [string]::Equals($again, $p, [StringComparison]::Ordinal)) { throw '입력이 경로와 다르다 — 중단(아무것도 지우지 않았다)' }
+    $null = @(vault kv metadata delete $p 2>&1)
+    $rc = $LASTEXITCODE
+    if ($rc -ne 0) { throw "삭제 실패(exit=$rc) — 수동 확인: $p" }
+    $chk = @(vault kv metadata get "-format=json" $p 2>&1)
+    if ($LASTEXITCODE -eq 0 -or -not @($chk | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] -and ([string]$_).StartsWith('No value found at ', [StringComparison]::Ordinal) }).Count) { throw "삭제 확인 실패(경로가 남았거나 조회 오류) — 수동 확인: $p" }
+    Write-Host "OK   $p — 모든 버전 · 메타데이터 삭제(No value found 확인). op1-seed-kafka.ps1 을 새 프로세스로 재실행한다(이 경로는 absent 로 판정돼 새로 생성된다)"
+  }
+  ```
+
+  끝나면 `Remove-Item Env:VAULT_TOKEN, Env:VAULT_ADDR`만 하고(창 C port-forward · 창 A 터널은 그대로 둔다 — 재실행이 쓴다) 블록을 새 프로세스(`-File`)로 재실행한다(블록은 시작 전 `VAULT_TOKEN`이 있으면 멈춘다). 전체 창 종료 체크리스트(`vault-unseal.md` §0 — 창 C · 창 A 종료 포함)는 재실행이 끝난 뒤에 한다.
+- **머지 뒤 확인**(agent-view kubeconfig — 값은 보지 않는다. Secret은 agent-view가 읽지 못한다 · ExternalSecret · KafkaUser는 읽는다 — gitops `platform/policies` ClusterRole `agent-view-extra`의 `external-secrets.io` · `kafka.strimzi.io`):
+
+  ```powershell
+  kubectl -n data get externalsecret kafka-user-identity-admin kafka-user-dev-identity-admin
+  kubectl -n data get kafkauser identity-admin dev-identity-admin
+  ```
+
+  ES 2행 전부 STATUS `SecretSynced` · READY `True`이면 kv 2경로의 실재와 키 이름(`password`)이 증명된 것이다(ns `data`에는 T053 · T054의 ExternalSecret도 있으므로 이름을 지정한다 · ES 이름 = gitops T056 결정 D2). KafkaUser 2행은 CLUSTER `jt-kafka` · AUTHENTICATION `scram-sha-512` · AUTHORIZATION `simple` · READY `True` — UO가 그 Secret의 `password`로 SCRAM 자격을 만들었다는 뜻이다(UO가 만드는 자격 Secret · ACL · 토픽 확인은 gitops `platform/kafka-topics/README.md` §2).
+- **늦은 시드(머지가 먼저 된 경우만 — 원칙은 위 「언제」의 머지 전 시드)**:
+  1. 창 D에서 이 블록을 평소대로 실행한다(판정 · 생성 · 되읽기는 같다 — 요약 2행과 `판정: kv 2경로 준비 완료`까지 확인).
+  2. 창 B(관리자 kubeconfig)에서 ES 2장에 `force-sync` 어노테이션을 건다. ESO는 ES 어노테이션이 바뀌면 백오프를 기다리지 않고 곧바로 다시 읽는다(`force-sync` 값 = 실행 시각 epoch — kv 값과 무관한 깨우기 표식이다):
+
+     ```powershell
+     $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+     kubectl -n data annotate externalsecret kafka-user-identity-admin kafka-user-dev-identity-admin "force-sync=$ts" --overwrite
+     ```
+
+  3. agent-view로 위 「머지 뒤 확인」의 첫 명령을 돌려 ES 2행 전부 `SecretSynced` · `True`를 본다(값은 보지 않는다).
+  4. Application `platform-kafka-topics`의 operation이 Failed로 끝나 더 이상 재시도하지 않으면(그 operation은 wave 1의 KafkaUser · KafkaTopic · CA 미러 ExternalSecret을 아직 적용하지 않았다) 운영자가 Argo CD에서 **수동 전체 Sync**한다(gitops `platform/kafka-topics/README.md` §1 증상표). 재시도가 아직 남아 있으면 다음 재시도가 Secret이 생긴 뒤에 wave 1까지 간다 — 그 재시도도 Failed로 끝나면 수동 Sync한다.
+  5. agent-view로 「머지 뒤 확인」의 둘째 명령을 돌려 KafkaUser 2행 READY `True`를 본다 — wave 1이 적용되면 UO가 조정한다. 이미 있던 KafkaUser가 Secret 없음으로 NotReady였다면 UO의 다음 주기 조정(기본 120초 — Strimzi 1.2.0 `UserOperatorConfig` 기본 120000 ms · gitops `platform/kafka-topics/README.md` §1 · 이 클러스터 미실측)에서 Ready가 된다. 걸린 시간을 실행 기록에 남긴다.
+- **회전은 이 소절 범위 밖**: kv 값 교체 → ESO `refreshInterval` 5m 안에 Secret 갱신 → UO가 다음 조정에서 Kafka의 SCRAM 자격을 새 비밀번호로 바꾼다 → 소비자(`assert-env` · `identity-admin-env`)도 같은 kv 경로를 5m 안에 다시 읽는다(Deployment는 Reloader 롤아웃 — data-model §8) — 그 사이 옛 값으로 새로 접속하는 소비자는 인증에 실패할 수 있다(새 값으로 재접속하면 회복). 절차 정본은 `docs/runbooks/secret-rotation.md`(T084에서 작성 — 아직 없다). **회전 값도 이 블록과 같은 형식이어야 한다**(경로마다 따로 만든 base64url 43자 · 앞뒤 공백·개행 없음 · prod/dev 서로 다른 값) — 다른 형식이면 검사 Job `kafka-assert`가 JVM을 띄우기 전에 두 검사를 FAIL로 닫고(gitops `platform/policies/tests/README.md` 형식 검사 · 리뷰 r2 K5) 이 블록의 재실행이 live-mismatch로 멈춘다(리뷰 r3 A2 · B4). 이 블록의 재실행은 회전이 아니다(live-ok는 건너뛴다).
+- **실행 기록**: (운영자 실행 뒤 이 줄 아래에 추가 — 날짜·시각(KST, Z 병기) · 요약 2행 · `INFO vault CLI` 줄 · 머지 뒤 ExternalSecret 2장 `SecretSynced` · KafkaUser 2 `Ready` 확인 시각. 값·해시·토큰은 적지 않는다)
 
 ## §5 v1 삭제 기록
 

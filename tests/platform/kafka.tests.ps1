@@ -75,9 +75,9 @@
 #   job-k-3    roundtrip RESULT PASS 줄의 근거에서 메시지 경로 지연 토큰 `latency=<n>ms`(Job이 더한다 — T056 몫)를 읽어 ≤ 5000 이면 PASS, 초과면 FAIL(값 표기),
 #              토큰이 없거나 둘 이상이면 FAIL(정확히 1개만 판정 — 둘 이상은 모호, fail closed; 재검토 F2). 토큰 둘레: 앞은 문자열 시작 · 공백 · ( [ · 따옴표,
 #              뒤는 끝 · 공백 · , ) ; . ] : · 따옴표(재검토 F3 — `(latency=120ms)` · `"latency=120ms"` 도 읽는다; 글자가 붙은 `xlatency=120ms` · `latency=120msx` 는 토큰이 아니다).
-#              벽시계 `<n>s`(Job 형식 `produce→consume <n>s (상한 30s, JVM 기동 포함)`)는 판정에 쓰지 않는다 — Job 컨슈머가
-#              --timeout-ms 20000(KAFKA_CONSUME_TIMEOUT_MS) 유휴 대기 뒤에야 끝나 JVM 2회 기동 + 20 s가 항상 포함되므로(≥ 20 s) spec US3 AC3의
-#              5 s(메시지 경로)와 다른 양이다(적대 리뷰 F1). Get-ElapsedSeconds는 사유 표기용으로만 남긴다. Job 자체의 30 s 벽시계 판정은 별개다.
+#              벽시계 `<n>s`(T056 Job 형식 `produce→consume <n>s latency=<n>ms (상한 30s, JVM 기동 포함)`)는 판정에 쓰지 않는다 — T056 Job은 컨슈머를 먼저
+#              띄워 파티션 할당을 확인한 뒤 produce하므로 벽시계 = produce 시작 ~ 마커 수신(프로듀서 JVM 기동 포함 · 컨슈머 유휴 대기는 들지 않는다)이고 spec US3 AC3의
+#              5 s(메시지 경로)와 다른 양이다(적대 리뷰 F1 · T051 시점 Job은 컨슈머 --timeout-ms 20000 유휴 대기까지 들어 항상 ≥ 20 s였다). Get-ElapsedSeconds는 사유 표기용으로만 남긴다. Job 자체의 30 s 벽시계 판정은 별개다.
 #   job-d-1    jobs.batch jt-dev/data-assert 존재 · status.succeeded ≥ 1 (T050 data.tests.ps1과 같은 Job — 각 파일이 자체 완결이라 중복 허용)
 #   job-d-2    `logs job/data-assert --tail=50`에 Dragonfly 검사 id acl-list · noperm · noauth · writer-set · reader-get · reader-set-denied ·
 #              reader-cross-denied 일곱이 각각 정확히 1개이고 전부 PASS · acl-list 근거 또는 `EVIDENCE:   user sample-pod …` 행에 %R~revoked:* 가 있다
@@ -443,8 +443,8 @@ function Get-ElapsedSeconds([string]$evidence) {
     if (-not $m.Success) { return $null }
     return [int]$m.Groups[1].Value
 }
-# roundtrip 근거의 메시지 경로 지연 `latency=<n>ms`(T056이 Job에 더한다 — 마커 수신 시각 − CreateTime). 벽시계 `<n>s`는 JVM 2회 기동 + 컨슈머 --timeout-ms 유휴
-#   대기(20 s)를 포함해 5 s 기준의 측정값이 아니다(적대 리뷰 F1).
+# roundtrip 근거의 메시지 경로 지연 `latency=<n>ms`(T056이 Job에 더한다 — 마커 수신 시각 − CreateTime). 벽시계 `<n>s`는 produce 시작 ~ 마커 수신(프로듀서
+#   JVM 기동 포함 · T056 Job은 컨슈머를 먼저 띄우므로 컨슈머 유휴 대기는 들지 않는다)이라 5 s 기준의 측정값이 아니다(적대 리뷰 F1).
 # 근거 안의 latency=<n>ms 토큰 전부(자릿수 상한 9). 앞: 문자열 시작 · 공백 · 여는 괄호 ( [ · 따옴표, 뒤: 끝 · 공백 · , ) ; . ] : · 따옴표
 #   (`latency=7s` · `xlatency=120ms` · `latency=120msx`는 토큰이 아니다 — 재검토 F3)
 function Get-LatencyTokens([string]$evidence) {
@@ -807,8 +807,8 @@ ClusterAssert 'job-k-2' {
     $sums = @($parsed.summaries)
     return @('PASS', "$((@($kafkaJobIds | ForEach-Object { "$_ PASS" })) -join ', '), SUMMARY pass=$($sums[0].pass) fail=0 matches $(@($parsed.results).Count) RESULT line(s) (last $logTail log lines)")
 } 1000
-# spec US3 AC3(produce→consume 왕복 5초 내)는 메시지 경로 기준이다. Job의 벽시계 `<n>s`는 JVM 2회 기동 + 컨슈머 --timeout-ms 20000 유휴 대기를 포함해
-#   항상 ≥ 20 s 이므로 판정값이 아니다 — Job이 찍는 `latency=<n>ms`(마커 수신 시각 − CreateTime; T056)로 판정하고 벽시계는 사유에만 적는다.
+# spec US3 AC3(produce→consume 왕복 5초 내)는 메시지 경로 기준이다. Job의 벽시계 `<n>s`는 produce 시작 ~ 마커 수신(프로듀서 JVM 기동 포함 · T056 컨슈머 선기동이라
+#   컨슈머 유휴 대기는 들지 않는다)이므로 판정값이 아니다 — Job이 찍는 `latency=<n>ms`(마커 수신 시각 − CreateTime; T056)로 판정하고 벽시계는 사유에만 적는다.
 ClusterAssert 'job-k-3' {
     $g = Get-ParsedJobLog $kafkaJob
     if ($null -ne $g.fail) { return @('FAIL', $g.fail) }
@@ -821,9 +821,9 @@ ClusterAssert 'job-k-3' {
     $toks = @(Get-LatencyTokens $ev)
     if ($toks.Count -gt 1) { return @('FAIL', "roundtrip evidence has $($toks.Count) latency=<n>ms tokens (expected exactly 1; ambiguous, fail closed): $(Clip $ev 120)") }
     $ms = Get-LatencyMs $ev
-    if ($null -eq $ms) { return @('FAIL', "roundtrip evidence has no latency=<n>ms token (the Job does not emit it yet -- T056 adds it; wall-clock${wall} includes JVM startup and the consumer idle wait): $(Clip $ev 120)") }
+    if ($null -eq $ms) { return @('FAIL', "roundtrip evidence has no latency=<n>ms token (the Job does not emit it -- T056 adds it; the wall clock${wall} is not the message-path latency): $(Clip $ev 120)") }
     if ($ms -gt $roundtripMaxMs) { return @('FAIL', "roundtrip latency ${ms}ms > ${roundtripMaxMs}ms (spec US3 AC3: produce->consume within 5 s; the Job's own 30 s wall-clock deadline is a separate check)") }
-    return @('PASS', "roundtrip latency ${ms}ms <= ${roundtripMaxMs}ms (message path, spec US3 AC3; the Job's wall clock${wall} includes JVM startup and the consumer idle wait)")
+    return @('PASS', "roundtrip latency ${ms}ms <= ${roundtripMaxMs}ms (message path, spec US3 AC3; the Job's wall clock${wall} spans produce start to marker receipt, including producer JVM startup)")
 }
 
 # ---------- 6. 검사 Job 로그 — data-assert Dragonfly 절(redis-cli 대신 클러스터 안 Job; VD-4) ----------
