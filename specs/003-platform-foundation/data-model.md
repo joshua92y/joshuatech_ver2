@@ -100,7 +100,9 @@ Dragonfly 키(파생 캐시, contracts/denylist.md가 정본):
 | 보존 | `retention.ms` 7일, `cleanup.policy` delete |
 | 복제 | 1 (단일 노드), `min.insync.replicas` 1 |
 | 사용자 | `<pod>`(prod) · `dev-<pod>`(dev), SCRAM-SHA-512. 비밀번호 원천은 Vault `kv/{env}/kafka/<pod>` → ESO → `KafkaUser.spec.authentication.password.valueFrom.secretKeyRef`(kafka ns) + 앱 ns에도 같은 경로의 ExternalSecret; 클러스터 CA(`jt-kafka-cluster-ca-cert`)는 ESO kubernetes provider로 앱 ns에 미러 |
-| ACL | 자기 토픽 `Write`·`Describe`, 구독 토픽 `Read`·`Describe`, 그룹 `<pod>-*` `Read`, DLQ `Write` |
+| ACL | 자기 토픽 접두(prod `<pod>.` · dev `dev.<pod>.` — DLQ `<pod>.dlq`·`dev.<pod>.dlq` 포함 · `patternType: prefix`) `Read`·`Write`·`Describe`, 구독 토픽 `Read`·`Describe`(literal — 구독이 생기는 pod feature가 행을 더한다), 그룹 접두 prod `<pod>-` · dev `dev-<pod>-`(prefix) `Read`. cluster·transactionalId ACL은 두지 않는다(Kafka KIP-679 — 토픽 `Write`가 있으면 idempotent producer의 `InitProducerId`가 허용된다 · 트랜잭션은 쓰지 않는다). 자기 접두의 `Read`는 dev·prod 대칭으로 둔다(검사 Job 왕복 · DLQ 점검 — 자기가 낸 이벤트를 읽는 권한이라 새 데이터 노출이 아니다). 2026-10-16 T056 결정 D3로 정정(이전 문구: 「자기 토픽 `Write`·`Describe`, 구독 토픽 `Read`·`Describe`, 그룹 `<pod>-*` `Read`, DLQ `Write`」 — env별 그룹 접두가 없었다) |
+
+- 그룹 접두의 구분자 `-`는 pod 이름에도 쓰인다 — **새 pod 이름은 기존 pod 이름 + `-`로 시작하지 않는다**(그룹 ACL `<pod>-`가 그 pod의 그룹까지 덮어 가입·오프셋 열람이 가능해진다 · T056 리뷰 K2). 토픽 접두는 `.`로 끝나 이 문제가 없다.
 
 ## 7. Database / Role — 소유 platform-gitops (CNPG 선언, `platform/cnpg-databases/`)
 
