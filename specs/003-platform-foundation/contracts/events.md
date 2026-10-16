@@ -5,7 +5,7 @@
 - 이름: prod `<pod>.<entity>.<event>`, dev `dev.<pod>.<entity>.<event>`. pod 이름은 kebab-case, entity·event는 단수 소문자. DLQ prod `<pod>.dlq` · dev `dev.<pod>.dlq`(2026-10-16 T056 정정 — KafkaUser ACL 접두가 env별이라 dev 자격으로는 `<pod>.dlq`에 쓸 수 없다 · data-model §6).
 - 파티션 3, 키 = `tenantid`(UUID 문자열). 같은 테넌트의 이벤트는 순서를 보존한다.
 - 보존 7일. 소비자는 7일 안에 따라잡지 못하면 재색인/재투영으로 복구한다(원천은 각 pod DB).
-- 쓰기 권한: 토픽 접두 `<pod>.`의 소유 pod만. 다른 pod가 대신 발행하지 않는다.
+- 쓰기 권한: 토픽 접두(prod `<pod>.` · dev `dev.<pod>.`)의 소유 pod만. 다른 pod가 대신 발행하지 않는다.
 
 ## 봉투 (CloudEvents 1.0, JSON)
 

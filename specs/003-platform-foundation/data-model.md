@@ -77,9 +77,9 @@ Dragonfly 키(파생 캐시, contracts/denylist.md가 정본):
 | `created_at` | timestamptz | |
 | `attempts` | int | 기본 0 |
 | `last_error` | text | nullable |
-| `dead_at` | timestamptz | nullable — `<pod>.dlq` 발행 시각 |
+| `dead_at` | timestamptz | nullable — 그 env의 DLQ(prod `<pod>.dlq` · dev `dev.<pod>.dlq`) 발행 시각 |
 
-- 상태: `pending`(행 존재, `dead_at IS NULL`) → `published`(행 삭제) / `dead`(`attempts ≥ max_attempts 10` → 원본 봉투를 `<pod>.dlq`로 발행 + `dead_at`, 행 유지·수동 재처리) → **purge**(`dead_at + 30 d < now()`인 행을 일 1회 삭제 — outbox가 무한히 자라지 않게 하는 유일한 경로).
+- 상태: `pending`(행 존재, `dead_at IS NULL`) → `published`(행 삭제) / `dead`(`attempts ≥ max_attempts 10` → 원본 봉투를 그 env의 DLQ(prod `<pod>.dlq` · dev `dev.<pod>.dlq` — `topic` 행의 env 접두 규칙 · §6 · 2026-10-16 T056 정정)로 발행 + `dead_at`, 행 유지·수동 재처리) → **purge**(`dead_at + 30 d < now()`인 행을 일 1회 삭제 — outbox가 무한히 자라지 않게 하는 유일한 경로).
 - 릴레이: relay 컨테이너가 **app role**로 `SELECT … WHERE dead_at IS NULL ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 100` → idempotent producer(key = `partition_key`, `delivery.timeout.ms` 30000) → 성공 시 DELETE. **dead 행은 다시 집지 않는다**(재발행 폭주 방지). 같은 트랜잭션에서 도메인 쓰기와 함께 INSERT되는 것만 유효하다(라이브러리가 `transaction.atomic()` 밖 INSERT를 `OutboxUsageError`로 거부).
 - 쓰기 API: `publish(topic, subject, data, *, tenant_id=None)` — 생략하면 요청 테넌트 컨텍스트에서 읽고, **컨텍스트도 인자도 없으면 `OutboxUsageError`**. 확정된 값이 `partition_key`이자 봉투의 `tenantid`가 된다(contracts/events.md).
 - 등급 B: RLS 미적용 — 릴레이가 모든 테넌트의 행을 읽는다. 지표 `outbox_pending`(`dead_at IS NULL`만)·`outbox_oldest_pending_seconds`·`outbox_dead_total`(relay 9464).
@@ -102,7 +102,7 @@ Dragonfly 키(파생 캐시, contracts/denylist.md가 정본):
 | 사용자 | `<pod>`(prod) · `dev-<pod>`(dev), SCRAM-SHA-512. 비밀번호 원천은 Vault `kv/{env}/kafka/<pod>` → ESO → `KafkaUser.spec.authentication.password.valueFrom.secretKeyRef`(kafka ns) + 앱 ns에도 같은 경로의 ExternalSecret; 클러스터 CA(`jt-kafka-cluster-ca-cert`)는 ESO kubernetes provider로 앱 ns에 미러 |
 | ACL | 자기 토픽 접두(prod `<pod>.` · dev `dev.<pod>.` — DLQ `<pod>.dlq`·`dev.<pod>.dlq` 포함 · `patternType: prefix`) `Read`·`Write`·`Describe`, 구독 토픽 `Read`·`Describe`(literal — 구독이 생기는 pod feature가 행을 더한다), 그룹 접두 prod `<pod>-` · dev `dev-<pod>-`(prefix) `Read`. cluster·transactionalId ACL은 두지 않는다(Kafka KIP-679 — 토픽 `Write`가 있으면 idempotent producer의 `InitProducerId`가 허용된다 · 트랜잭션은 쓰지 않는다). 자기 접두의 `Read`는 dev·prod 대칭으로 둔다(검사 Job 왕복 · DLQ 점검 — 자기가 낸 이벤트를 읽는 권한이라 새 데이터 노출이 아니다). 2026-10-16 T056 결정 D3로 정정(이전 문구: 「자기 토픽 `Write`·`Describe`, 구독 토픽 `Read`·`Describe`, 그룹 `<pod>-*` `Read`, DLQ `Write`」 — env별 그룹 접두가 없었다) |
 
-- 그룹 접두의 구분자 `-`는 pod 이름에도 쓰인다 — **새 pod 이름은 기존 pod 이름 + `-`로 시작하지 않는다**(그룹 ACL `<pod>-`가 그 pod의 그룹까지 덮어 가입·오프셋 열람이 가능해진다 · T056 리뷰 K2). **pod 이름은 `dev`가 아니고 `dev-`로 시작하지 않는다** — env 접두와 겹치면 prod ACL 접두(`<pod>.` · `<pod>-`)가 dev 토픽·그룹 전체(또는 다른 pod의 dev 그룹)를 덮는다(T056 리뷰 r2 K6). 이 두 규칙 아래에서만 토픽 접두(`.`로 끝남)가 교차를 막는다. 막는 장치는 아직 없다(copier `pod_name` 검증기 · validate KafkaUser 규칙 — 후속 후보).
+- 그룹 접두의 구분자 `-`는 pod 이름에도 쓰인다 — **어떤 두 pod 이름도 한쪽이 다른 쪽 + `-`로 시작하지 않는다**(예: `identity-admin`이 있으면 `identity-admin-x`도 `identity`도 금지 — 접두 일치는 짧은 쪽 그룹 ACL `<pod>-`가 긴 쪽 pod의 그룹까지 덮어 가입·오프셋 열람이 가능해진다 · T056 리뷰 K2 · r3 B2). **pod 이름은 `dev`가 아니고 `dev-`로 시작하지 않는다** — env 접두와 겹치면 prod ACL 접두(`<pod>.` · `<pod>-`)가 dev 토픽·그룹 전체(또는 다른 pod의 dev 그룹)를 덮는다(T056 리뷰 r2 K6). 이 두 규칙 아래에서만 토픽 접두(`.`로 끝남)가 교차를 막는다. 막는 장치는 아직 없다(copier `pod_name` 검증기 · validate KafkaUser 규칙 — 후속 후보).
 
 ## 7. Database / Role — 소유 platform-gitops (CNPG 선언, `platform/cnpg-databases/`)
 
@@ -241,7 +241,7 @@ Tenant.id ──값 참조──▶ 모든 pod A 등급 테이블.tenant_id (RLS
 TenantMembership ──identity-admin이 갱신(SP-1 seed_tenant, SP-2 outbox)──▶ Authentik 그룹 tenant:<uuid>·attribute tenant_id · FgaStore 튜플(user member tenant:<uuid>)   [파생]
 SessionRevocationLog(DB, 정본) ──기동 1회 + 30 s 무조건 재적용──▶ SessionRevocation(Dragonfly 캐시 revoked:sub·revoked:sid) ◀──조회── 모든 pod
 SessionRevocationLog ──outbox──▶ identity-admin.session.revoked ──▶ insights(SP-3)
-OutboxEvent(pod DB, 등급 B) ──릴레이(app role, dead_at IS NULL)──▶ KafkaTopic ──▶ 소비자 pod / <pod>.dlq ──dead_at+30d──▶ purge
+OutboxEvent(pod DB, 등급 B) ──릴레이(app role, dead_at IS NULL)──▶ KafkaTopic ──▶ 소비자 pod / <pod>.dlq(dev: dev.<pod>.dlq) ──dead_at+30d──▶ purge
 SecretPath(Vault) ──ESO(vault-platform·vault-dev·vault-prod·vault-data)──▶ Secret ──▶ CNPG roles · pod env(<pod>-env / <pod>-migrate) · cloudflared · Alloy · Dragonfly ACL · Authentik 웹훅
 CNPG/Strimzi CA Secret(data ns) ──ESO(k8s-data-ca, ca.crt만)──▶ identity · jt-dev · jt-prod
 SecretPath(Vault) ──운영자 복사(ESO 밖)──▶ Workers Secrets(web-bff·access/web-bff·web/session); Vault role e2e-reader ──▶ tester(kv/platform/authentik/e2e)
