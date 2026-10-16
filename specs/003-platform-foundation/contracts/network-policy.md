@@ -97,7 +97,7 @@ egress:
 | `monitoring` | `external-secrets` | 8080 | ESO metrics |
 | `monitoring` | `cert-manager` | 9402 | cert-manager metrics(`CertExpiringSoon`) |
 | `monitoring` | `cnpg-system` | 8080 | CNPG operator metrics |
-| `monitoring` | `data` | 9187 · 9404 | CNPG instance exporter · Strimzi kafka-exporter |
+| `monitoring` | `data` | 9187 · 9404 | CNPG instance exporter · Strimzi Metrics Reporter(브로커/컨트롤러 파드의 `tcp-prometheus` 9404 — T055 `metricsConfig.type: strimziMetricsReporter`; kafka-exporter는 SP-2 · 같은 포트 9404 — 2026-10-16 정정) |
 | `monitoring` | `jt-dev` · `jt-prod` | 9100 · 9464 | pod web metrics · relay outbox metrics |
 | 전 ns | `kube-system` kube-dns | 53 | `allow-dns` |
 
@@ -149,7 +149,7 @@ hostNetwork pod에는 IMDS 차단이 미치지 않으므로 IMDS 보호는 인�
 
 ## 포트 출처 각주
 
-매트릭스의 포트는 각 컴포넌트 **helm 차트 기본값** 기준이다: cert-manager webhook 10250 · ESO webhook 10250 · CNPG webhook 9443 · Argo CD metrics 8082/8083/8084 · ESO metrics 8080 · cert-manager metrics 9402 · CNPG operator metrics 8080 · CNPG instance manager 8000(operator → 인스턴스 — `pkg/management/url` StatusPort, ingress는 `data`) · CNPG instance exporter 9187 · Strimzi kafka-exporter 9404 · Vault 8200 · Authentik 9000 · OpenFGA 8080 · pod web 8000/9100 · relay 9464. 차트 values에서 포트를 바꾸면 이 표와 정책도 함께 바꾼다 — T033 lint가 `platform/**` helm values의 포트 설정과 `platform/policies`의 정책 포트가 일치하는지 검사한다.
+매트릭스의 포트는 각 컴포넌트 **helm 차트 기본값** 기준이다: cert-manager webhook 10250 · ESO webhook 10250 · CNPG webhook 9443 · Argo CD metrics 8082/8083/8084 · ESO metrics 8080 · cert-manager metrics 9402 · CNPG operator metrics 8080 · CNPG instance manager 8000(operator → 인스턴스 — `pkg/management/url` StatusPort, ingress는 `data`) · CNPG instance exporter 9187 · Strimzi Metrics Reporter 9404(브로커 파드 `tcp-prometheus` — T055; kafka-exporter(SP-2)도 같은 9404) · Vault 8200 · Authentik 9000 · OpenFGA 8080 · pod web 8000/9100 · relay 9464. 차트 values에서 포트를 바꾸면 이 표와 정책도 함께 바꾼다 — T033 lint가 `platform/**` helm values의 포트 설정과 `platform/policies`의 정책 포트가 일치하는지 검사한다.
 
 ## 검증 (tests-first)
 
