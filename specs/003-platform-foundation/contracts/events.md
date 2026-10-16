@@ -2,7 +2,7 @@
 
 ## 토픽 규약
 
-- 이름: prod `<pod>.<entity>.<event>`, dev `dev.<pod>.<entity>.<event>`. pod 이름은 kebab-case, entity·event는 단수 소문자. DLQ `<pod>.dlq`.
+- 이름: prod `<pod>.<entity>.<event>`, dev `dev.<pod>.<entity>.<event>`. pod 이름은 kebab-case, entity·event는 단수 소문자. DLQ prod `<pod>.dlq` · dev `dev.<pod>.dlq`(2026-10-16 T056 정정 — KafkaUser ACL 접두가 env별이라 dev 자격으로는 `<pod>.dlq`에 쓸 수 없다 · data-model §6).
 - 파티션 3, 키 = `tenantid`(UUID 문자열). 같은 테넌트의 이벤트는 순서를 보존한다.
 - 보존 7일. 소비자는 7일 안에 따라잡지 못하면 재색인/재투영으로 복구한다(원천은 각 pod DB).
 - 쓰기 권한: 토픽 접두 `<pod>.`의 소유 pod만. 다른 pod가 대신 발행하지 않는다.
@@ -61,13 +61,13 @@ def publish(topic: str, subject: str, data: dict, *, tenant_id: UUID | str | Non
 - **선택 조건**: `WHERE dead_at IS NULL ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 100`. dead 행은 다시 집지 않는다(재발행 폭주 방지) — 재처리는 `dead_at`을 비우는 수동 command로만.
 - 트랜잭션 규칙: outbox INSERT는 도메인 쓰기와 같은 `transaction.atomic()` 안에서만. 라이브러리는 autocommit 상태의 INSERT를 `OutboxUsageError`로 막는다.
 - 프로듀서: confluent-kafka idempotent producer, SASL_SSL SCRAM-SHA-512, `delivery.timeout.ms` 30000.
-- 실패: 프로듀서 오류 시 `attempts += 1`, `last_error` 기록, 지수 백오프(최대 5분). **`attempts ≥ max_attempts(10)`이면 원본 봉투를 `<pod>.dlq`로 발행(+ `error` 헤더)하고 `dead_at`을 기록**한다(행 유지, 재처리는 수동 command).
+- 실패: 프로듀서 오류 시 `attempts += 1`, `last_error` 기록, 지수 백오프(최대 5분). **`attempts ≥ max_attempts(10)`이면 원본 봉투를 그 env의 DLQ(prod `<pod>.dlq` · dev `dev.<pod>.dlq`)로 발행(+ `error` 헤더)하고 `dead_at`을 기록**한다(행 유지, 재처리는 수동 command).
 - **dead 행 purge**: 일 1회 `dead_at + 30 d < now()`인 행을 삭제한다(Celery beat). `outbox` 테이블이 무한히 자라지 않게 하는 유일한 경로이며, 30일은 수동 재처리 여유다.
 - 관측(relay 컨테이너 `prometheus_client` 9464, `k8s.grafana.com/scrape: "true"`): `outbox_pending`(gauge, `dead_at IS NULL`만 셈), `outbox_oldest_pending_seconds`(가장 오래된 pending의 나이, 알림 `OutboxOldestPending` > 60 s), `outbox_dead_total`(counter).
 
 ## 소비자 규칙
 
-- consumer group `<pod>-<purpose>`(예: `notification-note-published`). 오프셋 커밋은 처리 트랜잭션 커밋 뒤.
+- consumer group prod `<pod>-<purpose>` · dev `dev-<pod>-<purpose>`(예: `notification-note-published` · `dev-notification-note-published` — KafkaUser 그룹 ACL 접두가 prod `<pod>-` · dev `dev-<pod>-`이다 · data-model §6 · 2026-10-16 T056 정정). 오프셋 커밋은 처리 트랜잭션 커밋 뒤.
 - 처리 실패 3회 → DLQ로 이동(원본 봉투 + `error` 헤더). DLQ 재처리는 수동 command.
 - 스키마 검증: 소비자는 `packages/events`의 스키마로 `data`를 검증하고, 실패는 DLQ.
 - 컨슈머 그룹 lag 지표는 SP-2(`kafkaExporter`); SP-1 알림은 outbox pending·oldest age + 브로커 under-replicated만.
