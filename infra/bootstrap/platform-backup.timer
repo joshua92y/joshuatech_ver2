@@ -1,0 +1,16 @@
+# infra/bootstrap/platform-backup.timer — 노드 A /etc/systemd/system/platform-backup.timer (T036, FR-047)
+# 매일 02:30 KST. OnCalendar 의 마지막 단어는 systemd.time(7) 의 시간대 지정(systemd 255, Ubuntu 24.04)이라 호스트 시간대와 무관하게 Asia/Seoul 로 고정된다
+# (host-prep.sh 가 호스트도 Asia/Seoul 로 두므로 둘이 같다). 확인: systemd-analyze calendar '*-*-* 02:30:00 Asia/Seoul' / systemctl list-timers platform-backup.timer.
+# Persistent=true: 02:30 에 꺼져 있었으면(재부팅·유지보수 창) 다음 기동 때 한 번 따라잡는다. SUC 창(일요일 03:00–05:00 KST, T037)과 겹치지 않는 시각이며
+# 겹치더라도 스크립트의 flock 이 동시 실행을 막는다.
+[Unit]
+Description=Daily platform backup at 02:30 Asia/Seoul (FR-047)
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 Asia/Seoul
+Persistent=true
+AccuracySec=1min
+Unit=platform-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,5 @@
+# pnpm 워크스페이스 — TypeScript/Node 패키지만 (Python은 루트 pyproject.toml의 uv workspace)
+packages:
+  - apps/web
+  - packages/content
+  - packages/events
