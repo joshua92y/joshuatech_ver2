@@ -21,11 +21,14 @@ param([string]$Show = '', [string]$Block = '', [string]$Runbook = '')
 #   put 도중 중단(putInterrupt) · 클립보드 비우기 실패 · 삭제 실패(delFail) · 삭제 noop(delNoop) · 삭제 뒤 조회 오류(postDelErr).
 # 가짜 값은 전부 MOCK- 이 들어간 누가 봐도 가짜인 문자열이다 — 블록 파일에는 가짜 값이 하나도 없다(S12 가 검사). url 은 문자열 이어 붙이기로만 만든다(이 파일에 url 리터럴 0).
 # 호스트 UI 직접 쓰기($Host.UI.WriteLine 등)는 *>&1 로 잡히지 않는다 — 런타임 노출 검사의 사각이라 S12 정적 규칙($Host · $ExecutionContext 는 FlushInputBuffer 한 모양만)으로 막는다.
-# acl 렌더(결정 B2): S12 가 블록의 $render 대입문을 AST 로 찾아 정적 규칙(순수 함수 · CR/NewLine 0 · -join 백틱 n · ToLowerInvariant)을 보고, U01–U04 가 그 스크립트블록만 떼어 내
-#   고정 입력(모의 비밀번호)으로 돌려 독립 구현 Acl-For(바이트마다 x2 hex)와 바이트 단위로 대조한다 · Dragonfly v1.40.1 aclfile 로더 모의(Test-AclLoader)를 통과하는지도 본다.
+# acl 렌더(결정 B2): S12 가 블록의 $render 대입문을 AST 로 찾아 정적 규칙(순수 함수 · CR/NewLine 0 · -join 백틱 n · ToLowerInvariant · default 줄 정확히 $ACL_DEFAULT · 옛 줄 회귀 0 — F12)을 보고,
+#   U01–U04 가 그 스크립트블록만 떼어 내 고정 입력(모의 비밀번호)으로 돌려 독립 구현 Acl-For(바이트마다 x2 hex)와 바이트 단위로 대조한다 · Dragonfly v1.40.1 aclfile 로더 모의(Test-AclLoader)를 통과하는지도 본다.
+#   로더 모의는 파일 문법만 본다 — 인증 경로(AUTH · HELLO 가 default 의 ACL 로 검사된다)는 보지 못한다: 2026-10-22 VD-4 1차 실측 사고(default -@all = 아무도 인증 못 함)는 이 모의를 통과했고
+#   로컬 Docker · 라이브 Job 실측이 잡았다(build-notes 「T057」 F12) → 옛 줄은 S12 의 default 줄 규칙이 정적으로 막는다.
 # 런북 블록: docs/runbooks/bootstrap.md §4 T057 「정리 판단」의 ① 점검(읽기 전용) · ② 삭제 블록을 코드 펜스에서 그대로 추출해(표식 [t057-cleanup-inspect] · [t057-cleanup-delete])
 #   같은 모의 vault/Read-Host 로 돌린다 — R1 · R2(정적 · 관문 6: 추출 · 파서 · 명령 · 정적 형식 · $Host · 리다이렉트) → GA01–GA09 · GA01b · GA03d · GA03e · GA08b(① 점검 — vault 쓰기 명령 0 단언) ·
-#   GB01–GB12 · GB03b · GB03c · GB06b · GB07b(② 삭제 — 7경로 허용 목록 Ordinal · 경로 타자 재입력(Ordinal — 대소문자만 다른 재입력도 중단) · 삭제 뒤 No value found 확인 · 조회/삭제 실패 · 잔존 · 삭제 뒤 조회 오류 → 중단).
+#   GB01–GB12 · GB03b · GB03c · GB06b · GB07b(② 삭제 — 7경로 허용 목록 Ordinal · 경로 타자 재입력(Ordinal — 대소문자만 다른 재입력도 중단) · 삭제 뒤 No value found 확인 · 조회/삭제 실패 · 잔존 · 삭제 뒤 조회 오류 → 중단) ·
+#   S37b(② 삭제 블록으로 acl 2경로를 지운 뒤 시드 블록 재실행 — 런북 「ACL 파일 갱신」 연쇄 · B14 · F12).
 #   관문이 FAIL 인 런북 블록은 런타임 시나리오에서 한 번도 실행하지 않는다. 두 블록은 첫 Read-Host 전에 클립보드를 공백으로 덮는다
 #   (R1 · R2 가 문장을, Run-RbCase 공통 단언이 순서(clip:set < read:plain)와 값(공백만)을 고정한다).
 # 사용: pwsh -NoProfile -File D:\code\joshuatech_ver2\specs\003-platform-foundation\design\t057-blocks\harness.ps1
@@ -83,6 +86,11 @@ $pwPlus = 'MOCK-live+st/Qx7Vb2Lm9Pt4Rk8Wn3Hd6Fb1Yc5Js0'
 $pwDup = 'MOCK-dup-Qm8Kn3Lb6Vx1Zc4Rw7Ty2Up5Io9Ae0Sd'
 # 블록 finally 요약 머리(이 줄 뒤의 경로 행이 요약 표다)
 $SUMMARY = '--- T057 Dragonfly ACL · 비밀번호 시드 결과 요약'
+# aclfile default 줄(결정 F12 — build-notes 「T057」 VD-4 1차 실측 · 2026-10-22): Dragonfly v1.40.1 은 NOAUTH 관문을 지난 AUTH · HELLO 를 연결의 현재 사용자(default)의 ACL 로 검사한다
+#   (main_service.cc :1403–1407 → IsUserAllowedToInvokeCommand · kAuth/kHello = FAST|CONNECTION) — 옛 줄(-@all)이면 아무도 인증 못 한다. +auth +hello = 최소 권한(비인증 연결의 다른 명령은
+#   NOAUTH 관문이 먼저 막는다). 옛 줄은 S12 가 회귀로 막는다(로더 모의는 옛 줄도 통과시킨다 — U04 가 그 한계를 고정한다)
+$ACL_DEFAULT = 'USER default OFF +auth +hello'
+$ACL_DEFAULT_OLD = 'USER default OFF -@all'
 function SEq { param($x, $y) [string]::Equals([string]$x, [string]$y, [StringComparison]::Ordinal) }
 function IEq { param($x, $y) [string]::Equals([string]$x, [string]$y, [StringComparison]::OrdinalIgnoreCase) }
 function P { param([string]$path) foreach ($e in $PATHS) { if (SEq $e.path $path) { return $e } }; throw "하네스 결함: 경로 $path 없음" }
@@ -91,17 +99,23 @@ function Uniq { param($xs) $h = [System.Collections.Generic.HashSet[string]]::ne
 function Hex-Lower { param([string]$s) -join @([System.Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($s)) | ForEach-Object { $_.ToString('x2') }) }
 function Url-For { param($e, [string]$pw) 'redis://' + $e.user + ':' + $pw + '@dragonfly-' + $e.env + '.data.svc:6379/0' }
 function Acl-For { param([string]$ev, $pwMap)
-  $t = 'USER default OFF -@all' + "`n"
+  $t = $ACL_DEFAULT + "`n"
   $t += 'USER admin ON #' + (Hex-Lower ([string]$pwMap['admin'])) + ' ~* &* +@all' + "`n"
   $t += 'USER identity-admin ON #' + (Hex-Lower ([string]$pwMap['identity-admin'])) + ' ~revoked:* ~identity-admin:* +@all' + "`n"
   if (SEq $ev 'dev') { $t += 'USER sample-pod ON #' + (Hex-Lower ([string]$pwMap['sample-pod'])) + ' %R~revoked:* ~sample-pod:* +@all' + "`n" }
   $t }
 # 그 env 의 live 가짜 비밀번호 맵(사용자 → password)
 function Live-Map { param([string]$ev) $m = @{}; foreach ($e in $USERS) { if (SEq $e.env $ev) { $m[$e.user] = [string]$LIVE_PW[$e.path] } }; $m }
+# 옛 default 줄로 렌더한 acl(2026-10-22 1차 시드의 모양 — F12 전): 그 env 의 live 가짜 비밀번호로 독립 렌더한 뒤 첫 줄만 옛 줄로(S37a · S37b — 런북 「ACL 파일 갱신」)
+function Acl-Old { param([string]$ev) (Acl-For $ev (Live-Map $ev)).Replace(($ACL_DEFAULT + "`n"), ($ACL_DEFAULT_OLD + "`n")) }
 # Dragonfly v1.40.1 aclfile 로더 모의(build-notes 「T057」 1차 자료 — acl_family.cc MaterializeFileContents :727–748 · ParseAclSetUser :1082– · user.cc SetPasswordHash :92–104):
 #   LF 로 줄을 나누고 빈 줄은 건너뛴다 · 공백(' ')으로 토큰을 가른다(빈 토큰 버림) · 첫 토큰 USER(대소문자 무시) · 토큰 ≥ 4 · 나머지 토큰은 인식되는 종류여야 한다 · default 줄이 있어야 한다.
 #   돌려주는 값 '' = 로드됨 · 그 밖 = 로드 실패 사유(실물은 실패하면 파일 전체를 버리고 default nopass 로 기동한다). # 뒤가 짝수 길이 hex 가 아니면 실물은 LOG(ERROR) 뒤
-#   그 사용자를 비밀번호 없이 두는데, 이 모의는 더 엄격하게 실패로 본다
+#   그 사용자를 비밀번호 없이 두는데, 이 모의는 더 엄격하게 실패로 본다.
+#   +cmd · -cmd(명령 하나 — F12 의 default 줄 +auth +hello): 실물 MaybeParseAclCommand(acl_family.cc :1057–1078)는 대문자로 바꾼 이름을 명령 레지스트리에서 찾고, 없거나 별칭이면
+#   Unrecognized parameter(:1173–1176) = 파일 전체 미적재 = 무인증 기동이다. 이 모의가 아는 명령은 렌더가 쓰는 AUTH · HELLO 뿐이다(실물은 등록된 명령 전부를 받는다 — 모의가 더 엄격하다).
+#   이 모의는 문법만 본다 — default 줄이 AUTH · HELLO 를 막는지(인증 경로)는 보지 못한다(옛 줄 -@all 도 '' — U04 가 그 한계를 고정하고 S12 가 옛 줄을 막는다)
+$ACL_KNOWN_CMDS = @('AUTH', 'HELLO')
 function Test-AclLoader { param([string]$text)
   if ([string]::IsNullOrEmpty($text)) { return 'Empty file' }
   $users = @()
@@ -118,6 +132,7 @@ function Test-AclLoader { param([string]$text)
       if ((SEq $t '&*') -or (IEq $t 'ALLCHANNELS') -or (IEq $t 'RESETCHANNELS') -or ($t -cmatch '\A&.+\z')) { continue }
       $u = $t.ToUpperInvariant()
       if ((SEq $u 'ON') -or (SEq $u 'OFF') -or ($u -cmatch '\A[+-]@[A-Z]+\z')) { continue }
+      if ($u.Length -gt 1 -and ($u.StartsWith('+', [StringComparison]::Ordinal) -or $u.StartsWith('-', [StringComparison]::Ordinal)) -and ($ACL_KNOWN_CMDS -ccontains $u.Substring(1))) { continue }
       return "Unrecognized parameter(토큰 $($i + 1)번째)" } }
   if (-not (@($users) -ccontains 'default')) { return 'default 줄 없음(로더가 nopass default 를 만든다 — 무인증)' }
   '' }
@@ -876,7 +891,7 @@ function Check-Render { param([string]$ev, $m, $out)
   Check "줄 수 = $nWant($ev)" ($lines.Count -eq $nWant) "줄 $($lines.Count)"
   Check '빈 줄 0 · 앞뒤 공백 0 · 연속 공백 0(토큰 사이 공백 1개)' (@($lines | Where-Object { $_.Length -eq 0 -or $_.StartsWith(' ') -or $_.EndsWith(' ') -or $_.Contains('  ') }).Count -eq 0)
   Check '줄마다 토큰 ≥ 4(로더 MaterializeFileContents)' (@($lines | Where-Object { @($_.Split(' ')).Count -lt 4 }).Count -eq 0)
-  Check '1줄 = USER default OFF -@all(없으면 로더가 nopass default 를 만든다)' ($lines.Count -gt 0 -and (SEq $lines[0] 'USER default OFF -@all'))
+  Check "1줄 = $ACL_DEFAULT(없으면 로더가 nopass default 를 만든다 · -@all 이면 AUTH · HELLO 까지 NOPERM = 아무도 인증 못 한다 — F12)" ($lines.Count -gt 0 -and (SEq $lines[0] $ACL_DEFAULT))
   $order = @('admin', 'identity-admin'); if (SEq $ev 'dev') { $order += 'sample-pod' }
   $rule = @{ 'admin' = '~* &* +@all'; 'identity-admin' = '~revoked:* ~identity-admin:* +@all'; 'sample-pod' = '%R~revoked:* ~sample-pod:* +@all' }
   for ($i = 0; $i -lt $order.Count; $i++) {
@@ -994,7 +1009,13 @@ function Run-Static {
     Check 'acl 렌더 코드가 줄을 -join 백틱 n 으로 잇는다' ($rt.Contains('-join "`n"'))
     Check 'acl 렌더 코드가 hex 를 ToLowerInvariant 로 소문자로 만든다(로더 · ACL SAVE 와 같은 모양)' ($rt.Contains('.ToLowerInvariant()'))
     $imp = Render-Impurities $global:RenderSbx
-    Check 'acl 렌더 = 순수 함수(명령 호출 0 · 바깥 변수 참조 0 — 입력은 param 둘뿐 · 헬퍼 $eq 등도 부르지 않는다)' ($imp.Count -eq 0) ($imp -join '; ') }
+    Check 'acl 렌더 = 순수 함수(명령 호출 0 · 바깥 변수 참조 0 — 입력은 param 둘뿐 · 헬퍼 $eq 등도 부르지 않는다)' ($imp.Count -eq 0) ($imp -join '; ')
+    # default 줄(결정 F12 · 지시 B12 — 2026-10-22 VD-4 1차 실측: 옛 줄 USER default OFF -@all 은 파일은 적재됐지만 AUTH · HELLO 까지 NOPERM 이라 아무도 인증 못 했다):
+    #   $render 안에서 'USER default' 로 시작하는 문자열 상수(대소문자 무시)가 정확히 1개이고 값이 $ACL_DEFAULT 와 Ordinal 일치 · 그 상수에 -@all 0(옛 형식 회귀 금지 — 대소문자 무시)
+    $dl = @($global:RenderSbx.FindAll({ param($n) $n -is [System.Management.Automation.Language.StringConstantExpressionAst] -and ([string]$n.Value).StartsWith('USER default', [StringComparison]::OrdinalIgnoreCase) }, $true) | ForEach-Object { [string]$_.Value })
+    Check "default 줄 = 정확히 $ACL_DEFAULT(`$render 안 'USER default' 문자열 상수 정확히 1개 · Ordinal — F12: Dragonfly 는 AUTH · HELLO 를 default 의 ACL 로 검사한다)" ($dl.Count -eq 1 -and (SEq $dl[0] $ACL_DEFAULT)) ("상수 $($dl.Count)개: " + ($dl -join ' | '))
+    Check 'default 줄에 -@all 0(옛 형식 회귀 금지 — -@all 이면 AUTH · HELLO 까지 NOPERM = 아무도 인증 못 한다 · 2026-10-22 1차 실측)' (@($dl | Where-Object { $_.IndexOf('-@all', [StringComparison]::OrdinalIgnoreCase) -ge 0 }).Count -eq 0) ($dl -join ' | ') }
+  Check "블록 전체(주석 포함)에 옛 default 줄 $ACL_DEFAULT_OLD 0(머리 주석의 형식 설명까지 F12 로 맞춘다 — 옛 형식 회귀 금지)" (-not $text.Contains($ACL_DEFAULT_OLD))
   Check '블록 전체에 백틱 r 0(CR 을 만드는 표기 없음)' (-not $text.Contains('`r'))
   # 비밀처럼 보이는 상수 0(가짜 값은 하네스에만)
   Check 'MOCK 문자열 0(가짜 값은 하네스 파일에만)' (-not $text.Contains('MOCK'))
@@ -1182,7 +1203,7 @@ try {
   # ---- S12: 구조(정적 — 블록을 실행하지 않는다)를 맨 먼저 돌린다. 관문(파서 오류 0 · 명령 · 정적 형식 · $Host · 리다이렉트 허용 목록)이 하나라도
   #      FAIL 이면 런타임 시나리오를 하나도 돌리지 않는다 — 함수 가림 · PATH 함정은 절대 경로 실행 파일 · 프로세스 직접 기동을 막지 못한다(T054 리뷰 O8)
   Run-Static
-  Finish-Case 'S12' '구조: & { 로 시작하는 한 문 · 빈 줄 0 · 끝 } + LF 1 · BOM/CR/TAB 0 · Start-Transcript 0 · 파서 오류 0 · 명령/형식/$Host/리다이렉트 허용 목록(관문) · 첫 문장 Set-PSDebug -Off · 세션 설정 고정 3문장 · finally 출력 규칙 + 첫 두 문장 = env 제거 · Read-Host 바로 앞 입력 버퍼 비움(AST) · vault 호출 모양 · MOCK/비밀 상수 0 + (B8) acl 렌더 정적 규칙: $render 대입문 1개 · 순수 함수(명령 0 · 바깥 변수 0) · CR(백틱 r · [char]13) · NewLine 0 · -join 백틱 n · ToLowerInvariant · 블록 전체 백틱 r 0' ''
+  Finish-Case 'S12' '구조: & { 로 시작하는 한 문 · 빈 줄 0 · 끝 } + LF 1 · BOM/CR/TAB 0 · Start-Transcript 0 · 파서 오류 0 · 명령/형식/$Host/리다이렉트 허용 목록(관문) · 첫 문장 Set-PSDebug -Off · 세션 설정 고정 3문장 · finally 출력 규칙 + 첫 두 문장 = env 제거 · Read-Host 바로 앞 입력 버퍼 비움(AST) · vault 호출 모양 · MOCK/비밀 상수 0 + (B8) acl 렌더 정적 규칙: $render 대입문 1개 · 순수 함수(명령 0 · 바깥 변수 0) · CR(백틱 r · [char]13) · NewLine 0 · -join 백틱 n · ToLowerInvariant · 블록 전체 백틱 r 0 + (B12 · F12) default 줄 정확히 USER default OFF +auth +hello · default 줄에 -@all 0 · 블록 전체(주석 포함) 옛 줄 0' ''
   $GateMsg = Static-Gate
   if ($GateMsg) {
     Write-Host "관문 FAIL(S12): $GateMsg — 런타임 시나리오를 실행하지 않는다(블록 실행 0회)" -ForegroundColor Red
@@ -1200,7 +1221,7 @@ try {
 
   # ---- U01–U04(⑨ · 결정 B2): acl 렌더 순수 함수 단위 시험 — 블록 파일의 $render 대입문을 AST 로 떼어 내(S12 가 찾은 것) 고정 입력(모의 비밀번호)을 넣고
   #      독립 계산(Acl-For — 바이트마다 x2 hex · 문자열 리터럴로 줄을 잇는다)과 바이트 단위로 대조한다. 블록 전체는 실행하지 않는다
-  Run-Unit 'U01' '(⑨) 렌더 — dev: 모의 비밀번호 3개 → 독립 계산 기대 바이트열과 Ordinal 일치 · 4줄 · 줄 순서(default · admin · identity-admin · sample-pod) · USER default OFF -@all · # 뒤 SHA-256 소문자 hex 64자 · 규칙 문자열(계약 §ACL 표) · 끝 LF 정확히 1 · CR/TAB/BOM/빈 줄/앞뒤·연속 공백 0 · ASCII · 토큰 ≥ 4 · 로더 모의 통과 · 평문 비밀번호 0' {
+  Run-Unit 'U01' '(⑨) 렌더 — dev: 모의 비밀번호 3개 → 독립 계산 기대 바이트열과 Ordinal 일치 · 4줄 · 줄 순서(default · admin · identity-admin · sample-pod) · USER default OFF +auth +hello(F12) · # 뒤 SHA-256 소문자 hex 64자 · 규칙 문자열(계약 §ACL 표) · 끝 LF 정확히 1 · CR/TAB/BOM/빈 줄/앞뒤·연속 공백 0 · ASCII · 토큰 ≥ 4 · 로더 모의 통과 · 평문 비밀번호 0' {
     param($r)
     $m = Live-Map 'dev'
     Check-Render 'dev' $m (& $r 'dev' $m) }
@@ -1231,7 +1252,7 @@ try {
       Check "거부(throw): $($c[0])" $threw
       $leak = @($nd | Where-Object { $msg.Contains($_) -or $msg.Contains($_.Substring(0, 8)) -or $msg.Contains($_.Substring(35, 8)) })
       Check "거부 문구에 비밀번호(전체 · 앞 8자 · 끝 8자) 0: $($c[0])" ($leak.Count -eq 0) } }
-  Run-Unit 'U04' '(⑨) 로더 모의 자체 시험 — Dragonfly v1.40.1 MaterializeFileContents · 토큰 종류 규칙이 렌더 결과는 통과시키고, 로드 실패를 만드는 바이트(CR · BOM · 탭 · 3토큰 줄 · 주석 줄 · default 없음 · 홀수 hex)는 잡는다' {
+  Run-Unit 'U04' '(⑨) 로더 모의 자체 시험 — Dragonfly v1.40.1 MaterializeFileContents · 토큰 종류 규칙이 렌더 결과(+auth +hello 포함)는 통과시키고, 로드 실패를 만드는 바이트(CR · BOM · 탭 · 3토큰 줄 · 주석 줄 · default 없음 · 홀수 hex · 모르는 명령 토큰)는 잡는다 · 옛 default 줄(-@all)은 통과시킨다(문법만 본다 — 인증 경로는 S12 가 막는다 · F12)' {
     param($r)
     $good = [string](& $r 'dev' (Live-Map 'dev'))
     Check '렌더 결과 → 로더 모의 통과' ([string]::IsNullOrEmpty((Test-AclLoader $good))) (Test-AclLoader $good)
@@ -1240,11 +1261,15 @@ try {
       '마지막 줄에만 CR 1바이트' = ($good.Substring(0, $good.Length - 1) + "`r`n")
       'BOM(U+FEFF) 앞머리' = ([string][char]0xFEFF + $good)
       '탭으로 토큰 구분(한 곳)' = $good.Replace(' ~* &*', ([string][char]9 + '~* &*'))
-      '3토큰 줄(USER default OFF)' = $good.Replace('USER default OFF -@all', 'USER default OFF')
+      '3토큰 줄(USER default OFF)' = $good.Replace($ACL_DEFAULT, 'USER default OFF')
       '주석 줄(# …)' = ('# T057' + "`n" + $good)
-      'default 줄 없음' = $good.Replace(('USER default OFF -@all' + "`n"), '')
-      '홀수 길이 hex(# 뒤 63자)' = [regex]::Replace($good, '#([0-9a-f]{63})[0-9a-f]', '#$1', 'None', [TimeSpan]::FromSeconds(5)) }
-    foreach ($k in $bad.Keys) { Check "로더 모의가 잡는다: $k" (-not [string]::IsNullOrEmpty((Test-AclLoader ([string]$bad[$k])))) } }
+      'default 줄 없음' = $good.Replace(($ACL_DEFAULT + "`n"), '')
+      '홀수 길이 hex(# 뒤 63자)' = [regex]::Replace($good, '#([0-9a-f]{63})[0-9a-f]', '#$1', 'None', [TimeSpan]::FromSeconds(5))
+      '모르는 명령 토큰(default 줄 +auth 오타 → +auht — 실물: 레지스트리에 없으면 Unrecognized parameter = 파일 전체 미적재 = 무인증 기동)' = $good.Replace('+auth +hello', '+auht +hello') }
+    foreach ($k in $bad.Keys) { Check "로더 모의가 잡는다: $k" (-not [string]::IsNullOrEmpty((Test-AclLoader ([string]$bad[$k])))) }
+    Check '하네스 자체: 렌더 결과에 새 default 줄이 있다(위 변형이 실제로 그 줄을 바꿨다)' ($good.StartsWith($ACL_DEFAULT + "`n", [StringComparison]::Ordinal))
+    $old = $good.Replace($ACL_DEFAULT, $ACL_DEFAULT_OLD)
+    Check '로더 모의의 한계 고정: 옛 default 줄(-@all)도 통과시킨다 — 파일 문법만 본다 · 인증 경로(AUTH · HELLO 가 default ACL 로 검사됨)는 보지 못한다 → 옛 줄은 S12 가 정적으로 막는다(F12 · 2026-10-22 1차 실측 사고는 이 모의를 통과했다)' ((-not (SEq $old $good)) -and [string]::IsNullOrEmpty((Test-AclLoader $old))) (Test-AclLoader $old) }
 
   # ---- S01 · S02: 정상 첫 시드(⑦) + 노출 검사
   Run-Case 'S01' '(⑦) 7경로 absent → 7개 생성(v1 · 키 집합 1/2/1 · password base64url 43자 · url 모양 · acl = 그 env 사용자 비밀번호로 독립 계산한 렌더 · 로더 모의 통과) · 쓰기 순서 env 마다 사용자 → acl · dev → prod · 사용자 비밀번호 5개 서로 다름 · 쓸 경로 목록 줄 · vault 호출 31회' -Inputs $OK2 `
@@ -1287,7 +1312,7 @@ try {
       Check '검출기 자체 시험: acl 에 든 # hex(소문자 64자 · 대문자 · 앞 16자)가 바늘이다' (($nd -ccontains $h0) -and ($nd -ccontains $h0.ToUpperInvariant()) -and ($nd -ccontains $h0.Substring(0, 16)))
       Check '검출기 자체 시험: 출력에 섞인 acl 한 줄을 잡는다(# hex 부분)' ($null -ne (First-Needle ('x USER admin ON #' + $h0 + ' ~* &* +@all') $nd))
       Check '검출기 자체 시험: 경로 · 사용자 이름 · 쓸 경로 목록 문구(비밀 아님)는 잡지 않는다' ($null -eq (First-Needle ((@($PATHS | ForEach-Object { $_.path + ' ' + $_.user + ' ' + $_.use })) -join "`n") $nd))
-      Check '검출기 자체 시험: acl 규칙 문자열(비밀 아님)은 잡지 않는다' ($null -eq (First-Needle 'USER default OFF -@all ~revoked:* ~identity-admin:* +@all %R~revoked:* ~sample-pod:* +@all' $nd))
+      Check '검출기 자체 시험: acl 규칙 문자열(비밀 아님)은 잡지 않는다' ($null -eq (First-Needle ($ACL_DEFAULT + ' ~revoked:* ~identity-admin:* +@all %R~revoked:* ~sample-pod:* +@all') $nd))
       Check '검출기 자체 시험: 이번 화면 출력 전체에는 바늘 0' ($null -eq (First-Needle $global:LastText $nd))
       $ht = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($global:FAKE_ROOT)))
       Check '검출기 자체 시험: root 토큰의 SHA-256 hex 도 바늘 집합에 있다' (($nd -ccontains $ht) -and ($nd -ccontains $ht.ToLowerInvariant())) }
@@ -1434,6 +1459,19 @@ try {
     -Setup { Seed-Env 'dev'; Seed-LiveOk $PACL } -Inputs $OK2 -Expect '판정 단계에서 중단' `
     -Want (@($PATHS | Where-Object { SEq $_.env 'dev' } | ForEach-Object { & $SKIPLINE $_ }) + @("STOP $($PACL.path) — live-mismatch: 같은 env 의 사용자 경로 $($PA.path) 가 absent 인데 acl 이 이미 있다", '판정 결과: 생성 예정 2 · 건너뜀(live-ok) 4 · 중단 1')) -Post {
       Check 'put 0' ($global:PutCalls.Count -eq 0); Check-Unchanged $PACL (Live-Data $PACL) }
+
+  # ---- S37a(B14 · F12 — 런북 §4 T057 「ACL 파일 갱신」이 acl 2경로를 먼저 지우는 이유): 1차 시드 상태(사용자 5 live-ok · acl 2 = 옛 default 줄로 렌더)에서 고친 블록을 그대로 재실행하면
+  #      acl 2경로가 「acl 내용 불일치」 STOP — 블록은 옛 acl 을 덮어쓰지 않는다(쓰기 0). 연쇄(② 삭제 블록 → 재실행)는 S37b(런북 블록 추출 뒤 — GB 묶음 끝)
+  Run-Case 'S37a' '(B14 · F12) 1차 시드 상태(사용자 5 live-ok · acl 2 = 옛 default 줄 USER default OFF -@all 렌더) → 고친 블록 재실행 = 사용자 5 SKIP · acl 2경로 acl 내용 불일치 STOP · 쓰기 0 · 덮어쓰기 0' `
+    -Setup { foreach ($u in $USERS) { Seed-LiveOk $u }; foreach ($a in @($DACL, $PACL)) { Seed-Path $a.path ([ordered]@{ 'users.acl' = (Acl-Old $a.env) }) } } -Inputs $OK2 -Expect '판정 단계에서 중단' `
+    -Want (@($USERS | ForEach-Object { & $SKIPLINE $_ }) + @("STOP $($DACL.path) — live-mismatch: $ACLWHY", "STOP $($PACL.path) — live-mismatch: $ACLWHY", '판정 결과: 생성 예정 0 · 건너뜀(live-ok) 5 · 중단 2', '이 실행이 kv 에 새로 쓴 경로: 0건', '판정: 미완')) `
+    -NotWant @("SKIP $($DACL.path)", "SKIP $($PACL.path)", 'INFO 쓸 경로 없음') -Post {
+      Check '하네스 자체: 심은 acl 2경로의 첫 줄 = 옛 default 줄(1차 시드 상태)' (@(@($DACL, $PACL) | Where-Object { ([string](KvData $_.path)['users.acl']).StartsWith($ACL_DEFAULT_OLD + "`n", [StringComparison]::Ordinal) }).Count -eq 2)
+      Check 'put 0(쓰기 0)' ($global:PutCalls.Count -eq 0)
+      Check '입력 1(토큰 — 쓰기 확인 정지점까지 가지 않았다)' ($global:ReadLog.Count -eq 1)
+      foreach ($a in @($DACL, $PACL)) { Check-Unchanged $a ([ordered]@{ 'users.acl' = (Acl-Old $a.env) }) }
+      foreach ($u in $USERS) { Check-Unchanged $u (Live-Data $u) }
+      Check 'vault 호출 17회(판정용 읽기만 — 3 + metadata get 7 + kv get 7)' ($global:ArgvLog.Count -eq 17) "vault 호출 $($global:ArgvLog.Count)" }
 
   # ---- S04j · S04k(⑧ · 결정 B5 — T056 C1 확장): 사용자 비밀번호 5개는 전부 서로 달라야 한다 — 같은 값을 가진 경로를 모두 STOP(판정 단계 · 쓰기 0 · 값 · 해시 미출력)
   $PAIRWHY = '사용자 비밀번호 5개는 전부 달라야 한다(dev 값은 jt-dev assert-env 로도 복사되고 admin 은 전권이다) · 값 미출력 · 쓰기 0'
@@ -1838,7 +1876,39 @@ try {
     Run-RbCase 'GB11' '② 삭제: 경로가 이미 없다(absent) → "지울 것이 없다" 로 중단 · 재입력 없음 · delete 0' $MD -AllowDelete -Setup { Seed-LiveOk $DS } -Inputs @($DA.path, $DA.path) -Expect '이미 없다(absent)' -Post {
         Check '입력 1 · delete 0' ($global:ReadLog.Count -eq 1 -and (Ev-First 'vault:meta-delete:') -lt 0) }
     Run-RbCase 'GB12' '② 삭제: 삭제는 됐는데 삭제 뒤 확인 조회가 500 → "없어졌다" 로 보지 않고 삭제 확인 실패로 중단(OK 아님)' $MD -AllowDelete -Setup { Seed-LiveOk $DA; $global:F['postDelErr'][$DA.path] = 1 } -Inputs @($DA.path, $DA.path) -Expect '삭제 확인 실패(경로가 남았거나 조회 오류)' -NotWant @('OK   ') -Post {
-        Check '삭제는 됐다(모의)' (-not $global:Kv.ContainsKey($DA.path) -and (Ev-Index "vault:meta-delete:$($DA.path)") -ge 0) } }
+        Check '삭제는 됐다(모의)' (-not $global:Kv.ContainsKey($DA.path) -and (Ev-Index "vault:meta-delete:$($DA.path)") -ge 0) }
+    # ---- S37b(B14 · F12 — 런북 §4 T057 「ACL 파일 갱신」 2–3단계 연쇄): S37a 상태에서 이 런북의 ② 삭제 블록(코드 펜스에서 추출한 그대로 — R2 관문 통과분)으로
+    #      acl 2경로를 한 번에 한 경로씩 지운 뒤(경로 재입력 · No value found 확인) 시드 블록을 재실행 → 사용자 5 SKIP · acl 2 absent → 생성(새 default 줄 · live 비밀번호 — B4ⓑ).
+    #      삭제 단계는 Setup 에서 돈다(창의 VAULT_ADDR · VAULT_TOKEN 을 넣었다가 지운다 · 위반 기록은 남겨 공통 단언이 본다) — 그 단계의 입력 · 이벤트 · 호출 기록은 재실행 전에 비운다
+    function Invoke-RbDelete { param([string[]]$paths)
+      $out = [System.Collections.ArrayList]::new()
+      $global:AllowDelete = $true
+      $env:VAULT_ADDR = $global:EXPECTED_ADDR; $env:VAULT_TOKEN = $global:FAKE_ROOT
+      try {
+        foreach ($p in $paths) {
+          $global:Inputs.Enqueue($p); $global:Inputs.Enqueue($p)
+          try { & ([scriptblock]::Create([string]$global:RbCode[$MD])) *>&1 | ForEach-Object { [void]$out.Add([string]$_) } } catch { [void]$out.Add('THROW: ' + [string]$_.Exception.Message) } } }
+      finally {
+        Remove-Item -LiteralPath Env:VAULT_ADDR, Env:VAULT_TOKEN -ErrorAction SilentlyContinue
+        $global:AllowDelete = $false
+        foreach ($n in 'Prompts', 'ReadLog', 'ArgvLog', 'Events', 'ClipValues', 'PutCalls') { Set-Variable -Scope Global -Name $n -Value ([System.Collections.ArrayList]::new()) }
+        $global:Inputs = [System.Collections.Queue]::new() }
+      $out -join "`n" }
+    Run-Case 'S37b' '(B14 · F12 연쇄) S37a 상태 → 런북 ② 삭제 블록(추출 그대로)으로 kv/dev/dragonfly/acl → kv/prod/dragonfly/acl 삭제(No value found 확인) → 시드 블록 재실행 = 사용자 5 SKIP · acl 2 absent → 생성 v1(새 default 줄 · live 비밀번호로 렌더 — 독립 계산과 바이트 일치) · 사용자 값 불변 · put 2 · vault 호출 21회' `
+      -Setup { foreach ($u in $USERS) { Seed-LiveOk $u }; foreach ($a in @($DACL, $PACL)) { Seed-Path $a.path ([ordered]@{ 'users.acl' = (Acl-Old $a.env) }) }; $script:rbDel = Invoke-RbDelete @($DACL.path, $PACL.path) } -Inputs $OK2 `
+      -Want (@($USERS | ForEach-Object { & $SKIPLINE $_ }) + @((& $PLANLINE $DACL), (& $PLANLINE $PACL), (& $OKLINE $DACL), (& $OKLINE $PACL), '판정 결과: 생성 예정 2 · 건너뜀(live-ok) 5 · 중단 0', '쓸 경로 2개', '이 실행이 kv 에 새로 쓴 경로: 2건(생성·검증 완료 2 · 응답 유실 뒤 재판정으로 검증 완료 0 · 기록 후 검증 실패 0) · 결과 미확인 0 · 건너뜀 5 · 중단 0 · 미실행 0', '판정: kv 7경로 준비 완료')) `
+      -NotWant @('STOP ') -Post {
+        $rb = [string]$script:rbDel
+        Check '사전 단계(런북 ② 삭제 블록 — 추출 그대로): acl 2경로 각각 OK(No value found 확인) · THROW 0 · 모의 삭제 기록 = acl 2경로 정확히' ($rb.Contains("OK   $($DACL.path) — 모든 버전 · 메타데이터 삭제(No value found 확인)") -and $rb.Contains("OK   $($PACL.path) — 모든 버전 · 메타데이터 삭제(No value found 확인)") -and -not $rb.Contains('THROW') -and $global:Deleted.Count -eq 2 -and $global:Deleted.ContainsKey($DACL.path) -and $global:Deleted.ContainsKey($PACL.path))
+        Check 'put 2회 = dev acl → prod acl(사용자 경로 put 0)' ($global:PutCalls.Count -eq 2 -and (SEq $global:PutCalls[0].path $DACL.path) -and (SEq $global:PutCalls[1].path $PACL.path))
+        foreach ($a in @($DACL, $PACL)) {
+          Check-Created $a
+          $acl = [string](KvData $a.path)['users.acl']
+          Check "$($a.path): 첫 줄 = $ACL_DEFAULT · 옛 줄 0(F12)" ($acl.StartsWith($ACL_DEFAULT + "`n", [StringComparison]::Ordinal) -and -not $acl.Contains($ACL_DEFAULT_OLD))
+          Check "$($a.path): = Acl-For($($a.env), 모의 live 비밀번호) 바이트열 일치(사용자 비밀번호 불변 — 회전 아님)" (SEq $acl (Acl-For $a.env (Live-Map $a.env))) }
+        foreach ($u in $USERS) { Check-Unchanged $u (Live-Data $u) }
+        Check-WriteOrder @($DACL, $PACL)
+        Check 'vault 호출 21회(재실행만 — 3 + 판정 metadata get 7 + live 사용자 kv get 5 + 쓰기 3×2)' ($global:ArgvLog.Count -eq 21) "vault 호출 $($global:ArgvLog.Count)" } }
 }
 catch {
   # 관문 FAIL 로 멈춘 경우만 여기서 삼킨다(결과 표 · exit 1 은 아래) — 그 밖의 예외(하네스 결함)는 그대로 다시 던진다

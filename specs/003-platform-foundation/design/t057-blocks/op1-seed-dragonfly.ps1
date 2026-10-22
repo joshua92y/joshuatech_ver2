@@ -14,7 +14,7 @@
   #   kv/prod/dragonfly/acl             users.acl        ExternalSecret data/dragonfly-prod-acl(store vault-data) → Deployment dragonfly-prod 의 aclfile(prod 에 sample-pod 경로 · 줄은 없다)
   # password  = RandomNumberGenerator 32바이트 → base64url(패딩 없음 · 43자 · A–Z a–z 0–9 - _) — URL · 셸 어디서도 인코딩이 필요 없다(T054 · T056 과 같은 생성기)
   # url       = 'redis://' + <사용자> + ':' + <password> + '@dragonfly-<env>.data.svc:6379/0'(계약 DRAGONFLY_URL — 사용자 = 경로 마지막 토큰 · env = 경로의 env)
-  # users.acl = $render(순수 함수 · D6): USER default OFF -@all / USER admin ON #<H> ~* &* +@all / USER identity-admin ON #<H> ~revoked:* ~identity-admin:* +@all /
+  # users.acl = $render(순수 함수 · D6 — default 줄은 F12 정정): USER default OFF +auth +hello / USER admin ON #<H> ~* &* +@all / USER identity-admin ON #<H> ~revoked:* ~identity-admin:* +@all /
   #             (dev 만) USER sample-pod ON #<H> %R~revoked:* ~sample-pod:* +@all — LF 로만 잇고 끝에 LF 1개 · <H> = 그 env 사용자 password(UTF-8)의 SHA-256 소문자 hex 64자.
   #             aclfile 에 평문 비밀번호는 없다. 파싱 오류가 1건이라도 있으면 Dragonfly v1.40.1 로더는 파일 전체를 버리고 default nopass(무인증)로 기동한다(build-notes 「T057」 1차 자료)
   # 사전(블록 밖 — 런북 docs/runbooks/bootstrap.md §4 T057 소절 · docs/runbooks/vault-unseal.md §0):
@@ -129,16 +129,16 @@
       $p = $o.PSObject.Properties[$n]
       if ($null -eq $p) { return $null }
       $p.Value }
-    # acl 렌더(결정 B2 · build-notes 「T057」 D6) — 순수 함수: 입력 = env(dev · prod) · 사용자 → password 맵 / 출력 = users.acl 전문. 바깥 변수 · 헬퍼 · 명령을 쓰지 않는다
+    # acl 렌더(결정 B2 · build-notes 「T057」 D6 · default 줄 F12 정정) — 순수 함수: 입력 = env(dev · prod) · 사용자 → password 맵 / 출력 = users.acl 전문. 바깥 변수 · 헬퍼 · 명령을 쓰지 않는다
     #   (하네스가 이 대입문을 AST 로 떼어 내 고정 입력의 기대 바이트열과 대조한다). 줄 = USER <이름> ON|OFF <토큰>… — 토큰 사이 공백 1개 · 줄마다 토큰 ≥ 4 · LF 로만 잇고 끝에 LF 1개 ·
-    #   CR · 탭 · 빈 줄 · 앞뒤 공백 · 주석 줄 0(Dragonfly v1.40.1 MaterializeFileContents 는 LF 로 줄을 나누고 공백으로 토큰을 가른다 — CR 이 붙은 토큰 하나가 파일 전체 미적재 = 무인증 기동).
-    #   #<hex> = password(UTF-8)의 SHA-256 소문자 hex 64자(로더 absl::HexStringToBytes · ACL SAVE 와 같은 모양) · default 줄 필수(없으면 로더가 nopass default 를 만든다) · 오류 문구에 값 0
+    #   CR · 탭 · 빈 줄 · 앞뒤 공백 · 주석 줄 0(Dragonfly v1.40.1 MaterializeFileContents 는 LF 로 줄을 나누고 공백으로 토큰을 가른다 — CR 이 붙은 토큰 하나가 파일 전체 미적재 = 무인증 기동). #<hex> = password(UTF-8)의 SHA-256 소문자 hex 64자(로더 absl::HexStringToBytes · ACL SAVE 와 같은 모양) · 오류 문구에 값 0
+    #   default 줄 = USER default OFF +auth +hello(필수 — 없으면 로더가 nopass default 를 만든다): Dragonfly 는 AUTH · HELLO 를 default 의 ACL 로 검사한다 — -@all 이면 아무도 인증 못 한다(2026-10-22 1차 실측 · build-notes F12)
     $render = { param($ev, $pwMap)
       $rules = [ordered]@{ 'admin' = '~* &* +@all'; 'identity-admin' = '~revoked:* ~identity-admin:* +@all'; 'sample-pod' = '%R~revoked:* ~sample-pod:* +@all' }
       $users = @('admin', 'identity-admin')
       if ([string]::Equals([string]$ev, 'dev', [StringComparison]::Ordinal)) { $users += 'sample-pod' }
       elseif (-not [string]::Equals([string]$ev, 'prod', [StringComparison]::Ordinal)) { throw 'acl 렌더: env 가 dev · prod 가 아니다 — 렌더하지 않았다' }
-      $lines = @('USER default OFF -@all')
+      $lines = @('USER default OFF +auth +hello')
       foreach ($u in $users) {
         $v = $null
         if ($pwMap -is [System.Collections.IDictionary]) { $v = $pwMap[$u] }
