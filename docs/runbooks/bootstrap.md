@@ -1224,6 +1224,207 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
     - 늦은 시드 2–4단계: ① 첫 `force-sync` annotate(10:41:54 KST)는 **시드 창(D)에서 실행해 관리자 kubeconfig가 없어** 다른 기본 kubeconfig로 가서 실패(`couldn't get current server API group list` · `NotFound`) → ② 창 B에서 `kubectl --kubeconfig <관리자> -n data annotate externalsecret kafka-user-identity-admin kafka-user-dev-identity-admin "force-sync=<epoch>" --overwrite` → 2장 `SecretSynced` · `True`(LAST SYNC 17–18s · `refreshTime` 01:44:25–26Z) → ③ Application operation이 이미 Failed(01:38:06Z · retried 5 times)라 수동 전체 Sync(`kubectl --kubeconfig <관리자> -n argocd patch application platform-kafka-topics --type merge --patch-file <operation JSON>` — initiatedBy.username `operator-t056-late-seed` · revision `b232956…` · prune false · 표준 syncOptions 5) → 01:45:12–16Z Succeeded → ④ KafkaUser 2 `Ready=True` 01:45:16–17Z(wave 1 적용 직후 — UO 첫 조정에서) · KafkaTopic 4 `Ready=True` · CA 미러 5장 `SecretSynced`. 머지 → 전부 Ready = 15분(시드 대기 포함) · 시드 → Ready = 약 5분.
     - **교훈(이 소절에 반영)**: 「늦은 시드」 2단계의 annotate는 `--kubeconfig`를 명령에 직접 적는다 · 4단계 수동 Sync는 UI → CLI(플래그 없이) → JSON patch(옛 `status.operationState` 제거 포함) 순 · `.operation`만 넣는 merge patch는 금지(옛 실패 기록이 섞인다 — §3 T056 관찰자 판정).
 
+### T057 — Dragonfly ACL · 비밀번호 시드(kv 7경로 · 랜덤)
+
+**목적**: gitops T057 PR(`platform/dragonfly/` — wave 0 ExternalSecret 2(`dragonfly-dev-acl` · `dragonfly-prod-acl`) → Secret의 키 `users.acl` → wave 1 Deployment 2의 `--aclfile /etc/dragonfly/users.acl`)이 처음부터 `SecretSynced`가 되도록, **머지 전에** Vault kv 7경로에 Dragonfly 사용자 비밀번호 5개를 경로마다 따로 랜덤 생성해 넣고, env마다 그 SHA-256으로 aclfile 전문을 렌더해 넣는다 — 그래야 Dragonfly가 첫 기동에서 그 aclfile로 사용자를 싣는다. aclfile이 없거나 한 줄이라도 파싱 오류가 있으면 Dragonfly v1.40.1은 파일 전체를 버리고 **default nopass(무인증)**로 기동한다(build-notes 「T057」 1차 자료 · gitops `platform/dragonfly/README.md` §1). 블록 정본은 `specs/003-platform-foundation/design/t057-blocks/op1-seed-dragonfly.ps1`(T056 `op1-seed-kafka.ps1`의 파생 — 원칙 (a)–(h) · 정지점 · 판정/쓰기 단계 분리 · `-cas=0` JSON stdin · 되읽기 SHA-256 대조 · 응답 유실 재판정 · 조건부 정리 · 요약 표는 같고, 경로 · 키 집합 · url 조립 · acl 렌더 · live 판정 규칙 · 의존 · 쌍 판정만 다르다)이고, 결정 대응 · 모의 하네스(`harness.ps1` — 2026-10-22 결과는 같은 디렉터리 `README.md` §4) · 남은 위험은 같은 디렉터리 `README.md`에 있다.
+
+- **언제**: gitops T057 PR **머지 전**(gitops `platform/dragonfly/README.md` §0 선행 조건 **P1**). 머지가 먼저 되면 wave 0의 ExternalSecret 2장이 kv 없음으로 `SecretSyncedError`(Degraded)가 되고, operation은 wave 1(PVC 2 · Deployment 2)을 적용하지 못한 채 Failed로 닫힌다. Application `platform-dragonfly`는 예외 없는 표준 syncPolicy라 기본 재시도(대기 10·20·40·80·160 s ≈ 5분 — §4 T056 「언제」와 같다)가 끝나면 더 시도하지 않는다. 재시도가 도는 동안 시드해도 저절로 회복한다고 기대하지 않는다(ESO의 ES 재조정은 실패가 이어질수록 지수 백오프로 벌어진다). **머지 명령은 아래 「판정」의 출력을 컨트롤러에게 붙인 뒤에만 나온다**(2026-10-19 T056 사고 — kv 시드 전 머지 · 교훈 「머지 명령은 선행 조건 출력 확인 뒤에만」). 머지가 먼저 됐다면 아래 「늦은 시드」를 따른다.
+- **경로·값**(값은 이 블록이 만든다 — 이 표에는 값이 없다):
+
+  | kv 경로 | 키 | 사용자 · env | 소비자 |
+  |---|---|---|---|
+  | `kv/dev/dragonfly/admin` | `password` | `admin` · dev | 운영자(런북 · `ACL LOAD` · VD-4 대체 조회) — ESO 소비자 없음 |
+  | `kv/dev/dragonfly/identity-admin` | `password` · `url` | `identity-admin` · dev | 뒤에 `jt-dev`의 `identity-admin-env`(store `vault-dev` · T072) · 검사 Job `jt-dev/assert-env`가 `url`을 읽는다 |
+  | `kv/dev/dragonfly/sample-pod` | `password` · `url` | `sample-pod` · dev(검사 전용) | 검사 Job `jt-dev/assert-env`가 `url`을 읽는다 |
+  | `kv/dev/dragonfly/acl` | `users.acl` | — · dev | gitops ExternalSecret `data/dragonfly-dev-acl`(store `vault-data`) → Deployment `dragonfly-dev`의 aclfile 마운트 |
+  | `kv/prod/dragonfly/admin` | `password` | `admin` · prod | 운영자 — ESO 소비자 없음 |
+  | `kv/prod/dragonfly/identity-admin` | `password` · `url` | `identity-admin` · prod | 뒤에 `jt-prod`의 `identity-admin-env`(store `vault-prod` · T072) |
+  | `kv/prod/dragonfly/acl` | `users.acl` | — · prod | gitops ExternalSecret `data/dragonfly-prod-acl` → Deployment `dragonfly-prod`의 aclfile 마운트 |
+
+  prod에 `sample-pod` 경로는 **없다**(계약 — dev 전용 검사 계정 · prod aclfile에도 그 줄이 없다). `password` = `RandomNumberGenerator` 32바이트 → base64url(패딩 없음 · 43자 · `A–Z a–z 0–9 - _` — URL · 셸에서 인코딩이 필요 없다 · T054 · T056과 같은 생성기). `url` = `redis://` + 사용자 이름 + `:` + 같은 경로의 `password` + `@dragonfly-<env>.data.svc:6379/0`(계약 `DRAGONFLY_URL` — 사용자 이름 = kv 경로의 마지막 토큰 · env = 경로의 env). `users.acl` = 아래 줄을 **LF로만** 잇고 끝에 LF 1개(CR · 탭 · 빈 줄 · 앞뒤 공백 0 · 줄마다 토큰 ≥ 4 — build-notes 「T057」 D6):
+
+  ```text
+  USER default OFF -@all
+  USER admin ON #<H(admin)> ~* &* +@all
+  USER identity-admin ON #<H(identity-admin)> ~revoked:* ~identity-admin:* +@all
+  USER sample-pod ON #<H(sample-pod)> %R~revoked:* ~sample-pod:* +@all
+  ```
+
+  마지막 `sample-pod` 줄은 dev에만 있다(prod는 앞 3줄). `<H(u)>` = 그 env 사용자 `u`의 `password`(UTF-8) SHA-256 **소문자 hex 64자** — ns `data`의 Secret에는 평문 비밀번호가 실리지 않고 `ACL LIST`에는 15자 축약만 보인다. 블록은 env마다 사용자 경로를 먼저 쓰고 그 비밀번호(이미 있던 사용자 경로는 판정 단계에서 읽은 live 값)로 acl을 렌더해 쓴다(순서 = 위 표 순서 · dev → prod). 사용자 비밀번호 5개는 서로 달라야 한다(블록이 SHA-256으로 비교한다 — dev 값은 `jt-dev`의 `assert-env`로도 복사되고 `admin`은 전권이다). 또 jt-dev pod는 `dragonfly-prod.data.svc:6379`에도 L4로 닿는다(NetworkPolicy 매트릭스의 jt-dev → data 규칙이 podSelector `{}`라 두 인스턴스를 모두 연다 — pg-main과 같은 기존 설계 · 정책 변경 0) — env 격리는 **ACL만**이다: 비밀번호 5개 상이 · prod aclfile에 `sample-pod` 없음 · 공유 이름 `identity-admin`은 env마다 다른 비밀번호(리뷰 r1 K2).
+- **사전**(블록 밖 — 창 표기는 `docs/runbooks/vault-unseal.md` §0, 이 블록은 창 D · §4 T054 · T056 「사전」 1–5와 같다):
+  1. 창 C·D에서 `vault-unseal.md` §0 **창 시작 체크리스트**(`SaveNothing` · 전사 없음 — 전사 정책은 그 체크리스트가 PowerShellCore 키(+ `UseWindowsPowerShellPolicySetting` 분기)로 본다 · **클립보드 기록 0** — 켜져 있으면 블록이 첫 검사에서 멈춘다). PowerShell **모듈 로깅 정책**(`HKLM`/`HKCU:\SOFTWARE\Policies\Microsoft\PowerShellCore\ModuleLogging`의 `EnableModuleLogging` — 그 키의 `UseWindowsPowerShellPolicySetting`이 1이면 Windows PowerShell 쪽 키도)이 켜져 있어도 블록이 첫 검사에서 멈춘다(켜진 채로는 kv · 토큰 조회 응답 원문 — 비밀번호 · url · acl · root 토큰 — 이 이벤트 4103에 남는다). 창 D에서는 체크리스트의 마지막 줄(`$env:KUBECONFIG` 설정 · `kubectl config current-context`)을 건너뛴다 — 이 블록과 아래 「정리 판단」 두 블록은 kubectl을 쓰지 않는다.
+  2. 창 C: 관리자 kubeconfig로 `kubectl -n vault port-forward svc/vault 18200:8200`. 블록 자신은 kubectl을 쓰지 않는다(창 D에는 관리자 kubeconfig가 필요 없다).
+  3. 창 D: `Get-ChildItem Env:VAULT_*` 결과 없음(`VAULT_ADDR=http://127.0.0.1:18200`만 허용 — 다른 `VAULT_*`가 있으면 블록은 그 변수를 건드리지 않고 멈춘다) · `~/.vault-token` 없음.
+  4. 비밀번호 관리자(PM)의 root 토큰 항목(§0 토큰 표 ⑥ — T044 D4: 시드는 root로, revoke 보류).
+  5. 붙여넣기로 실행할 때만: 창 D를 `pwsh -NoProfile`로 **새로 연 창**으로 쓴다(프로필이 `vault`·`Read-Host`·`ConvertFrom-Json`을 함수·별칭으로 가리거나 `Set-PSDebug -Trace`·중단점을 켜 두는 경로가 없는 창) + PSReadLine 로드 확인 1줄(블록 머리 주석 ⑤).
+- **실행**(창 D — 둘 중 하나):
+
+  ```powershell
+  pwsh -NoProfile -File D:\code\joshuatech_ver2\specs\003-platform-foundation\design\t057-blocks\op1-seed-dragonfly.ps1   # 권장: 새 프로세스 — env·변수가 프로세스와 함께 사라진다
+  ```
+
+  또는 파일 전문 붙여넣기(전체가 `& { … }` 한 문 · 빈 줄 0). **붙여넣기는 위 사전 5의 새 창(`pwsh -NoProfile`)에서만 한다** — 블록 첫 문장 `Set-PSDebug -Off`(창에 켜져 있던 `-Trace`가 root 토큰 · 비밀번호 · url · acl 대입을 찍지 않게)와 그 부수 효과(그 창의 전역 strict 모드도 꺼진다 — 창은 끝나면 닫는다)는 §4 T054 「실행」과 같다. **root 토큰을 붙이기 전에** 화면의 `INFO vault CLI` 줄에서 명령 종류가 `Application`이고 경로가 `vault.exe`로 끝나는지 본다(`.cmd`/`.bat` 래퍼도 `Application`으로 보인다). 아니면(함수 · 별칭 · 래퍼가 `vault`를 가리고 있다) 토큰을 붙이지 말고 Ctrl+C로 끝낸 뒤 원인을 확인한다(`-File` 실행에서도 같다). **소요** ≈ 1분 미만(Vault 호출 31회 — `version` 1 · `status` 1 · `token lookup` 1 · 판정 `metadata get` 7 · 경로마다 put · 되읽기 `kv get` · `metadata get` 3×7; 재실행(전부 live-ok)은 17회 — 하네스 S01 · S17이 센다). 한 줄에서 1분 넘게 멈추면 창 C port-forward를 본다 — 끊겼으면 연결 거부 또는 CLI 타임아웃 뒤 STOP으로 끝난다(재실행은 안전 — 아래 실패 표). **정지점(입력 순서)**: ① **root 토큰** — 보안 입력(빈 입력 = 중단 · 붙여넣은 직후 클립보드를 비운다 · `hvs.`로 시작하지 않으면 Vault로 보내지 않고 중단) ② **`seed`** — 쓸 경로 목록(값 없음 · 경로마다 키 · 사용자 · 소비자 · 쓰는 순서 그대로)을 보여 준 뒤의 쓰기 확인(쓸 경로가 0이면 나오지 않는다). 입력은 가려진다(`-MaskInput` — `*`로 보인다). 그 밖의 입력 · 빈 Enter · 앞뒤 공백 · 대문자(`SEED`)는 쓰기 0으로 중단한다.
+- **기대 출력**(첫 실행 — 값 · 해시 · acl 내용 · 토큰은 어디에도 나오지 않는다 · 하네스 S01의 화면 출력에서 `INFO` · `OK Vault` 줄만 실물 모양으로 바꿨다 · 블록은 `쓸 경로` 줄과 요약 머리 앞에 빈 줄을 하나씩 낸다):
+
+  ```text
+  INFO vault CLI: Vault v… · Application ~\…\vault.exe — JSON stdin 형식은 T045 블록(2026-09-21 · VD-6 실측) · T054 블록(2026-10-15) · T056 블록(2026-10-19)의 되읽기 해시 일치로 CLI v2.1.0 에서 확인했다 — 줄바꿈(LF)이 든 값(users.acl)은 이 블록이 처음이다(…)
+  OK   Vault 도달 · 초기화됨 · unsealed(seal type=ocikms · server 2.0.4)
+  OK   토큰 정책에 root 포함 — 판정(읽기 전용)을 시작한다
+  PLAN kv/dev/dragonfly/admin — absent → 생성 예정
+  PLAN kv/dev/dragonfly/identity-admin — absent → 생성 예정
+  PLAN kv/dev/dragonfly/sample-pod — absent → 생성 예정
+  PLAN kv/dev/dragonfly/acl — absent → 생성 예정
+  PLAN kv/prod/dragonfly/admin — absent → 생성 예정
+  PLAN kv/prod/dragonfly/identity-admin — absent → 생성 예정
+  PLAN kv/prod/dragonfly/acl — absent → 생성 예정
+  판정 결과: 생성 예정 7 · 건너뜀(live-ok) 0 · 중단 0
+  쓸 경로 7개(이 순서로 쓴다) — 값(password · url · users.acl)은 이 블록이 만든다(password 는 경로마다 따로 랜덤 · acl 은 그 env 사용자 비밀번호로 렌더 — 화면에 나오지 않는다):
+    - kv/dev/dragonfly/admin  (키 password · 사용자 admin — 운영자 전용 · ESO 소비자 없음)
+    - kv/dev/dragonfly/identity-admin  (키 password · url · 사용자 identity-admin — 뒤에 vault-dev <pod>-env(T072) · 검사 Job jt-dev/assert-env)
+    - kv/dev/dragonfly/sample-pod  (키 password · url · 사용자 sample-pod(검사 전용) — 검사 Job jt-dev/assert-env)
+    - kv/dev/dragonfly/acl  (키 users.acl · dev 사용자 비밀번호의 SHA-256 으로 렌더 — ExternalSecret data/dragonfly-dev-acl → Deployment dragonfly-dev)
+    - kv/prod/dragonfly/admin  (키 password · 사용자 admin — 운영자 전용 · ESO 소비자 없음)
+    - kv/prod/dragonfly/identity-admin  (키 password · url · 사용자 identity-admin — 뒤에 vault-prod <pod>-env(T072))
+    - kv/prod/dragonfly/acl  (키 users.acl · prod 사용자 비밀번호의 SHA-256 으로 렌더(sample-pod 없음) — ExternalSecret data/dragonfly-prod-acl → Deployment dragonfly-prod)
+  (정지점 ② seed)
+  OK   kv/dev/dragonfly/admin v1 — 생성 · 되읽기 해시 일치(password)
+  OK   kv/dev/dragonfly/identity-admin v1 — 생성 · 되읽기 해시 일치(password·url)
+  OK   kv/dev/dragonfly/sample-pod v1 — 생성 · 되읽기 해시 일치(password·url)
+  OK   kv/dev/dragonfly/acl v1 — 생성 · 되읽기 해시 일치(users.acl)
+  OK   kv/prod/dragonfly/admin v1 — 생성 · 되읽기 해시 일치(password)
+  OK   kv/prod/dragonfly/identity-admin v1 — 생성 · 되읽기 해시 일치(password·url)
+  OK   kv/prod/dragonfly/acl v1 — 생성 · 되읽기 해시 일치(users.acl)
+  --- T057 Dragonfly ACL · 비밀번호 시드 결과 요약(값 없음 — 런북 bootstrap.md §4 T057 소절에 그대로 기록) ---
+  kv/dev/dragonfly/admin             생성 v1 · 되읽기 해시 일치(password)
+  kv/dev/dragonfly/identity-admin    생성 v1 · 되읽기 해시 일치(password·url)
+  kv/dev/dragonfly/sample-pod        생성 v1 · 되읽기 해시 일치(password·url)
+  kv/dev/dragonfly/acl               생성 v1 · 되읽기 해시 일치(users.acl)
+  kv/prod/dragonfly/admin            생성 v1 · 되읽기 해시 일치(password)
+  kv/prod/dragonfly/identity-admin   생성 v1 · 되읽기 해시 일치(password·url)
+  kv/prod/dragonfly/acl              생성 v1 · 되읽기 해시 일치(users.acl)
+  이 실행이 kv 에 새로 쓴 경로: 7건(생성·검증 완료 7 · 응답 유실 뒤 재판정으로 검증 완료 0 · 기록 후 검증 실패 0) · 결과 미확인 0 · 건너뜀 0 · 중단 0 · 미실행 0
+  판정: kv 7경로 준비 완료(생성 또는 live-ok) — gitops T057 PR 머지 전제 충족 · 이 출력을 컨트롤러에게 붙인 뒤에만 머지한다 · …
+  창 종료 체크리스트(docs/runbooks/vault-unseal.md §0 · 창 D): …
+  ```
+
+  재실행이면 7경로가 `SKIP … — live-ok(…)`로 나오고(acl 경로는 `키 1 = users.acl · 그 env 의 live 사용자 비밀번호로 렌더한 결과와 Ordinal 일치`) `INFO 쓸 경로 없음 — 7경로 모두 live-ok(…)` 뒤 쓰기 확인 정지점이 없다(값을 다시 만들지 않는다 — 회전이 아니다).
+- **판정**: 요약 7행이 전부 `생성 v1 · 되읽기 해시 일치(…)` · `기록됨(응답 유실 — 이 실행의 값 …) · 되읽기 해시 일치(…)`(put 응답 유실 뒤 재판정으로 검증된 경로 — 정상 완료와 같다, 아래 실패 시 표) 또는 `건너뜀(live-ok — 덮어쓰지 않았다)`이고 `판정: kv 7경로 준비 완료` 줄이 나오면 머지 전제가 충족된 것이다. **이 출력(요약 7행 · 집계 줄 · 판정 줄 · `INFO vault CLI` 줄 — 값 없음)을 컨트롤러에게 붙인 뒤에만 컨트롤러가 머지 명령을 낸다** — 운영자는 이 출력 없이 gitops T057 PR을 머지하지 않는다. 이 소절 끝 「실행 기록」에 날짜 · 요약 7행 · `INFO vault CLI` 줄(실행 파일 종류 · 경로 포함 — 사용자 프로필 경로는 블록이 `~`로 줄여 낸다)을 옮겨 적고(값 없음), `vault-unseal.md` §0 창 종료 체크리스트를 한다.
+- **실패 시**(`STOP` 사유별 조치 — 수동 확인은 `vault-unseal.md` §0 절대 규칙 1로 `VAULT_ADDR`·`VAULT_TOKEN`을 다시 넣고 하며, **값을 출력하는 명령은 쓰지 않는다**. 문구와 뜻은 §4 T054 · T056 실패 표와 같고, 이 표는 Dragonfly 7경로 · 키 집합 1/2/1에 맞춘 판이다 — url · acl · 의존 · 쌍 판정 행이 T057에 새로 있다):
+
+  | 출력 | 뜻 | 조치 |
+  |---|---|---|
+  | `클립보드 기록 …` · `~/.vault-token 존재` · `VAULT_* 환경 변수가 이미 있다: <이름>` · `PowerShell 7.5 이상` · `vault CLI 를 찾을 수 없다` | 창 전제 미충족 — 아무것도 묻지 않았다 | 창 시작 체크리스트 · 이름이 나온 변수를 확인한 뒤 `Remove-Item Env:<이름>` · 재실행 |
+  | `PowerShell 모듈 로깅 정책이 켜져 있다(<키>)` | 그룹 정책(GPO)의 모듈 로깅 — 켜진 채로 실행하면 응답 원문(비밀번호 · url · acl · root 토큰)이 이벤트 로그 4103에 남는다 · 아무것도 묻지 않았다 | 정책을 끌 수 있으면 끄고 새 창에서, 끌 수 없으면 정책이 없는 PC에서 실행한다(정책을 우회하지 않는다) |
+  | `Vault 도달 실패 또는 status 응답 해석 실패` · `Vault sealed` · `Vault 미초기화` · `vault status 가 unsealed 인데 exit=…` | 창 C port-forward 끊김(파드 교체 뒤 끊긴다) 또는 Vault 상태 — 토큰을 묻기 전이다 | 창 C 재수립 · `vault-unseal.md` §1 · 재실행 |
+  | 경고 `클립보드를 비우지 못했다 — root 토큰이 클립보드에 남아 있을 수 있다 …`(STOP 아님 — 시드는 계속된다) | 다른 프로그램(원격 데스크톱 `rdpclip` · 클립보드 관리자)이 클립보드를 잡고 있어 블록이 비우지 못했다 | 보는 즉시 PM의 클립보드 지우기 또는 아무 텍스트 복사로 직접 덮어쓴다(다른 창에 붙여 넣지 않는다) · 원인 프로그램을 닫는다 · 실행 기록에 경고가 나왔다고 적는다 |
+  | `입력이 Vault 토큰 형식…` · `root 토큰 확인 실패` · `토큰 정책에 root 가 없다` | 다른 PM 항목을 붙였거나 토큰이 무효 — 쓰기 0. `입력이 Vault 토큰 형식…`은 root 토큰이 `hvs.` 접두가 아닐 때도 나온다(블록의 가정 — T054 · T056 첫 실행에서는 통과했다) | PM 항목 확인 · 재실행. 맞는 항목인데도 같은 줄이 나오면 더 시도하지 않고 멈춘다(블록의 토큰 형식 가정을 고쳐야 한다) |
+  | `STOP <경로> — 판정 불가: …`(`metadata 조회 exit=…` · `kv get exit=…` · `kv get 응답을 해석하지 못했다(원문 미출력)`) | 일시 오류 · 권한 · 응답 해석 실패(잘린 JSON 등. 재실행해도 반복되면 `password`와 대소문자만 다른 키가 함께 있는 값일 수 있다 — 하네스 S04i) — 판정 단계라 쓰기 0 | 재실행. 반복되면 값 없는 진단만 한다: 아래 ① 점검 블록(상태 · 버전 이력 · 키 이름) 또는 kv get 쪽 종료 코드만 `vault kv get "-format=json" <경로> > $null; "exit=$LASTEXITCODE"`(stdout은 버린다). 표 형식 `vault kv get <경로>`는 쓰지 않는다(성공하면 password · url · acl이 화면에 나온다) |
+  | `STOP <acl 경로> — 판정 불가: 같은 env 의 사용자 경로 <경로> 가 live-ok 가 아니라 acl 을 대조하지 않았다(…)` | 같은 env의 사용자 경로가 STOP(live-mismatch · dead · 판정 불가)이라 acl을 렌더할 비밀번호가 확정되지 않았다(결정 B4) — acl 값은 읽지도 않았다 · 쓰기 0 | 그 사용자 경로의 STOP 행을 먼저 처리하고 재실행한다 |
+  | `STOP <경로> — dead: …` | 현재 버전이 soft-delete · destroy이거나 메타데이터만 있다 — 쓰기 0 | 아래 ① 점검 블록으로 버전 상태만 본다(값 없음) → 「정리 판단」 |
+  | `STOP <사용자 경로> — live-mismatch: 키 집합 불일치(…)` · `password 길이가 43이 아니다(…)` · `password 에 base64url 밖의 문자가 있다(…)` · `<키> 값이 문자열이 아니다` | 이미 값이 있는데 키 집합이 정확히 `password`(admin) · `password`·`url`(identity-admin · sample-pod)이 아니거나 `password`가 base64url 43자 문자열이 아니다 — 쓰기 0 · 덮어쓰지 않는다 · 자동으로 고치지 않는다 | 아래 ① 점검 블록으로 키 이름만 본다 → 「정리 판단」(정정 블록은 이 과제 범위 밖). 다른 키가 있으면 그 값은 이 블록이 만든 것이 아니다 — 넣은 사람 · 작업을 먼저 확인한다 |
+  | `STOP <사용자 경로> — live-mismatch: url 스킴 · 사용자 불일치(…)` · `url 호스트 · 포트 · db 불일치(…)` · `url 비밀번호 불일치(…)` | `url`이 정확히 `redis://` + 사용자 + `:` + 같은 경로 `password` + `@dragonfly-<env>.data.svc:6379/0`이 아니다(사용자 이름 · 스킴 · env 호스트 · 포트 · db · 끝 개행 · 다른 비밀번호 — 분류만 보이고 값은 출력하지 않는다) — 쓰기 0 | ① 점검 블록으로 키 이름 · 버전 이력만 본다 → 「정리 판단」으로 **그 사용자 경로와 같은 env의 acl 경로**를 지운 뒤 재실행(acl이 남아 있으면 재실행이 아래 「absent 인데 acl 이 이미 있다」로 멈춘다) |
+  | `STOP <acl 경로> — live-mismatch: acl 내용 불일치(…)` · acl 경로의 `키 집합 불일치(…)` · `users.acl 값이 문자열이 아니다` | acl이 그 env의 live 사용자 비밀번호로 렌더한 결과와 1바이트라도 다르다(CR · 대문자 hex · 끝 줄바꿈 · BOM · 낡은 비밀번호 — 회전 반쪽 · 줄 누락 · prod에 `sample-pod` 줄 — 내용 · 모양은 출력하지 않는다) — 쓰기 0 · 덮어쓰지 않는다 | 사용자 경로들은 live-ok다(위 SKIP 줄). 머지 전이면 ① 점검 블록으로 acl 경로의 버전 이력을 보고(그 acl이 이 블록의 실패한 실행이나 블록 밖에서 들어간 것인지) → ② 삭제 블록으로 **acl 경로만** 지운다 → 재실행하면 live 사용자 비밀번호로 다시 렌더해 acl만 쓴다(사용자 경로 put 0) |
+  | `STOP <acl 경로> — live-mismatch: 같은 env 의 사용자 경로 <경로> 가 absent 인데 acl 이 이미 있다 — 이 acl 은 이 실행이 모르는 비밀번호를 가리킨다(…)` | 그 env의 사용자 경로가 하나라도 없는데 acl이 남아 있다(결정 B4 — 예: 사용자 경로만 정리하고 acl을 남겼다) · 그 acl은 이 실행이 만들 새 비밀번호와 맞지 않는다 — acl 값은 읽지도 않았다 · 쓰기 0 | 머지 전이면 ② 삭제 블록으로 그 acl 경로를 지운다(남은 사용자 경로는 그대로 두면 재실행이 live-ok로 건너뛰고 그 값으로 다시 렌더한다) → 재실행 |
+  | `STOP <경로> — password 가 <다른 경로> 의 것과 같다 — 사용자 비밀번호 5개는 전부 달라야 한다(…) · 값 미출력 · 쓰기 0`(같은 값 경로 전부 — 경로별 `SKIP … live-ok` 줄 뒤) · 요약 `중단(다른 사용자 경로와 password 가 같다 — 값 미출력 · 쓰기 0)` | live-ok 모양인 사용자 경로끼리 `password`가 같다(블록이 SHA-256을 Ordinal로 비교 — 값 · 해시 미출력 · 결정 B5). 이 블록은 경로마다 독립 RNG로 만들므로 같은 값은 블록 밖에서 들어간 것이다. dev 값은 `assert-env`로도 복사되고 `admin`은 전권이라 한쪽 노출이 다른 쪽 노출이 된다 — 판정 단계라 쓰기 0 | 어느 쪽이 블록 밖에서 들어갔는지 확인해 실행 기록에 남긴다(① 점검 블록 — 버전 이력 · 키 이름만) → **같은 값을 가진 경로 모두 + 그 env의 acl 경로**를 ② 삭제 블록으로 지운다(한 번에 한 경로 · 남기는 쪽도 블록 밖을 거친 값이라 노출로 본다 — T056 리뷰 r2 R3) → 재실행(새 독립 값 + acl 다시 렌더). 머지 뒤에는 ② 삭제를 쓰지 않는다 — 회전(T084) |
+  | `STOP <경로> — 생성한 password 가 다른 사용자 경로의 password 와 같다(값 · 해시 미출력) — 쓰지 않았다` · 요약 `중단(생성한 password 가 다른 사용자 경로의 것과 같다 — put 전 · …)` | 쓰기 단계에서 새로 만든 값이 이미 아는 사용자 비밀번호와 같았다(B5의 생성 몫 — 32바이트 RNG에서는 일어나지 않는다 · 생성기 이상 신호) — 그 경로는 put 전이라 쓰지 않았다 · 앞 경로는 쓴 상태 | 더 시도하지 않고 멈춘 뒤 컨트롤러에게 보고한다(생성기 · 블록 변경 확인) |
+  | `STOP <경로> — put 거부(exit=…) · 재판정 absent` · 요약 `중단(put 거부 … — 재판정 absent · 쓰지 않았다)` | `-cas=0` put이 비 0으로 끝났고 **값 없이 다시 판정해도 경로가 없다 = 쓰지 않았다**(권한 · 연결 · CLI 오류) · 뒤 경로 미실행. acl 경로에서 났다면 그 env의 사용자 경로는 이미 v1이다(하네스 S08f) | 토큰 정책(`root`) · 창 C port-forward · `INFO vault CLI` 줄을 확인한 뒤 재실행 — 재실행은 쓴 사용자 경로를 live-ok로 건너뛰고 그 값으로 acl을 렌더해 쓴다(S08g). 같은 STOP이 반복되면 더 시도하지 않고 멈춘다 |
+  | `STOP <경로> — put 거부(exit=…) · CAS 충돌(다른 값)` · 요약 `중단(put 거부 … 재판정 live v1 · 되읽기 값이 이 실행의 것과 다르다 = CAS 충돌 · 덮어쓰지 않았다)` | put 비 0 뒤 재판정이 live v1인데 되읽기 값(해시)이 이 실행의 값과 다르다 — 판정 뒤 다른 기록자가 그 경로를 썼다(판정 단계의 일시 `No value found` 오판 포함) · 덮어쓰지 않았다 | 재실행 — 이번엔 판정이 그 경로를 live로 본다(모양이 맞으면 SKIP · 아니면 live-mismatch) + 같은 시각에 이 경로를 쓴 다른 창 · 작업자를 확인한다 |
+  | `OK   <경로> v1 — 기록됨(응답 유실 — 이 실행의 값 · put exit=… 뒤 재판정) · 되읽기 해시 일치(…)` · 집계 `응답 유실 뒤 재판정으로 검증 완료 1`(STOP 아님 — 뒤 경로 계속) | put 응답이 유실돼 CLI 자동 재시도(`VAULT_MAX_RETRIES` 기본 2)가 자기 기록과 CAS 충돌했지만, kv의 v1이 이 실행의 값임을 되읽기 해시로 확인했다 — 정상 완료와 같다 | 조치 없음. 실행 기록에 그 줄을 그대로 옮긴다(창 C 순단 신호 — 반복되면 port-forward를 다시 세운다) |
+  | `STOP <경로> — 되읽기 실패(exit=…)` · `되읽기 응답을 해석하지 못했다` | put은 됐다(v1) — 되읽기만 실패(put 비 0 뒤 재판정 live v1에서 났다면 요약은 `결과 미확인(…)`) | **재실행이 복구다**(그 경로를 live로 판정 → 모양이 맞으면 SKIP · acl은 live 사용자 비밀번호로 렌더한 결과와 맞으면 SKIP) |
+  | 요약 행 `결과 미확인(put 진행 중 중단 …)` · `결과 미확인(put exit=… — 재판정 <종류> …)` · 집계 `결과 미확인 1` | put이 도는 동안 중지됐다(Ctrl+C 등 — STOP 줄 없음) 또는 put 비 0 뒤 재판정 자체가 일시 오류 · dead · `current_version≠1`이어서 이 실행의 값이 기록됐는지 모른다 | 지우지 않고 **재실행한다**(있으면 live로 판정 → 모양이 맞으면 SKIP · 없으면 생성). 재판정이 dead였다면 재실행도 dead로 멈춘다 → dead 행 |
+  | 요약 행 `생성 예정(판정 absent — 쓰기 확인 전)` · STOP 줄 없음 | 정지점 ②(`seed`)에서 중지했다(Ctrl+C · 창 닫기) — 쓰기 확인 전이라 쓰기 0 · 값을 만들지도 않았다 | 재실행(판정부터 다시 — 되돌릴 것이 없다) |
+  | `STOP <경로> — 되읽기 해시 불일치(…)` · `되읽기 키 집합 불일치(…)` | 기록된 값(v1)이 블록이 만든 값과 다르다(CLI 동작 변화 의심 — acl 경로에서 났다면 줄바꿈이 든 값의 JSON stdin 왕복을 먼저 의심한다: 이 블록이 LF 값을 처음 쓴다 · `INFO vault CLI` 줄을 §4 T054 · T056 실행 기록(CLI v2.1.0)과 대조) | 재실행하면 대개 live-mismatch로 멈춘다 → 아래 「정리 판단」 · acl 경로였다면 컨트롤러에게 보고(블록 결함 후보) |
+  | `STOP <경로> — 쓰기 뒤 메타데이터가 current_version=1 · 삭제 없음이 아니다(<종류> · current_version=<n> …)` · 요약 `기록됨 — 메타데이터 확인 실패(…)` | 값은 되읽기 해시 대조까지 일치했다(v1 기록 · 대조 끝) — 그 뒤 metadata 판정만 어긋났다. 괄호 안 종류별로 조치가 다르다 | §4 T054 실패 표의 같은 행과 같다: `error` → 재실행(판정이 live로 보고 SKIP) · `live · current_version=2` → 재실행 + 같은 시각에 이 경로를 쓴 다른 창 · 작업자 확인 · `dead`(`delete_version_after` 삭제 예약) → 그 행의 값 없는 두 명령으로 키 · 마운트 설정을 보고, **`0s`로 고치기 전에는 정리하지 않는다** |
+
+  **정리 판단(운영자 · 머지 전에만)**: gitops T057 PR이 **머지되기 전**(ExternalSecret이 아직 acl 경로를 읽지 않는다 · 사용자 경로의 소비자는 아직 없다)이고 그 경로가 이 블록의 실패한 실행이 만든 것(요약 표 · 버전 이력으로 확인 — 예외: 위 실패 표의 url · acl · 쌍 판정 행이 가리키는 경로)일 때만, 운영자 판단으로 그 경로의 모든 버전과 메타데이터를 지운 뒤(**되돌릴 수 없다**) 블록을 재실행한다. **사용자 경로를 지우면 같은 env의 acl 경로도 지운다** — acl은 그 사용자 비밀번호의 해시를 담고 있어 남겨 두면 재실행이 「absent 인데 acl 이 이미 있다」로 멈춘다(결정 B4). acl 경로만 지우는 것은 언제나 안전하다(재실행이 live 사용자 비밀번호로 다시 렌더한다). 경로를 손으로 넣는 한 줄 `vault kv metadata delete <경로>`는 쓰지 않는다 — 오타 · 복사 실수로 7경로 밖(예: 이미 소비 중인 `kv/platform/cloudflare/tunnel` · T056의 `kv/prod/kafka/identity-admin` · T054의 `kv/prod/db/identity_admin/owner`)을 넣으면 그 경로의 모든 버전이 영구 삭제된다. 판정(읽기)과 변경(삭제)은 **한 블록에 섞지 않는다**(2026-09-22 메모리 규칙 · T054 결정 C6): 아래 **① 점검 블록**(읽기 전용 — vault 쓰기 명령 0 · 상태 · 버전 이력 · 키 이름만, 값 출력 0)으로 먼저 보고 운영자가 판단한 뒤, **② 삭제 블록**(7경로 허용 목록 Ordinal · 지울 경로를 다시 그대로 타자 · 삭제 뒤 `No value found` 확인 · 조회/삭제 실패 · 잔존 · 삭제 뒤 조회 오류 = 중단)만 쓴다. 둘 다 창 D(`VAULT_ADDR`·`VAULT_TOKEN`은 `vault-unseal.md` §0 절대 규칙 1로 넣은 상태 — 블록은 둘을 만들지도 지우지도 않는다) · 통째로 붙여 넣어도 안전(`& { … }` 한 문 · 빈 줄 0 · TAB 0) · 한 번에 한 경로 · 첫 `Read-Host` 전에 클립보드를 비운다. 두 블록은 저장소 하네스가 **이 코드 펜스에서 그대로 추출해** 모의로 시험한다(`t057-blocks/harness.ps1` R1 · R2 정적 → GA · GB 런타임 — 펜스 안을 고치면 하네스를 다시 돌린다). **머지 뒤에는 지우지 않는다** — 그때의 값 교체는 회전 절차다(아래).
+
+  ① 점검 블록(읽기 전용 — 지우지 않는다):
+
+  ```powershell
+  & {
+    # [t057-cleanup-inspect] 읽기 전용 — vault 쓰기 명령 0 · 값 출력 0(상태 · 버전 이력 · 키 이름만) · 한 번에 한 경로 · 첫 Read-Host 전 클립보드 비움(§0 규칙 1로 붙인 토큰 잔류 방어)
+    $ErrorActionPreference = 'Stop'
+    $PSNativeCommandUseErrorActionPreference = $false
+    try { Set-Clipboard -Value ' ' } catch { Write-Warning '클립보드를 비우지 못했다 — root 토큰이 클립보드에 남아 있을 수 있다. 직접 비운 뒤 계속한다' }
+    $seven = @('kv/dev/dragonfly/admin', 'kv/dev/dragonfly/identity-admin', 'kv/dev/dragonfly/sample-pod', 'kv/dev/dragonfly/acl', 'kv/prod/dragonfly/admin', 'kv/prod/dragonfly/identity-admin', 'kv/prod/dragonfly/acl')
+    try { $Host.UI.RawUI.FlushInputBuffer() } catch { }
+    $p = Read-Host '점검할 kv 경로(STOP 줄의 경로 그대로 — T057 7경로 중 하나)'
+    if (-not @($seven | Where-Object { [string]::Equals($_, $p, [StringComparison]::Ordinal) }).Count) { throw '7경로 밖이다 — 중단(아무것도 조회하지 않았다)' }
+    $raw = @(vault kv metadata get "-format=json" $p 2>&1)
+    $rc = $LASTEXITCODE
+    if ($rc -ne 0) {
+      if (@($raw | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] -and ([string]$_).StartsWith('No value found at ', [StringComparison]::Ordinal) }).Count) { Write-Host "$p — absent(메타데이터 없음 — 지울 것이 없다 · 시드 블록이 absent 로 판정해 생성한다)"; return }
+      throw "metadata 조회 실패(exit=$rc) — 판정 불가(창 C port-forward · 토큰 확인 뒤 재실행)" }
+    $d = ((@($raw | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }) -join "`n") | ConvertFrom-Json -DateKind String).data
+    Write-Host "$p — current_version=$($d.current_version) · delete_version_after=$($d.delete_version_after) · 버전 이력(값 없음):"
+    foreach ($v in $d.versions.PSObject.Properties) { Write-Host ('  v{0}  created={1}  deletion_time={2}  destroyed={3}' -f $v.Name, $v.Value.created_time, $v.Value.deletion_time, $v.Value.destroyed) }
+    $o = @(vault kv get "-format=json" $p 2>$null)
+    if ($LASTEXITCODE -ne 0) { Write-Host '  현재 버전 데이터: 읽지 못했다(exit≠0 — soft-delete · destroy · 버전 없음이면 정상)'; Write-Host '점검 끝 — 이 블록은 아무것도 쓰지 않았다. 지우려면 아래 ② 삭제 블록(머지 전에만)'; return }
+    $dd = (($o -join "`n") | ConvertFrom-Json -DateKind String).data.data
+    $o = $null
+    if ($null -eq $dd) { Write-Host '  현재 버전 데이터: 없음(soft-delete · destroy)' }
+    else { Write-Host ('  현재 버전 키 이름(값 미출력): ' + (@($dd.PSObject.Properties | ForEach-Object { $_.Name } | Sort-Object) -join ' · ')) }
+    $dd = $null
+    Write-Host '점검 끝 — 이 블록은 아무것도 쓰지 않았다. 지우려면 아래 ② 삭제 블록(머지 전에만)'
+  }
+  ```
+
+  ② 삭제 블록(되돌릴 수 없다 — ①로 확인한 경로만 · 머지 전에만):
+
+  ```powershell
+  & {
+    # [t057-cleanup-delete] 되돌릴 수 없다 — ① 점검 블록으로 확인한 경로만 · 7경로 허용 목록(Ordinal) · 경로 재입력 · 삭제 뒤 No value found 확인 · 한 번에 한 경로 · 첫 Read-Host 전 클립보드 비움(§0 규칙 1로 붙인 토큰 잔류 방어)
+    $ErrorActionPreference = 'Stop'
+    $PSNativeCommandUseErrorActionPreference = $false
+    try { Set-Clipboard -Value ' ' } catch { Write-Warning '클립보드를 비우지 못했다 — root 토큰이 클립보드에 남아 있을 수 있다. 직접 비운 뒤 계속한다' }
+    $seven = @('kv/dev/dragonfly/admin', 'kv/dev/dragonfly/identity-admin', 'kv/dev/dragonfly/sample-pod', 'kv/dev/dragonfly/acl', 'kv/prod/dragonfly/admin', 'kv/prod/dragonfly/identity-admin', 'kv/prod/dragonfly/acl')
+    try { $Host.UI.RawUI.FlushInputBuffer() } catch { }
+    $p = Read-Host '지울 kv 경로(① 점검 블록으로 확인한 경로 그대로 — T057 7경로 중 하나)'
+    if (-not @($seven | Where-Object { [string]::Equals($_, $p, [StringComparison]::Ordinal) }).Count) { throw '7경로 밖이다 — 중단(아무것도 지우지 않았다)' }
+    $raw = @(vault kv metadata get "-format=json" $p 2>&1)
+    $rc = $LASTEXITCODE
+    if ($rc -ne 0) {
+      if (@($raw | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] -and ([string]$_).StartsWith('No value found at ', [StringComparison]::Ordinal) }).Count) { throw "$p 는 이미 없다(absent) — 지울 것이 없다 · 중단(아무것도 지우지 않았다)" }
+      throw "metadata 조회 실패(exit=$rc) — 중단(아무것도 지우지 않았다)" }
+    $cv = ((@($raw | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }) -join "`n") | ConvertFrom-Json -DateKind String).data.current_version
+    $raw = $null
+    try { $Host.UI.RawUI.FlushInputBuffer() } catch { }
+    $again = Read-Host "되돌릴 수 없다 — $p (current_version=$cv) 의 모든 버전과 메타데이터를 지운다. 진행하려면 이 경로를 다시 그대로 타자로 입력(그 외 = 중단)"
+    if (-not [string]::Equals($again, $p, [StringComparison]::Ordinal)) { throw '입력이 경로와 다르다 — 중단(아무것도 지우지 않았다)' }
+    $null = @(vault kv metadata delete $p 2>&1)
+    $rc = $LASTEXITCODE
+    if ($rc -ne 0) { throw "삭제 실패(exit=$rc) — 수동 확인: $p" }
+    $chk = @(vault kv metadata get "-format=json" $p 2>&1)
+    if ($LASTEXITCODE -eq 0 -or -not @($chk | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] -and ([string]$_).StartsWith('No value found at ', [StringComparison]::Ordinal) }).Count) { throw "삭제 확인 실패(경로가 남았거나 조회 오류) — 수동 확인: $p" }
+    Write-Host "OK   $p — 모든 버전 · 메타데이터 삭제(No value found 확인). 사용자 경로를 지웠다면 같은 env 의 acl 경로도 지운다(남기면 재실행이 acl live-mismatch 로 멈춘다 — 결정 B4) · 그다음 op1-seed-dragonfly.ps1 을 새 프로세스로 재실행한다(지운 경로는 absent 로 판정돼 새로 생성된다)"
+  }
+  ```
+
+  끝나면 `Remove-Item Env:VAULT_TOKEN, Env:VAULT_ADDR`만 하고(창 C port-forward · 창 A 터널은 그대로 둔다 — 재실행이 쓴다) 블록을 새 프로세스(`-File`)로 재실행한다(블록은 시작 전 `VAULT_TOKEN`이 있으면 멈춘다). 전체 창 종료 체크리스트(`vault-unseal.md` §0 — 창 C · 창 A 종료 포함)는 재실행이 끝난 뒤에 한다.
+- **머지 뒤 확인**(agent-view kubeconfig — 값은 보지 않는다. Secret은 agent-view가 읽지 못한다 · ExternalSecret · Deployment는 읽는다):
+
+  ```powershell
+  kubectl -n data get externalsecret dragonfly-dev-acl dragonfly-prod-acl
+  kubectl -n data get deployment dragonfly-dev dragonfly-prod
+  ```
+
+  ES 2행 전부 STATUS `SecretSynced` · READY `True`이면 kv acl 2경로의 실재와 키 이름(`users.acl`)이 증명된 것이다(ns `data`에는 다른 과제의 ExternalSecret도 있으므로 이름을 지정한다 · ES 이름 = gitops T057 결정 D7). Deployment 2행 READY `1/1` · AVAILABLE `1`은 그 aclfile을 마운트하고 기동했다는 뜻이지 **aclfile이 실렸다는 증명은 아니다** — 파싱 오류면 무인증으로도 기동한다. 실림 판정은 확인 스크립트 post의 pod 로그 grep(`could not load ACL file` · `Error while parsing aclfile` · `Invalid password hash` 0줄)과 VD-4 Job의 `noauth` 검사(`-NOAUTH` = 실렸다 · `PONG` = 무인증)다(gitops `platform/dragonfly/README.md` §2 · §3 · build-notes 「T057」 D12 · D13). 사용자 5경로는 아직 ESO 소비자가 없다(VD-4 Job · T059 · T072가 처음 읽는다).
+- **늦은 시드(머지가 먼저 된 경우만 — 원칙은 위 「언제」의 머지 전 시드)**: 절차는 §4 T056 「늦은 시드」 1–5와 같고 이름만 바꾼다 — ExternalSecret `dragonfly-dev-acl` · `dragonfly-prod-acl` · Application `platform-dragonfly` · wave 1 = PVC 2 · Deployment 2.
+  1. 창 D에서 이 블록을 평소대로 실행한다(판정 · 생성 · 되읽기는 같다 — 요약 7행과 `판정: kv 7경로 준비 완료`까지 확인하고 그 출력을 컨트롤러에게 붙인다).
+  2. 창 B(관리자 kubeconfig)에서 ES 2장에 `force-sync` 어노테이션을 건다. **kubeconfig를 명령에 직접 적는다** — 시드 창(D)처럼 관리자 kubeconfig가 없는 창에서 치면 다른 기본 kubeconfig로 가서 실패한다(§4 T056 실행 기록 2026-10-19):
+
+     ```powershell
+     $kc = '<관리자 kubeconfig 경로>'
+     $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+     kubectl --kubeconfig $kc -n data annotate externalsecret dragonfly-dev-acl dragonfly-prod-acl "force-sync=$ts" --overwrite
+     ```
+
+  3. agent-view로 위 「머지 뒤 확인」의 첫 명령을 돌려 ES 2행 전부 `SecretSynced` · `True`를 본다(값은 보지 않는다). 이 시점에 Application health가 Healthy로 바뀌어도 **sync는 OutOfSync 그대로**다 — wave 1(PVC · Deployment)은 아직 없다(§4 T056 「늦은 시드」 3). Healthy만 보고 끝내지 않는다.
+  4. operation 상태를 본다(`kubectl -n argocd get app platform-dragonfly -o jsonpath='{.status.operationState.phase} retry={.status.operationState.retryCount} {.status.operationState.message}'`): **ⓐ 재시도 대기**(phase `Running` · message `… Retrying attempt #n at …`) → 기다린다(대기 10·20·40·80·160 s · `.operation`에 손대지 않는다) · **ⓑ 재시도 소진**(phase `Failed` · `(retried 5 times).`) → **수동 전체 Sync**: Argo CD UI(리소스 전부 · PRUNE 끔 · Apply Out of Sync Only 끔 · Retry 끔 · Sync options는 미리 채워진 값 그대로) → 안 되면 CLI `argocd app sync platform-dragonfly`(**옵션 플래그 없이**) → 관리자 kubeconfig만 있을 때는 §4 T056 「늦은 시드」 4 ⓑ 3의 JSON patch 블록을 Application 이름 `platform-dragonfly` · `initiatedBy.username` `operator-t057-late-seed` · revision = 머지 sha 40자로 바꿔 쓴다(옛 `status.operationState` 제거 포함 · `--dry-run=server` 먼저 · `--kubeconfig` 직접). **금지**: `.operation`만 넣는 `--type merge` patch(옛 실패 기록이 새 기록에 섞인다 — §3 T056 관찰자 판정).
+  5. agent-view로 「머지 뒤 확인」의 둘째 명령을 돌려 Deployment 2행 READY `1/1`을 보고, 위 「머지 뒤 확인」의 실림 판정(로그 grep · `noauth`)까지 한다. 걸린 시간을 실행 기록에 남긴다.
+- **회전은 이 소절 범위 밖**(build-notes 「T057」 D9): kv `<user>`(`password` · `url`)와 **같은 env의 `acl`을 함께** 갱신한다(acl은 새 password의 SHA-256으로 다시 렌더 — 한쪽만 바꾸면 Dragonfly는 옛 비밀번호를 계속 받고, 이 블록의 재실행은 acl live-mismatch로 멈춘다 · 사용자 비밀번호 5개는 서로 다른 값 · 같은 형식(base64url 43자 · 앞뒤 공백 · 개행 없음)) → ESO `refreshInterval` 5m 안에 Secret 갱신 → kubelet이 마운트 파일을 갱신(≤ 약 2분) → 운영자가 `admin`으로 `ACL LOAD`(무중단 — aclfile을 다시 읽는다) 또는 `kubectl rollout restart deployment/dragonfly-<env>`(Recreate — 그동안 소비자는 fail-closed 503). ns `data`는 Reloader 감시 밖이다(D9 — 어노테이션 0 · 자동 재기동 없음). 소비자(`assert-env` · `<pod>-env`)는 같은 kv 경로의 `url`을 5m 안에 다시 읽는다. 절차 정본은 `docs/runbooks/secret-rotation.md`(T084에서 작성 — 아직 없다). 이 블록의 재실행은 회전이 아니다(live-ok는 건너뛴다).
+- **실행 기록**: (운영자 실행 뒤 이 줄 아래에 추가 — 컨트롤러가 채운다: 날짜·시각(KST, Z 병기) · 요약 7행 · `INFO vault CLI` 줄 · 머지 뒤 ExternalSecret 2장 `SecretSynced` · Deployment 2 Available · aclfile 실림 판정 시각. 값·해시·acl 내용·토큰은 적지 않는다)
+
 ## §5 v1 삭제 기록
 
 (T104–T105에서 작성)
