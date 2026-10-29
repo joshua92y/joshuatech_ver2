@@ -49,7 +49,7 @@ Write-Host ($o.TrimEnd())
 Check 'reboot-harness' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see reboot harness test output above"
 
 # 1b2a1. cluster-harness (T049) — tests/scripts/cluster-tests.tests.ps1: tests/platform/cluster.tests.ps1 단위 테스트(argo-4 범위 분리 · T049 허용 미배포
-#        목록 게이트 · 조회 오류 사유 · np-2 문구; 가짜 kubectl 심 · 픽스처 tasks.md · 실제 클러스터 · oci · curl · 실제 tasks.md 접근 없음 · 약 5–6분).
+#        목록 게이트 · 조회 오류 사유 · np-2 문구; 가짜 kubectl 심 · 픽스처 tasks.md · 실제 클러스터 · oci · curl · 실제 tasks.md 접근 없음 · 약 9분 — T059가 argo-5 케이스 C16–C21을 더했다).
 #        1b2a와 같은 양성 증거 규율: exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 · 크래시 = FAIL). 선택 실행
 #        (CLUSTER_HARNESS_TESTS_ONLY) · 사본 시험(CLUSTER_HARNESS_SCRIPT)이면 요약 줄 끝에 접미가 붙어 이 판정을 통과하지 못한다.
 $o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/cluster-tests.tests.ps1 2>&1 | Out-String

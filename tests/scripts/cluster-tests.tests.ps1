@@ -1,4 +1,4 @@
-# tests/platform/cluster.tests.ps1 하네스 단위 테스트(T049 — argo-4 범위 분리 · 배포 게이트 · 조회 오류 사유 · np-2 문구).
+# tests/platform/cluster.tests.ps1 하네스 단위 테스트(T049 — argo-4 범위 분리 · 배포 게이트 · 조회 오류 사유 · np-2 문구 · T059 — argo-5).
 # Run: pwsh -NoProfile -File tests/scripts/cluster-tests.tests.ps1
 # Exit 0 = all pass, 1 = failures. 외부 테스트 프레임워크 없음(tests/scripts/reboot-tests.tests.ps1과 같은 구조).
 # 배치 이유: 러너 tests/platform/run-platform-tests.ps1은 자기 폴더의 *.tests.ps1을 발견·실행하므로 이 파일은 tests/scripts/에 둔다
@@ -17,6 +17,13 @@
 #   - np-2-*는 Job이 없을 때 소유 과제(data-assert · kafka-assert = T059, authz-assert = T085 — Job이 존재·성공해야 하는 E2E 과제; 하네스 작성 과제
 #     T050 · T051 · T078이 아니다, 2026-10-08 라이브 FAIL로 정정)가 tasks.md에서 미체크일 때만 SKIP(C02-5), 체크됐으면 FAIL(C14), tasks.md 문제도 FAIL
 #     (C07–C09 · C14); Job이 있으면 tasks.md를 보지 않는다(C06-6) — 2라운드 적대 리뷰 F2(컨트롤러 범위 확장).
+#   - argo-5(T059 결정 D9 — gitops platform/cnpg-databases/README.md §6 T059 C5: hook(PostSync) 실패는 Application을 Synced/Healthy로 남겨 argo-1이
+#     보지 못한다)는 argo-1과 같은 Application 목록(Get-KubeList 캐시 — 추가 호출 0, C16-3)에서 status.operationState.phase가 Failed · Error인 것을
+#     FAIL로 낸다(`<이름>=<phase>: <message 앞 160자 | ->`를 목록 순서대로 한 줄에 전부 — C17 · C18 · C20). operationState 없음은 통과로 세어
+#     PASS 문구에 수를 적고(C16 · C19), Running · Terminating · Succeeded만 통과다(C20). 그 밖의 phase(대소문자 변형 · 미지 문자열 — ordinal)는
+#     `<이름>=<phase>: unknown operation phase`로 같은 목록에 들어가 FAIL이다(fail closed — T059 r1 B5 · C21). 하네스 머리 주석의 「단언 수」 =
+#     실행의 결과 줄 수(C16-4).
+#     기존 케이스(C01–C15)는 Application 목록이 비어 있어 argo-1 · argo-5 둘 다 'no Argo CD Applications' FAIL이다(그 케이스들은 둘을 단언하지 않는다).
 #
 # 방식 1 — E2E 케이스(C*): 케이스마다 임시 픽스처(%TEMP%/clustertest-<guid>)에
 #     하네스 사본  repo/tests/platform/cluster.tests.ps1  (CLUSTER_HARNESS_SCRIPT가 있으면 그 파일의 사본)
@@ -44,7 +51,7 @@
 #   CLUSTER_HARNESS_TESTS_ONLY  쉼표로 나눈 케이스 ID(예: C01,F02)만 실행한다. 요약 줄 끝에 ' (filtered: …)'가 붙는다(부분 실행이 전체 통과로
 #                               보이지 않게). 모르는 ID가 있으면 FAIL.
 # 실행 시간: E2E 케이스 하나에 가짜 kubectl 호출 약 40번(호출마다 cmd + pwsh 하나 — 부하 없을 때 0.4–0.5초) → 케이스당 약 20–30초,
-#   전체 약 5–7분(같은 PC에서 다른 무거운 작업이 돌면 두세 배까지 늘어난다).
+#   전체 약 8–10분(E2E 케이스 21개 — T059에서 argo-5 케이스 C16–C21 여섯 개를 더해 약 2.5분 늘었다; 같은 PC에서 다른 무거운 작업이 돌면 두세 배까지 늘어난다).
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -238,12 +245,19 @@ function New-Us2CrdList([hashtable]$override = @{}, [object[]]$extraDefs = @()) 
     return (New-List $all)
 }
 # Argo CD Application. $resources: 'absent'(status 없음) · 'null'(status.resources = null) · 정수 N(자원 N개; 0 = 빈 배열)
-function New-App([string]$name, $resources) {
+#   $opPhase: status.operationState.phase(argo-5 케이스용 — 빈 문자열 = operationState 없음 = 기본값: 이 인자를 주지 않는 기존 호출은 전과 같다)
+#   $opMessage: status.operationState.message(빈 문자열 = 키 없음). $resources가 'absent'면 status가 없으므로 둘 다 쓰지 않는다.
+function New-App([string]$name, $resources, [string]$opPhase = '', [string]$opMessage = '') {
     $a = [ordered]@{ apiVersion = 'argoproj.io/v1alpha1'; kind = 'Application'; metadata = [ordered]@{ name = $name; namespace = 'argocd' } }
     if ($resources -is [string] -and (Test-Same $resources 'absent')) { return $a }
     $st = [ordered]@{ sync = [ordered]@{ status = 'Synced' }; health = [ordered]@{ status = 'Healthy' } }
     if ($resources -is [string] -and (Test-Same $resources 'null')) { $st['resources'] = $null }
     else { $st['resources'] = @(for ($i = 1; $i -le [int]$resources; $i++) { [ordered]@{ group = ''; version = 'v1'; kind = 'ConfigMap'; namespace = 'data'; name = "res-$i"; status = 'Synced' } }) }
+    if (-not [string]::IsNullOrEmpty($opPhase)) {
+        $op = [ordered]@{ phase = $opPhase }
+        if (-not [string]::IsNullOrEmpty($opMessage)) { $op['message'] = $opMessage }
+        $st['operationState'] = $op
+    }
     $a['status'] = $st
     return $a
 }
@@ -256,6 +270,7 @@ $Q = @{
     pgMain   = '-n data get clusters.postgresql.cnpg.io pg-main --ignore-not-found -o json'
     kafka    = '-n data get kafkas.kafka.strimzi.io jt-kafka --ignore-not-found -o json'
     pools    = 'get kafkanodepools.kafka.strimzi.io -n data -o json'
+    apps     = 'get applications.argoproj.io -n argocd -o json'   # argo-1 · argo-5가 함께 읽는 Application 목록(New-Responses 기본값 = 빈 목록)
 }
 function AppKey([string]$name) { return "-n argocd get applications.argoproj.io $name --ignore-not-found -o json" }
 $us3Apps = @('platform-cnpg', 'platform-cnpg-cluster', 'platform-kafka', 'platform-dragonfly')
@@ -729,6 +744,92 @@ try {
         Assert-Id 'C15-3: argo-4-strimzi FAIL -- a JSON string is not an Application' $r 'argo-4-strimzi' 'FAIL' @('not Application argocd/platform-kafka', "kind='' name='' namespace=''") @('until T055')
         Assert-Id 'C15-4: argo-4-dragonfly FAIL -- a JSON number is not an Application' $r 'argo-4-dragonfly' 'FAIL' @('not Application argocd/platform-dragonfly', "kind='' name='' namespace=''") @('until T057')
         Assert-IdExact 'C15-5: argo-4 (US2) PASS in the same run' $r 'argo-4' 'PASS' $us2PassDetail
+    }
+
+    # ================= argo-5: 마지막 operation 결과(T059 결정 D9 — gitops platform/cnpg-databases/README.md §6 T059 C5) =================
+    # 케이스는 Application 목록($Q.apps)만 바꾼다(그 밖은 라이브 예상 US2 상태). 목록의 Application은 전부 Synced/Healthy라 argo-1은 PASS다 —
+    # argo-5만 마지막 operation 결과를 본다(hook 실패는 sync · health에 드러나지 않는다).
+    $argo5FailPrefix = 'last operation Failed/Error (hook failures are invisible to argo-1): '
+    Test-Case 'C16' 'argo-5: every Application''s last operation Succeeded -> PASS with "0 without operationState"; argo-1 reads the same single list call; the run prints the header''s assertion count' {
+        $resp = New-Responses
+        $resp[$Q.apps] = R-Json (New-List @((New-App 'platform-policies' 3 'Succeeded'), (New-App 'platform-tests' 5 'Succeeded'), (New-App 'root' 22 'Succeeded')))
+        $d = New-Fixture $resp (New-TasksText $tUnchecked)
+        $r = Invoke-Harness $d
+        Assert-Run 'C16' $r $d
+        Assert-IdExact 'C16-1: argo-5 PASS names the count and "0 without operationState"' $r 'argo-5' 'PASS' '3 Applications: last operation phase is not Failed/Error (0 without operationState; excluded: 0)'
+        Assert-IdExact 'C16-2: argo-1 PASS in the same run (control: the same three Applications are Synced/Healthy)' $r 'argo-1' 'PASS' '3 Applications Synced/Healthy (excluded: 0)'
+        $calls = @(Get-Calls $d)
+        Assert 'C16-3: the Application list was fetched exactly once -- argo-5 reuses the list argo-1 fetched (Get-KubeList cache, no extra kubectl call)' ((Count-Key $calls $Q.apps) -eq 1) (Format-Calls $calls)
+        # 하네스 머리 주석의 「단언 수」 = 실행마다 출력되는 결과 줄 수(모든 단언은 실행마다 정확히 한 줄 — 게이트 3 포함) = 요약 줄의 합(argo-5를 더하며 54 → 55)
+        $src = if (Test-Path -LiteralPath $harnessPath -PathType Leaf) { [IO.File]::ReadAllText($harnessPath) } else { '' }
+        $hm = [regex]::Match($src, '(?m)^# 단언 수: (\d+) = ')
+        $claimed = if ($hm.Success) { [int]$hm.Groups[1].Value } else { -1 }
+        $outLines = @(Get-Lines $r)
+        $ids = @($outLines | ForEach-Object { $x = [regex]::Match([string]$_, '\A(?:PASS|FAIL|SKIP) ([^ :]+): '); if ($x.Success) { $x.Groups[1].Value } })
+        $uniq = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+        foreach ($i in $ids) { [void]$uniq.Add([string]$i) }
+        $last = if ($outLines.Count -gt 0) { [string]$outLines[$outLines.Count - 1] } else { '' }
+        $sm = [regex]::Match($last, '\A(\d+) passed, (\d+) failed, (\d+) skipped\z')
+        $sum = if ($sm.Success) { [int]$sm.Groups[1].Value + [int]$sm.Groups[2].Value + [int]$sm.Groups[3].Value } else { -1 }
+        Assert 'C16-4: one result line per assertion id -- as many as the harness header''s assertion count and the summary total' ($claimed -gt 0 -and $ids.Count -eq $claimed -and $uniq.Count -eq $claimed -and $sum -eq $claimed) "header=$claimed result lines=$($ids.Count) distinct ids=$($uniq.Count) summary total=$sum"
+    }
+    Test-Case 'C17' 'argo-5: one Application''s last operation Failed with a long message -> FAIL naming it, "=Failed" and the first 160 characters of the message' {
+        $msg = 'one or more objects failed to apply, reason: Job.batch "data-assert" is invalid: spec.template: Invalid value: core.PodTemplateSpec{...}: field is immutable (fixture text past character 160: TAIL-NOT-SHOWN)'
+        $resp = New-Responses
+        $resp[$Q.apps] = R-Json (New-List @((New-App 'platform-cnpg-databases' 4 'Succeeded'), (New-App 'platform-tests' 5 'Failed' $msg), (New-App 'root' 22 'Succeeded')))
+        $d = New-Fixture $resp (New-TasksText $tUnchecked)
+        $r = Invoke-Harness $d
+        Assert-Run 'C17' $r $d
+        Assert-IdExact 'C17-1: argo-5 FAIL = "platform-tests=Failed: " + the first 160 characters of the message + "..." (the Succeeded ones are not listed)' $r 'argo-5' 'FAIL' ($argo5FailPrefix + 'platform-tests=Failed: ' + $msg.Substring(0, 160) + '...')
+        Assert-Id 'C17-2: the message tail past 160 characters is not on the line' $r 'argo-5' 'FAIL' @('platform-tests=Failed: one or more objects failed to apply, reason: Job.batch "data-assert" is invalid') @('TAIL-NOT-SHOWN', 'platform-cnpg-databases', 'root=')
+    }
+    Test-Case 'C18' 'argo-5: one Application''s last operation Error without a message -> FAIL naming it with "=Error: -"' {
+        $resp = New-Responses
+        $resp[$Q.apps] = R-Json (New-List @((New-App 'platform-kafka-topics' 6 'Error'), (New-App 'platform-tests' 5 'Succeeded'), (New-App 'root' 22 'Succeeded')))
+        $d = New-Fixture $resp (New-TasksText $tUnchecked)
+        $r = Invoke-Harness $d
+        Assert-Run 'C18' $r $d
+        Assert-IdExact 'C18-1: argo-5 FAIL = "platform-kafka-topics=Error: -" (no message -> "-"; the Succeeded ones are not listed)' $r 'argo-5' 'FAIL' ($argo5FailPrefix + 'platform-kafka-topics=Error: -')
+    }
+    Test-Case 'C19' 'argo-5: one Application without operationState (no operation yet), the rest Succeeded -> PASS with "1 without operationState"' {
+        $resp = New-Responses
+        $resp[$Q.apps] = R-Json (New-List @((New-App 'platform-policies' 3 'Succeeded'), (New-App 'platform-tests' 0), (New-App 'root' 22 'Succeeded')))
+        $d = New-Fixture $resp (New-TasksText $tUnchecked)
+        $r = Invoke-Harness $d
+        Assert-Run 'C19' $r $d
+        Assert-IdExact 'C19-1: argo-5 PASS counts all 3 Applications, 1 of them without operationState' $r 'argo-5' 'PASS' '3 Applications: last operation phase is not Failed/Error (1 without operationState; excluded: 0)'
+    }
+    # 여러 개가 함께 실패하면 줄이 400자를 넘는다 — argo-5의 줄 상한은 argo-4 계열과 같은 2000(400이면 셋째 항목이 잘린다). Running · Terminating ·
+    # Succeeded · operationState 없음은 목록에 나오지 않는다.
+    Test-Case 'C20' 'argo-5: two Failed + one Error among Running / Terminating / Succeeded / no-operationState Applications -> FAIL lists the three in list order on one line longer than 400 characters' {
+        $m1 = 'one or more synchronization tasks completed unsuccessfully, reason: Job jt-dev/data-assert: Job has reached the specified backoff limit (PostSync hook; fixture C20 entry 1: TAIL-1)'
+        $m3 = 'one or more objects failed to apply, reason: Job.batch "kafka-assert" is invalid: spec.template: Invalid value: core.PodTemplateSpec{...}: field is immutable (fixture C20 entry 3: TAIL-3)'
+        $resp = New-Responses
+        $resp[$Q.apps] = R-Json (New-List @(
+                (New-App 'platform-cnpg-databases' 4 'Failed' $m1),
+                (New-App 'platform-dragonfly' 8 'Terminating'),
+                (New-App 'platform-kafka' 3 'Running'),
+                (New-App 'platform-monitoring' 9 'Failed'),
+                (New-App 'platform-openfga' 0),
+                (New-App 'platform-tests' 5 'Error' $m3),
+                (New-App 'root' 22 'Succeeded')))
+        $d = New-Fixture $resp (New-TasksText $tUnchecked)
+        $r = Invoke-Harness $d
+        Assert-Run 'C20' $r $d
+        $want = $argo5FailPrefix + 'platform-cnpg-databases=Failed: ' + $m1.Substring(0, 160) + '...; platform-monitoring=Failed: -; platform-tests=Error: ' + $m3.Substring(0, 160) + '...'
+        Assert-IdExact 'C20-1: argo-5 FAIL lists platform-cnpg-databases=Failed, platform-monitoring=Failed (no message) and platform-tests=Error in list order, every entry whole' $r 'argo-5' 'FAIL' $want
+        Assert 'C20-2: (fixture guard) that expected line is longer than 400 characters -- so C20-1 holds only with a line limit above the default 400' ($want.Length -gt 400) "expected line length $($want.Length)"
+    }
+    # 닫힌 집합(T059 r1 B5 — fail closed): 통과는 Succeeded · Running · Terminating뿐이고, Argo CD OperationPhase 다섯 값(그 셋 + Failed · Error)
+    # 밖의 phase(대소문자 변형 · 미지 문자열)는 '<이름>=<phase>: unknown operation phase'로 같은 사유 목록에 들어가 FAIL이다. 비교는 ordinal이라
+    # 소문자 'failed'는 Failed가 아니다(Failed 분기였다면 message가 나온다 — 이 분기는 message가 있어도 고정 사유만 적는다).
+    Test-Case 'C21' 'argo-5: one Application''s last operation phase is the lowercase "failed" (not an Argo CD OperationPhase), the rest Succeeded -> FAIL "=failed: unknown operation phase" (fail closed, ordinal)' {
+        $resp = New-Responses
+        $resp[$Q.apps] = R-Json (New-List @((New-App 'platform-policies' 3 'Succeeded'), (New-App 'platform-tests' 5 'failed' 'fixture C21: message on a case-variant phase (MSG-NOT-SHOWN)'), (New-App 'root' 22 'Succeeded')))
+        $d = New-Fixture $resp (New-TasksText $tUnchecked)
+        $r = Invoke-Harness $d
+        Assert-Run 'C21' $r $d
+        Assert-IdExact 'C21-1: argo-5 FAIL = "platform-tests=failed: unknown operation phase" (a case variant is neither Failed nor a pass value; no message; the Succeeded ones are not listed)' $r 'argo-5' 'FAIL' ($argo5FailPrefix + 'platform-tests=failed: unknown operation phase')
     }
 
     # ================= 정적(하네스 원문) =================

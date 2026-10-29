@@ -42,9 +42,9 @@ platform-gitops/
 
 | 항목 | 규칙 |
 |---|---|
-| 이름 | `platform-<component>` · `<pod>-<env>` |
+| 이름 | `platform-<component>` · `<pod>-<env>`. **예외 1개(2026-10-29 T059)**: 검증 Job Application은 `platform-tests`이며 source.path는 `platform/policies/tests`다(`platform/<component>` 대응의 유일한 예외 — 디렉터리는 T041이 `platform/policies/` 아래에 두었고 하네스·계약·과제 문면이 그 경로를 가리킨다 · validate 7.1 분기) |
 | project | 플랫폼 → `platform`, 앱 → `dev`·`prod`, 검증 Job(`platform/policies/tests/`) → `tests` |
-| sync-wave | 아래 **§sync-wave 단일 표**가 정본(`-20` … `60`, 앱 `100`). 다른 곳에 wave 번호를 중복 기재하지 않는다 |
+| sync-wave | 아래 **§sync-wave 단일 표**가 정본(`-20` … `70`, 앱 `100`). 다른 곳에 wave 번호를 중복 기재하지 않는다 |
 | syncPolicy | 플랫폼: `automated: { prune: false, selfHeal: true }`, syncOptions `ServerSideApply=true`, `CreateNamespace=true`, `Prune=confirm`, `Delete=confirm`, `SkipDryRunOnMissingResource=true`. dev 앱: prune·selfHeal true. prod 앱: automated이되 변경은 PR로만. **예외(2026-10-13 T053)** — Argo가 health를 추적하는 CR을 다단계 wave로 가진 플랫폼 Application(첫 사례 `platform-cnpg-cluster`: CNPG `Cluster`는 Argo CD v3.5.2 내장 health.lua가 `Applying configuration` · in-place 재시작 · switchover · failover 등을 **Degraded**로 매핑)은 `ApplyOutOfSyncOnly=true`와 `retry`(limit 5 · backoff 30s ×2 · maxDuration 5m)를 더한다. 이유: 다단계 sync는 다음 wave로 가기 전 health를 기다리고 Degraded 전이에서 task Failed → operation Failed가 된다. 자동 sync operation은 **기본 `retry`**(limit 5 · 5s ×2 · 최대 3m — 대기 10·20·40·80·160 s, 창 ≈ 5분 · 2026-10-16 T056 리뷰 r3 B1 정정: 이전 표기 「≈ 2.6분」은 증가 전 지수로 셈한 값 — Argo CD v3.5.2 `controller/appcontroller.go` :1550이 증가된 RetryCount로 대기를 계산한다 · T055 실측 첫 대기 ≈ 10초; 같은 계산으로 예외 `retry`(30s ×2 · 5m)는 대기 60·120·240·300·300 s ≈ 17분)를 가지며, 그것을 소진해 최종 Failed가 되면 **같은 리비전으로는 다시 시작하지 않는다**(gitops-engine `sync_context.go` Degraded → OperationFailed · `appcontroller.go` `RetryStrategy{Limit: 5}` · "Skipping auto-sync: failed previous sync attempt … will not retry" 소스 판독 — 라이브 미실측, T053 VD-11로 기록). `ApplyOutOfSyncOnly`는 한 장 변경을 단일 step으로 만들어 health 대기 자체를 없애고(첫 배포는 모두 OutOfSync라 wave 순서 유지 · 재시도에서는 이미 in-sync인 장이 빠진다), 명시 `retry`(30s ×2 · 5m — 창 ≈ 12.5분)는 기본 retry를 **대체해 창을 넓힌 것**으로 두 장 이상 변경이 남긴 다단계용이다. **두 번째 사례(2026-10-14 T054) `platform-cnpg-databases`**: ESO `ExternalSecret`은 Argo 내장 health(`SecretSyncedError` → Degraded)를 갖고, 이 Application은 리소스 wave ExternalSecret `0` → `DatabaseRole` `1` → `Database` `2`(research CNPG-D10 순서 — 비밀번호 Secret이 있어야 role이, role이 있어야 database owner가 선다) + PostSync hook Job(공유 DB CONNECT 제한 · app role 세션 기본값)을 가진다 — 같은 모양을 쓴다(`DatabaseRole`·`Database`는 Argo 내장 health가 없다 — v3.5.2 `resource_customizations/postgresql.cnpg.io`에는 `Cluster`뿐) |
 | AppProject | `platform`: sourceRepos [gitops, 차트 저장소], destinations = 플랫폼 네임스페이스(network-policy.md 표), clusterResourceWhitelist(CRD·Namespace·ClusterRole…). `dev`/`prod`: 자기 네임스페이스만, cluster 리소스 금지, **`namespaceResourceBlacklist`: NetworkPolicy · ResourceQuota · LimitRange · Role · RoleBinding · ServiceAccount**(정책 객체는 `platform/policies/`만 쓴다). **`tests`**: sourceRepos = [gitops]만, destination = `jt-dev`만, cluster 리소스 금지 — `platform/policies/tests/`의 검증 Job 3종 전용(destination을 Application 한정으로 좁힐 수 없어 `platform`에 `jt-dev`를 넣지 않는다). `default`: sourceRepos·destinations 비움 |
 | 삭제 보호 | `Cluster pg-main` · `ObjectStore oci-backups`(2026-10-13 T053 추가 — 지우면 WAL 아카이브가 즉시 멈추고 백업 카탈로그 접근을 잃는다) · `Kafka jt-kafka` · `KafkaNodePool` · Vault/Dragonfly PVC · 모든 오퍼레이터 CRD(CNPG·Strimzi·cert-manager·ESO)에 `argocd.argoproj.io/sync-options: Delete=false,Prune=false` |
@@ -67,10 +67,12 @@ FR-010의 순서를 이 표 하나로만 표현한다. Argo CD는 wave N의 리�
 | `40` | `cnpg-databases` · `kafka-topics` | `Database`·`DatabaseRole` · `KafkaTopic`·`KafkaUser` · CA 미러 ExternalSecret |
 | `50` | `authentik` · `openfga` | 신원 |
 | `60` | `monitoring` · `cloudflared` · `reloader` · `traefik` | Alloy · 터널 · Reloader · Traefik Middleware/TLSOption/TLSStore |
+| `70` | `policies/tests`(Application `platform-tests` · project `tests` · ns `jt-dev`) | 검사 Job(T059 — `data-assert` · `kafka-assert`; `authz-assert`는 T085에서 포함). 모든 플랫폼 컴포넌트 **뒤** — 검사 실패(Job Failed → Application Degraded)가 root 재구축에서 wave 60 이하를 막지 않는다 |
 | `100` | `<pod>-dev` · `<pod>-prod`(`apps/<pod>/overlays/<env>`) | 앱 |
 
 - CRD를 늦게 만드는 컴포넌트에는 `SkipDryRunOnMissingResource=true`를 함께 둔다(예: `cert-manager-issuers`, alloy-operator CR).
 - T041은 이 표를 그대로 Application 어노테이션(`argocd.argoproj.io/sync-wave`)으로 옮긴다. 표에 없는 디렉터리를 만들면 validate가 실패한다.
+- (2026-10-29 T059) `70` 행은 중첩 디렉터리 `platform/policies/tests`를 가리킨다 — validate 7.2(`platform/*/` 1단계)의 대상이 아니고 7.1이 이름 `platform-tests`의 경로 예외로 본다.
 
 ## 이미지 · 승격
 

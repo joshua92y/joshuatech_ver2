@@ -57,6 +57,13 @@
 #   argo-4-dragonfly ns data Dragonfly PVC(이름에 dragonfly 또는 라벨 app.kubernetes.io/name=dragonfly)(platform-dragonfly · T057)
 #               조회마다 예외를 잡아 그 항목의 사유로 바꾸고 나머지 항목을 계속 본다 — 사유는 항목마다 한 줄에 전부(상한 2000자).
 #               PASS는 확인한 객체 수와 범위를, SKIP은 소유 과제와 Application 이름을 적는다.
+#   argo-5      applications(argo-1과 같은 목록 · 같은 $argoExcludedApps 제외)의 마지막 operation 결과 status.operationState.phase가 Failed · Error면 FAIL
+#               — 왜: hook(PostSync) 실패는 Application을 Synced/Healthy로 남기므로 argo-1이 못 본다(gitops platform/cnpg-databases/README.md §6 T059 C5 ·
+#               T059 결정 D9). 사유 = `<이름>=<phase>: <operationState.message 앞 160자 | ->`를 목록 순서대로 '; '로 이어 한 줄에 전부(상한 2000자).
+#               operationState 없음(operation 0회)과 Succeeded · Running · Terminating만 통과 · 미지 값은 FAIL(fail closed — T059 r1 B5):
+#               Argo CD OperationPhase 다섯 값(그 셋 + Failed · Error) 밖의 phase(대소문자 변형 · 미지 문자열 — ordinal 비교)는
+#               `<이름>=<phase>: unknown operation phase`로 같은 사유 목록에 들어간다. PASS는 통과한 수와 그중 operationState 없는 수를 적는다.
+#               목록 0개 · 전부 제외는 FAIL(argo-1과 같은 문구).
 #   vault-1..2  seal-status sealed=false · type=ocikms
 #   eso-1..4    clustersecretstore 정확히 5개(vault-platform·vault-dev·vault-prod·vault-data·k8s-data-ca)가 Ready=True + reason=Valid이고,
 #               vault store 4장은 spec provider.vault.auth.kubernetes.serviceAccountRef의 namespace=external-secrets·audiences=[vault],
@@ -95,10 +102,10 @@
 #               --reload-strategy=annotations] — 집합 비교가 아닌 이유: 값 없는 플래그가 뒤 인자를 삼키는 경우(--namespaces=… 소실 → 전역 모드) · 중복 플래그 합침(StringSlice) 방지
 #   backup-1..3 joshuatech-backup-platform k3s/ · vault/ 에 24h 내 .age 오브젝트 ≥ 1, 비-.age(평문) 오브젝트 0
 #
-# 단언 수: 54 = gate 3 + nodes 3 + argo 8 + vault 2 + eso 4 + ca 1 + ns 2 + psa 2 + np-set 5 + np-cond 2 + np 14 + mon 1 + limits 2 +
-#          reloader 2 + backup 3 (argo 8 = argo-1, argo-2, argo-3, argo-4, argo-4-cnpg-crd, argo-4-pg-main, argo-4-strimzi, argo-4-dragonfly;
+# 단언 수: 55 = gate 3 + nodes 3 + argo 9 + vault 2 + eso 4 + ca 1 + ns 2 + psa 2 + np-set 5 + np-cond 2 + np 14 + mon 1 + limits 2 +
+#          reloader 2 + backup 3 (argo 9 = argo-1, argo-2, argo-3, argo-4, argo-4-cnpg-crd, argo-4-pg-main, argo-4-strimzi, argo-4-dragonfly, argo-5;
 #          np 14 = np-1, np-2-data-assert, np-2-kafka-assert, np-2-authz-assert, np-2-manual, np-3, np-3-live,
-#          np-4, np-4-live, np-5, np-5-live, np-6, np-6-live, np-7). live/manual 5개는 항상 SKIP이므로 PASS 후보는 49, 그중 단계별
+#          np-4, np-4-live, np-5, np-5-live, np-6, np-6-live, np-7). live/manual 5개는 항상 SKIP이므로 PASS 후보는 50, 그중 단계별
 #          SKIP 게이트는 ca-1 · np-2-* 3 · limits-* 2 · mon-1 · argo-4-* 4 의 11개.
 #
 # 매개변수: -TasksMdPath <파일> — argo-4-* 게이트가 읽는 tasks.md를 바꾼다(단위 테스트 tests/scripts/cluster-tests.tests.ps1이 픽스처를
@@ -193,13 +200,13 @@ function Clip([string]$s, [int]$max = 400) {
     $s = ($s -replace "`r`n", ' ') -replace "`n", ' '
     if ($s.Length -gt $max) { return $s.Substring(0, $max) + '...' } else { return $s }
 }
-# $max = 줄 상한(기본 400). argo-4 계열만 더 길게 준다(사유를 한 줄에 전부 — ClusterAssert의 $clip).
+# $max = 줄 상한(기본 400). argo-4 계열 · argo-5만 더 길게 준다(사유를 한 줄에 전부 — ClusterAssert의 $clip).
 function Pass([string]$id, [string]$detail, [int]$max = 400) { $script:pass++; Write-Host "PASS ${id}: $(Clip $detail $max)" }
 function Fail([string]$id, [string]$detail, [int]$max = 400) { $script:fail++; Write-Host "FAIL ${id}: $(Clip $detail $max)" }
 function Skip([string]$id, [string]$detail, [int]$max = 400) { $script:skip++; Write-Host "SKIP ${id}: $(Clip $detail $max)" }
 
 # 클러스터 단언 래퍼: 게이트 실패면 사유와 함께 FAIL(fail closed). $body는 @('PASS'|'FAIL'|'SKIP', detail)을 돌려준다.
-# 예외(kubectl 실패·JSON 파싱 실패 등)는 FAIL이다. $clip = 출력 줄 상한(기본 400 — argo-4 계열만 2000).
+# 예외(kubectl 실패·JSON 파싱 실패 등)는 FAIL이다. $clip = 출력 줄 상한(기본 400 — argo-4 계열 · argo-5만 2000).
 function ClusterAssert([string]$id, [scriptblock]$body, [int]$clip = 400) {
     if ($null -ne $script:clusterReason) { Fail $id "cluster unavailable ($script:clusterReason)" $clip; return }
     $status = 'FAIL'; $detail = ''
@@ -548,7 +555,7 @@ ClusterAssert 'argo-3' {
 #   (CNPG · Strimzi · Dragonfly)를 함께 봤고, 첫 조회(Cluster pg-main)의 "리소스 타입 없음" 예외가 단언 전체를 FAIL 한 줄로 끝내 뒤의
 #   US2 검사가 한 번도 돌지 않았다. 지금은 US2 범위 argo-4(SKIP 경로 없음)와 US3 범위 argo-4-* 넷(배포 게이트 Resolve-Argo4Gate)으로 나눈다.
 # 조회마다 예외를 잡아 그 항목의 사유로 바꾸고 다음 항목으로 넘어간다(D4). Get-KubeOne · Get-KubeList가 예외를 던지는 계약은 다른
-#   단언이 쓰므로 그대로 둔다. 사유는 하나도 버리지 않고 한 줄에 모은다(조회 오류 240자 · 줄 2000자 상한 — 다른 단언은 400자 그대로).
+#   단언이 쓰므로 그대로 둔다. 사유는 하나도 버리지 않고 한 줄에 모은다(조회 오류 240자 · 줄 2000자 상한 — 다른 단언은 400자 그대로, argo-5만 같은 2000).
 
 # tasks.md는 한 번만 읽는다 — 게이트가 필요할 때만(자원이 있는 Application · 존재하는 assert Job은 과제 상태를 보지 않는다). argo-4-* 게이트와
 #   np-2-* 게이트가 같은 캐시를 쓴다. 실패는 error 문자열(fail closed).
@@ -704,6 +711,34 @@ foreach ($gid in @($argo4Checks.Keys | ForEach-Object { "$_" })) {
         return (Join-Argo4Result $items $gateFail $note)
     } 2000
 }
+# argo-5: 마지막 operation 결과(T059 결정 D9 · gitops platform/cnpg-databases/README.md §6 T059 C5). hook(PostSync) 실패는 Application을
+#   Synced/Healthy로 남기므로 argo-1(sync · health)이 보지 못한다 → status.operationState.phase가 Failed · Error인 Application을 FAIL로 낸다.
+#   목록은 argo-1과 같은 조회(Get-KubeList 캐시 — 추가 kubectl 호출 0) · 같은 제외 목록. phase 없음(operationState 없음 = operation 0회)은
+#   $absent, Succeeded · Running · Terminating만 통과 · 미지 값은 FAIL(fail closed — T059 r1 B5): 닫힌 집합 밖의 phase(대소문자 변형 · 미지
+#   문자열 — ordinal Eq)는 '<이름>=<phase>: unknown operation phase'로 $bad에 들어간다. 조회 실패는 ClusterAssert가 FAIL로 바꾼다(fail closed).
+#   줄 상한 2000(argo-4 계열과 같은 이유 — 여러 Application이 함께 실패해도 항목을 자르지 않는다; 항목마다 message 앞 160자).
+ClusterAssert 'argo-5' {
+    $apps = @(Items (Get-KubeList @('get', 'applications.argoproj.io', '-n', 'argocd')))
+    if ($apps.Count -eq 0) { return @('FAIL', 'no Argo CD Applications in ns argocd') }
+    $bad = @(); $ok = 0; $absent = 0
+    foreach ($a in $apps) {
+        if (Contains $argoExcludedApps (Name $a)) { continue }
+        $phase = [string](PropPath $a @('status', 'operationState', 'phase'))
+        if ([string]::IsNullOrEmpty($phase)) { $absent++; continue }
+        if ((Eq $phase 'Failed') -or (Eq $phase 'Error')) {
+            $msg = [string](PropPath $a @('status', 'operationState', 'message'))
+            $shown = if ([string]::IsNullOrWhiteSpace($msg)) { '-' } else { Clip $msg 160 }
+            $bad += "$(Name $a)=${phase}: $shown"
+        } elseif ((Eq $phase 'Succeeded') -or (Eq $phase 'Running') -or (Eq $phase 'Terminating')) {
+            $ok++
+        } else {
+            $bad += "$(Name $a)=${phase}: unknown operation phase"   # 닫힌 집합 밖(대소문자 변형 · 미지 문자열) — 통과로 세지 않는다(T059 r1 B5)
+        }
+    }
+    if (($ok + $absent + $bad.Count) -eq 0) { return @('FAIL', 'every Application is on the exclusion list -- nothing checked') }
+    if ($bad.Count -gt 0) { return @('FAIL', "last operation Failed/Error (hook failures are invisible to argo-1): $($bad -join '; ')") }
+    return @('PASS', "$($ok + $absent) Applications: last operation phase is not Failed/Error ($absent without operationState; excluded: $($argoExcludedApps.Count))")
+} 2000
 
 # ---------- 3. Vault seal(port-forward + GET /v1/sys/seal-status, exec 미사용) ----------
 function Get-FreeLocalPort {
