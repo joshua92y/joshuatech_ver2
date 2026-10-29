@@ -1,0 +1,245 @@
+
+id           file            lock caught desc                                                                                                                           by
+--           ----            ---- ------ ----                                                                                                                           --
+A01          g4-adopt.ps1    True CAUGHT 3) 인수 판정의 값 변경 감지를 경고로 강등(덮인 채 드릴까지 진행)                                                               시나리오: G4-06b
+A02          g4-drill.ps1    True CAUGHT 삭제 직전 값 재확인 실패를 경고로 강등(값이 덮인 채 파드 삭제)                                                                 시나리오: D-18,D-37
+A03          g4-adopt.ps1    True CAUGHT 2) 감시 루프의 값 해시 검사 제거(대기 중 감시 없음)                                                                            시나리오: G4-53,G4-06,G4-06c,G4-06d,G4-32,G4-42
+A04          g4-adopt.ps1    True CAUGHT 2) 감시 루프의 UID 검사 제거                                                                                                   시나리오: G4-07
+A05          g4-adopt.ps1    True CAUGHT 폴링 타임아웃을 PASS 로 처리                                                                                                   시나리오: G4-04
+A06          g4-adopt.ps1    True CAUGHT SecretSynced 비교를 StartsWith 로 느슨하게(SecretSyncedError 도 통과)                                                          시나리오: G4-05
+A07          g4-adopt.ps1    True CAUGHT ES SecretSyncedError 고착을 경고로 강등                                                                                        시나리오: G4-05
+A08          g4-drill.ps1    True CAUGHT 양쪽 Ready 통합 게이트가 삭제 대상만 본다                                                                                      시나리오: D-10
+A09          g4-drill.ps1    True CAUGHT 새 파드 Ready 조건 제거(대상 부재·2개 조건은 유지)                                                                             시나리오: D-15
+A10a         g4-drill.ps1    True CAUGHT 삭제 셀렉터를 --all 로 넓힘(이름 없음)                                                                                         lint: 헬퍼 $kdel 의 kubectl 인자가 고정값과 다르다: 실제[kubectl '-n' $NS 'delete' 'pod' '--all' '--wait=false' '--request-timeout=
+                                                                                                                                                                        | 시나리오: G4-21,G4-22,G4-23,G4-31,D-01,D-13 외 10
+A10b         g4-drill.ps1    True CAUGHT 삭제 셀렉터를 -l app=cloudflared 로 넓힘                                                                                       lint: 헬퍼 $kdel 의 kubectl 인자가 고정값과 다르다: 실제[kubectl '-n' $NS 'delete' 'pod' '-l' 'app=cloudflared' '--wait=false' '--r
+                                                                                                                                                                        | 시나리오: G4-21,G4-22,G4-23,G4-31,D-01,D-13 외 10
+A11          g4-drill.ps1    True CAUGHT 삭제 인자에 이름 2개(대상 + 남길 파드)                                                                                         lint: 헬퍼 $kdel 의 kubectl 인자가 고정값과 다르다: 실제[kubectl '-n' $NS 'delete' 'pod' $pod $survivor '--wait=false' '--request-t
+                                                                                                                                                                        | 시나리오: G4-21,G4-22,G4-23,G4-31,D-01,D-13 외 10
+A12          g4-drill.ps1    True CAUGHT 로그 헬퍼($klog) 안에 scale --replicas=0 삽입(헬퍼 안 kubectl 이라 lint 통과?)                                                 lint: L88 헬퍼 $klog 에 허용되지 않은 동사 'scale'(허용: logs) ; 헬퍼 $klog 안의 kubectl 호출이 2 개(1 이어야 한다) | 시나리오: G4-2
+                                                                                                                                                                        1,G4-22,G4-23,D-01,D-13,D-23 외 2
+A13          g4-drill.ps1    True CAUGHT ssh 원격 명령으로 전면 재시작(kubectl 밖 변경 경로)                                                                            lint: 네이티브 'ssh' 2번째 인자가 고정값과 다르다: 실제['-n' '-o' 'BatchMode=yes' '-o' 'ConnectTimeout=15' 'ssh-a' 'sudo k3s kubectl
+                                                                                                                                                                         -
+A13b         g4-adopt.ps1    True CAUGHT oci 를 읽기 조회가 아닌 NSG 변경 호출로 바꾼다(kubectl 밖 변경 경로)                                                           lint: 네이티브 'oci' 1번째 인자가 고정값과 다르다: 실제['network' 'nsg' 'rules' 'add' '--nsg-id' 'ocid1.nsg.oc1..x'] 기대['iam' 'reg
+                                                                                                                                                                        ion'
+A14          g4-adopt.ps1    True CAUGHT 파드 서명에서 restartCount 제외(in-place 재시작을 못 본다)                                                                     시나리오: G4-10
+A15          g4-adopt.ps1    True CAUGHT resume: 운영자 입력 preHash 를 라이브 값 해시로 덮어씀(가짜 PASS)                                                              시나리오: G4-53,G4-33,G4-42
+A16          g4-adopt.ps1   False CAUGHT $stop 의 입력 버퍼 비움 제거(안전 규칙 1)                                                                                      lint: L50 Read-Host 앞에 FlushInputBuffer 가 없다
+A17          g4-adopt.ps1   False CAUGHT $kq 의 --request-timeout 제거(터널이 멎으면 무한 대기)                                                                         lint: 헬퍼 $kq 의 kubectl 인자가 고정값과 다르다: 실제[kubectl @ka] 기대[kubectl @ka '--request-timeout=10s']
+A18          g4-adopt.ps1   False CAUGHT 0) 클러스터 정체 확인 제거                                                                                                     시나리오: G4-34
+A19          g4-adopt.ps1   False CAUGHT 1) 머지 전 파드 Ready 확인 제거                                                                                                시나리오: G4-35
+A20          g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: 4) nopods 분기를 항상 타게 만든다(드릴 불가 · M18 의 반대 방향으로 같은 줄을 고정)                       lint: L347 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: delete | 시나리오: G4-01,G4-02b,G4-53,G4-54,G4-55,G4-EOF1 외 54
+A22          g4-adopt.ps1    True CAUGHT 파드 불변 실패를 경고로 강등                                                                                                   lint: 파서오류 L324 ; 파서오류 L455 ; L334 허용 목록에 없는 명령 'finally' ; finally 의 Remove-Variable 목록에 snap 없음 ; finally
+                                                                                                                                                                        의 Remove | 시나리오: G4-01,G4-02b,G4-53,G4-54,G4-55,G4-EOF1 외 54
+A26          g4-adopt.ps1    True CAUGHT 폴링의 ES 출현 조회 실패(exit 1)를 "아직 없음"으로 읽는다(fail-open)                                                           시나리오: G4-13b
+A26b         g4-adopt.ps1   False CAUGHT resume 의 ES 존재 확인 실패를 "ES 없음(인수 해제 상태)"으로 읽는다(fail-open · 2라운드에서 발견)                               시나리오: G4-02g
+A28          g4-adopt.ps1   False CAUGHT 1P) 비밀 입력 직후 클립보드 비움 제거(finally 의 1회만 남는다)                                                                 시나리오: G4-EOF3,G4-EMPTY,G4-30,G4-30b,G4-38,G4-42
+A30          g4-drill.ps1   False CAUGHT 5) 노드 Ready 2 실패를 경고로 강등                                                                                             시나리오: G4-22
+A31          g4-adopt.ps1   False CAUGHT finally 안의 요약 머리줄을 성공 스트림 출력으로(규칙 5 위반)                                                                   lint: L340 finally 안의 맨 표현식(성공 스트림 출력): ''--- G4 단계 요약(런북 §3 기록용) ---''
+A32          g4-adopt.ps1   False CAUGHT finally 의 정리를 출력 뒤로(규칙 5: 정리 먼저)                                                                                 lint: finally 의 첫 문이 Remove-Variable 이 아니다: 'Write-Host '''
+A33          g4-adopt.ps1   False CAUGHT $ErrorActionPreference = Stop 제거(비종료 오류가 다음 문으로 흘러간다)                                                         lint: 블록 1번째 문이 고정값과 다르다: '$null = 0'
+A34          g4-adopt.ps1   False CAUGHT $PSNativeCommandUseErrorActionPreference 끄기 제거                                                                             lint: 블록 2번째 문이 고정값과 다르다: '$null = 0'
+A37          g4-drill.ps1   False CAUGHT 삭제 헬퍼에 --force --grace-period=0 추가(필수 플래그 lint 는 금지 플래그를 보지 않는다)                                       lint: 헬퍼 $kdel 의 kubectl 인자가 고정값과 다르다: 실제[kubectl '-n' $NS 'delete' 'pod' $pod '--force' '--grace-period=0' '--wait=
+                                                                                                                                                                        | 시나리오: G4-21,G4-22,G4-23,G4-31,D-01,D-13 외 10
+A38          g4-adopt.ps1   False CAUGHT 인수 전 값의 앞 16자만 화면에 출력(부분 누출)                                                                                  시나리오: G4-01,G4-54,G4-55,G4-EOF3,G4-EMPTY,G4-04 외 31
+A5-12        g4-adopt.ps1    True CAUGHT R3 base64 개행 방지 제거                                                                                                       시나리오: G4-06
+A5-13        g4-adopt.ps1    True CAUGHT R3 최소 길이 제거                                                                                                              시나리오: G4-06
+A5-14        g4-adopt.ps1    True CAUGHT R3 field-manager 충돌 플래그 제거                                                                                              시나리오: G4-06
+A5-15        g4-adopt.ps1    True CAUGHT R3 1개만 삭제 안내 제거                                                                                                        시나리오: G4-06
+A5-17        g4-adopt.ps1    True CAUGHT EOF 진단 제거                                                                                                                  시나리오: G4-EOF1
+A5-18        g4-adopt.ps1    True CAUGHT EOF 진단 제거                                                                                                                  시나리오: G4-EOF2
+A5-19        g4-adopt.ps1    True CAUGHT 비밀 EOF 진단 제거                                                                                                             시나리오: G4-EOF3,G4-EMPTY
+A5-20        g4-adopt.ps1    True CAUGHT 런타임 동사 허용 목록 제거                                                                                                     lint: 런타임 조회 동사 허용 목록 불일치
+A5-21        g4-adopt.ps1    True CAUGHT 권한 namespace 제거                                                                                                            lint: auth can-i namespace 누락 | 시나리오: G4-01,G4-02b,G4-53,G4-54,G4-55,G4-EOF1 외 53
+A5-23        g4-drill.ps1    True CAUGHT 드릴 직후 창A 재접속 안내 제거                                                                                                 시나리오: D-01
+B01          g4-restore.ps1  True CAUGHT (복구) 쓰기 뒤 값 되읽기 판정 제거                                                                                             시나리오: R-12
+B02          g4-restore.ps1 False CAUGHT (복구) 쓰기 뒤 UID 불변 판정 제거                                                                                              시나리오: R-13
+B03          g4-restore.ps1  True CAUGHT (복구) --force-conflicts 제거(ESO field manager 와 충돌하면 비상 복구가 실패)                                                  lint: 헬퍼 $kapply 의 kubectl 인자가 고정값과 다르다: 실제[kubectl 'apply' '--server-side' '--field-manager=t045-restore' '--reques
+                                                                                                                                                                        | 시나리오: R-01,R-04,R-09,R-10b,R-12,R-13 외 2
+B04          g4-restore.ps1  True CAUGHT (복구) 해시 게이트가 preHash 를 자기 자신과 비교                                                                               시나리오: R-02
+B05          g4-restore.ps1  True CAUGHT (복구) ES 가 살아 있어도 단어가 restore                                                                                        시나리오: R-03,R-04
+B06          g4-restore.ps1 False CAUGHT (복구) 페이로드를 argv 로도 넘긴다                                                                                             lint: 헬퍼 $kapply 의 kubectl 인자가 고정값과 다르다: 실제[kubectl 'apply' '--server-side' '--force-conflicts' '--field-manager=t04
+                                                                                                                                                                        | 시나리오: R-01,R-04,R-09,R-10b,R-12,R-13 외 2
+B09          g4-restore.ps1 False CAUGHT (복구) UID 변경 정지점 제거                                                                                                    시나리오: R-08
+B11          g4-restore.ps1 False CAUGHT (복구) 비밀 입력 직후 클립보드 비움 제거(finally 에만 남는다)                                                                  시나리오: R-01,R-02,R-04,R-07,R-09,R-10b 외 4
+D01          g4-drill.ps1    True CAUGHT ES Ready 상태 필터 제거                                                                                                        시나리오: D-22
+D02          g4-drill.ps1    True CAUGHT 해시 게이트 제거                                                                                                               시나리오: D-05
+D03          g4-drill.ps1    True CAUGHT UID 게이트 제거                                                                                                                시나리오: D-06
+D04          g4-drill.ps1    True CAUGHT data-hash 게이트 제거                                                                                                          시나리오: D-07
+D05          g4-drill.ps1    True CAUGHT 이름 타자 제거                                                                                                                 시나리오: G4-21,G4-22,G4-23,G4-31,D-01,D-13 외 14
+D06          g4-drill.ps1    True CAUGHT 삭제 대상 변동 재확인 제거                                                                                                     시나리오: D-20
+D07          g4-drill.ps1    True CAUGHT 빈 Secret 거부 제거                                                                                                            시나리오: D-31
+D08          g4-drill.ps1    True CAUGHT 삭제 뒤 생존 Ready 확인 제거                                                                                                   시나리오: D-32
+M01          g4-adopt.ps1    True CAUGHT 인수 후 값 해시 판정 제거                                                                                                      시나리오: G4-06b
+M02          g4-adopt.ps1    True CAUGHT 인수 후 UID 판정 제거                                                                                                          시나리오: G4-07b
+M03          g4-adopt.ps1   False CAUGHT ownerReferences 판정 제거                                                                                                      시나리오: G4-08
+M04          g4-adopt.ps1   False CAUGHT managed 라벨(양성 증거) 판정 제거                                                                                              시나리오: G4-16
+M05          g4-adopt.ps1   False CAUGHT data-hash 하드 판정 제거(ESO 쓰기 증거 없이 통과)                                                                              시나리오: G4-16b
+M06          g4-adopt.ps1   False CAUGHT Secret 의 Argo tracking 복사 판정 제거                                                                                         시나리오: G4-09
+M07          g4-adopt.ps1   False CAUGHT ES tracking-id 소유 Application 판정 제거                                                                                      시나리오: G4-17
+M08          g4-adopt.ps1   False CAUGHT platform-cloudflared 의 external-secrets.io 소유 판정 제거                                                                     시나리오: G4-18
+M09          g4-adopt.ps1    True CAUGHT 파드 불변 판정 제거                                                                                                            시나리오: G4-10
+M10          g4-adopt.ps1    True CAUGHT 키 집합(TUNNEL_TOKEN 하나) 검사 제거                                                                                           시나리오: G4-03
+M11          g4-adopt.ps1   False CAUGHT SecretSyncedError 고착 판정 제거                                                                                               시나리오: G4-05
+M12          g4-drill.ps1    True CAUGHT 새 파드 Ready 타임아웃 단언 제거                                                                                               시나리오: D-15,D-16,D-34
+M13          g4-drill.ps1    True CAUGHT 삭제 전 양쪽 Ready 통합 게이트 제거(옛 남길 파드 게이트 이동)                                                                  시나리오: D-09,D-10
+M14          g4-drill.ps1    True CAUGHT 삭제 직전 값 해시 재확인 제거(정지점 사이 변경을 놓친다)                                                                       시나리오: D-18,D-37
+M15          g4-drill.ps1    True CAUGHT 삭제 직전 UID 재확인 제거                                                                                                      시나리오: D-19
+M16          g4-drill.ps1    True CAUGHT 삭제 직전 양쪽 서명·Ready 통합 재확인 제거                                                                                     시나리오: D-20
+M17          g4-drill.ps1    True CAUGHT 드릴 대기 중 남은 파드 서명 불변 검사 제거                                                                                     시나리오: G4-31,D-25
+M18          g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: nopods 실행에서도 파드를 삭제하도록(재실행 누적 삭제)                                                    lint: L160 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: delete | 시나리오: G4-01,G4-02b,G4-53,G4-54,G4-55,G4-EOF2 외 45
+M19          g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: 인수 뒤 시작한 Ready 파드가 있어도 또 드릴(두 번째 삭제)                                                 lint: L163 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: delete | 시나리오: G4-02b,G4-53,G4-EOF2,G4-02,G4-02c,G4-02g 외 4
+M20          g4-drill.ps1    True CAUGHT 삭제 대상을 2개로(남은 커넥터까지 교체)                                                                                        lint: 변경 헬퍼 $kdel 의 호출 지점이 2 곳(1 이어야 한다) | 시나리오: G4-21,G4-22,G4-23,G4-31,D-01,D-13 외 8
+M21          g4-drill.ps1    True CAUGHT rollout restart 삽입(전면 재시작)                                                                                              lint: L236 kubectl 호출이 헬퍼 밖() ; 변경 헬퍼 $kdel 의 호출 지점이 0 곳(1 이어야 한다) | 시나리오: G4-21,G4-22,G4-23,G4-31,D-01,D-
+                                                                                                                                                                        13 외 10
+M22          g4-drill.ps1    True CAUGHT 조회 헬퍼로 삭제 우회($kq 에 delete 동사)                                                                                      lint: L236 조회 헬퍼 $kq 인자에 변경 동사 'delete' ; 변경 헬퍼 $kdel 의 호출 지점이 0 곳(1 이어야 한다) | 시나리오: G4-21,G4-22,G4-2
+                                                                                                                                                                        3,G4-31,D-01,D-13 외 10
+M23          g4-drill.ps1    True CAUGHT 드릴 대상 선정을 이름 순으로 되돌림(옛 커넥터를 지울 수 있다)                                                                  시나리오: D-23
+M24          g4-drill.ps1    True CAUGHT 대상·생존 뒤바꿈(가장 이른 파드를 지운다)                                                                                      시나리오: G4-21,G4-22,G4-23,G4-31,D-01,D-13 외 5
+M25          g4-drill.ps1    True CAUGHT 드릴 정지점 제거(사람 승인 없이 삭제)                                                                                          시나리오: G4-21,G4-23,D-01,D-13,D-14,D-23 외 2
+M26          g4-adopt.ps1    True CAUGHT 0) break-glass 정지점 제거                                                                                                     시나리오: G4-01,G4-02b,G4-53,G4-54,G4-55,G4-EOF2 외 39
+M27          g4-adopt.ps1   False CAUGHT 정지점 단어 비교를 Ordinal → -eq(대소문자 무시)                                                                                시나리오: G4-14c
+M28          g4-adopt.ps1   False CAUGHT adopt 쓰기 금지 대체: resume 파드 서명의 빈 입력 거부 제거(빈 Enter 로 게이트 포기)                                            lint: L329 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: delete | 시나리오: G4-01,G4-02b,G4-54,G4-55,G4-13e,G4-15b 외 5
+M29          g4-adopt.ps1    True CAUGHT 창 A boot_id 대조 제거(열린 세션을 확인하지 않는다)                                                                            시나리오: G4-15c
+M30          g4-adopt.ps1   False CAUGHT 1P) PM 토큰 해시 검사 제거                                                                                                     시나리오: G4-30
+M31          g4-adopt.ps1   False CAUGHT 인수 전 값을 화면에 출력                                                                                                       시나리오: G4-01,G4-54,G4-55,G4-EOF3,G4-EMPTY,G4-04 외 31
+M32          g4-adopt.ps1   False CAUGHT 해시 대신 평문을 기준값으로 보관(해시 비교 제거)                                                                               시나리오: G4-01,G4-54,G4-55,G4-EOF3,G4-EMPTY,G4-04 외 31
+M33          g4-adopt.ps1   False CAUGHT 1P) 토큰을 -AsSecureString 없이 평문으로 읽는다                                                                                시나리오: G4-30,G4-30b,G4-38,G4-42
+M34          g4-restore.ps1 False CAUGHT 복구 토큰을 -AsSecureString 없이 평문으로 읽는다                                                                               시나리오: R-01,R-02,R-04,R-07,R-09,R-10b 외 4
+M35          g4-adopt.ps1   False CAUGHT finally 의 정리(Remove-Variable) 제거                                                                                          lint: finally 의 Remove-Variable 목록에 snap 없음 ; finally 의 Remove-Variable 목록에 b64 없음 ; finally 의 Remove-Variable 목록에 h
+M36          g4-adopt.ps1    True CAUGHT 조회 3회 실패를 빈 값으로 통과시킨다(실패를 없음으로 읽는다)                                                                   시나리오: G4-02g,G4-06d,G4-13a,G4-13b,G4-13c
+M37          g4-adopt.ps1    True CAUGHT 단일 GET 스냅샷의 managed 라벨 가드 제거(가짜 기준값)                                                                          시나리오: G4-27
+M38          g4-adopt.ps1   False CAUGHT auth can-i 의 허용 종료 코드 제거(no 를 조회 실패로 읽는다)                                                                    시나리오: G4-26
+M39          g4-drill.ps1   False CAUGHT 드릴 대기 조회 실패를 즉시 throw(검증만 잃고 재실행을 부른다)                                                                  시나리오: D-16
+M40          g4-adopt.ps1   False CAUGHT 라벨 셀렉터 제거(무관한 파드를 커넥터로 센다)                                                                                  시나리오: G4-19b
+M41          g4-adopt.ps1   False CAUGHT oci 읽기 전용 프로파일 검사 제거                                                                                               시나리오: G4-15d
+M42          g4-drill.ps1   False CAUGHT 변경 로그를 삭제 요청 뒤로(중단 시 "변경 0건" 거짓말)                                                                          lint: 변경 로그($changes.Add)가 kubectl 호출보다 뒤에 있다 | 시나리오: G4-31,D-15,D-16,D-17,D-28,D-32 외 1
+M43          g4-drill.ps1   False CAUGHT 삭제를 블로킹 대기로 되돌림(--wait=false 제거)                                                                                 lint: 헬퍼 $kdel 의 kubectl 인자가 고정값과 다르다: 실제[kubectl '-n' $NS 'delete' 'pod' $pod '--timeout=90s'] 기대[kubectl '-n' $NS
+                                                                                                                                                                          | 시나리오: G4-21,G4-22,G4-23,G4-31,D-01,D-13 외 10
+M44          g4-adopt.ps1   False CAUGHT 조회 실패 문면을 "파드는 건드리지 않았다"로 고정(거짓 문장)                                                                    시나리오: G4-13a
+M45          g4-adopt.ps1   False CAUGHT 판정하지 않은 항목도 합격 문면에 넣는다(resume·nopods 인데 "파드 불변")                                                        시나리오: G4-02b
+M45b         g4-adopt.ps1   False CAUGHT adopt 쓰기 금지 대체: 판정하지 않은 항목도 합격 문면에(이전 드릴 결과인데 "파드 불변")                                         lint: L200 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: delete | 시나리오: G4-01,G4-54,G4-55,G4-EOF3,G4-EMPTY,G4-04 외 31
+M46          g4-adopt.ps1   False CAUGHT 머지 입력 뒤 미판정 중단 경고 제거                                                                                             시나리오: G4-13b
+M47          g4-restore.ps1  True CAUGHT PM 토큰 해시 게이트 제거(틀린 값을 자기 손으로 쓴다)                                                                           시나리오: R-02
+M48          g4-restore.ps1 False CAUGHT 토큰 형식(ASCII 인쇄 문자) 검사 제거                                                                                           시나리오: R-07
+M49          g4-restore.ps1 False CAUGHT 클립보드 기록 검사 제거                                                                                                        시나리오: R-06
+M50          g4-restore.ps1 False CAUGHT apply 회계를 호출 뒤로(쓰기 시도를 숨긴다)                                                                                     lint: 변경 로그($changes.Add)가 kubectl 호출보다 뒤에 있다 | 시나리오: R-01
+M51          g4-restore.ps1  True CAUGHT Git 선언(selfHeal) 검사 제거 — ES 부재를 "개입 멈춤"으로 읽는다                                                                시나리오: R-10
+M52          g4-restore.ps1 False CAUGHT 모호한 apply 실패를 "아무것도 쓰지 않았다"로 단정                                                                              시나리오: R-09
+M53          g4-restore.ps1 False CAUGHT 토큰 검사를 -cnotmatch 로 되돌림($Matches 에 평문 잔류)                                                                        lint: L177 $tok 에 -match 계열(=$Matches 에 평문 잔류)
+N01          g4-drill.ps1    True CAUGHT break-glass 둘 다 미확인 하드 거부 제거                                                                                        시나리오: D-11,D-26,D-36
+N02          g4-adopt.ps1    True CAUGHT 둘 다 실패인데 단어를 no-oci 로 되돌림(문면과 단어가 갈리지 않는다)                                                            시나리오: G4-36b
+N03          g4-adopt.ps1    True CAUGHT noGlass 판정을 항상 거짓으로(둘 다 실패해도 평소 경로)                                                                         시나리오: G4-36b
+N04          g4-drill.ps1   False CAUGHT noGlass 정지점 문면을 평소 문면으로(삭제 거부를 알리지 않는다)                                                                 시나리오: D-36
+N05          g4-adopt.ps1   False CAUGHT adopt 쓰기 금지 대체: noGlass SKIP 의 단계 기록을 "완료"로(런북에 거짓 기록)                                                   lint: L348 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: delete | 시나리오: G4-04,G4-05,G4-08,G4-09,G4-10,G4-13b 외 6
+N06          g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: 이전 드릴 판정에서 "ES 생성 뒤 시작" 조건 제거(진짜 교체도 드릴 결과로 읽는다)                           lint: L160 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: rollout | 시나리오: G4-01,G4-02b,G4-53,G4-54,G4-55,G4-EOF2 외 45
+N07          g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: 이전 드릴 판정에서 새 파드 Ready 조건 제거(NotReady 커넥터를 증명으로 읽는다)                            lint: L163 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: rollout | 시나리오: G4-02b,G4-53,G4-EOF2,G4-02,G4-02c,G4-02g 외 4
+N08          g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: 이전 드릴 판정 조건을 fresh 하나로 축소(파드 수·kept 검사 제거)                                          lint: L329 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: rollout | 시나리오: G4-01,G4-02b,G4-54,G4-55,G4-13e,G4-15b 외 5
+N09          g4-drill.ps1    True CAUGHT ES 생성 시각 기준을 epoch 로(모든 새 파드가 "드릴 결과")                                                                       시나리오: G4-21,G4-22,G4-23,G4-31,D-01,D-15 외 14
+N10          g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: 4) 의 이전 드릴 SKIP 분기 제거(드릴을 한 번 더 한다)                                                     lint: L200 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: rollout | 시나리오: G4-01,G4-54,G4-55,G4-EOF3,G4-EMPTY,G4-04 외 31
+N11          g4-adopt.ps1   False CAUGHT adopt 쓰기 금지 대체: drilled: SKIP 에서 드릴 후 서명 기록 제거(다음 실행의 1R 입력이 사라진다)                                lint: L347 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: rollout | 시나리오: G4-01,G4-02b,G4-53,G4-54,G4-55,G4-EOF1 외 54
+N11b         g4-adopt.ps1   False CAUGHT adopt 쓰기 금지 대체: 이전 드릴 SKIP 에서 드릴 후 서명 기록 제거(같은 결함의 두 번째 갈래)                                     lint: L348 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: rollout | 시나리오: G4-04,G4-05,G4-08,G4-09,G4-10,G4-13b 외 6
+N12          g4-drill.ps1   False CAUGHT 드릴 정지점 분기의 키 집합 조회 실패를 "정상"으로 읽는다(fail-open)                                                            시나리오: D-37
+N13          g4-adopt.ps1   False CAUGHT 폴링 분기의 키 집합을 항상 정상으로 고정(매핑 오류를 kv 오류로 오도)                                                           시나리오: G4-06c,G4-06d
+N14          g4-adopt.ps1   False CAUGHT 복구 안내의 "조회 실패" 분기를 항상 타게(정상 키를 미확인으로 오도)                                                            시나리오: G4-06c
+N15          g4-adopt.ps1   False CAUGHT 복구 안내에서 키 집합 줄 자체를 제거(감별 근거 소실)                                                                           시나리오: G4-06,G4-06c,G4-06d
+N16          g4-adopt.ps1    True CAUGHT 키 목록 조회를 키가 아니라 **값**으로(복구 안내에 토큰이 찍힌다)                                                               시나리오: G4-01,G4-53,G4-54,G4-55,G4-EOF3,G4-EMPTY 외 37
+N17          g4-restore.ps1  True CAUGHT (복구) Argo 조회 성공 판정을 무조건 참으로(빈 응답을 "선언 없음"으로 읽는다)                                                   시나리오: R-14b
+N18          g4-restore.ps1  True CAUGHT (복구) Argo 조회 실패를 "선언 없음"으로 읽는다(catch 에서 argoOk=true)                                                         시나리오: R-14
+N19          g4-restore.ps1 False CAUGHT (복구) 최선 노력을 되돌려 Argo 조회 실패가 복구를 막게 한다(B-3 회귀)                                                          시나리오: R-14
+N20          g4-restore.ps1  True CAUGHT (복구) 양성 대조 행을 빈 문자열로(무엇이 와도 "조회가 됐다")                                                                   시나리오: R-14b
+N21          g4-adopt.ps1   False CAUGHT 1R) pm 분기의 클립보드 기록 검사 제거                                                                                          시나리오: G4-38b
+N22          g4-adopt.ps1    True CAUGHT 1R) pm 분기가 토큰을 평문 Read-Host 로 받는다                                                                                  시나리오: G4-38,G4-42
+N23          g4-adopt.ps1    True CAUGHT 1R) pm 분기가 base64 없이 해시를 유도(기준값이 어긋난다)                                                                       시나리오: G4-38,G4-42
+N24          g4-adopt.ps1   False CAUGHT 1R) pm 분기의 "미검증 전제" 경고 제거                                                                                          시나리오: G4-38
+N25          g4-restore.ps1 False CAUGHT (복구) 쓰기 성공을 곧 확인 성공으로(verified 를 apply 직후에 세운다)                                                           시나리오: R-12,R-13
+P01          g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: drilled: 접두어 인식 제거(운영자 선언이 무시된다 → 재인수에서 두 번째 삭제)                              lint: L160 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: scale | 시나리오: G4-01,G4-02b,G4-53,G4-54,G4-55,G4-EOF2 외 45
+P02          g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: 4) 의 drilled: SKIP 분기 제거(3) 의 같은 조건과 구분하려고 줄 앵커를 쓴다)                               lint: L163 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: scale | 시나리오: G4-02b,G4-53,G4-EOF2,G4-02,G4-02c,G4-02g 외 4
+P03          g4-drill.ps1    True CAUGHT "인수 뒤 시작한 파드" 조건을 다시 Ready 로 좁힘(NotReady 드릴 파드가 있어도 또 지운다)                                         시나리오: D-13,D-14
+P04          g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: 인수 뒤 시작한 NotReady 파드 SKIP 분기 제거                                                              lint: L329 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: scale | 시나리오: G4-01,G4-02b,G4-54,G4-55,G4-13e,G4-15b 외 5
+P05          g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: R2 뒤 재인수의 드릴 단어를 drill 로 되돌림(사람 확인이 사라진다)                                         lint: L200 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: scale | 시나리오: G4-01,G4-54,G4-55,G4-EOF3,G4-EMPTY,G4-04 외 31
+P06          g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: 기준값을 이어받은 실행·재인수의 드릴 정지점 문면을 평소 문면으로(이미 드릴했는지 묻지 않는다)            lint: L347 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: scale | 시나리오: G4-01,G4-02b,G4-53,G4-54,G4-55,G4-EOF1 외 54
+P07          g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: SKIP 분기의 커넥터 Ready 경고 제거(한쪽이 NotReady 인데 OK 로 끝난다)                                    lint: L348 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: scale | 시나리오: G4-04,G4-05,G4-08,G4-09,G4-10,G4-13b 외 6
+P08          g4-adopt.ps1   False CAUGHT 1P) 건너뛰기 제거(PM 유도 기준값을 같은 PM 값과 대조해 "검증했다"고 기록한다)                                                  시나리오: G4-38,G4-42
+P09          g4-adopt.ps1   False CAUGHT PM 유도 표시($preFromPm) 자체를 세우지 않는다                                                                                  시나리오: G4-38,G4-42
+P10          g4-adopt.ps1    True CAUGHT 복구 안내의 "기준값이 PM 유도다" 경고 제거(kv 를 낡은 PM 값으로 정정하게 만든다)                                               시나리오: G4-42
+P11          g4-adopt.ps1   False CAUGHT 기준값 출력(화면)의 PM 유도 꼬리표 제거(런북에 "검증된 기준값"으로 남는다)                                                     시나리오: G4-38
+P11b         g4-adopt.ps1   False CAUGHT 기준값 출력(요약)의 PM 유도 꼬리표 제거 — 같은 결함의 두 번째 갈래                                                             시나리오: G4-38
+P12          g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: 요약의 drilled: 접두어 제거(다음 실행이 접두어 없이 붙여 넣게 된다)                                      lint: L160 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: patch | 시나리오: G4-01,G4-02b,G4-53,G4-54,G4-55,G4-EOF2 외 45
+P13          g4-adopt.ps1   False CAUGHT R3 조각에서 히스토리 끄기 제거(개행 섞인 붙여넣기의 나머지가 히스토리로 간다)                                                  시나리오: G4-06
+P14          g4-adopt.ps1    True CAUGHT R3 조각에서 붙여넣기 형식·길이 검사 제거(빈 값·잘린 값을 그대로 쓴다)                                                          시나리오: G4-06
+P15          g4-adopt.ps1    True CAUGHT R3 조각에서 쓰기 뒤 해시 되읽기 제거(잠긴 상태에서 확인 수단이 없어진다)                                                       시나리오: G4-06
+P16          g4-adopt.ps1   False CAUGHT R3 ② 의 finalizer·webhook 단서 제거(delete 가 멎는 이유를 알 수 없다)                                                          시나리오: G4-06
+P17          g4-adopt.ps1   False CAUGHT 0b 의 전제(클립보드·kubeconfig·권한 하드 검사) 문구 제거                                                                       시나리오: G4-06
+R1-03        g4-drill.ps1    True CAUGHT 삭제 대상 잔존·3파드 상태도 완료로 판정                                                                                        시나리오: D-34
+R1-05        g4-drill.ps1   False CAUGHT 전제 통과 요약 누락                                                                                                            시나리오: D-01
+R2-02        g4-drill.ps1    True CAUGHT 삭제 후 완전 단절 R3 파일 인계 제거                                                                                            lint: 파서오류 L6 | 시나리오: G4-21,G4-22,G4-23,G4-31,D-01,D-02 외 34
+R3-UNCERTAIN g4-adopt.ps1    True CAUGHT R3 결과 불명 오도                                                                                                              시나리오: G4-06
+R4-01        g4-adopt.ps1    True CAUGHT R3 조각의 case 패턴을 히스토리 확장에 걸리는 `!!` 로 되돌림(정상 토큰도 늘 BROKEN-PASTE)                                       시나리오: G4-06
+R4-02        g4-adopt.ps1    True CAUGHT R3 조각을 "첫 줄부터 실행한다"는 지시 제거(중간부터 재시도 → 히스토리 확장 덫)                                                 시나리오: G4-06
+R4-03        g4-adopt.ps1    True CAUGHT R3 의 갈래 판정을 옛 거짓 문면으로 되돌림("해시가 다르면 아무것도 쓰지 않은 것")                                               시나리오: G4-06
+R4-04        g4-adopt.ps1   False CAUGHT R3 의 화면 에코 경고 제거(스크롤백에 남은 토큰을 알리지 않는다)                                                                시나리오: G4-06
+R4-05        g4-adopt.ps1   False CAUGHT R3 ④ 의 자리표시자를 붙여 넣으면 bash 문법 오류가 나는 표기로 되돌림                                                           시나리오: G4-06
+R4-06        g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: 가드 ⓓ 제거(라벨이 지워진 재인수가 사람 확인 없이 정상 캡처 경로로 들어온다)                             lint: L348 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: patch | 시나리오: G4-04,G4-05,G4-08,G4-09,G4-10,G4-13b 외 6
+R4-07        g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: 1D) 의 잘못된 답을 first 로 처리(빈 Enter·오타가 드릴을 여는 쪽으로 간다)                                lint: L160 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: label | 시나리오: G4-01,G4-02b,G4-53,G4-54,G4-55,G4-EOF2 외 45
+R4-08        g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: 1D) 의 재인수 표시를 4) 단어에 반영하지 않는다(first-drill 로 갈리지 않는다)                             lint: L163 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: label | 시나리오: G4-02b,G4-53,G4-EOF2,G4-02,G4-02c,G4-02g 외 4
+R4-09        g4-adopt.ps1    True CAUGHT 스냅샷 jsonpath 에서 data-hash 필드 제거(가드 ⓓ 의 근거가 사라진다)                                                            시나리오: G4-01,G4-54,G4-55,G4-EOF3,G4-EMPTY,G4-04 외 32
+R4-10        g4-adopt.ps1   False CAUGHT adopt 쓰기 금지 대체: $already SKIP 분기의 반대쪽 Ready 판정 제거(이중화 미성립이 조용히 넘어간다)                             lint: L329 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: label | 시나리오: G4-01,G4-02b,G4-54,G4-55,G4-13e,G4-15b 외 5
+R4-10b       g4-adopt.ps1   False CAUGHT adopt 쓰기 금지 대체: $after SKIP 분기의 반대쪽 Ready 판정 제거(같은 결함의 두 번째 갈래)                                      lint: L200 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: label | 시나리오: G4-01,G4-54,G4-55,G4-EOF3,G4-EMPTY,G4-04 외 31
+R4-11        g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: 요약의 쌍둥이 줄 차단 제거(접두어 없는 기준값 파드서명을 그대로 다시 인쇄)                               lint: L347 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: label | 시나리오: G4-01,G4-02b,G4-53,G4-54,G4-55,G4-EOF1 외 54
+R4-12        g4-drill.ps1    True CAUGHT 4) 정지점의 break-glass 재확인 문면 제거(0) 이후 창 A 가 끊겨도 묻지 않는다)                                                   시나리오: D-01
+R4-13        g4-adopt.ps1   False CAUGHT UID 안내에서 현재 UID 줄 제거(새 UID 를 찾을 방법을 주지 않는다)                                                               시나리오: G4-07,G4-07b
+R4-14        g4-adopt.ps1   False CAUGHT UID 안내용 $uidNow 를 3) 판정에서 세우지 않는다                                                                                시나리오: G4-07b
+R4-14b       g4-adopt.ps1   False CAUGHT UID 안내용 $uidNow 를 2) 감시 루프에서 세우지 않는다(같은 결함의 두 번째 갈래)                                                 시나리오: G4-07
+R4-14c       g4-drill.ps1   False CAUGHT UID 안내용 $uidNow 를 삭제 직전 재확인에서 세우지 않는다(세 번째 갈래)                                                         시나리오: D-19
+R4-15        g4-adopt.ps1    True CAUGHT 라벨 삭제 안내에서 data-hash 경고 제거(지우면 잠금이 모두 풀린다는 사실을 숨긴다)                                              시나리오: G4-06
+R5-01        g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: 드릴 단어 게이트를 4R 의 일시적 사실($esGone)로 되돌림(먼저 머지한 재인수에서 게이트가 사라진다 · B4-01) lint: L348 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: label | 시나리오: G4-04,G4-05,G4-08,G4-09,G4-10,G4-13b 외 6
+R5-02        g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: 드릴 단어 게이트에서 resume 을 통째로 뺀다(1R 로 이어 온 실행이 drill 하나로 지운다 · B4-01)             lint: L160 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: annotate | 시나리오: G4-01,G4-02b,G4-53,G4-54,G4-55,G4-EOF2 외 45
+R5-03        g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: 요약의 쌍둥이 **값** 억제 분기 제거(접두어 없는 같은 값이 파드서명 줄로 다시 나간다 · B4-03)             lint: L163 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: annotate | 시나리오: G4-02b,G4-53,G4-EOF2,G4-02,G4-02c,G4-02g 외 4
+R5-04        g4-adopt.ps1    True CAUGHT R3 의 (0) apply 실패 갈래 제거(쓰기 0건인 실패를 "이미 썼을 수 있다"로 읽게 된다 · A4-1)                                       시나리오: G4-06
+R5-05        g4-adopt.ps1    True CAUGHT R3 의 (0) 에서 라이브 type 읽기 명령 제거(잠긴 운영자가 원인을 고칠 수단을 잃는다 · A4-1)                                      시나리오: G4-06
+R5-06        g4-adopt.ps1    True CAUGHT R3 의 (3) 에서 "apply 줄의 오류는 (0) 이다" 구분 제거(두 갈래가 다시 섞인다 · A4-1)                                            시나리오: G4-06
+R5-07        g4-adopt.ps1    True CAUGHT R3 조각에서 case 앞의 unset B 제거(앞선 시도의 B 가 남아 BROKEN-PASTE 인데도 틀린 값을 쓴다 · A4-2)                            시나리오: G4-06
+R5-07b       g4-adopt.ps1    True CAUGHT R3 조각에서 apply 뒤의 unset B 제거(같은 줄의 두 번째 갈래 · A4-2)                                                             시나리오: G4-06
+R5-08        g4-adopt.ps1    True CAUGHT R3 조각에서 unset T 제거(평문 토큰이 노드 셸 변수에 남는다 · A4-2)                                                             시나리오: G4-06
+R5-09        g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: noGlass 거부 분기의 반대쪽 Ready 판정 제거(확인된 복구 경로 0 인 실행이 "OK"로 끝난다 · A4-3)            lint: L329 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: annotate | 시나리오: G4-01,G4-02b,G4-54,G4-55,G4-13e,G4-15b 외 5
+R5-09b       g4-adopt.ps1   False CAUGHT adopt 쓰기 금지 대체: drilled: SKIP 분기의 반대쪽 Ready 판정 제거(A4-3)                                                        lint: L200 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: annotate | 시나리오: G4-01,G4-54,G4-55,G4-EOF3,G4-EMPTY,G4-04 외 31
+R5-09c       g4-adopt.ps1   False CAUGHT adopt 쓰기 금지 대체: 이전 드릴 SKIP 분기의 반대쪽 Ready 판정 제거(A4-3)                                                       lint: L347 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: annotate | 시나리오: G4-01,G4-02b,G4-53,G4-54,G4-55,G4-EOF1 외 54
+R5-09d       g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: nopods SKIP 분기의 반대쪽 Ready 판정 제거(A4-3)                                                          lint: L348 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: annotate | 시나리오: G4-04,G4-05,G4-08,G4-09,G4-10,G4-13b 외 6
+R5-10        g4-adopt.ps1   False CAUGHT adopt 쓰기 금지 대체: 요약의 기준값 파드서명 줄에서 "어느 줄을 넣어라" 단서만 뗀다(이름은 그대로 · A4-4)                       lint: L160 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: replace | 시나리오: G4-01,G4-02b,G4-53,G4-54,G4-55,G4-EOF2 외 45
+R5-11        g4-adopt.ps1   False CAUGHT adopt 쓰기 금지 대체: 요약의 기준값 파드서명 줄을 통째로 제거(운영자가 이 실행의 입력을 되짚을 수 없다 · A4-4)                 lint: L163 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: replace | 시나리오: G4-02b,G4-53,G4-EOF2,G4-02,G4-02c,G4-02g 외 4
+R5-11b       g4-adopt.ps1   False CAUGHT adopt 쓰기 금지 대체: 요약의 접두어 없는 기준값 파드서명 줄만 제거(같은 결함의 두 번째 갈래 · A4-4)                            lint: L329 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: replace | 시나리오: G4-01,G4-02b,G4-54,G4-55,G4-13e,G4-15b 외 5
+R5-12        g4-adopt.ps1   False CAUGHT adopt 쓰기 금지 대체: 화면의 "이미 드릴했다고 선언됐다" 단서 제거(그 실행이 삭제 0 이라는 사실이 화면에서 사라진다 · A4-4)     lint: L200 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: replace | 시나리오: G4-01,G4-54,G4-55,G4-EOF3,G4-EMPTY,G4-04 외 31
+R5-13        g4-adopt.ps1   False CAUGHT adopt 쓰기 금지 대체: 1D) 오답 안내에서 "모르겠으면 drilled" 제거(안전한 쪽을 알려 주지 않는다 · A4-4)                         lint: L347 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: replace | 시나리오: G4-01,G4-02b,G4-53,G4-54,G4-55,G4-EOF1 외 54
+R5-14        g4-adopt.ps1    True CAUGHT R3 의 case 줄 따옴표 근거 주석 제거(다음 편집자가 B3-01 을 되돌린다 · A4-4)                                                    시나리오: G4-06
+R5-15        g4-adopt.ps1   False CAUGHT B4-02 로 바로잡은 히스토리 확장 기전 설명 제거(다음 편집자가 "[ 뒤면 안전하다"를 믿는다)                                       시나리오: G4-06
+R5-16        g4-drill.ps1   False CAUGHT 1D) 의 단어 비교를 Ordinal → -eq(컬처 민감 · 안전 규칙 8)                                                                      시나리오: D-35
+R5-17        g4-drill.ps1    True CAUGHT $nrWarn 의 Ready 비교를 Ordinal → -ne(컬처 민감 · 안전 규칙 8)                                                                 lint: L235 문자열 리터럴에 Ine(컬처 민감) — [string]::Equals(…, Ordinal) 이어야 한다: $_.ready -ne 'True'
+V01          g4-adopt.ps1   False CAUGHT noGlass 를 -and 에서 -or 로(한쪽만 실패해도 삭제 거부 · 단어가 갈리지 않는다)                                                  시나리오: G4-15b,G4-15d,G4-48
+V02          g4-adopt.ps1    True CAUGHT ssh 만 실패한 실행의 단어를 go 로 되돌림(창 A 미대조를 사람에게 알리지 않는다)                                                 시나리오: G4-15,G4-48
+V03          g4-adopt.ps1    True CAUGHT 창 A 대조의 boot_id 형식 검사 제거(ssh 가 무엇을 돌려주든 대조 상대로 삼는다)                                                  시나리오: G4-48
+V04          g4-adopt.ps1    True CAUGHT oci 프로브의 빈 응답 검사 제거(exit 0 + 빈 출력을 2차 break-glass 로 센다)                                                     시나리오: G4-46b
+V05          g4-drill.ps1    True CAUGHT ES creationTimestamp 형식 검사 제거(형식이 다르면 시각 비교가 무의미해진다)                                                    시나리오: D-29
+V06          g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: noGlass 거부 분기가 드릴 후 서명을 무조건 기록한다(하지도 않은 드릴을 요약이 drilled: 로 인쇄)           lint: L163 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: patch | 시나리오: G4-02b,G4-53,G4-EOF2,G4-02,G4-02c,G4-02g 외 4
+V07          g4-adopt.ps1   False CAUGHT 키 목록 조회를 fail-open 으로(조회 실패를 "키가 하나도 없다"로 읽어 매핑 오류로 오진)                                          시나리오: G4-06d
+V08          g4-adopt.ps1   False CAUGHT adopt 쓰기 금지 대체: SKIP 분기의 Ready 경고를 화면에서 지운다(요약 줄만 남는다)                                               lint: L329 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: patch | 시나리오: G4-01,G4-02b,G4-54,G4-55,G4-13e,G4-15b 외 5
+V09          g4-adopt.ps1   False CAUGHT PM 유도 실행의 1P 기록을 일반 skip-pm 으로(자기 자신 대조였다는 사실이 기록에서 사라진다)                                      시나리오: G4-38
+V10          g4-restore.ps1 False CAUGHT (복구) Secret type 빈 응답 검사 제거(빈 type 을 그대로 apply 에 싣는다)                                                        시나리오: R-16
+V11          g4-restore.ps1 False CAUGHT (복구) Git 선언 판정에서 requiresPruning=true 예외를 뺀다(정상 순서인데 temporary 로 막는다)                                   시나리오: R-10b
+V12          g4-restore.ps1  True CAUGHT (복구) 조회 성공 판정을 "응답이 비어 있지 않다"로(양성 대조 행을 보지 않는다)                                                  시나리오: R-14b
+V13          g4-adopt.ps1    True CAUGHT 파드 행 형식 검사 제거(jsonpath 형식이 달라지면 오판으로 진행한다)                                                             시나리오: G4-47
+V14          g4-adopt.ps1   False CAUGHT 빈 파드 목록 검사 제거(빈 응답을 "파드 없음"으로 읽는다)                                                                       시나리오: G4-47b
+V15          g4-drill.ps1   False CAUGHT 0) 권한 확인에서 'delete pods' 를 뺀다(삭제 권한을 미리 확인하지 않는다)                                                       시나리오: D-03
+V16          g4-drill.ps1    True CAUGHT 남길 파드의 기준 서명을 삭제 대상에서 뽑는다(드릴 대기 판정이 엉뚱한 파드를 본다)                                              시나리오: G4-21,G4-22,G4-23,D-01,D-13,D-15 외 4
+V17          g4-adopt.ps1   False CAUGHT 폴링 진행 줄 제거(프롬프트가 약속한 "진행 줄이 보이면 머지" 신호가 사라진다)                                                   시나리오: G4-01
+V18          g4-restore.ps1 False CAUGHT (복구) 페이로드의 type 을 Opaque 로 하드코딩(실제 type 을 읽고도 쓰지 않는다)                                                  시나리오: R-17
+V19          g4-adopt.ps1    True CAUGHT adopt 쓰기 금지 대체: 드릴 후 서명 줄을 언제나 인쇄(드릴하지 않은 실행도 drilled: 를 준다)                                     lint: L200 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: patch | 시나리오: G4-01,G4-54,G4-55,G4-EOF3,G4-EMPTY,G4-04 외 31
+V20          g4-adopt.ps1   False CAUGHT 2) 단계 기록을 폴링 전에 남기지 않는다(폴링 중 중단하면 요약이 "미실행"이라고 말한다)                                          시나리오: G4-13b
+V21          g4-adopt.ps1   False CAUGHT adopt 쓰기 금지 대체: "인수 뒤 시작" 필터를 건너뛰고 Ready 파드만 보면 SKIP(드릴이 영영 일어나지 않는다)                       lint: L347 kubectl 호출이 헬퍼 밖() ; ADOPT-WRITE AST 금지 동사: patch | 시나리오: G4-01,G4-02b,G4-53,G4-54,G4-55,G4-EOF1 외 54
+V22          g4-drill.ps1    True CAUGHT 드릴 대상 정렬 제거(목록 순서가 startTime 순서를 대신한다)                                                                     시나리오: D-23
+
+
+변이 223 개 중 하네스가 잡은 것 223 개 · 빠져나간 것 0 개 · 앵커/무효 0 개
+ESCAPED:
+ANCHOR-ERR/NO-OP:
+잠금으로 이어지는 변이 127 개 중 CAUGHT 127 개

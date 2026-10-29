@@ -13,7 +13,7 @@ paths:
   ---
   status: proposed | accepted | deprecated | superseded by ADR-NNNN
   date: YYYY-MM-DD
-  decision-makers: joshua
+  decision-makers: joshua92y
   ---
   # <Title>
   ## Context and Problem Statement

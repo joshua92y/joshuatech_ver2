@@ -1,0 +1,97 @@
+# Repository command policy. These rules govern argv prefixes outside the sandbox.
+
+prefix_rule(
+    pattern = ["git", "reset", "--hard"],
+    decision = "forbidden",
+    justification = "Hard resets can discard repository work. Use a non-destructive inspection or ask the user for an explicit recovery plan.",
+    match = [
+        "git reset --hard",
+        "git reset --hard HEAD~1",
+    ],
+    not_match = [
+        "git reset --soft HEAD~1",
+        "git status",
+    ],
+)
+
+prefix_rule(
+    pattern = ["git", "push", ["--force", "-f", "--force-with-lease", "--force-if-includes"]],
+    decision = "forbidden",
+    justification = "Force pushes can rewrite shared history. Use a normal push or ask the user for explicit direction.",
+    match = [
+        "git push --force origin main",
+        "git push -f origin feature",
+        "git push --force-with-lease origin feature",
+        "git push --force-if-includes origin feature",
+    ],
+    not_match = [
+        "git push origin feature",
+        "git status",
+    ],
+)
+
+prefix_rule(
+    pattern = ["git", "clean"],
+    decision = "forbidden",
+    justification = "Git clean can permanently delete untracked work. Inspect untracked files and remove only explicit targets with user authorization.",
+    match = [
+        "git clean -f",
+        "git clean -fd",
+        "git clean --force",
+    ],
+    not_match = [
+        "git status --short",
+        "git diff --check",
+    ],
+)
+
+prefix_rule(
+    pattern = ["docker", ["system", "image", "container", "volume", "network", "builder", "buildx"], "prune"],
+    decision = "forbidden",
+    justification = "Docker prune can delete shared images, caches, containers, networks, or volumes. Inspect and remove only explicit targets with user authorization.",
+    match = [
+        "docker system prune",
+        "docker image prune -a",
+        "docker container prune",
+        "docker volume prune",
+        "docker network prune",
+        "docker builder prune",
+        "docker buildx prune",
+    ],
+    not_match = [
+        "docker system df",
+        "docker image ls",
+    ],
+)
+
+prefix_rule(
+    pattern = ["rm", ["-rf", "-fr", "-r", "-R", "--recursive"]],
+    decision = "forbidden",
+    justification = "Recursive removal can irreversibly delete broad filesystem trees. Use an explicit, verified, recoverable operation instead.",
+    match = [
+        "rm -rf build",
+        "rm -fr cache",
+        "rm -r output",
+        "rm -R output",
+        "rm --recursive output",
+    ],
+    not_match = [
+        "rm one-explicit-file.tmp",
+        "rmdir empty-directory",
+    ],
+)
+
+prefix_rule(
+    pattern = ["sudo", "rm"],
+    decision = "forbidden",
+    justification = "Privileged removal can irreversibly delete system or user data. Do not run it through Codex.",
+    match = [
+        "sudo rm one-explicit-file.tmp",
+        "sudo rm -rf /var/tmp/example",
+        "sudo rm --recursive /opt/example",
+    ],
+    not_match = [
+        "sudo systemctl status example",
+        "rm one-explicit-file.tmp",
+    ],
+)

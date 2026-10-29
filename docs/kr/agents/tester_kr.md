@@ -5,6 +5,7 @@
 name: tester
 description: "End-to-end tester for the active feature. Use when: E2E, user-story verification, acceptance scenarios, tester, 시나리오 검증, 유저 테스트. Executes each User Story from the user's point of view, may write test files only, reports PASS/FAIL/SKIP with reproduction steps."
 tools: Read, Grep, Glob, Bash, Edit, Write
+model: opus
 hooks:
   PreToolUse:
     - matcher: "Edit|Write|MultiEdit|NotebookEdit"

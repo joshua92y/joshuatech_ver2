@@ -1,0 +1,18 @@
+# Initial OpenFGA authorization model (SP-1 skeleton) — ADR 0006.
+# Scope: cross-context authorization ONLY. Tenant isolation itself is enforced
+# by Postgres RLS (ADR 0007), never by this model.
+# SP-1 model = the two tenant relations from ADR 0006: owner and member,
+# with owner ⊂ member (every owner is a member).
+# Tuples `user:<sub> member tenant:<uuid>` are derived from the TenantMembership
+# source of truth and are written by identity-admin only (SP-1: seed_tenant).
+# Cross-context resource types (e.g. media <-> engagement) arrive with the SP-2
+# decision — do not add resource types here before that ADR.
+model
+  schema 1.1
+
+type user
+
+type tenant
+  relations
+    define owner: [user]
+    define member: [user] or owner

@@ -1,0 +1,9 @@
+{
+  "name": "@jt/events",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Event schemas and contracts (skeleton, T015; see specs/003-platform-foundation/contracts/events.md)",
+  "scripts": {
+    "build": "echo @jt/events: skeleton, no build step"
+  }
+}
