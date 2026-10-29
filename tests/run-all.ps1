@@ -224,6 +224,14 @@ Write-Host ($o.TrimEnd())
 if ($c -eq 0 -and $o -match '\ASKIP kernel-trial tests -- ') { Write-Host 'SKIP kernel-trial -- allowed (no POSIX bash found; see SKIP line above)' }
 else { Check 'kernel-trial' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see kernel-trial harness output above" }
 
+# 1n. restore-drill (T058) — tests/docs/restore-drill.tests.ps1: docs/runbooks/restore-drill.md 정적 계약 검사(절 제목 · 필수 어구 · YAML 블록 모양 · 비밀 모양 0 ·
+#     docs/README.md 색인 · 상호 참조; kubeconform은 .superpowers 도구가 있을 때만 INFO/FAIL). 1l과 같은 규율: SKIP 없이 fail closed(런북 부재 = FAIL),
+#     exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 = FAIL).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/docs/restore-drill.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'restore-drill' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see restore-drill test output above"
+
 # 2. CLAUDE.md <= 200 lines
 $n = if (Test-Path CLAUDE.md) { (Get-Content CLAUDE.md).Count } else { -1 }
 Check "CLAUDE.md lines ($n) <= 200" ($n -ge 0 -and $n -le 200) 'missing or too long'
