@@ -15,8 +15,12 @@ Scope: Django pod file shapes (`*.py`, `pyproject.toml`, `Dockerfile`) under `ap
 
 ## Template and structure
 
-- Pods are generated with `copier copy templates/django-pod apps/<pod>`; the generated pod must pass its tests unmodified and depends on `packages/django-common` (never copy common code into a pod).
-- Template changes must keep the generated output green; run the generated pod's suite before committing a template change.
+- Pods are generated with `copier copy --trust --defaults --data pod_name=<pod> templates/django-pod apps/<pod>` (`--trust` is required by the template's `_tasks: uv lock`); the generated pod must pass its tests unmodified and depends on `packages/django-common` (never copy common code into a pod).
+- A generated pod is a standalone uv project — its own `uv.lock` (written by copier `_tasks: uv lock`), never a member of the root workspace (root `pyproject.toml` excludes `apps/*` and `templates/*`). It depends on `django-common` through a `tool.uv.sources` **path** source `../../packages/django-common` (editable), so the only supported layout is `<root>/apps/<pod>` next to `<root>/packages/django-common`; never generate a pod into another depth (such as `tests/fixtures/generated/<pod>`) — the source would not resolve.
+- Images build from the repository-root context: `docker buildx build --platform linux/arm64 -f apps/<pod>/Dockerfile .` (the Dockerfile copies `packages/django-common` as well, keeping the `../../packages/django-common` layout inside the image); `publish-pod.yml` uses `context: .` + `file: apps/<pod>/Dockerfile`.
+- The in-monorepo template path is not a git repository root, so copier reads the working tree and records no `_commit`; `copier update` is unsupported in SP-1 — regenerate and diff instead.
+- Template harness (`templates/django-pod/tests/`, its own `pyproject.toml`/`uv.lock`, not a workspace member): it generates a sample pod into a temporary mini-repository (`<tmp>/apps/sample-pod` + a copy of `packages/django-common`), then runs `uv sync --locked`, the generated suite, the arm64 build, `kustomize build` + `kubeconform`, and the render assertions of `contracts/pod-template.md` §기본 테스트 6. Run it with `uv run --directory templates/django-pod --locked pytest -q` (Docker, `kustomize`, `kubeconform` on PATH); `JT_SAMPLE_POD_ROOT=<dir>` keeps the generated tree, and the harness deletes only a directory it created itself (marker file).
+- Template changes must keep the generated output green; run the generated pod's suite (the harness above) before committing a template change.
 
 ## Table grades (TenantModel / GlobalModel)
 

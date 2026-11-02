@@ -109,9 +109,14 @@ Workers 대시보드 → Analytics: `_next/static/*`는 "Static asset requests"�
 ## US6 — pod 템플릿
 
 ```bash
-copier copy templates/django-pod tests/fixtures/generated/sample-pod --data pod_name=sample-pod --defaults   # 경로는 gitignore
-cd tests/fixtures/generated/sample-pod && uv sync && docker compose -f compose.dev.yml up -d && uv run pytest -q   # all passed
-docker buildx build --platform linux/arm64 -t sample-pod:test .                                # 성공
+# 하네스 한 번(T065 · templates/django-pod/tests): copier copy → uv sync --locked → 생성물 pytest → arm64 빌드 → kustomize·kubeconform·렌더 단언
+# Docker · kustomize · kubeconform이 PATH에 있어야 한다. JT_SAMPLE_POD_ROOT를 주면 생성 트리를 그 디렉터리에 남긴다(gitignore 경로).
+JT_SAMPLE_POD_ROOT=tests/fixtures/generated uv run --directory templates/django-pod --locked pytest -q         # all passed
+# 손으로 따라가기 — 같은 배치를 만든다: pod는 apps/<pod>, django-common은 두 단계 위 형제(템플릿의 path 의존성 ../../packages/django-common)
+mkdir -p tests/fixtures/generated/packages && cp -r packages/django-common tests/fixtures/generated/packages/
+copier copy --trust --defaults --data pod_name=sample-pod templates/django-pod tests/fixtures/generated/apps/sample-pod
+cd tests/fixtures/generated/apps/sample-pod && uv sync --locked && uv run pytest -q                                # all passed(testcontainers — compose 불필요)
+cd ../.. && docker buildx build --platform linux/arm64 -f apps/sample-pod/Dockerfile -t sample-pod:test .          # 성공 — 컨텍스트 = 미니 저장소 루트
 ```
 기대 테스트: `test_tenant_rls`(A 등급 0행 2건 + owner bypass 전체 + B 등급 전역 테이블), `test_outbox`(발행·삭제·실패 attempts), `test_auth_middleware`(5 케이스 + Dragonfly 실패 503), `test_health`(`/healthz`·`/ready`·`/health`), `test_logging`, `test_openapi_snapshot`.
 
