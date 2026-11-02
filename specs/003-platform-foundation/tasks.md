@@ -157,7 +157,7 @@ description: "Task list for 003-platform-foundation (joshuatech override: tests 
 
 ### E2E for User Story 3 (MANDATORY — executed by the tester agent)
 
-- [ ] T059 [US3] E2E: US3 AC1–AC5 — data·kafka 검사 PASS, 다른 pod app role로 교차 DB 접속 시 permission denied 증거, kcat 왕복 시간, 백업 오브젝트 목록, dev/prod 분리(접두·인스턴스)·Dragonfly ACL 거부(NOPERM) 증거 확인 — evidence recorded in the tester report
+- [X] T059 [US3] E2E: US3 AC1–AC5 — data·kafka 검사 PASS, 다른 pod app role로 교차 DB 접속 시 permission denied 증거, kcat 왕복 시간, 백업 오브젝트 목록, dev/prod 분리(접두·인스턴스)·Dragonfly ACL 거부(NOPERM) 증거 확인 — evidence recorded in the tester report
 
 **Checkpoint**: pod가 붙을 DB·토픽·브로커가 준비됨
 
