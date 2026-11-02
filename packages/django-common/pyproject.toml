@@ -1,6 +1,7 @@
-# django-common — Django pod 공용 라이브러리. 현재: 런타임 의존성 + 시험 인프라(T060 · T061, test-first —
-# tests/test_tenancy.py는 django_common.tenancy가, tests/test_outbox.py는 django_common.outbox가 없어 빨강).
-# 구현 모듈은 T068(tenancy) · T069(outbox) 이후에 들어온다.
+# django-common — Django pod 공용 라이브러리. 현재: 런타임 의존성 + 시험 인프라(T060 · T061 · T062, test-first —
+# tests/test_tenancy.py는 django_common.tenancy가, tests/test_outbox.py는 django_common.outbox가,
+# tests/test_auth.py는 django_common.auth가 없어 빨강).
+# 구현 모듈은 T068(tenancy) · T069(outbox) · T070(auth) 이후에 들어온다.
 [project]
 name = "django-common"
 version = "0.0.0"
@@ -12,6 +13,12 @@ dependencies = [
     # outbox 릴레이(idempotent producer)와 relay 지표(9464)는 라이브러리 본체에 속한다(contracts/events.md §릴레이).
     "confluent-kafka>=2.15,<3",
     "prometheus-client>=0.23,<1",
+    # 인증 미들웨어(Bearer JWKS · Access JWT 검증)와 거부 목록 조회(Dragonfly)도 라이브러리 본체에 속한다
+    # (contracts/identity-admin-api.md §인증 계층 · contracts/denylist.md §조회 규약 · research DJANGO-D9 · D11).
+    # PyJWT 하한 2.13 = JWKS fetch 실패 시 캐시 삭제·스킴 미검증 취약점 수정판. testcontainers의 community.redis도
+    # import 시 redis를 요구한다(시험 픽스처 dragonfly) — 이 런타임 의존성이 그것을 채운다.
+    "PyJWT[crypto]>=2.13,<3",
+    "redis[hiredis]>=8.1,<9",
 ]
 
 [dependency-groups]

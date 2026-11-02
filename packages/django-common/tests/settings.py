@@ -67,3 +67,27 @@ OUTBOX_MAX_ATTEMPTS = 10
 KAFKA_BOOTSTRAP_SERVERS = ""
 # 시험 브로커는 PLAINTEXT · 자격 없음. 운영은 SASL_SSL SCRAM-SHA-512 + CA를 env(ESO)에서 받는다(계약 §릴레이).
 KAFKA_CLIENT_CONFIG = {"security.protocol": "PLAINTEXT"}
+
+# --- T062 auth · 거부 목록 ----------------------------------------------------------------------------------------
+# D3 설계 가정 — 계약 §런타임 계약(contracts/pod-template.md env.example)의 env 이름을 그대로 설정 이름으로 쓴다.
+# T070이 확정한다(바꾸면 tests/test_auth.py · tests/_jwt.py와 함께). 빈 문자열은 conftest의 auth_settings가 세션 값
+# (로컬 JWKS 서버 · Dragonfly reader · 세션 랜덤 비밀)으로 채운다 — 자격·비밀은 파일에 두지 않는다.
+# 기본값 MIDDLEWARE · ROOT_URLCONF(T060)는 그대로다 — auth 테스트는 make_client 픽스처가 덮는다.
+# Bearer 토큰의 iss는 공개 URL 문자열로만 검증한다(fetch 없음). JWKS는 svc DNS(시험은 로컬 JWKS 서버)에서 가져온다.
+AUTHENTIK_ISSUER = "https://auth.joshuatech.dev/application/o/identity-admin/"
+AUTHENTIK_JWKS_URL = ""
+AUTHENTIK_AUDIENCE = "identity-admin"
+# T070 가정: 스킴이 있으면 base URL 그대로, 없으면 `https://` 접두 — certs URL = `<base>/cdn-cgi/access/certs` ·
+# Access iss = `<base>`. 시험 값은 로컬 JWKS 서버의 `http://127.0.0.1:<port>`(스킴 포함)다.
+ACCESS_TEAM_DOMAIN = ""
+ACCESS_AUD_M2M = "aud-m2m-test"
+ACCESS_AUD_ADMIN = "aud-admin-test"
+# 서비스 토큰 Client ID 자리의 가짜 값(운영 값은 `<32 hex>.access` · 비밀 아님 — 계약 §호출자 식별).
+ACCESS_EXPECTED_CN = "web-bff-test-client-id.access"
+# 빈 값 = impersonation 모드(act 검사 생략 · 빈 값도 유효한 값 — 계약 §호출자 식별). auth-9만 테스트 안에서 값을 둔다.
+AUTH_ACTOR_SUB = ""
+DRAGONFLY_URL = ""
+# 웹훅 HMAC 비밀 — 설정 이름은 T073 가정이다(라이브러리 헬퍼 verify_authentik_webhook은 secret= 인자로 받는다).
+AUTHENTIK_WEBHOOK_SECRET = ""
+# 면제 경로 설정(AUTH_EXEMPT_PATHS 가정)은 일부러 두지 않는다 — 테스트는 라이브러리 기본값(헬스 3종 +
+# /webhooks/authentik · 정확 일치)을 검증한다.
