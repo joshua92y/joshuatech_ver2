@@ -3,7 +3,17 @@
   "version": "0.0.0",
   "private": true,
   "description": "Event schemas and contracts (skeleton, T015; see specs/003-platform-foundation/contracts/events.md)",
+  "type": "module",
   "scripts": {
-    "build": "echo @jt/events: skeleton, no build step"
+    "build": "echo @jt/events: skeleton, no build step",
+    "test": "vitest run",
+    "check-compat": "node scripts/check-compat.mjs"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1"
   }
 }

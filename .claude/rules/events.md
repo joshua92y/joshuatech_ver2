@@ -28,7 +28,7 @@ Contract of record: `specs/003-platform-foundation/contracts/events.md`. On conf
 
 ## Compatibility rules (CI-enforced)
 
-- Allowed changes: adding an OPTIONAL field; adding an enum value (consumers MUST ignore unknown enum values).
+- Allowed changes: adding an OPTIONAL field; adding an enum value (consumers MUST ignore unknown enum values). Topic `data` schemas and `_envelope.json` therefore never set `additionalProperties: false` — consumers ignore unknown properties; a closed schema would send every event from a newer producer to the consumer's DLQ and would block CloudEvents extension attributes on the envelope.
 - Forbidden: removing or renaming a field, changing a field's type (any change to the `type` set, including `string` → `["string", "null"]`), adding OR removing a `required` entry (a field that becomes optional breaks consumers that relied on it), removing an enum value, deleting a schema file. Metadata-only changes (`title`, `description`, `examples`, `x-version`, `$comment`) are not violations.
 - A breaking change means a NEW topic (`...v2`) with a dual-publish period on both topics; never mutate the existing schema incompatibly.
 - CI runs `packages/events/scripts/check-compat.mjs` (`--base <dir> --head <dir>`; exit 0 clean, 1 violations, 2 usage/IO error), comparing PR schemas field-by-field — nested objects and array `items` included, `_envelope.json` too — against `main`, reporting every violation with file, JSON-pointer path and kind. A violation fails the build. Never weaken or bypass this check to land a schema change.
