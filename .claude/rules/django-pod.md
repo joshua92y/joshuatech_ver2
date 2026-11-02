@@ -27,8 +27,8 @@ Scope: Django pod file shapes (`*.py`, `pyproject.toml`, `Dockerfile`) under `ap
 
 ## Outbox and events
 
-- Publish only via `django_common.outbox.publish(topic, subject, data, *, tenant_id=None)`, inside `transaction.atomic()`. No tenant context AND no `tenant_id` argument → `OutboxUsageError`; contextless paths (webhooks, admin revoke, startup jobs) MUST pass `tenant_id` explicitly.
-- Relay runs as the app role, selects `dead_at IS NULL` only (`FOR UPDATE SKIP LOCKED`); `attempts >= 10` → publish envelope to `<pod>.dlq` and set `dead_at`; dead rows purge at `dead_at + 30 d` (Celery beat, the template's only default beat job).
+- Publish only via `django_common.outbox.publish(topic, subject, data, *, tenant_id=None)`, inside `transaction.atomic()`. No tenant context AND no `tenant_id` argument → `OutboxUsageError`; contextless paths (webhooks, admin revoke, startup jobs) MUST pass `tenant_id` explicitly. `tenant_id` must parse as a UUID (never a slug) and must not contradict the request's tenant context — both raise `OutboxUsageError`.
+- Relay runs as the app role, selects `dead_at IS NULL` only (`FOR UPDATE SKIP LOCKED`); `attempts >= 10` → publish envelope to the env DLQ (prod `<pod>.dlq` · dev `dev.<pod>.dlq` — the relay prefixes the env; `contracts/events.md` §토픽 규약 is the source of truth) and set `dead_at`; dead rows purge at `dead_at + 30 d` (Celery beat, the template's only default beat job).
 
 ## Auth
 

@@ -53,6 +53,7 @@ def publish(topic: str, subject: str, data: dict, *, tenant_id: UUID | str | Non
 - `tenant_id`는 **키워드 전용 선택 인자**다. 생략하면 요청 트랜잭션의 테넌트 컨텍스트(`app.tenant_id`)에서 읽는다. 컨텍스트가 있는 요청 경로(A 등급 도메인 쓰기)는 인자를 넘기지 않고, 컨텍스트가 없는 경로(웹훅·관리자 revoke·기동 시 작업 — 전부 등급 B 테이블 위에서 돈다)는 **명시적으로 넘긴다**.
 - **컨텍스트도 없고 인자도 없으면 `OutboxUsageError`** 를 던진다(`tenantid` 없는 봉투가 Kafka로 나가는 것을 막는다). `transaction.atomic()` 밖에서 호출해도 같은 예외다.
 - 확정된 `tenant_id`가 봉투의 `tenantid`와 outbox 행의 `partition_key`가 된다.
+- `tenant_id`로 넘긴 값(UUID 또는 str)이 **UUID로 파싱되지 않으면 `OutboxUsageError`**(slug 금지 — 봉투 스키마 검증보다 앞선 관문 · 2026-11-02 T061 리뷰 B-1). 테넌트 컨텍스트와 `tenant_id` 인자가 **둘 다 있고 서로 다르면 `OutboxUsageError`**(심층 방어 — A 등급 트랜잭션 안에서 다른 테넌트로 레이블된 봉투가 커밋되는 코드 실수를 라이브러리가 막는다), 같으면 허용(T061 리뷰 B-2).
 - 웹훅·관리자 revoke가 넘길 `tenant_id`는 `TenantMembership`에서 토큰·본문의 `sub`로 조회한 값이다(없으면 400 — contracts/identity-admin-api.md).
 
 ## outbox 릴레이 (django-common)

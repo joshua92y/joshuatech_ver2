@@ -6,8 +6,13 @@
   접속 정보는 환경변수 JT_TEST_PG_*로 이 프로세스 안에만 둔다(파일 0) — 세션이 끝나면 지운다.
 - `django_db_modify_db_settings` · `django_db_setup`(pytest-django 재정의): 시험 DB를 따로 만들지 않고
   컨테이너의 jt_test에 owner 별칭으로 migrate만 한다. 컨테이너가 세션과 함께 사라지므로 teardown은 없다.
+- `kafka`(세션 · T061): testcontainers로 KRaft 단일 노드 Kafka(cp-kafka 8.0.0 · PLAINTEXT · 자격 없음)를 띄우고
+  bootstrap 주소 `host:port`를 준다(환경변수 JT_TEST_KAFKA_BOOTSTRAP에도 둔다 — 세션이 끝나면 지운다).
+  `kafka_settings`(세션 · autouse 아님)는 그 주소를 Django 설정 KAFKA_BOOTSTRAP_SERVERS에 채운다 — 실 Kafka로
+  릴레이하는 테스트(tests/test_outbox.py out-6)만 요청한다.
 
 Django를 모듈 수준에서 import하지 않는다 — tests/test_fixtures_pg.py는 `-p no:django`로 `pg`만 쓴다.
+tests/test_fixtures_kafka.py도 `-p no:django`로 `kafka`만 쓴다.
 """
 
 from __future__ import annotations
@@ -24,6 +29,8 @@ import pytest
 from psycopg import sql
 
 # testcontainers.postgres는 4.15에서 DeprecationWarning(stacklevel=2 → 이 모듈로 귀속)을 낸다 → 새 위치를 쓴다.
+# testcontainers.kafka도 같다(T061) → community 위치를 쓴다.
+from testcontainers.community.kafka import KafkaContainer
 from testcontainers.community.postgres import PostgresContainer
 from testcontainers.core.image import DockerImage
 
@@ -195,3 +202,47 @@ def django_db_setup(
 
     with django_db_blocker.unblock():
         call_command("migrate", database="owner", verbosity=0)
+
+
+# --- T061: Kafka(KRaft) 시험 컨테이너 ---------------------------------------------------------------------------
+
+# testcontainers KafkaContainer.with_kraft()가 이미지 태그에서 버전을 파싱한다(7.0.0 이상인지 판정) → digest 핀
+# (`@sha256:…`)을 쓸 수 없어 태그로 고정한다. 대조용 인덱스 digest(2026-11-02 pull 실측 RepoDigests와 일치):
+# sha256:9cdc8119cb39c45f0efa6da8e2220058020c7433e3ba3a3ce11a8006a18cb336
+KAFKA_IMAGE = "confluentinc/cp-kafka:8.0.0"
+KAFKA_START_TIMEOUT_S = 120
+KAFKA_ENV_KEY = "JT_TEST_KAFKA_BOOTSTRAP"
+
+
+@pytest.fixture(scope="session")
+def kafka() -> Iterator[str]:
+    """KRaft 단일 노드 Kafka(PLAINTEXT · 자격 없음 · 세션 1회)의 bootstrap 주소 `host:port`.
+
+    기동 실패 예외는 그대로 올린다(비밀이 없다). stop()은 컨테이너와 익명 볼륨(이미지 VOLUME 2개)을 함께 지운다.
+    """
+    container = KafkaContainer(KAFKA_IMAGE).with_kraft()
+    try:
+        container.start(timeout=KAFKA_START_TIMEOUT_S)
+        bootstrap = container.get_bootstrap_server()
+        os.environ[KAFKA_ENV_KEY] = bootstrap
+        yield bootstrap
+    finally:
+        os.environ.pop(KAFKA_ENV_KEY, None)
+        container.stop()
+
+
+@pytest.fixture(scope="session")
+def kafka_settings(kafka: str) -> Iterator[None]:
+    """Django 설정 KAFKA_BOOTSTRAP_SERVERS를 시험 브로커 주소로 채운다(세션 · autouse 아님).
+
+    실 Kafka로 릴레이하는 테스트(tests/test_outbox.py out-6)만 요청한다 — 나머지는 fake 프로듀서라 브로커가 필요
+    없다. 세션이 끝나면 원래 값으로 되돌린다.
+    """
+    from django.conf import settings
+
+    previous = settings.KAFKA_BOOTSTRAP_SERVERS
+    settings.KAFKA_BOOTSTRAP_SERVERS = kafka
+    try:
+        yield
+    finally:
+        settings.KAFKA_BOOTSTRAP_SERVERS = previous

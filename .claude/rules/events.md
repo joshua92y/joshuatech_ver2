@@ -17,7 +17,7 @@ Contract of record: `specs/003-platform-foundation/contracts/events.md`. On conf
 
 ## Topic conventions
 
-- Names: prod `<pod>.<entity>.<event>`, dev `dev.<pod>.<entity>.<event>`. Pod names are kebab-case; entity and event are singular lowercase. DLQ is `<pod>.dlq`.
+- Names: prod `<pod>.<entity>.<event>`, dev `dev.<pod>.<entity>.<event>`. Pod names are kebab-case; entity and event are singular lowercase. DLQ is prod `<pod>.dlq` · dev `dev.<pod>.dlq` (the relay prefixes the env; `contracts/events.md` §토픽 규약 is the source of truth).
 - 3 partitions; partition key = `tenantid` (UUID string), so per-tenant ordering is preserved. Retention 7 days — a consumer that falls further behind recovers by re-indexing/re-projecting from the owning pod's DB, never by extending retention.
 - Write access: only the owning pod publishes to its `<pod>.` topic prefix. NEVER publish on another pod's behalf.
 

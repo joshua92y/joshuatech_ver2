@@ -46,6 +46,24 @@ DATABASES = {
         **_database("JT_TEST_PG_APP_USER", "JT_TEST_PG_APP_PASSWORD"),
         "TEST": {"MIRROR": "owner"},
     },
-    # 마이그레이션·시드·DDL 토글 전용 = owner role(BYPASSRLS).
-    "owner": _database("JT_TEST_PG_OWNER_USER", "JT_TEST_PG_OWNER_PASSWORD"),
+    # 마이그레이션·시드·DDL 토글 전용 = owner role(BYPASSRLS). lock_timeout 30s(시험 전용): 릴레이 스레드가 멈춰
+    # FOR UPDATE 잠금을 쥔 채 남으면 teardown flush(TRUNCATE · ACCESS EXCLUSIVE)가 무한 대기한다 → 유한하게 실패시킨다
+    # (리뷰 r1 B-3 · T061).
+    "owner": {
+        **_database("JT_TEST_PG_OWNER_USER", "JT_TEST_PG_OWNER_PASSWORD"),
+        "OPTIONS": {"sslmode": "require", "options": "-c lock_timeout=30s"},
+    },
 }
+
+# --- T061 outbox · Kafka ---------------------------------------------------------------------------------------
+# D3 설계 가정 — 계약(contracts/events.md)에 없는 설정 이름이다. T069가 확정한다(바꾸면 tests/test_outbox.py와 함께).
+# 봉투 source = pod 이름. 시험 토픽은 실제 SP-1 토픽 identity-admin.session.revoked다(D2).
+OUTBOX_SOURCE = "identity-admin"
+# 릴레이가 Kafka 토픽과 DLQ 앞에 붙이는 env 접두(계약 §토픽 규약 — dev `dev.<pod>.<entity>.<event>` · DLQ
+# `dev.<pod>.dlq`). 봉투 type과 행 topic은 접두 없는 논리 토픽이다(data-model §4 "env 접두는 릴레이가 붙임").
+OUTBOX_TOPIC_PREFIX = "dev."
+OUTBOX_MAX_ATTEMPTS = 10
+# 시험 브로커 주소 — conftest의 kafka_settings가 testcontainers 주소로 채운다(실 Kafka를 쓰는 테스트만 요청).
+KAFKA_BOOTSTRAP_SERVERS = ""
+# 시험 브로커는 PLAINTEXT · 자격 없음. 운영은 SASL_SSL SCRAM-SHA-512 + CA를 env(ESO)에서 받는다(계약 §릴레이).
+KAFKA_CLIENT_CONFIG = {"security.protocol": "PLAINTEXT"}

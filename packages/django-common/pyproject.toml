@@ -1,5 +1,6 @@
-# django-common — Django pod 공용 라이브러리. 현재: 런타임 의존성 + 시험 인프라(T060, test-first —
-# tests/test_tenancy.py는 django_common.tenancy가 없어 빨강). 구현 모듈은 T068 이후에 들어온다.
+# django-common — Django pod 공용 라이브러리. 현재: 런타임 의존성 + 시험 인프라(T060 · T061, test-first —
+# tests/test_tenancy.py는 django_common.tenancy가, tests/test_outbox.py는 django_common.outbox가 없어 빨강).
+# 구현 모듈은 T068(tenancy) · T069(outbox) 이후에 들어온다.
 [project]
 name = "django-common"
 version = "0.0.0"
@@ -8,6 +9,9 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
     "django>=6.1,<6.2",
     "psycopg[binary]>=3.3,<4",
+    # outbox 릴레이(idempotent producer)와 relay 지표(9464)는 라이브러리 본체에 속한다(contracts/events.md §릴레이).
+    "confluent-kafka>=2.15,<3",
+    "prometheus-client>=0.23,<1",
 ]
 
 [dependency-groups]
@@ -15,6 +19,8 @@ dev = [
     "pytest>=9,<10",
     "pytest-django>=4.14,<5",
     "testcontainers[postgres]>=4.15,<5",
+    # out-6이 봉투·data를 packages/events 스키마(JSON Schema Draft 2020-12)로 검증한다.
+    "jsonschema>=4.26,<5",
 ]
 
 [build-system]
