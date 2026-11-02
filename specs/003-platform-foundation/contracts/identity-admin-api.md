@@ -22,7 +22,7 @@ Django 6.1 + Ninja 1.7(`ninja==1.7.0` 정확 핀, 회귀 시 1.6.2 폴백). 오�
 2. `Authorization: Bearer` JWT 검증: JWKS(`kv/{env}/authentik/identity-admin.jwks_url` = **svc DNS**, 1시간 캐시), `iss`(공개 issuer URL)·`aud=identity-admin`·`exp`·`nbf`. 실패 401 `invalid_token`.
 3. **호출자 식별** — 아래 §호출자 식별.
 4. Dragonfly 거부 목록: `revoked:sub:{sub}`의 `nbf > iat` 또는 `revoked:sid:{sid}` 존재 → 401 `session_revoked`. 조회 실패(타임아웃 0.2 s 포함) → **503 `denylist_unavailable`(fail-closed)**, 헬스 경로만 면제.
-5. `tenant_id` 클레임(UUID) → 요청 트랜잭션 안 `SELECT set_config('app.tenant_id', %s, true)`. 없으면 403 `tenant_required`. 등급 B 테이블은 이 컨텍스트와 무관하게 app role로 읽는다.
+5. `tenant_id` 클레임(UUID) → 요청 트랜잭션 안 `SELECT set_config('app.tenant_id', %s, true)`. 없으면 403 `tenant_required`. 값이 UUID로 파싱되지 않으면(slug 등) 2단계의 토큰 검증 실패로 보아 401 `invalid_token`(테넌트 컨텍스트에 닿기 전에 fail-closed · T062). 등급 B 테이블은 이 컨텍스트와 무관하게 app role로 읽는다.
 
 서비스 간 호출(BFF → `/session/check`, Authentik 웹훅)은 2–5 대신 표의 규칙을 따른다.
 
@@ -32,7 +32,7 @@ Django 6.1 + Ninja 1.7(`ninja==1.7.0` 정확 핀, 회귀 시 1.6.2 폴백). 오�
 
 | 검사 | 값 |
 |---|---|
-| Access JWT `common_name` | ConfigMap `ACCESS_EXPECTED_CN`과 일치해야 한다 — prod `web-bff-prod`, dev `web-bff-dev`. 불일치·부재 → 403 `access_required` |
+| Access JWT `common_name` | ConfigMap `ACCESS_EXPECTED_CN`과 일치해야 한다 — 값은 서비스 토큰 `web-bff-prod`(prod) · `web-bff-dev`(dev)의 **Client ID**(`<32 hex>.access`)다. Cloudflare가 서비스 토큰 JWT의 `common_name`에 넣는 값은 토큰 이름이 아니라 `CF-Access-Client-Id`이며 비밀이 아니다(T062 보정 2026-11-02 · T073 ConfigMap 값 · T076 E2E 실측). 불일치·부재 → 403 `access_required` |
 | Bearer `act.sub` | ConfigMap **`AUTH_ACTOR_SUB`가 설정된 경우에만** 검증한다(일치하지 않으면 401 `invalid_token`). **미설정(기본) = impersonation 모드** — `act`가 없어도 통과 |
 
 - `AUTH_ACTOR_SUB`는 env마다 다른 값을 가질 수 있다(prod `web-bff`, dev `web-bff-dev`). 값이 비어 있으면 검사 자체를 건너뛴다 — dev 체인(preview Worker·로컬 `next dev`)이 prod와 다른 provider를 쓰기 때문에 하나의 하드코딩된 기대값을 두지 않는다.
@@ -55,8 +55,16 @@ Django 6.1 + Ninja 1.7(`ninja==1.7.0` 정확 핀, 회귀 시 1.6.2 폴백). 오�
 | `GET /health` | 없음(Access 뒤; svc DNS는 면제) | 상세: `{ status, checks: { db, dragonfly, kafka_producer } }` 항목마다 `ok`·`fail` + 지연 ms. **항상 200** | 200 |
 | `GET /session/check?sub&iat&sid` | Access 서비스 토큰(BFF, `ACCESS_AUD_M2M`) | 거부 목록 조회만. DB 접근 없음. Dragonfly 실패 → 503 `denylist_unavailable` | 200 `{ active: boolean, nbf?: number }` / 503 |
 | `POST /sessions/revoke` | Bearer(사용자 본인, `aud=identity-admin`) 또는 관리자(`platform-admin` 그룹) + §호출자 식별 | body `{ sub?: string, sid?: string, all_devices: boolean, reason: "logout"\|"logout_all"\|"admin" }`. 본인은 `sub` 생략(토큰의 sub). **`tenant_id` 결정**: 본인 호출은 토큰 클레임, **관리자 호출(다른 `sub` 지정)은 `TenantMembership`에서 그 `sub`로 조회**한다 — 없으면 400 `validation_error`. 트랜잭션(app role, 등급 B 테이블): `session_revocation_log` INSERT(`expires_at = nbf + 330 s`) + `publish(..., tenant_id=<조회값>)` → 커밋 후 Dragonfly `SET revoked:sub:{sub} <nbf> EX 330`(또는 `revoked:sid`) → Authentik revoke API(서비스 계정 `identity-admin` 토큰, svc DNS; 실패해도 거부 목록은 유효, Celery 5 s × 3회 지수 백오프 최대 5분). **dev는 Authentik revoke 호출을 설정 플래그로 비활성**(시도하지 않고 로그만 — dev 서비스 계정 `identity-admin-ro`는 read만, data-model §9; 거부 목록·로그 기록은 dev도 동일). 폐기 3경로 E2E·SC-003 측정은 **prod 체인에서만**(T085; dev 로그아웃 검증은 denylist 401·로컬 세션 삭제까지) | 202 `{ id, nbf, expires_at }` |
-| `POST /webhooks/authentik` | `X-Authentik-Signature`(HMAC, 비밀 `kv/{env}/authentik/webhooks/identity-admin`) + 본문 `created` 시각이 서버 시각 ±5분 | Bearer·Access **면제 목록**에 명시된 유일한 업무 경로(svc DNS로만 도달, m2m Ingress에 없음). Authentik notification webhook — `logout`·세션 삭제 이벤트를 `/sessions/revoke`와 같은 트랜잭션으로 처리(reason `authentik_webhook`). **테넌트 컨텍스트가 없으므로 `tenant_id`는 본문의 `sub`로 `TenantMembership`을 조회해 얻고**(없으면 400), `publish(..., tenant_id=…)`에 명시적으로 넘긴다. 멱등: 이벤트 `pk` 저장, 재전송은 200 no-op. 서명 없음/틀림/시각 밖 → 401 `webhook_signature_invalid` | 202 / 200 / 401 / 400 |
+| `POST /webhooks/authentik` | `X-Authentik-Signature: sha256=<hex>` = HMAC-SHA256(비밀 `kv/{env}/authentik/webhooks/identity-admin`, **본문 JSON의 정규형** — 아래 §웹훅 서명 규약) + 본문 `pk` · `created`(ISO 8601 · tz 필수) 시각이 서버 시각 ±5분 | Bearer·Access **면제 목록**에 명시된 유일한 업무 경로(svc DNS로만 도달, m2m Ingress에 없음). Authentik notification webhook — `logout`·세션 삭제 이벤트를 `/sessions/revoke`와 같은 트랜잭션으로 처리(reason `authentik_webhook`). **테넌트 컨텍스트가 없으므로 `tenant_id`는 본문의 `sub`로 `TenantMembership`을 조회해 얻고**(없으면 400), `publish(..., tenant_id=…)`에 명시적으로 넘긴다. 멱등: 이벤트 `pk` 저장, 재전송은 200 no-op. 서명 없음/틀림/시각 밖 → 401 `webhook_signature_invalid` | 202 / 200 / 401 / 400 |
 | `GET /tenants/me` | Bearer | app role로 **등급 B 테이블**(`tenant`, `tenant_membership`)만 읽는다 — RLS가 없으므로 토큰의 `sub`·`tenant_id`로 명시 필터. SP-1 가정: 사용자당 테넌트 1 | 200 `{ tenant: { id, slug, display_name, status }, role }` |
+
+### 웹훅 서명 규약 (`django_common.auth.verify_authentik_webhook` · T062 보정 2026-11-02)
+
+- 헤더 `X-Authentik-Signature: sha256=<hex 소문자>` — `hex = HMAC-SHA256(secret, canonical)` · `canonical = json.dumps(body_obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()`. pod는 수신 본문을 `json.loads`한 뒤 같은 규칙으로 다시 직렬화해 `hmac.compare_digest`로 비교한다. 본문의 키 순서·공백은 서명에 영향이 없고, 값 하나가 바뀌면 서명이 깨진다(본문 전체가 서명에 묶인다).
+- 본문은 JSON 객체이고 `pk`(비어 있지 않은 문자열 — 멱등 키 · 재전송 200 no-op · 저장은 pod) · `created`(ISO 8601 · tz 오프셋 필수)를 가진다. `|now − created| > 300 s` → 거부.
+- 거부 사유는 모두 401 `webhook_signature_invalid`: 헤더 없음 · `sha256=` 형식 아님 · 불일치 · 본문이 JSON 객체가 아님 · `pk`/`created` 없음 · `created` 파싱 불가·tz 없음·±5분 밖. 서명 검증 뒤 뷰가 `sub`로 `TenantMembership`을 못 찾으면 400(표 참조).
+- **송신 측 근거(authentik `events/models.py` `NotificationTransport.send_webhook`, 2026-11-02 확인)**: `webhook_mapping_body`·`webhook_mapping_headers`를 각각 `evaluate(user, request=None, notification)`으로 평가하고 `post(url, json=body, headers=headers)`로 보낸다. 헤더 매핑은 **전송 본문을 받지 못하므로** "원시 본문 바이트의 HMAC"은 만들 수 없다 → 두 매핑이 `notification.event`에서 같은 dict를 만들고 헤더 매핑이 그 정규형의 HMAC을 계산한다(표현식 globals에 builtins 제한이 없어 `import hmac, hashlib, json, os` 가능 · 비밀은 authentik worker env에서 읽는다 — ESO `vault-data` 경로 `kv/{env}/authentik/webhooks/*`, 환경변수 이름은 T081이 정한다).
+- **VD-T062-1(검증 후 결정)**: 기본 = 위 규약. T081에서 매핑 두 개로 실제 서명이 pod 검증을 통과하는지 실측한다. 실패하면 옵션 B(정적 공유 비밀 헤더 상수 시간 비교)를 헬퍼의 두 번째 모드로 추가하고 이 절·data-model §9를 고친다.
 
 ## 이벤트(발행)
 

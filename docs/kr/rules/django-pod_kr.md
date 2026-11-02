@@ -1,4 +1,4 @@
-> translation-pending (2026-11-02) — 영어 원본 §Table grades(`check_rls` 프레임워크 면제 `FRAMEWORK_TABLES` · ENABLE+FORCE 둘 다) · §Tests(DeprecationWarning 자기 모듈 한정 `filterwarnings`) · §Outbox and events(`tenant_id` UUID 필수·컨텍스트 충돌 규칙 · DLQ prod/dev 접두) 개정분 미반영. /finish에서 동기화.
+> translation-pending (2026-11-02) — 영어 원본 §Table grades(`check_rls` 프레임워크 면제 `FRAMEWORK_TABLES` · ENABLE+FORCE 둘 다) · §Tests(DeprecationWarning 자기 모듈 한정 `filterwarnings`) · §Outbox and events(`tenant_id` UUID 필수·컨텍스트 충돌 규칙 · DLQ prod/dev 접두) · §Auth(`ACCESS_EXPECTED_CN` = Client ID · 거부 목록 클라이언트 재시도 0 · 면제 정확 일치 · 웹훅 HMAC 정규형 규약 — T062) 개정분 미반영. /finish에서 동기화.
 > 번역본(편의용). 정본은 영어 원본 `.claude/rules/django-pod.md`이며 충돌 시 영어가 우선한다. 동기화: /finish.
 
 ```yaml

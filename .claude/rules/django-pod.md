@@ -32,9 +32,9 @@ Scope: Django pod file shapes (`*.py`, `pyproject.toml`, `Dockerfile`) under `ap
 
 ## Auth
 
-- Request auth chain: Bearer JWT (JWKS via svc DNS; verify `iss` public URL, `aud`, `exp`, `nbf`) + `Cf-Access-Jwt-Assertion` (`aud` in {M2M, ADMIN} AND `common_name == ACCESS_EXPECTED_CN`) + denylist (`revoked:sub:{sub}`, `revoked:sid:{sid}`). Denylist lookup failure = 503 `denylist-unavailable`, fail-closed (0.2 s timeout).
+- Request auth chain: Bearer JWT (JWKS via svc DNS; verify `iss` public URL, `aud`, `exp`, `nbf`) + `Cf-Access-Jwt-Assertion` (`aud` in {M2M, ADMIN} AND `common_name == ACCESS_EXPECTED_CN` — the service token's Client ID `<32 hex>.access`, not its name) + denylist (`revoked:sub:{sub}`, `revoked:sid:{sid}`). Denylist lookup failure = 503 `denylist-unavailable`, fail-closed (0.2 s timeout). The denylist client passes `retry=Retry(NoBackoff(), 0)` and a 0.2 s connect timeout explicitly, whatever the construction path (redis-py's `Redis(...)` constructor defaults to 10 exponential retries, `from_url` to 0 — rely on neither), so the verdict lands within the 0.2 s timeout; retries belong to the caller. Bearer verification requires `exp`, `iat`, `sub`, `aud`, `iss` (`options={"require": [...]}` — PyJWT otherwise accepts a token without `exp`); a `tenant_id` claim that is not a UUID is 401 `invalid_token`.
 - `AUTH_ACTOR_SUB` set → additionally verify `act.sub`; unset (empty) = impersonation mode, no `act` check. Empty string is a VALID value for `AUTH_ACTOR_SUB` and dev `ADMIN_HOST` — required-setting checks assert presence, not non-emptiness.
-- Exempt: the three health endpoints only. Webhook paths are explicitly listed and use HMAC + timestamp ±5 min + idempotency key instead.
+- Exempt (exact path match, never a prefix): the three health endpoints plus the explicitly listed webhook paths. Webhook paths use HMAC instead: `X-Authentik-Signature: sha256=<hex>` = HMAC-SHA256(shared secret, canonical JSON of the body — `json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True)`), body `pk` + `created` (ISO 8601 with tz) within ±5 min, `pk` as the idempotency key; every failure is 401 `webhook_signature_invalid` (`contracts/identity-admin-api.md` §웹훅 서명 규약).
 - Admin urlconf mounts only when `request.get_host() == ADMIN_HOST`; dev `ADMIN_HOST` is empty → no admin at all.
 
 ## Settings
