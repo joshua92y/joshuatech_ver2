@@ -22,6 +22,12 @@
   DRAGONFLY_URL = reader · AUTHENTIK_WEBHOOK_SECRET = 세션 랜덤)을 채운다 — tests/test_auth.py만 요청한다.
 - `make_client` · `auth_client`(함수 · T062): MIDDLEWARE를 django_common.auth.JwtAuthMiddleware 하나로, ROOT_URLCONF를
   tests.authapp.urls로 덮고(pytest-django settings) 시험 Client를 만든다(make_client는 새 Client를 만드는 함수).
+- `log_sink`(세션 · T063): StringIO에 configure_logging(stream=sink)을 세션에 한 번 건다(T071 · 전역 설정이라 정리 없음).
+  `log_lines`(함수)는 sink를 비우고 읽기 객체 LogLines를 준다 — 부를 때마다 새 줄을 JSON 객체 목록으로 돌려주고 원문은
+  `raw`에 쌓는다(한 줄 = 한 JSON 객체가 아니면 AssertionError).
+- `obs_settings` · `otel` · `make_obs_client` · `obs_client`(함수 · T063): MIDDLEWARE를 RequestIdMiddleware + 시험 상류
+  미들웨어 2개로, ROOT_URLCONF를 tests.obsapp.urls로 덮는다. otel은 샘플러 env 2개를 두고
+  configure_otel(span_exporter=InMemorySpanExporter())로 DjangoInstrumentor를 건다(teardown: uninstrument · shutdown).
 
 Django를 모듈 수준에서 import하지 않는다 — tests/test_fixtures_pg.py는 `-p no:django`로 `pg`만 쓴다.
 tests/test_fixtures_kafka.py도 `-p no:django`로 `kafka`만 쓴다.
@@ -31,9 +37,11 @@ tests/test_fixtures_jwks.py도 `-p no:django`로 `jwks_server`만 쓴다(T062).
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import secrets
+import sys
 import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
@@ -46,6 +54,13 @@ import psycopg
 import pytest
 import redis
 from psycopg import sql
+
+# Windows Docker Desktop은 게시 포트를 IPv4(0.0.0.0)에만 열고 `localhost`는 ::1이 먼저 풀린다 → psycopg(connect_timeout 없으면
+# 주소당 130 s) · librdkafka(시도당 약 2 s) · redis-py(0.2 s 예산)가 ::1에서 멈춘다(T062·T063 실측). testcontainers가 돌려주는
+# 호스트(get_container_host_ip · Kafka advertised listener 포함)를 127.0.0.1로 고정한다 — testcontainers.core.config가 import
+# 시점에 이 env를 읽으므로 그 import보다 앞에 둔다(T063 r1 A-1/B-6 · 운영자가 env를 직접 주면 그 값이 우선).
+if sys.platform == "win32":
+    os.environ.setdefault("TESTCONTAINERS_HOST_OVERRIDE", "127.0.0.1")
 
 # testcontainers.postgres는 4.15에서 DeprecationWarning(stacklevel=2 → 이 모듈로 귀속)을 낸다 → 새 위치를 쓴다.
 # testcontainers.kafka도 같다(T061) → community 위치를 쓴다.
@@ -67,6 +82,8 @@ from tests._secret import Secret
 if TYPE_CHECKING:
     from cryptography.hazmat.primitives.asymmetric import rsa
     from django.test import Client
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
     from pytest_django import DjangoDbBlocker
     from pytest_django.fixtures import SettingsWrapper
 
@@ -511,3 +528,134 @@ def make_client(settings: SettingsWrapper) -> Callable[[], Client]:
 def auth_client(make_client: Callable[[], Client]) -> Client:
     """make_client()로 만든 시험 Client 하나(설정을 바꾸지 않는 테스트용)."""
     return make_client()
+
+
+# --- T063: 관측(구조 로그 · OTel) · 헬스 ----------------------------------------------------------------------------
+
+# T071 공개 이름 — 미들웨어는 설정 문자열로만 단다(D2). RequestIdMiddleware가 가장 바깥이라 request_finished를 남길 때는
+# 안쪽 시험 미들웨어가 둔 request.tenant_id(T060 HeaderTenantMiddleware · 헤더 X-Test-Tenant)와 request.auth_claims
+# (tests.obsapp HeaderClaimsMiddleware · 헤더 X-Test-Sub)가 이미 있다.
+OBS_MIDDLEWARE = (
+    "django_common.observability.RequestIdMiddleware",
+    "tests.testapp.middleware.HeaderTenantMiddleware",
+    "tests.obsapp.middleware.HeaderClaimsMiddleware",
+)
+OBS_URLCONF = "tests.obsapp.urls"
+# 계약(contracts/pod-template.md §런타임 계약 트레이스 행)의 샘플러 env — SDK TracerProvider()가 생성 시점에 읽는다.
+OTEL_SAMPLER_ENV = {"OTEL_TRACES_SAMPLER": "parentbased_traceidratio", "OTEL_TRACES_SAMPLER_ARG": "0.1"}
+
+
+@pytest.fixture(scope="session")
+def log_sink() -> Iterator[io.StringIO]:
+    """구조 로그 sink(세션) — StringIO에 configure_logging(stream=sink)을 세션에 한 번 건다(T071 가정 D2).
+
+    structlog과 stdlib logging이 모두 이 sink에 JSON 한 줄씩 쓴다. 전역 설정이라 세션 끝 정리는 없다(뒤 모듈의 로그도
+    이 sink에 쌓인다 — 읽는 쪽은 log_lines가 테스트마다 비운다).
+    """
+    from django_common.observability import configure_logging
+
+    sink = io.StringIO()
+    configure_logging(stream=sink)
+    yield sink
+
+
+class LogLines:
+    """log_sink 읽기 객체 — 부를 때마다 지난 호출 뒤에 쓰인 새 줄을 JSON 객체(dict) 목록으로 돌려준다.
+
+    한 줄 = 한 JSON 객체여야 한다: 빈 줄 · JSON이 아닌 줄 · 객체가 아닌 JSON · 줄바꿈 없이 끝난 출력은 AssertionError다.
+    실패 메시지에는 줄 번호와 길이만 싣는다(로그 원문을 출력하지 않는다). 읽은 원문은 raw에 쌓는다 — "출력 어디에도 X가
+    없다" 단언용(테스트는 `needle in raw`를 따로 계산해 bool만 단언한다 — 원문이 실패 출력에 실리지 않게).
+    """
+
+    def __init__(self, sink: io.StringIO) -> None:
+        self._sink = sink
+        self.raw = ""
+
+    def __call__(self) -> list[dict[str, Any]]:
+        text = self._sink.getvalue()
+        self._sink.seek(0)
+        self._sink.truncate()
+        self.raw += text
+        if text and not text.endswith("\n"):
+            raise AssertionError("로그 출력이 줄바꿈으로 끝나지 않는다(한 줄 = 한 JSON 객체)")
+        records: list[dict[str, Any]] = []
+        # splitlines()가 아니라 "\n"으로 자른다 — ensure_ascii=False 렌더러가 문자열 안에 그대로 둔 U+2028 등을 줄 끝으로
+        # 오인하지 않게.
+        for number, line in enumerate(text.split("\n")[:-1], start=1):
+            try:
+                record = json.loads(line)
+            except ValueError:
+                raise AssertionError(f"로그 {number}번째 줄이 JSON이 아니다(길이 {len(line)})") from None
+            if not isinstance(record, dict):
+                raise AssertionError(f"로그 {number}번째 줄이 JSON 객체가 아니다({type(record).__name__})")
+            records.append(record)
+        return records
+
+
+@pytest.fixture
+def log_lines(log_sink: io.StringIO) -> LogLines:
+    """sink를 비우고(seek(0) · truncate()) LogLines를 준다(함수 스코프) — 이 테스트가 만든 줄만 읽힌다.
+
+    세션 픽스처(컨테이너 기동 등)는 함수 픽스처보다 먼저 서므로 그 로그는 여기서 지워진다.
+    """
+    log_sink.seek(0)
+    log_sink.truncate()
+    return LogLines(log_sink)
+
+
+@pytest.fixture
+def obs_settings(settings: SettingsWrapper) -> SettingsWrapper:
+    """MIDDLEWARE · ROOT_URLCONF를 관측 시험용으로 덮는다(pytest-django settings — 테스트가 끝나면 되돌린다).
+
+    MIDDLEWARE는 테스트마다 새 list다 — DjangoInstrumentor.instrument()는 현재 MIDDLEWARE list에 OTel 미들웨어를 제자리
+    삽입(insert)하고 uninstrument()는 제자리 제거(remove)한다(0.66b2 소스) → tests/settings.py의 list를 건드리지 않게.
+    """
+    settings.MIDDLEWARE = list(OBS_MIDDLEWARE)
+    settings.ROOT_URLCONF = OBS_URLCONF
+    return settings
+
+
+@pytest.fixture
+def otel(
+    obs_settings: SettingsWrapper, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[tuple[TracerProvider, InMemorySpanExporter]]:
+    """OTel 계측(함수) — 샘플러 env 2개를 두고 configure_otel(span_exporter=InMemorySpanExporter())을 부른다(T071 가정 D2).
+
+    obs_settings 뒤에 선다(인자 의존): instrument()가 이 테스트의 MIDDLEWARE list 맨 앞에 OTel 미들웨어를 넣고, teardown의
+    uninstrument()가 settings 복원보다 먼저 그 항목을 뺀다. 시험 Client는 첫 요청 때 미들웨어를 적재하므로
+    (django.test.client.ClientHandler — _middleware_chain이 None이면 load_middleware) 첫 요청 전에만 계측되면 된다 —
+    읽는 사람이 헷갈리지 않게 OTel이 필요한 테스트는 이 픽스처를 Client 픽스처보다 앞 인자로 둔다.
+    teardown: DjangoInstrumentor().uninstrument() → provider.shutdown().
+    """
+    from opentelemetry.instrumentation.django import DjangoInstrumentor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    from django_common.observability import configure_otel
+
+    for name, value in OTEL_SAMPLER_ENV.items():
+        monkeypatch.setenv(name, value)
+    exporter = InMemorySpanExporter()
+    provider = configure_otel(span_exporter=exporter)
+    try:
+        yield provider, exporter
+    finally:
+        DjangoInstrumentor().uninstrument()
+        provider.shutdown()
+
+
+@pytest.fixture
+def make_obs_client(obs_settings: SettingsWrapper) -> Callable[[], Client]:
+    """관측 시험 Client를 만드는 함수(함수 스코프 · obs_settings 뒤).
+
+    Client는 첫 요청 때 미들웨어를 적재하고 그 인스턴스를 계속 쓴다 — 테스트가 설정(DRAGONFLY_URL ·
+    KAFKA_BOOTSTRAP_SERVERS)을 바꾼 뒤에는 이 함수로 새 Client를 만든다(헬스 구현은 설정을 요청 시점에 읽는다 · D2).
+    """
+    from django.test import Client
+
+    return Client
+
+
+@pytest.fixture
+def obs_client(make_obs_client: Callable[[], Client]) -> Client:
+    """make_obs_client()로 만든 관측 시험 Client 하나(설정을 바꾸지 않는 테스트용)."""
+    return make_obs_client()

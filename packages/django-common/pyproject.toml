@@ -1,7 +1,8 @@
-# django-common — Django pod 공용 라이브러리. 현재: 런타임 의존성 + 시험 인프라(T060 · T061 · T062, test-first —
+# django-common — Django pod 공용 라이브러리. 현재: 런타임 의존성 + 시험 인프라(T060 · T061 · T062 · T063, test-first —
 # tests/test_tenancy.py는 django_common.tenancy가, tests/test_outbox.py는 django_common.outbox가,
-# tests/test_auth.py는 django_common.auth가 없어 빨강).
-# 구현 모듈은 T068(tenancy) · T069(outbox) · T070(auth) 이후에 들어온다.
+# tests/test_auth.py는 django_common.auth가, tests/test_observability.py는 django_common.observability ·
+# django_common.health가 없어 빨강).
+# 구현 모듈은 T068(tenancy) · T069(outbox) · T070(auth) · T071(observability · health) 이후에 들어온다.
 [project]
 name = "django-common"
 version = "0.0.0"
@@ -19,6 +20,16 @@ dependencies = [
     # import 시 redis를 요구한다(시험 픽스처 dragonfly) — 이 런타임 의존성이 그것을 채운다.
     "PyJWT[crypto]>=2.13,<3",
     "redis[hiredis]>=8.1,<9",
+    # 관측(structlog JSON 로그 · request_id 미들웨어 · OTel 트레이스)과 헬스 라우터(Ninja)도 라이브러리 본체에 속한다
+    # (contracts/pod-template.md §런타임 계약 로그·트레이스 행 · §django-common 공개 API · research DJANGO-D12 · D13).
+    # django-ninja는 라이브러리라 범위로 둔다 — 정확 핀(==1.7.0)은 pod의 몫이다(contracts/identity-admin-api.md 머리).
+    # sentry-sdk(configure_sentry)는 T071이 더한다.
+    "structlog>=26.1,<27",
+    "django-structlog>=11,<12",
+    "opentelemetry-sdk>=1.45,<2",
+    "opentelemetry-instrumentation-django>=0.66b2,<1",
+    "opentelemetry-exporter-otlp-proto-http>=1.45,<2",
+    "django-ninja>=1.7,<2",
 ]
 
 [dependency-groups]
@@ -41,6 +52,10 @@ packages = ["src/django_common"]
 DJANGO_SETTINGS_MODULE = "tests.settings"
 testpaths = ["tests"]
 pythonpath = ["."]
+# --tb=short(T063 r1 B-3): 긴 트레이스백(기본 auto의 첫·마지막 항목)은 함수 인자를 지금 값으로 찍는다 — psycopg 3.3
+# Connection.connect는 인자 conninfo를 비밀번호가 든 접속 문자열로 다시 묶으므로 DB 접속 실패가 비밀번호를 출력한다(실측).
+# 디버깅에 긴 트레이스백이 필요하면 명령줄에서 --tb=long을 주되 출력을 공유하지 않는다.
+addopts = ["--tb=short"]
 # DeprecationWarning을 오류로 바꾸는 범위는 자기 모듈뿐이다(의존 라이브러리의 경고로 스위트가 죽지 않게).
 filterwarnings = [
     "error::DeprecationWarning:django_common",

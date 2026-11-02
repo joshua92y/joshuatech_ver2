@@ -31,7 +31,8 @@ def _database(user_env: str, password_env: str) -> dict[str, object]:
         "NAME": os.environ.get("JT_TEST_PG_DB", ""),
         "USER": os.environ.get(user_env, ""),
         "PASSWORD": os.environ.get(password_env, ""),
-        "OPTIONS": {"sslmode": "require"},
+        # connect_timeout 5(시험 전용 · T063 r1): psycopg 기본은 주소당 130 s라 접속 불가가 멈춤이 된다 → 유한한 실패로.
+        "OPTIONS": {"sslmode": "require", "connect_timeout": 5},
     }
 
 
@@ -51,7 +52,7 @@ DATABASES = {
     # (리뷰 r1 B-3 · T061).
     "owner": {
         **_database("JT_TEST_PG_OWNER_USER", "JT_TEST_PG_OWNER_PASSWORD"),
-        "OPTIONS": {"sslmode": "require", "options": "-c lock_timeout=30s"},
+        "OPTIONS": {"sslmode": "require", "connect_timeout": 5, "options": "-c lock_timeout=30s"},
     },
 }
 
@@ -91,3 +92,15 @@ DRAGONFLY_URL = ""
 AUTHENTIK_WEBHOOK_SECRET = ""
 # 면제 경로 설정(AUTH_EXEMPT_PATHS 가정)은 일부러 두지 않는다 — 테스트는 라이브러리 기본값(헬스 3종 +
 # /webhooks/authentik · 정확 일치)을 검증한다.
+
+# --- T063 관측 · 헬스 -------------------------------------------------------------------------------------------
+# D3 설계 가정 — 헬스 본문 version · git_sha의 출처 설정 이름이다(계약에 없는 이름). T071/T072가 확정한다(바꾸면
+# tests/test_observability.py와 함께). 운영 값은 이미지 빌드(버전 · git SHA)에서 온다.
+APP_VERSION = "0.0.0+test"
+APP_GIT_SHA = "0000000"
+# django-structlog 11의 기본값은 False(상류 X-Request-ID를 버리고 늘 uuid4를 만든다) — 계약(헤더가 있으면 그대로 ·
+# 없으면 생성 · research DJANGO-D12)에 맞춰 켠다.
+DJANGO_STRUCTLOG_TRUST_UPSTREAM_REQUEST_ID = True
+# OTel 샘플러(OTEL_TRACES_SAMPLER · OTEL_TRACES_SAMPLER_ARG)는 Django 설정이 아니라 process env다 — conftest의 otel
+# 픽스처가 monkeypatch로 둔다. Dragonfly · Kafka 접속은 위 DRAGONFLY_URL · KAFKA_BOOTSTRAP_SERVERS · KAFKA_CLIENT_CONFIG를
+# 그대로 쓴다. 기본 MIDDLEWARE · ROOT_URLCONF(T060)는 그대로다 — 관측 테스트는 obs_settings 픽스처가 덮는다.

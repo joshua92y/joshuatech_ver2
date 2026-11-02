@@ -1,6 +1,6 @@
 # Contract: identity-admin API (SP-1 범위)
 
-Django 6.1 + Ninja 1.7(`ninja==1.7.0` 정확 핀, 회귀 시 1.6.2 폴백). 오류는 RFC 9457. 응답 헤더에 `x-request-id`를 되돌린다. 저장 규칙은 data-model §1–3(테이블 등급 B), 거부 목록 키는 contracts/denylist.md.
+Django 6.1 + Ninja 1.7(`ninja==1.7.0` 정확 핀, 회귀 시 1.6.2 폴백). 오류는 RFC 9457. 응답 헤더에 `x-request-id`를 되돌린다(상류 `X-Request-ID`는 `^[A-Za-z0-9._:-]{1,128}$`에 맞을 때만 그대로 쓰고 아니면 새로 만든다 — 로그 증폭·임의 문자열 적재 방지 · T063 보정 2026-11-02). 저장 규칙은 data-model §1–3(테이블 등급 B), 거부 목록 키는 contracts/denylist.md.
 
 ## 호스트 · Ingress 경로 · Access AUD
 
@@ -93,6 +93,7 @@ Django 6.1 + Ninja 1.7(`ninja==1.7.0` 정확 핀, 회귀 시 1.6.2 폴백). 오�
 | 구간 | 값 |
 |---|---|
 | Dragonfly `socket_timeout` | 0.2 s, fail-closed 503 |
+| `/health` 전체 | ≤ 3 s(BFF pod fetch 3 s 안에 답한다) — 의존 검사는 **병렬**, 항목별 상한 DB 2 s(psycopg `connect_timeout` 하한) · Dragonfly 0.2 s · Kafka `list_topics` 1 s(T063 보정 2026-11-02) |
 | PG app role | `statement_timeout 15s` · `idle_in_transaction_session_timeout 30s` |
 | Kafka producer | `delivery.timeout.ms` 30000 |
 | identity-admin → Authentik(revoke·세션 API) | 5 s × 3회 지수 백오프(최대 5분, Celery) |
@@ -102,5 +103,5 @@ Django 6.1 + Ninja 1.7(`ninja==1.7.0` 정확 핀, 회귀 시 1.6.2 폴백). 오�
 
 - 로그(structlog JSON): `request_id`, `tenant_id`, `sub_hash`, `route`, `status`, `duration_ms`, `trace_id`. processor가 `authorization`·`cookie`·`x-authentik-signature`를 제거하고 쿼리스트링을 남기지 않는다.
 - 메트릭: web `http_requests_total{route,status}`, `session_revocations_total{reason}`, `denylist_lookup_seconds`; relay 컨테이너(9464, `k8s.grafana.com/scrape`) `outbox_pending`, `outbox_oldest_pending_seconds`(알림 `OutboxOldestPending` > 60 s), `outbox_dead_total`.
-- 트레이스: OTLP → Alloy(`monitoring`), 상류 `traceparent` 이어받음, `OTEL_TRACES_SAMPLER=parentbased_traceidratio` 0.1.
+- 트레이스: OTLP → Alloy(`monitoring`), 상류 `traceparent` 이어받음, `OTEL_TRACES_SAMPLER=parentbased_traceidratio` 0.1. span 속성은 `tenant_id` · `sub_hash`만 더하고, URL 속성(`http.url` · `http.target` · `url.full` · `url.query`)에서 쿼리스트링을 떼며, 요청 헤더는 속성으로 담지 않는다(`OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST` 미사용 — 계측 기본값은 `http.url`에 쿼리까지 넣고 AWS/GCS 서명 파라미터만 가린다 · T063 보정 2026-11-02).
 - Sentry: errors only, `send_default_pii=False`, `before_send`로 `Authorization`·`Cookie`·`CF-Access-*` 제거.

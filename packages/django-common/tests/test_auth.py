@@ -87,6 +87,7 @@ from tests._jwt import (
     sign_webhook,
     webhook_body,
 )
+from tests._dragonfly import connections_received
 from tests._secret import Secret
 from tests.authapp.views import SEEN_PKS
 
@@ -220,12 +221,6 @@ def _password(url: str) -> Secret:
 def _error_count() -> float:
     """denylist_lookup_seconds{result="error"} 관측 수(아직 한 번도 없으면 0)."""
     return REGISTRY.get_sample_value(ERROR_SAMPLE, {"result": "error"}) or 0.0
-
-
-def _client_ids(admin: redis.Redis) -> set[str]:
-    """Dragonfly에 지금 열린 연결의 id 집합(CLIENT LIST). 새 연결은 새 id를 받으므로 전후 차집합이 "새로 연결했는가"다
-    — 다른 테스트의 풀 연결이 사이에 닫혀도(id 소멸) 판정이 흔들리지 않는다."""
-    return {str(entry["id"]) for entry in admin.client_list()}
 
 
 def _assert_problem(response: HttpResponse, status: int, slug: str) -> dict[str, Any]:
@@ -555,16 +550,17 @@ def test_auth_21_health_exempt(
     make_client: Callable[[], Client], dragonfly: DragonflyInfo, settings: SettingsWrapper
 ) -> None:
     """auth-21 — 헬스 3종은 헤더 없이 200 · 거부 목록을 조회하지 않는다: 살아 있는 reader URL에서 헬스 요청 3회 동안
-    Dragonfly에 새 연결이 생기지 않고(CLIENT LIST id 차집합 ∅ — 조회하되 오류를 삼키는 구현도 잡는다) · 닫힌 포트 설정에서도
+    Dragonfly가 새 연결을 받지 않고(INFO stats total_connections_received 전후 차이 0 — 요청 안에서 열고 닫는 연결도 세므로
+    조회하되 오류를 삼키는 구현도 잡는다 · CLIENT LIST id 차집합은 그 연결을 놓친다 — T063 r1) · 닫힌 포트 설정에서도
     200 · error 관측 수 불변."""
     admin = redis.Redis.from_url(dragonfly.admin_url)
     try:
         client = make_client()
-        before_ids = _client_ids(admin)
+        before = connections_received(admin)
         for path in HEALTH_PATHS:
             response = client.get(path)
             assert (path, response.status_code, response.content) == (path, 200, b"ok")
-        assert _client_ids(admin) - before_ids == set(), "헬스 요청이 Dragonfly에 새 연결을 만들었다"
+        assert connections_received(admin) - before == 0, "헬스 요청이 Dragonfly에 새 연결을 만들었다"
     finally:
         admin.close()
     settings.DRAGONFLY_URL, _ = _unreachable_url(_closed_port())

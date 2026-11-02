@@ -46,6 +46,7 @@ Scope: Django pod file shapes (`*.py`, `pyproject.toml`, `Dockerfile`) under `ap
 
 - Every pod ships and keeps green the six baseline test areas: health trio (`/healthz`, `/ready` DB-only, `/health` always-200), tenant RLS (A: cross-tenant 0 rows, no-context 0 rows, owner all; B: app role reads all), outbox (usage errors, relay, DLQ, purge), auth middleware (token/Access/denylist/actor matrix), logging (fields present, `authorization`/`cookie`/`x-authentik-signature` absent), migrations + OpenAPI snapshot. NEVER delete or skip them.
 - DeprecationWarning is promoted to an error only for your own modules — `filterwarnings = ["error::DeprecationWarning:<own module>", …]` in `pyproject.toml`; never a global `-W error` (a dependency's warning must not kill the suite).
+- pytest runs with `--tb=short` (`addopts` in `pyproject.toml`): long tracebacks print call arguments with their current values, and psycopg's `Connection.connect` rebinds `conninfo` with the password, so a failed DB connection would print credentials. Use `--tb=long` only locally and never share that output.
 
 ## Migrations
 
@@ -64,4 +65,5 @@ Scope: Django pod file shapes (`*.py`, `pyproject.toml`, `Dockerfile`) under `ap
 
 ## Logging
 
-- structlog JSON to stdout with `ts level logger event request_id tenant_id sub_hash trace_id span_id`. The processor strips `authorization`, `cookie`, `x-authentik-signature`, and query strings from logged URLs.
+- structlog JSON to stdout with `ts level logger event request_id tenant_id sub_hash trace_id span_id`. The processor strips `authorization`, `cookie`, `x-authentik-signature`, and query strings from logged URLs. Masking recurses into every `collections.abc.Mapping` (Django `request.headers` included), not only `dict`. An upstream `X-Request-ID` is trusted only when it matches `^[A-Za-z0-9._:-]{1,128}$`; otherwise a uuid4 is generated (`DJANGO_STRUCTLOG_TRUST_UPSTREAM_REQUEST_ID = True` in pod settings — the library default drops upstream ids).
+- Spans add only `tenant_id` and `sub_hash`, strip query strings from URL attributes, and never capture request headers. Health: `/healthz` touches no dependency, `/ready` is `SELECT 1` only (no django-health-check table — it would break the RLS allowlist), and `/health` runs its dependency checks in parallel so the whole response stays under 3 s (the BFF fetch timeout) even when every dependency is down.
