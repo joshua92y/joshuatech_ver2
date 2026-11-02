@@ -41,8 +41,8 @@
 ## 호환성 규칙 (CI `packages/events` 검사)
 
 - 허용: 선택 필드 추가, enum 값 추가(소비자는 알 수 없는 값을 무시).
-- 금지: 필드 삭제·이름 변경·타입 변경, `required` 추가, enum 값 삭제. 필요하면 새 토픽 `…v2`를 만들고 둘 다 발행하는 기간을 둔다.
-- 검사 방식: `main`의 스키마와 PR 스키마를 필드 단위로 비교(스크립트 `packages/events/scripts/check-compat.mjs`), 위반 시 실패.
+- 금지: 필드 삭제·이름 변경·타입 변경(`type`의 집합이 달라지면 전부 — `string` → `["string", "null"]`도 소비자에게는 타입 변경), `required` 추가, **`required` 제거**(존재를 전제한 소비자가 깨진다 — T064 보정 2026-11-02), enum 값 삭제, 스키마 파일 삭제(토픽 제거). 필요하면 새 토픽 `…v2`를 만들고 둘 다 발행하는 기간을 둔다. 메타데이터(`title` · `description` · `examples` · `x-version` · `$comment`)만 바뀌는 것은 위반이 아니다.
+- 검사 방식: `main`의 스키마와 PR 스키마를 필드 단위로(중첩 객체 · 배열 `items` 포함) 비교(스크립트 `packages/events/scripts/check-compat.mjs` — CLI `--base <dir> --head <dir>` · 종료 코드 0 위반 없음 / 1 위반 / 2 사용·입출력 오류 · 위반은 파일 · JSON 포인터 경로 · 종류를 전부 보고하고 첫 위반에서 멈추지 않는다), 위반 시 실패. `_envelope.json`도 같은 규칙을 받는다.
 
 ## 발행 API (`django_common.outbox.publish`)
 
