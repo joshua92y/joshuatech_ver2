@@ -31,7 +31,7 @@ apps/<pod>/
 │   ├── events/                          # outbox 발행 헬퍼 + 스키마 참조, consumers.py(선택)
 │   └── management/commands/outbox_relay.py (django-common 재노출)
 ├── tests/
-│   ├── conftest.py                      # testcontainers postgres(TLS, sslmode require 이상)·kafka·dragonfly(aclfile: `identity-admin`·`<pod>`(`%R~revoked:*`) 사용자) fixture, owner/app role 생성; pytest `-W error::DeprecationWarning` + `filterwarnings`는 자기 모듈로 한정(의존 라이브러리의 경고로 스위트가 죽지 않게)
+│   ├── conftest.py                      # testcontainers postgres(TLS, sslmode require 이상)·kafka·dragonfly(aclfile: `identity-admin`·`<pod>`(`%R~revoked:*`) 사용자) fixture, owner/app role 생성; DeprecationWarning은 오류로 승격하되 pytest `filterwarnings = ["error::DeprecationWarning:<자기 모듈>", …]`처럼 **자기 모듈로 한정**(전역 `-W error` 금지 — 의존 라이브러리의 경고로 스위트가 죽지 않게 · 2026-11-02 T060 문면 정정)
 │   ├── test_health.py                   # /healthz 200(의존 없음) · /ready DB만(DB 다운 503, Dragonfly·Kafka 다운 200) · /health 항상 200 + checks 3종
 │   ├── test_tenant_rls.py               # A 등급: 다른 tenant_id 0행, 컨텍스트 없음 0행, owner(bypassrls) 전체; B 등급: app role이 컨텍스트 없이 전체
 │   ├── test_outbox.py                   # atomic 밖 publish → OutboxUsageError; 컨텍스트·인자 둘 다 없음 → OutboxUsageError; tenant_id 인자 명시 경로; 같은 트랜잭션 INSERT → 릴레이(app role, dead_at IS NULL만) → Kafka consume; 실패 attempts; max_attempts 10 → <pod>.dlq + dead_at; dead_at + 30 d purge
@@ -50,7 +50,8 @@ apps/<pod>/
 | **B pod 전역** | `GlobalModel` 상속. 허용 목록: `tenant`, `tenant_membership`, `outbox`, `session_revocation_log` | 미적용 | app role이 컨텍스트 없이 읽고 쓴다: outbox 릴레이·Authentik 웹훅·기동 시 거부 목록 재적용·`/tenants/me` |
 
 - owner role(prod `<pod_snake>_owner` / dev `dev_<pod_snake>_owner`)은 `bypassrls: true` — 마이그레이션·시드 전용, 런타임 pod에는 자격이 없다. app role(`<pod_snake>_app` / `dev_<pod_snake>_app`)은 `NOBYPASSRLS`.
-- `check_rls` management command(CI·기동 검사): A 등급 테이블 전부가 FORCE RLS + 정책을 갖는지, RLS 없는 테이블이 전부 B 등급 허용 목록에 있는지 검사. 둘 중 하나라도 어긋나면 실패.
+- `check_rls` management command(CI·기동 검사): A 등급 테이블 전부가 ENABLE + FORCE RLS + 정책을 갖는지(`pg_class.relrowsecurity`·`relforcerowsecurity` 둘 다), RLS 없는 테이블이 전부 B 등급 허용 목록 또는 아래 프레임워크 면제 목록에 있는지 검사(모델이 아닌 테이블도 카탈로그에서 센다). 하나라도 어긋나면 테이블 이름을 담아 실패.
+- **프레임워크 면제(2026-11-02 T060 리뷰 A-2/B-1)**: Django가 만드는 테이블은 등급 분류 대상이 아니다(테넌트 데이터 없음) — **정확한 이름 목록 10** `django_migrations` · `django_content_type` · `django_session` · `django_admin_log` · `auth_permission` · `auth_group` · `auth_group_permissions` · `auth_user` · `auth_user_groups` · `auth_user_user_permissions` = `django_common.tenancy.FRAMEWORK_TABLES` 상수로 고정한다. pod가 넓힐 수 없고 접두(`django_*`) 규칙은 쓰지 않는다. 목록 밖 contrib 앱 테이블이 필요하면 이 계약(과 `rules/django-pod.md`) 개정이 먼저다.
 - 허용 목록 밖의 B 등급 테이블 추가는 이 계약(과 `rules/django-pod.md`) 개정이 먼저다.
 
 ## 런타임 계약

@@ -22,7 +22,7 @@ Scope: Django pod file shapes (`*.py`, `pyproject.toml`, `Dockerfile`) under `ap
 
 - Grade A (tenant-scoped): inherit `TenantModel` — `tenant_id` UUID NOT NULL, index `(tenant_id, id)`, `ENABLE` + `FORCE ROW LEVEL SECURITY` + `tenant_isolation` policy via the `rls_policies(<table>)` migration helper. Rows are reachable only through the request transaction's `app.tenant_id` context; no context → 0 rows.
 - Grade B (pod-global): inherit `GlobalModel`. Allowlist only: `tenant`, `tenant_membership`, `outbox`, `session_revocation_log`. Adding a B-grade table requires amending `contracts/pod-template.md` and this rule FIRST.
-- `check_rls` (CI + startup) must pass: every A-grade table has FORCE RLS + policy; every RLS-less table is on the B allowlist.
+- `check_rls` (CI + startup) must pass: every A-grade table has ENABLE + FORCE RLS + policy (both `relrowsecurity` and `relforcerowsecurity`); every RLS-less table (catalog scan, not only Django models) is on the B allowlist or in `FRAMEWORK_TABLES` — the exact-name list of Django framework tables (`django_migrations`, `django_content_type`, `django_session`, `django_admin_log`, `auth_permission`, `auth_group`, `auth_group_permissions`, `auth_user`, `auth_user_groups`, `auth_user_user_permissions`) fixed as a constant in `django_common.tenancy`. Pods cannot widen it and no prefix rule applies; a contrib table outside the list requires amending `contracts/pod-template.md` and this rule FIRST.
 - Roles: owner role has `bypassrls` and is used by migrations/seed only — NEVER at runtime; app role is `NOBYPASSRLS`. DB and role names are env-separated (`dev_` prefix in dev); never share a role across envs.
 
 ## Outbox and events
@@ -45,7 +45,7 @@ Scope: Django pod file shapes (`*.py`, `pyproject.toml`, `Dockerfile`) under `ap
 ## Tests (mandatory, constitution II)
 
 - Every pod ships and keeps green the six baseline test areas: health trio (`/healthz`, `/ready` DB-only, `/health` always-200), tenant RLS (A: cross-tenant 0 rows, no-context 0 rows, owner all; B: app role reads all), outbox (usage errors, relay, DLQ, purge), auth middleware (token/Access/denylist/actor matrix), logging (fields present, `authorization`/`cookie`/`x-authentik-signature` absent), migrations + OpenAPI snapshot. NEVER delete or skip them.
-- pytest runs `-W error::DeprecationWarning`; `filterwarnings` entries are scoped to your own modules only.
+- DeprecationWarning is promoted to an error only for your own modules — `filterwarnings = ["error::DeprecationWarning:<own module>", …]` in `pyproject.toml`; never a global `-W error` (a dependency's warning must not kill the suite).
 
 ## Migrations
 

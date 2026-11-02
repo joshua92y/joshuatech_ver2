@@ -1,3 +1,4 @@
+> translation-pending (2026-11-02) — 영어 원본 §Table grades(`check_rls` 프레임워크 면제 `FRAMEWORK_TABLES` · ENABLE+FORCE 둘 다) · §Tests(DeprecationWarning 자기 모듈 한정 `filterwarnings`) 개정분 미반영. /finish에서 동기화.
 > 번역본(편의용). 정본은 영어 원본 `.claude/rules/django-pod.md`이며 충돌 시 영어가 우선한다. 동기화: /finish.
 
 ```yaml

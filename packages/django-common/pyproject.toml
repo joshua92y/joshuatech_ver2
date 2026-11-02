@@ -1,10 +1,21 @@
-# django-common — shared library for Django pods (skeleton, T015; real code in later tasks)
+# django-common — Django pod 공용 라이브러리. 현재: 런타임 의존성 + 시험 인프라(T060, test-first —
+# tests/test_tenancy.py는 django_common.tenancy가 없어 빨강). 구현 모듈은 T068 이후에 들어온다.
 [project]
 name = "django-common"
 version = "0.0.0"
 description = "Shared library for Django pods (skeleton)"
-requires-python = ">=3.13"
-dependencies = []
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "django>=6.1,<6.2",
+    "psycopg[binary]>=3.3,<4",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9,<10",
+    "pytest-django>=4.14,<5",
+    "testcontainers[postgres]>=4.15,<5",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -12,3 +23,13 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/django_common"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+testpaths = ["tests"]
+pythonpath = ["."]
+# DeprecationWarning을 오류로 바꾸는 범위는 자기 모듈뿐이다(의존 라이브러리의 경고로 스위트가 죽지 않게).
+filterwarnings = [
+    "error::DeprecationWarning:django_common",
+    "error::DeprecationWarning:tests",
+]
