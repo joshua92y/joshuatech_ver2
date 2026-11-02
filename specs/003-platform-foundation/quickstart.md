@@ -110,7 +110,8 @@ Workers 대시보드 → Analytics: `_next/static/*`는 "Static asset requests"�
 
 ```bash
 # 하네스 한 번(T065 · templates/django-pod/tests): copier copy → uv sync --locked → 생성물 pytest → arm64 빌드 → kustomize·kubeconform·렌더 단언
-# Docker · kustomize · kubeconform이 PATH에 있어야 한다. JT_SAMPLE_POD_ROOT를 주면 생성 트리를 그 디렉터리에 남긴다(gitignore 경로).
+# Docker · kustomize · kubeconform이 PATH에 있어야 한다. JT_SAMPLE_POD_ROOT를 주면 생성 트리를 그 디렉터리에 남긴다
+# (상대 경로는 저장소 루트 기준 — tests/fixtures/generated/는 루트 .gitignore 경로; 하네스는 표식 파일이 있는 디렉터리만 비운다).
 JT_SAMPLE_POD_ROOT=tests/fixtures/generated uv run --directory templates/django-pod --locked pytest -q         # all passed
 # 손으로 따라가기 — 같은 배치를 만든다: pod는 apps/<pod>, django-common은 두 단계 위 형제(템플릿의 path 의존성 ../../packages/django-common)
 mkdir -p tests/fixtures/generated/packages && cp -r packages/django-common tests/fixtures/generated/packages/
