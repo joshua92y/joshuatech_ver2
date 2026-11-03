@@ -39,12 +39,19 @@ Scope: Django pod file shapes (`*.py`, `pyproject.toml`, `Dockerfile`) under `ap
 - Request auth chain: Bearer JWT (JWKS via svc DNS; verify `iss` public URL, `aud`, `exp`, `nbf`) + `Cf-Access-Jwt-Assertion` (`aud` in {M2M, ADMIN} AND `common_name == ACCESS_EXPECTED_CN` — the service token's Client ID `<32 hex>.access`, not its name) + denylist (`revoked:sub:{sub}`, `revoked:sid:{sid}`). Denylist lookup failure = 503 `denylist-unavailable`, fail-closed (0.2 s timeout). The denylist client passes `retry=Retry(NoBackoff(), 0)` and a 0.2 s connect timeout explicitly, whatever the construction path (redis-py's `Redis(...)` constructor defaults to 10 exponential retries, `from_url` to 0 — rely on neither), so the verdict lands within the 0.2 s timeout; retries belong to the caller. Bearer verification requires `exp`, `iat`, `sub`, `aud`, `iss` (`options={"require": [...]}` — PyJWT otherwise accepts a token without `exp`); a `tenant_id` claim that is not a UUID is 401 `invalid_token`.
 - `AUTH_ACTOR_SUB` set → additionally verify `act.sub`; unset (empty) = impersonation mode, no `act` check. Empty string is a VALID value for `AUTH_ACTOR_SUB` and dev `ADMIN_HOST` — required-setting checks assert presence, not non-emptiness.
 - Exempt (exact path match, never a prefix): the three health endpoints plus the explicitly listed webhook paths. Webhook paths use HMAC instead: `X-Authentik-Signature: sha256=<hex>` = HMAC-SHA256(shared secret, canonical JSON of the body — `json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True)`), body `pk` + `created` (ISO 8601 with tz) within ±5 min, `pk` as the idempotency key; every failure is 401 `webhook_signature_invalid` (`contracts/identity-admin-api.md` §웹훅 서명 규약).
-- Admin urlconf mounts only when `request.get_host() == ADMIN_HOST`; dev `ADMIN_HOST` is empty → no admin at all.
+- Access-only paths (`AUTH_ACCESS_ONLY_PATHS`, exact match, library default empty; identity-admin sets `("/session/check",)`): only the `Cf-Access-Jwt-Assertion` step runs — no Bearer verification, no actor check, no middleware denylist lookup; the request carries `access_claims` only (no `auth_claims`, no `tenant_id`). Paths that carry no Bearer (webhooks, access-only paths) must also be in `TENANT_CONTEXT_EXEMPT_PATHS`.
+- Admin urlconf mounts only when `request.get_host() == ADMIN_HOST` (exact equality — never substring or containment, so an empty value matches no host); dev `ADMIN_HOST` is empty → no admin at all.
+- Hosts outside `ALLOWED_HOSTS` get 400 before authentication on business paths (a credential-less request is 400, not 403). Kubelet HTTP probes send the pod IP as `Host` by default — the template must make probes pass (probe `httpHeaders` Host or the downward-API `POD_IP` added to `ALLOWED_HOSTS`).
 
 ## Settings
 
 - pydantic-settings → Django settings; missing required values raise `ImproperlyConfigured` at startup. Secrets come from env (ESO `<pod>-env`) only; non-secret values (`ACCESS_AUD_*`, `ACCESS_EXPECTED_CN`, `AUTH_ACTOR_SUB`, `ADMIN_HOST`, `ALLOWED_HOSTS`, `IDENTITY_M2M_URL`) from ConfigMap. Mail via `MAILERS` only (no `EMAIL_*`).
 - `DATABASE_OWNER_URL` exists only in the migrate Job's env (`<pod>-migrate`); it never appears in runtime env.
+- In-cluster service URLs the pod calls (`AUTHENTIK_JWKS_URL`; identity-admin also `AUTHENTIK_API_URL`, `OPENFGA_API_URL`) must not point at the public domain `joshuatech.dev` or its subdomains — startup raises `ImproperlyConfigured` (pods never call public hosts, FR-046). Read settings at call time (`django.conf.settings`), never as import-time constants.
+
+## Errors
+
+- Every error response is RFC 9457 `application/problem+json` (`type` = `https://joshuatech.dev/problems/<slug with _ → ->`, `title`, `status`, optional `detail` that never carries tokens, secrets, or credentialed URLs). Request validation failures (missing query, wrong type, enum miss, non-JSON body) are 400 `validation_error` — never Ninja's default 422 `{detail}`.
 
 ## Tests (mandatory, constitution II)
 

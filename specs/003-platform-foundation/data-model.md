@@ -19,7 +19,11 @@ pod DB 테이블은 두 등급이다(contracts/pod-template.md §테이블 등�
 - 멤버십 정본은 §2 `TenantMembership`. Authentik 그룹 `tenant:<uuid>`·`user.attributes.tenant_id`·OpenFGA `tenant:<uuid>#member`는 **identity-admin이 갱신하는 파생**이다(SP-1은 `seed_tenant` command가 셋 다 쓴다; SP-2부터 이벤트/API 경유). 모든 pod의 `tenant_id` 컬럼이 이 `id`를 참조(FK 없음 — pod 간 FK 금지, 값 참조만).
 - **역할 분담**: Authentik **blueprint는 그룹 `tenant:<uuid>`의 껍데기만** 만든다. 사용자 소속(group membership)과 `user.attributes.tenant_id`는 **`seed_tenant`만** 쓴다 — blueprint와 command가 같은 필드를 서로 덮어쓰지 않게 하기 위해서다.
 - 상태 전이: `active → suspended → active`. `suspended`면 identity-admin이 해당 테넌트 사용자 세션을 전부 폐기한다(SP-2).
-- 시드: `seed_tenant --tenant-id <고정 uuid>`(slug `joshuatech`) → Tenant + TenantMembership 2건 + Authentik 그룹 소속·attribute + FGA 튜플. 여러 번 실행해도 결과가 같다(T066이 멱등성을 단언).
+- 시드: `seed_tenant --tenant-id <고정 uuid> --owner-sub <sub> --member-sub <sub>`(slug `joshuatech` · display_name 기본 `JoshuaTech` · `sub` 두 개는 인자로 받는다 — Authentik 사용자 조회로 유추하지 않는다 · T066 보정 2026-11-03) → Tenant + TenantMembership 2건(`owner` · `member`) + Authentik 그룹 `tenant:<uuid>` 소속·`user.attributes.tenant_id`(사용자별 PATCH) + FGA 튜플 `user:<sub> owner|member tenant:<uuid>`. 여러 번 실행해도 결과가 같다(T066이 멱등성을 단언): DB 행 수·id 불변, 파생 쓰기는 "이미 같은 상태면 쓰지 않음"으로 처리하고 실패하지 않는다. Authentik·FGA 호출은 설정의 base URL(**svc DNS 기본값** `http://authentik-server.identity.svc:9000` · `http://openfga.identity.svc:8080`)로만 간다. **파생 쓰기 규칙(T066 보정 2026-11-03 · API 모양은 VD-T066-1·2 — T081·T082·T083 실측)**:
+  - 순서는 DB(정본) → 파생. 파생이 실패하면 명령이 실패(`CommandError` · 0이 아닌 종료)하고 DB 행은 남는다 — 다시 실행하면 멱등하게 마저 쓴다.
+  - Authentik: 그룹 `tenant:<uuid>`는 **blueprint가 이미 만들어 두었어야 한다** — 이름으로 조회(`GET /api/v3/core/groups/?name=`)해 없으면 실패하고 **만들지 않는다**(그룹 껍데기는 blueprint의 몫). 사용자는 `sub` = Authentik 사용자 UUID(provider `sub_mode` = `user_uuid` — §9)로 조회(`GET /api/v3/core/users/?uuid=<sub>`)하고 없으면 실패. 소속은 `POST /api/v3/core/groups/<그룹 pk>/add_user/` `{ "pk": <사용자 pk> }`, attribute는 기존 `attributes`를 읽어 **`tenant_id` 키만 더한 사전 전체**를 `PATCH /api/v3/core/users/<pk>/`로 보낸다(PATCH는 `attributes`를 통째로 바꾼다 — 다른 키를 지우지 않게). `AUTHENTIK_WRITES_ENABLED=false`(dev)면 Authentik 쓰기(소속·PATCH)를 하지 않고 로그만 남긴다(Authentik은 dev·prod가 한 인스턴스라 prod 시드가 이미 쓴다 · dev 토큰은 read 전용).
+  - OpenFGA(env마다 store가 다르다 — dev도 쓴다): `POST /stores/<store_id>/write` `{ "writes": { "tuple_keys": [...] } }` + `Authorization: Bearer <preshared>`. 이미 있는 튜플은 미리 읽어 건너뛰거나(`POST /stores/<id>/read`) `on_duplicate: "ignore"`를 쓰거나, 중복 쓰기 400 `write_failed_due_to_invalid_input`(메시지 "already exists")만 성공으로 본다 — **그 밖의 400·5xx는 실패**(삼키지 않는다).
+  - slug `joshuatech`가 다른 id로 이미 있으면 실패(새 행을 만들지 않는다). 명령 출력(stdout·stderr)에 토큰·키 값이 나오지 않는다.
 - 등급 B: RLS 없음. 사용자/테넌트 삭제·내보내기는 SP-2.
 
 ## 2. TenantMembership — 소유 identity-admin (등급 B, 멤버십 정본)
@@ -46,10 +50,11 @@ DB 테이블 `session_revocation_log`(등급 B, `sub` 단위):
 | `id` | UUID v7 | PK |
 | `tenant_id` | UUID | NOT NULL(사용자의 테넌트; 사용자당 테넌트 1) |
 | `sub` | text | NOT NULL |
-| `sid` | text | nullable |
+| `sid` | text | nullable — **NULL = 사용자 단위 폐기**(`revoked:sub:{sub}`), 값 = 세션 단위 폐기(`revoked:sid:{sid}`) · 아래 "한 행 = 한 키" |
 | `reason` | enum `logout` · `logout_all` · `admin` · `authentik_webhook` · `tenant_suspended` | |
-| `nbf` | timestamptz | 거부 기준 시각 |
+| `nbf` | timestamptz | 거부 기준 시각(정수 초 — 처리 시각 epoch 초 내림 + 1, 웹훅 본문 `nbf`가 있으면 그 값 · contracts/identity-admin-api.md) |
 | `expires_at` | timestamptz | `nbf` + 330 s(access TTL 300 s + 30 s) |
+| `event_pk` | text | nullable · **unique** — Authentik 웹훅 이벤트 `pk`(멱등 키 · 재전송은 이 제약으로 200 no-op). 웹훅 행만 값이 있다(T066 보정 2026-11-03) |
 | `created_at` | timestamptz | |
 
 Dragonfly 키(파생 캐시, contracts/denylist.md가 정본):
@@ -60,8 +65,9 @@ Dragonfly 키(파생 캐시, contracts/denylist.md가 정본):
 | `revoked:sid:{sid}` | `1` — 특정 세션만 거부(단일 기기) | 330 s |
 
 - **센티널 키 `denylist:epoch`는 없다(폐지).**
-- 쓰기: 기록(INSERT)과 같은 트랜잭션에 outbox `identity-admin.session.revoked`; 커밋 후 Dragonfly SET. 등급 B이므로 app role이 컨텍스트 없이 쓴다.
-- 재적용: 기동 시 1회 + Celery beat 30 s마다 `expires_at > now()` 행을 **조건 없이 전부** 다시 SET한다(멱등, 남은 TTL). 캐시 상태를 묻지 않는다. Kafka 재생은 쓰지 않는다.
+- **한 행 = 한 키(T066 보정 2026-11-03)**: `sid`가 NULL인 행은 `revoked:sub:{sub}` = `nbf`(epoch 초), `sid`가 있는 행은 `revoked:sid:{sid}` = `1`. `/sessions/revoke` `all_devices: true`·관리자 폐기·**Authentik 웹훅**은 `sid` NULL 행(웹훅 본문의 `sid`는 쓰지 않는다 — 이벤트 문맥이 토큰 `sid` 클레임과 같다는 보장이 없어 사용자 단위로 fail-safe), 단일 기기 로그아웃(`all_devices: false`)만 `sid` 행이다. 재적용은 이 규칙으로 키를 다시 만든다(행만 보고 키가 정해진다).
+- 쓰기: 기록(INSERT)과 같은 트랜잭션에 outbox `identity-admin.session.revoked`(data `sid`는 행의 `sid` — 사용자 단위면 `null`); 커밋 후 Dragonfly SET. 등급 B이므로 app role이 컨텍스트 없이 쓴다.
+- 재적용: 기동 시 1회(Celery `beat_init` — contracts/identity-admin-api.md §주기 작업) + Celery beat 30 s마다 `expires_at > now()` 행을 **조건 없이 전부** 다시 SET한다(멱등, 남은 TTL = `expires_at - now()` 초 내림 — TTL을 330 s로 되돌리지 않는다). 캐시 상태를 묻지 않는다(이미 있는 키도 덮어쓴다). Kafka 재생은 쓰지 않는다.
 - 유실 창: Dragonfly가 정상 종료하면 스냅샷으로 키가 살아남고, **비정상 종료**(OOM·SIGKILL·저장 실패)일 때만 최대 30 s 공백이 생긴다(contracts/denylist.md).
 - 보존: `expires_at + 30 d` 지난 행을 일 1회 purge.
 - 상태: `recorded`(캐시 키 존재) → `expired`(TTL 만료, 로그만 남음) → purge.
@@ -176,7 +182,7 @@ CREATE POLICY tenant_isolation ON <t>
 | Stage/Flow | authentication(identification → password → MFA validation), recovery. **enrollment 흐름 없음(SP-2)** | MFA: TOTP·WebAuthn(passkey). identification `show_matched_user false`, password `failed_attempts_before_cancel 5`, Reputation 정책(-5) |
 | Group | `tenant:<uuid>`(SP-1: 고정 테넌트 UUID), `platform-admin`(WebAuthn 필수) | 정책 바인딩·RBAC 매핑. 그룹 이름에 slug를 쓰지 않는다. **blueprint는 그룹 껍데기만 만들고**, 사용자 소속과 `user.attributes.tenant_id`는 `seed_tenant`만 쓴다(§1) |
 | User | `e2e@joshuatech.dev`(로컬 사용자, TOTP; 비밀은 **`kv/platform/authentik/e2e`**), 서비스 계정 `identity-admin`(prod; 권한: 사용자 read · `authentik_core.delete_authenticatedsession` · 토큰 revoke) + **dev 전용 서비스 계정 `identity-admin-ro`**(사용자 **read만** — Authentik API 토큰은 계정 권한을 그대로 가지므로 토큰 단위 축소가 아니라 별도 계정으로 분리한다). 토큰 → `kv/{env}/authentik/identity-admin.api_token`(prod 주체 = `identity-admin`, **dev 주체 = `identity-admin-ro`**). dev의 Authentik revoke·reconcile **쓰기 호출은 설정 플래그로 비활성**(시도하지 않고 로그만 — contracts/identity-admin-api.md §주기 작업) | 운영자 개인 계정은 blueprint에 없다 |
-| Application + Provider(OAuth2) | `web-bff`(confidential, PKCE, **token exchange grant — SP-1은 impersonation**, redirect **`https://joshuatech.dev/api/auth/callback`만**, access 300 s, refresh 30 d 회전), `web-bff-dev`(같은 설정, redirect `http://localhost:3000/api/auth/callback` · `https://preview.joshuatech.dev/api/auth/callback`), `identity-admin`(자기 signing key·JWKS, Federated Providers = [`web-bff`, `web-bff-dev`]; **`act` 클레임은 VD-1이 옵션 A로 확정될 때만** 발급된다 — OSS에는 `Actor` 생성 경로가 없어 기본은 impersonation), `argocd`·`vault`(OIDC, 그룹 클레임). `grafana` provider는 SP-2 | 각 provider의 `issuer` = `https://auth.joshuatech.dev/application/o/<slug>/`(공개 호스트). **JWKS는 pod가 svc DNS로 읽는다**(`http://authentik-server.identity.svc:9000/application/o/<slug>/jwks/`); FR-046 예외 2(공개 호스트 사용)는 Argo CD·Vault OIDC discovery로 한정 |
+| Application + Provider(OAuth2) | `web-bff`(confidential, PKCE, **token exchange grant — SP-1은 impersonation**, redirect **`https://joshuatech.dev/api/auth/callback`만**, access 300 s, refresh 30 d 회전), `web-bff-dev`(같은 설정, redirect `http://localhost:3000/api/auth/callback` · `https://preview.joshuatech.dev/api/auth/callback`), `identity-admin`(자기 signing key·JWKS, Federated Providers = [`web-bff`, `web-bff-dev`]; **`act` 클레임은 VD-1이 옵션 A로 확정될 때만** 발급된다 — OSS에는 `Actor` 생성 경로가 없어 기본은 impersonation), `argocd`·`vault`(OIDC, 그룹 클레임). `grafana` provider는 SP-2. **`web-bff`·`web-bff-dev`·`identity-admin`의 Subject mode는 `user_uuid`로 맞춘다**(T066 보정 2026-11-03 — `sub` = Authentik 사용자 UUID: BFF 토큰과 교환 토큰의 `sub`가 같아야 `/session/check`·거부 목록이 맞물리고, `seed_tenant`가 `GET /api/v3/core/users/?uuid=<sub>`로 사용자를 찾는다 · 기본값 hashed user id는 역조회가 안 된다 · VD-T066-1: T081 blueprint 적용 뒤 두 토큰의 `sub`와 조회 결과를 실측) | 각 provider의 `issuer` = `https://auth.joshuatech.dev/application/o/<slug>/`(공개 호스트). **JWKS는 pod가 svc DNS로 읽는다**(`http://authentik-server.identity.svc:9000/application/o/<slug>/jwks/`); FR-046 예외 2(공개 호스트 사용)는 Argo CD·Vault OIDC discovery로 한정 |
 | ScopeMapping | `tenant_id`(UUID) — **원천은 `user.attributes.tenant_id`**(identity-admin이 갱신하는 파생). 그룹 `tenant:<uuid>`는 RBAC·정책 바인딩 용도이고 클레임 원천이 아니다 | 모든 access/ID 토큰에 포함 |
 | NotificationTransport + Rule | webhook(generic) **2개**: prod → `http://identity-admin.jt-prod.svc/webhooks/authentik`, dev → `http://identity-admin.jt-dev.svc/webhooks/authentik`(둘 다 svc DNS, 공개 호스트 금지). 이벤트 `logout`·`login`·`model_deleted(session)`; 매핑 본문에 `pk`·`created` 포함 | 서명 헤더 `X-Authentik-Signature: sha256=<hex>` = HMAC-SHA256(비밀 **`kv/{env}/authentik/webhooks/identity-admin`**, 본문 JSON 정규형) — body·headers 두 매핑이 같은 event dict에서 계산한다(헤더 매핑은 전송 본문을 받지 못한다 · 규약·VD-T062-1은 contracts/identity-admin-api.md §웹훅 서명 규약 · 2026-11-02 보정). NetworkPolicy에 `identity → jt-dev:8000` 행이 있어야 dev 웹훅이 도달한다 |
 | Outpost(proxy) | Django admin forward-auth(`admin.` 호스트) | SP-1은 identity-admin admin만(prod). dev는 `ADMIN_HOST`가 빈 값이라 admin 표면이 없다 |

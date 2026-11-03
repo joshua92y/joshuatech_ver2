@@ -118,6 +118,8 @@ mkdir -p tests/fixtures/generated/packages && cp -r packages/django-common tests
 copier copy --trust --defaults --data pod_name=sample-pod templates/django-pod tests/fixtures/generated/apps/sample-pod
 cd tests/fixtures/generated/apps/sample-pod && uv sync --locked && uv run pytest -q                                # all passed(testcontainers — compose 불필요)
 cd ../.. && docker buildx build --platform linux/arm64 -f apps/sample-pod/Dockerfile -t sample-pod:test .          # 성공 — 컨텍스트 = 미니 저장소 루트
+# identity-admin API 계약 테스트(T066 test-first → T073이 초록) — 생성물 내장 7종 + test_api.py + 가짜 Authentik·OpenFGA 자기검사
+uv run --directory apps/identity-admin --locked pytest -q                                                           # all passed(testcontainers PG·Dragonfly · Docker 필요)
 ```
 기대 테스트: `test_tenant_rls`(A 등급 0행 2건 + owner bypass 전체 + B 등급 전역 테이블), `test_outbox`(발행·삭제·실패 attempts), `test_auth_middleware`(5 케이스 + Dragonfly 실패 503), `test_health`(`/healthz`·`/ready`·`/health`), `test_logging`, `test_openapi_snapshot`.
 
