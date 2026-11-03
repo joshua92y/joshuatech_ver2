@@ -21,8 +21,8 @@ pod DB 테이블은 두 등급이다(contracts/pod-template.md §테이블 등�
 - 상태 전이: `active → suspended → active`. `suspended`면 identity-admin이 해당 테넌트 사용자 세션을 전부 폐기한다(SP-2).
 - 시드: `seed_tenant --tenant-id <고정 uuid> --owner-sub <sub> --member-sub <sub>`(slug `joshuatech` · display_name 기본 `JoshuaTech` · `sub` 두 개는 인자로 받는다 — Authentik 사용자 조회로 유추하지 않는다 · T066 보정 2026-11-03) → Tenant + TenantMembership 2건(`owner` · `member`) + Authentik 그룹 `tenant:<uuid>` 소속·`user.attributes.tenant_id`(사용자별 PATCH) + FGA 튜플 `user:<sub> owner|member tenant:<uuid>`. 여러 번 실행해도 결과가 같다(T066이 멱등성을 단언): DB 행 수·id 불변, 파생 쓰기는 "이미 같은 상태면 쓰지 않음"으로 처리하고 실패하지 않는다. Authentik·FGA 호출은 설정의 base URL(**svc DNS 기본값** `http://authentik-server.identity.svc:9000` · `http://openfga.identity.svc:8080`)로만 간다. **파생 쓰기 규칙(T066 보정 2026-11-03 · API 모양은 VD-T066-1·2 — T081·T082·T083 실측)**:
   - 순서는 DB(정본) → 파생. 파생이 실패하면 명령이 실패(`CommandError` · 0이 아닌 종료)하고 DB 행은 남는다 — 다시 실행하면 멱등하게 마저 쓴다.
-  - Authentik: 그룹 `tenant:<uuid>`는 **blueprint가 이미 만들어 두었어야 한다** — 이름으로 조회(`GET /api/v3/core/groups/?name=`)해 없으면 실패하고 **만들지 않는다**(그룹 껍데기는 blueprint의 몫). 사용자는 `sub` = Authentik 사용자 UUID(provider `sub_mode` = `user_uuid` — §9)로 조회(`GET /api/v3/core/users/?uuid=<sub>`)하고 없으면 실패. 소속은 `POST /api/v3/core/groups/<그룹 pk>/add_user/` `{ "pk": <사용자 pk> }`, attribute는 기존 `attributes`를 읽어 **`tenant_id` 키만 더한 사전 전체**를 `PATCH /api/v3/core/users/<pk>/`로 보낸다(PATCH는 `attributes`를 통째로 바꾼다 — 다른 키를 지우지 않게). `AUTHENTIK_WRITES_ENABLED=false`(dev)면 Authentik 쓰기(소속·PATCH)를 하지 않고 로그만 남긴다(Authentik은 dev·prod가 한 인스턴스라 prod 시드가 이미 쓴다 · dev 토큰은 read 전용).
-  - OpenFGA(env마다 store가 다르다 — dev도 쓴다): `POST /stores/<store_id>/write` `{ "writes": { "tuple_keys": [...] } }` + `Authorization: Bearer <preshared>`. 이미 있는 튜플은 미리 읽어 건너뛰거나(`POST /stores/<id>/read`) `on_duplicate: "ignore"`를 쓰거나, 중복 쓰기 400 `write_failed_due_to_invalid_input`(메시지 "already exists")만 성공으로 본다 — **그 밖의 400·5xx는 실패**(삼키지 않는다).
+  - Authentik: 그룹 `tenant:<uuid>`는 **blueprint가 이미 만들어 두었어야 한다** — 이름으로 조회(`GET /api/v3/core/groups/?name=`)해 없으면 실패하고 **만들지 않는다**(그룹 껍데기는 blueprint의 몫). 사용자는 `sub` = Authentik 사용자 UUID(provider `sub_mode` = `user_uuid` — §9)로 조회(`GET /api/v3/core/users/?uuid=<sub>`)하고 없으면 실패(그룹·사용자 조회는 읽기라 `AUTHENTIK_WRITES_ENABLED`와 무관하게 늘 한다 — 쓰기를 끈 dev 시드도 그룹·사용자가 없으면 실패 · T066 r1 보정). 소속은 `POST /api/v3/core/groups/<그룹 pk>/add_user/` `{ "pk": <사용자 pk> }`, attribute는 기존 `attributes`를 읽어 **`tenant_id` 키만 더한 사전 전체**를 `PATCH /api/v3/core/users/<pk>/`로 보낸다(PATCH는 `attributes`를 통째로 바꾼다 — 다른 키를 지우지 않게). `AUTHENTIK_WRITES_ENABLED=false`(dev)면 Authentik 쓰기(소속·PATCH)를 하지 않고 로그만 남긴다(Authentik은 dev·prod가 한 인스턴스라 prod 시드가 이미 쓴다 · dev 토큰은 read 전용).
+  - OpenFGA(env마다 store가 다르다 — dev도 쓴다): `POST /stores/<store_id>/write` `{ "writes": { "tuple_keys": [...] } }` + `Authorization: Bearer <preshared>`. 이미 있는 튜플은 미리 읽어 건너뛰거나(`POST /stores/<id>/read`) `on_duplicate: "ignore"`를 쓰거나, 중복 쓰기 400 `write_failed_due_to_invalid_input`(메시지 "already exists")만 성공으로 본다 — **그 밖의 400·5xx는 실패**(삼키지 않는다). 마지막 방식은 **튜플마다 따로 쓸 때만** 성립한다 — 한 요청의 일괄 쓰기는 원자적이라 튜플 하나가 중복이면 나머지도 쓰이지 않으므로, 일괄 쓰기의 중복 400을 성공으로 보면 빠진 튜플을 놓친다(T066 r1 보정 · VD-T066-2).
   - slug `joshuatech`가 다른 id로 이미 있으면 실패(새 행을 만들지 않는다). 명령 출력(stdout·stderr)에 토큰·키 값이 나오지 않는다.
 - 등급 B: RLS 없음. 사용자/테넌트 삭제·내보내기는 SP-2.
 
@@ -48,7 +48,7 @@ DB 테이블 `session_revocation_log`(등급 B, `sub` 단위):
 | 필드 | 타입 | 규칙 |
 |---|---|---|
 | `id` | UUID v7 | PK |
-| `tenant_id` | UUID | NOT NULL(사용자의 테넌트; 사용자당 테넌트 1) |
+| `tenant_id` | UUID | NOT NULL(사용자의 테넌트; 사용자당 테넌트 1) · `Tenant.id` 값 참조(FK 없음 — §1 · T066 r1 보정) |
 | `sub` | text | NOT NULL |
 | `sid` | text | nullable — **NULL = 사용자 단위 폐기**(`revoked:sub:{sub}`), 값 = 세션 단위 폐기(`revoked:sid:{sid}`) · 아래 "한 행 = 한 키" |
 | `reason` | enum `logout` · `logout_all` · `admin` · `authentik_webhook` · `tenant_suspended` | |

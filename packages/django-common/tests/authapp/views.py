@@ -4,6 +4,8 @@
 - protected는 미들웨어가 둔 요청 속성(T070 가정 D4: auth_claims · access_claims · tenant_id)을 그대로 비춘다.
 - 웹훅은 라이브러리 헬퍼 verify_authentik_webhook(T070 가정 D5)으로 서명을 검증하고, 멱등 저장소 대역 SEEN_PKS로
   첫 수신 202 · 재전송 200(no-op)을 보여 준다. 운영의 멱등 저장(pod DB)과 뷰 수준 통합 단언은 T066의 몫이다.
+- access_only(auth-32 · T066)는 Access 전용 경로에서 미들웨어가 둔 속성을 비춘다 — common_name과 auth_claims ·
+  tenant_id 속성의 유무(Access 단계만 거치므로 둘 다 없어야 한다).
 """
 
 import uuid
@@ -62,3 +64,14 @@ def authentik_webhook(request: HttpRequest) -> HttpResponseBase:
         return JsonResponse({"status": "duplicate"}, status=200)
     SEEN_PKS.add(event.pk)
     return JsonResponse({"status": "accepted", "pk": event.pk}, status=202)
+
+
+def access_only(request: HttpRequest) -> JsonResponse:
+    """Access 전용 경로(auth-32) — common_name(Access) · auth_claims 속성 유무 · tenant_id 속성 유무."""
+    return JsonResponse(
+        {
+            "common_name": request.access_claims.get("common_name"),
+            "has_auth_claims": hasattr(request, "auth_claims"),
+            "has_tenant_id": hasattr(request, "tenant_id"),
+        }
+    )

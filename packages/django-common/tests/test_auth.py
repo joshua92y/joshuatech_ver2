@@ -33,6 +33,8 @@ tests/settings.py · tests/authapp/와 함께):
 - Denylist: redis-py from_url(DRAGONFLY_URL, socket_timeout=0.2, socket_connect_timeout=0.2, retry=Retry(NoBackoff(), 0)) ·
   파이프라인 1회 · 지표 denylist_lookup_seconds(Histogram · 레이블 result — 테스트는 result="error"의 _count만 읽는다).
   JWKS 클라이언트(PyJWKClient · 1시간 캐시)는 미들웨어 인스턴스마다 하나씩 만들어 재사용한다.
+- AUTH_ACCESS_ONLY_PATHS(auth-32 · T066): 기본 빈 튜플 · 정확 일치 · Access 단계만(2–4단계 Bearer · actor · 거부 목록 생략) ·
+  요청 속성은 access_claims만(auth_claims · tenant_id 없음) — tests/settings.py에 두지 않는다(auth-32가 settings로 둔다).
 
 빨간 상태: 지금은 django.setup()이 testapp 모델의 django_common.tenancy(T068)를 못 찾아 수집 전에 멈춘다. T068 뒤에는
 이 모듈의 django_common.auth import가 ModuleNotFoundError다(`pytest tests/test_auth.py -p no:django --collect-only`로
@@ -737,3 +739,44 @@ def test_auth_28_jwks_cache(make_client: Callable[[], Client], jwks_server: Jwks
     after_first = (jwks_server.hits[JWKS_PATH], jwks_server.hits[CERTS_PATH])
     assert client.get(PROTECTED, headers=headers).status_code == 200
     assert (jwks_server.hits[JWKS_PATH], jwks_server.hits[CERTS_PATH]) == after_first
+
+
+# --- Access 전용 경로(auth-32 · T066 · 계약 §인증 계층 구현 규약) --------------------------------------------------------
+
+ACCESS_ONLY = "/access-only"
+
+
+def test_auth_32_access_only_paths(
+    make_client: Callable[[], Client], jwks_server: JwksInfo, settings: SettingsWrapper
+) -> None:
+    """auth-32 — AUTH_ACCESS_ONLY_PATHS(identity-admin은 ("/session/check",)) 안의 경로는 Access 단계만 거친다:
+    유효 Access만 → 200 · common_name == ACCESS_EXPECTED_CN · auth_claims · tenant_id 속성 없음 / 쓰레기 Bearer를 붙여도 200
+    (Bearer를 검증하지 않는다) / Access 없음 · common_name 불일치 · aud 밖 → 403 access_required / `/access-only/`(끝 슬래시)
+    + Access만 → 401 invalid_token(정확 일치 — 접두가 아니다) / DRAGONFLY_URL을 닫힌 포트로 바꾼 새 Client → 200(미들웨어가
+    거부 목록을 조회하지 않는다) / 설정을 지운 새 Client(라이브러리 기본 빈 튜플) → `/access-only` + Access만 → 401
+    invalid_token."""
+    settings.AUTH_ACCESS_ONLY_PATHS = (ACCESS_ONLY,)
+    client = make_client()
+    access = _access(jwks_server)
+    expected = {"common_name": settings.ACCESS_EXPECTED_CN, "has_auth_claims": False, "has_tenant_id": False}
+    accepted = {"access-only": _headers(access=access), "garbage-bearer": _headers(bearer="garbage", access=access)}
+    for case, headers in accepted.items():
+        response = client.get(ACCESS_ONLY, headers=headers)
+        assert response.status_code == 200, case
+        assert json.loads(response.content) == expected, case
+    rejected = {
+        "missing": _headers(),
+        "other-common-name": _headers(access=_access(jwks_server, common_name="someone-else.access")),
+        "other-aud": _headers(access=_access(jwks_server, aud=["other"])),
+    }
+    for case, headers in rejected.items():
+        response = client.get(ACCESS_ONLY, headers=headers)
+        assert response.status_code == 403, case
+        _assert_problem(response, 403, "access_required")
+    _assert_problem(client.get(ACCESS_ONLY + "/", headers=_headers(access=access)), 401, "invalid_token")
+    settings.DRAGONFLY_URL, _ = _unreachable_url(_closed_port())
+    response = make_client().get(ACCESS_ONLY, headers=_headers(access=_access(jwks_server)))
+    assert response.status_code == 200
+    del settings.AUTH_ACCESS_ONLY_PATHS
+    response = make_client().get(ACCESS_ONLY, headers=_headers(access=_access(jwks_server)))
+    _assert_problem(response, 401, "invalid_token")

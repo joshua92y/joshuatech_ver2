@@ -5,7 +5,7 @@
 ## 호스트 규약 (2026-09-01 사용자 결정)
 
 - pod API(M2M, Service Auth 전용): `<alias>-m2m-<env>.joshuatech.dev` — env ∈ `prod`·`dev`. alias는 pod 이름의 짧은 형태로 아래 표에 고정한다. m2m Ingress는 경로 허용 목록 `/api`·`/health`·`/session`·`/sessions`·`/tenants`만 노출한다. **`/webhooks`·`/healthz`·`/ready`·`/admin/`은 공개 호스트에 없다**(웹훅은 svc DNS 전용, 프로브는 kubelet 전용) → 404.
-- 관리자 UI: 단일 호스트 `admin.joshuatech.dev` + pod별 경로 접두 `/<pod>/…`(Django `FORCE_SCRIPT_NAME=/<pod>`, `ADMIN_HOST=admin.joshuatech.dev`일 때만 admin urlconf 장착, Traefik Ingress `PathPrefix`). 예: `admin.joshuatech.dev/identity-admin/admin/`.
+- 관리자 UI: 단일 호스트 `admin.joshuatech.dev` + pod별 경로 접두 `/<pod>/…`(env `FORCE_SCRIPT_NAME=/<pod>` — `ADMIN_HOST` 요청에만 script prefix로 적용하고 Django 전역 설정으로 두지 않는다(contracts/pod-template.md `has_admin` 행 · T066 r1 보정 2026-11-03), `ADMIN_HOST=admin.joshuatech.dev`일 때만 admin urlconf 장착, Traefik Ingress `PathPrefix` + `stripPrefix`). 예: `admin.joshuatech.dev/identity-admin/admin/`.
 
 | pod | alias | prod 호스트 | dev 호스트 |
 |---|---|---|---|
