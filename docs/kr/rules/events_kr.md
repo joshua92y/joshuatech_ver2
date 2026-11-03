@@ -1,4 +1,4 @@
-> translation-pending (2026-11-02) — 영어 원본 §Topic conventions(DLQ prod `<pod>.dlq` · dev `dev.<pod>.dlq` 정정) · §Compatibility rules(`required` 제거·스키마 파일 삭제 금지 · 메타데이터 예외 · CLI 종료 코드 · `additionalProperties: false` 금지 — T064) 미반영. /finish에서 동기화.
+> translation-pending (2026-11-03) — 영어 원본 §Topic conventions(DLQ prod `<pod>.dlq` · dev `dev.<pod>.dlq` 정정) · §Compatibility rules(`required` 제거·스키마 파일 삭제 금지 · 메타데이터 예외 · CLI 종료 코드 · `additionalProperties: false` 금지 — T064) · §Compatibility rules(CI 기준 = PR merge 커밋 첫째 부모 · push `before` · 기준 쪽 검사기 · 부트스트랩 · CLI 경로 Node 내장 모듈만 · 허용 키 목록 밖 키 → 2 · `const` = enum · 값 제약 불변 · 모든 속성 `type` · enum 추가는 소비자 먼저 — T067) 미반영. /finish에서 동기화.
 > 번역본(편의용). 정본은 영어 원본 `.claude/rules/events.md`이며 충돌 시 영어가 우선한다. 동기화: /finish.
 
 ```yaml

@@ -813,3 +813,221 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
 - **report.md 편차 후보**: ① tasks.md T075 · T084의 "`FORCE_SCRIPT_NAME`" = env 이름으로 재해석(Django 전역 설정 아님 — 전역이면 m2m `reverse()` · OpenAPI 경로 키에 접두) ② T075 문면에 없는 Traefik `stripPrefix` Middleware 추가 ③ 정적 자산 절대 `STATIC_URL`(T072 결정).
 - **인계**: **T070** auth-32(`AUTH_ACCESS_ONLY_PATHS`) · **T071** /health 병렬 · 예산(DB 2 s · DF 0.2 s · Kafka `list_topics(timeout=1.0)`) · obs-18이 닫힌 포트라 Linux에서 병렬성을 못 가린다 → 블랙홀로 강화 · `latency_ms` 의미 · **T072** 가정 ①–⑨ · SECRET_KEY 출처 + env.example 개수 · DATABASE_URL `sslmode` 자리값 · pytest-timeout(선택) · 프로브 Host · handler 3종(urlconf마다) · 정적 자산 서빙(stripPrefix 뒤 `/static/…`) · `hide_input_in_errors` · 기동 시 외부 연결 · 이름 조회 0 · 시험 DB 연결 풀 금지 · §기본 테스트 3 r3 항목(Django 자체 오류 400/403/404/500 · 기동 설정 위생 · 절대 `STATIC_URL`)을 내장 테스트 7파일 안에서(T065 `POD_TEST_FILES`) · 기동 실패 메시지와 트레이스백 소스 줄(raise 문 · 끝 주석)에 `input_value=` 글자 금지 · 빈 비밀 검사를 pydantic(`min_length`)로 하면 그 ValidationError 경로도 이름만(오라클 N47) · validator가 `ImproperlyConfigured`를 직접 내는 설계는 안전(N57) · `hide_input_in_errors`만으로는 부족(`errors()`에 값이 남는다) · 접두가 없을 때 상대 `"static/"`는 Django가 `/static/`으로 만든다 · 정적 자산 서빙은 시험 먼저(Django `static()`은 DEBUG가 아니면 패턴을 만들지 않고, `STATIC_URL`에서 접두를 따오는 서빙 방식은 `stripPrefix` 뒤 `/static/…`과 어긋난다 — WhiteNoise류면 접두를 따로 둔다) · `STATIC_URL` 끝 슬래시는 `django.setup()`이 아니라 `manage.py check`(`urls.E006`)가 본다 · `CSRF_FAILURE_VIEW` → 403 `forbidden` problem+json · `CSRF_TRUSTED_ORIGINS` = `https://<ADMIN_HOST>`(ADMIN_HOST가 비면 두지 않는다 — 확인은 T084) · urlconf별 handler403 확인 방법 = `set_urlconf(urlconf)` 뒤 `get_resolver(urlconf).resolve_error_handler(403)` + `response_for_exception(request, PermissionDenied())`(오라클 r4) · psycopg `connect_timeout` < 2는 두 OS 모두 2 s · librdkafka는 닫힌 포트(RST)여도 `list_topics` 자기 timeout까지 기다린다 · **T073** 가정 ①–⑫ · admin 접두 미들웨어(`request.path` · `META["SCRIPT_NAME"]` · `set_script_prefix` · finally 복원) · admin 접두는 호출마다 읽기(`__init__`에서 읽거나 첫 호출 때 캐시 금지 — 오라클 N41 · N54) · 비밀 3개 빈 값 거부 · 웹훅 `sub` str(ORM 조회 전에 `isinstance` — CharField 조회는 정수 5를 "5"로 바꿔 준다 · N56) · `nbf` int(bool 제외) · 시드는 쓰기를 꺼도 그룹을 조회하고 없으면 `CommandError`(N42 · N55) · 기동 중 `gethostbyname*` · `gethostbyaddr`에 공개 이름 금지(N45) · 시드 조회 먼저(`?name=` · `?uuid=` · JSON Content-Type · 같은 상태면 쓰지 않음) · revoke 관리자 단일 세션 본문 sid · `/session/check` 호출 시점 설정 · 웹훅 멱등 DB unique · B-8 owner 질의 가드(미채택 — 구현 리뷰 몫) · librdkafka `socket.connection.setup.timeout.ms` 최솟값 1000 · **T075/T076** stripPrefix Ingress · m2m 호스트 404 E2E · **T081–T085** VD-T066-1..5.
 - **교훈(tool-gotchas)**: 지시문에 `content/tmp/` 예외 명시 · 큰 다중 바이트 줄 grep은 `LC_ALL=C` · cp949 콘솔 출력은 `PYTHONIOENCODING=utf-8` · 외부 Temp 정리가 scratch venv 파일을 지운다(`uv sync --locked --reinstall`) · Bash 인라인 Python 문자열의 역슬래시 경로는 접힌다(슬래시로) · 같은 호스트에 다른 프로젝트 컨테이너가 뜬다(시험 컨테이너 수에서 빼고 건드리지 않는다) · 개발자 env에 상대 경로 `SSLKEYLOGFILE`을 두면 부모 pytest의 urllib opener가 cwd(pod 루트)에 키 로그를 만든다(자식은 K29로 막힘 — 오라클 r3 관찰) · 문자열 포함 단언은 트레이스백이 찍는 소스 줄 주석까지 본다 — 표식은 라이브러리 표기(`input_value=`)까지 좁힌다.
+
+## T067 (2026-11-03 시작 — US6 구현 · `packages/events` 스키마 7 · `scripts/check-compat.mjs` · CI job `events-compat` · 세션 모델 Opus 5.5)
+
+- **과제 문면(tasks.md :184)**: `packages/events`: `schemas/_envelope.json` + 토픽 스키마 6(contracts/events.md 필드 · `tenantid` = uuid) + `scripts/check-compat.mjs`(main vs PR 필드 diff) + `package.json` scripts + `ci.yml` job `events-compat` → T064 PASS.
+- **소스로 확인한 사실**:
+  - ① **API 정본은 T064 테스트 머리 주석이다**(`packages/events/tests/check-compat.test.mjs:1-36`): `diffSchema` · `compareDirectories` · `validateEvent` · CLI 0/1/2 · 진입점 가드. 지금 빨강은 수집 단계의 `Cannot find module '../scripts/check-compat.mjs'`이다(38케이스 · `it` 24).
+  - ② **compat-14–16이 실제 `schemas/`에 요구하는 것**:
+    - SAMPLE 봉투(`type` `identity-admin.session.revoked` · data `{sub: "9f2c-test", sid: null, nbf, reason: "logout_all"}`)가 통과한다.
+    - 필수 9개를 하나씩 빼면 실패한다.
+    - 아래 다섯 값은 각자 경로 `#/<필드>`에서 실패한다: `tenantid` "joshuatech" · `specversion` "0.3" · `id` "not-a-ulid" · `time` "2026-09-01" · `datacontenttype` "text/plain".
+    - `data.reason` "bogus"는 `#/data/reason`에서 실패한다.
+    - 모르는 type `nope.topic.event`는 schema-missing이고 message에 토픽 이름이 든다.
+    - schemasDir 옵션: 임시 디렉터리의 `sample.topic.event.json`(BASE)을 읽는다 — source는 `identity-admin` 그대로다(**source와 type의 접두를 맞추라고 검사하면 이 테스트가 깨진다**).
+    - `type` "../evil"은 ok false다.
+    - 파일 7개 · `$schema` 2020-12 · `x-version` semver · 외부 `$ref` 0 · `additionalProperties: false` 0 · 토픽마다 `$id` `https://joshuatech.dev/events/<토픽>/v1` · `type: object`.
+    - 봉투: required 정확히 9 · `tenantid.format` uuid · `specversion.const` "1.0" · `data.type` object.
+  - ③ **계약 표의 공백.** contracts/events.md §SP-1 표에서 타입·필수가 정해진 것은 `session.revoked`뿐이다. SP-2 토픽 5개는 필드 이름만 있다.
+    - 필수 집합은 main에 들어간 뒤로는 추가도 제거도 금지다(§호환성 규칙). 그래서 지금 정하는 값이 v1로 굳는다.
+    - 단, 이 기능이 main에 머지되기 전에는 기준(main)에 스키마가 없다. CI는 전부 "추가"로 보므로 머지 전까지는 고칠 수 있다.
+  - ④ **봉투 `type` = 논리 토픽**(env 접두 없음). 물리 토픽 = `OUTBOX_TOPIC_PREFIX` + 논리 토픽이다(T061 `packages/django-common/tests/test_outbox.py:64-66`). `validateEvent`는 `schemas/<type>.json`을 찾으므로, `type`에 `dev.`가 붙으면 schema-missing이 된다.
+  - ⑤ **Python 소비자**(T061 out-6 · test_outbox.py:194-201)는 `Draft202012Validator.check_schema` + `FORMAT_CHECKER`를 쓴다.
+    - jsonschema 4.26.0은 `uuid`를 자체 검사한다. `date-time`은 `rfc3339-validator`, `uri`는 `rfc3987`이 있어야 검사하는데, uv.lock에는 둘 다 없다 → 두 형식은 Python에서 통과로 처리된다.
+    - check_schema가 `pattern`을 Python `re`로 컴파일한다. 그래서 패턴은 JS(u 플래그)와 Python re에서 같은 뜻이어야 한다. `\d` · `\w` · `\s`는 Python에서 유니코드 숫자·글자까지 맞으므로 쓰지 않고 명시 문자 클래스만 쓴다.
+  - ⑥ **ajv 8.20.0**(T064 실측):
+    - 기본 strict에서는 `x-version`을 모르는 키워드로 보고 예외를 낸다 → `addKeyword`.
+    - 한 인스턴스에 같은 `$id`를 두 번 컴파일하면 예외다 → schemasDir마다 인스턴스를 따로 둔다.
+    - `["string", "null"]`(null을 포함한 2원소)는 strictTypes 예외로 허용된다. 테스트 출력에 strict 경고가 0인지 빌더가 확인한다.
+  - ⑦ **CI 현황**:
+    - ci.yml job은 4개(gitleaks · lint · test · kubeconform)다. 액션은 40-hex SHA로 핀한다 — kubeconform 하네스 static-2가 ci.yml의 모든 `uses:`를 단언하고, static-8이 기존 job이 남아 있음을 단언한다.
+    - 설치는 `pnpm install --frozen-lockfile --ignore-scripts`, 러너는 `ubuntu-24.04-arm`이다.
+    - job 로직은 `scripts/ci/<job>.sh`에 두고, 하네스 `tests/scripts/<job>.tests.ps1`과 `tests/run-all.ps1` 슬롯을 함께 둔다(T047 M1 kubeconform 꼴 — 도구가 없으면 첫 줄 SKIP).
+  - ⑧ **이벤트별 체크아웃**: PR 이벤트에서 체크아웃되는 것은 merge 커밋이다(HEAD^1 = base 끝 · HEAD^2 = PR head — gitleaks job이 같은 전제를 확인한다). push 이벤트의 기준은 `github.event.before`이고, 새 브랜치면 0이 40개다.
+  - ⑨ **검사기 자체의 신뢰.** 규칙 events.md는 "Never weaken or bypass this check"라고 한다. 그런데 PR 쪽 검사기로 PR 스키마를 검사하면, 같은 PR이 검사기를 약하게 고쳐 위반을 통과시킬 수 있다.
+  - ⑩ **package.json**: scripts `test` · `check-compat`는 T064가 이미 넣었다. description은 "skeleton, T015" 그대로다. `schemas/` · `scripts/`에는 `.gitkeep`만 있다.
+  - ⑪ **enum 값 추가 규칙과 소비자 검증이 충돌한다.** 소비자는 data를 `packages/events` 스키마로 검증하고, 실패하면 DLQ로 보낸다. 옛 이미지의 스키마에는 새 enum 값이 없어 거부된다. 그래서 "enum 값 추가 허용 · 소비자는 미지 값 무시"는 배포 순서 없이는 성립하지 않는다(T064 A-1 `additionalProperties`와 같은 꼴). SP-1에는 소비자가 없다.
+- **계약 보정(컨트롤러 · 이 설계와 같은 커밋 · "T067 보정 2026-11-03" 표식)**:
+  - **C1** events.md §SP-1 표 아래에 「필드 형식 · 필수(T067 확정)」 표를 둔다(토픽마다 필수 · 선택 · 타입 · 형식 — D2와 같다). 정본은 `packages/events/schemas/<토픽>.json`이고, 표와 어긋나면 표를 먼저 고친다.
+  - **C2** events.md §봉투에 필드 형식을 적는다:
+    - `id`: ULID `^[0-7][0-9A-HJKMNP-TV-Z]{25}$`
+    - `source`: pod 이름(kebab-case)
+    - `type`: 논리 토픽(env 접두 없음 — dev Kafka 토픽은 `dev.` + type)으로, 점으로 나뉜 kebab-case 토큰 셋 이상
+    - `time`: RFC 3339 date-time
+    - `subject`: `<종류>:<id>`
+    - `tenantid`: 소문자 UUID
+    - `datacontenttype`: const `application/json`
+  - **C3** events.md §호환성 규칙에 세 가지를 더한다.
+    - **CI 기준**: PR은 merge 커밋의 첫째 부모, push는 `before`(0이면 빈 기준)다. 검사기는 **기준 쪽 것**(기준 커밋의 `check-compat.mjs`)을 쓰고, 기준에 검사기가 없을 때만 이 변경의 것을 쓴다(부트스트랩). 그래서 CLI 경로는 Node 내장 모듈만 import하고, ajv는 `validateEvent`가 처음 부를 때 지연 로드한다.
+    - **검사 범위 밖의 구조**: 검사기가 비교할 수 없는 구조 키워드(`$ref` · `$defs` · `allOf` · `anyOf` · `oneOf` · `not` · `if`/`then`/`else` · `prefixItems` · `patternProperties` · `dependent*` · `unevaluated*` 등 허용 목록 밖의 키)는 쓰지 않는다. 쓰면 검사기가 2(사용·입출력 오류)로 끝난다 — 비교하지 못한 변경을 통과로 두지 않는다. 쓰려면 검사기를 먼저 넓힌다.
+    - **값 제약**: `format` · `pattern` · 길이 · 범위는 바꾸지 않는다(검사기는 보지 못한다 — 리뷰 몫 · 바꾸려면 v2). `const`의 값이 바뀌면 enum 값 삭제(`enum-removed`)로 본다.
+  - **C4** events.md §호환성 규칙에 **enum 값 추가의 배포 순서**를 적는다: 그 토픽의 소비자가 새 스키마를 담은 빌드로 먼저 배포되고, 생산자는 그다음에 새 값을 보낸다. 옛 스키마의 enum은 새 값을 거부해 DLQ로 보내기 때문이다. 소비자 도우미가 enum 위반만 따로 다룰지는 SP-2가 정한다.
+  - **C5** rules/events.md §Compatibility rules에 C3 · C4를 영어로 같이 적는다. kr 미러는 pending 줄로 둔다.
+  - **C6** data-model §5: 필드 형식의 정본은 스키마 파일, 표는 contracts/events.md 「필드 형식 · 필수」다.
+- **결정 D1–D12(컨트롤러)**:
+  - **D1 범위 · 빨강 → 초록**: 산출물은 아래와 같다.
+    - (1) `packages/events/schemas/_envelope.json` + 토픽 6
+    - (2) `packages/events/scripts/check-compat.mjs`
+    - (3) **새 테스트** `packages/events/tests/schemas.test.mjs`(T067 소유 · test-first — 토픽별 필수 집합 · 형식을 계약 C1에 묶는다)
+    - (4) `scripts/ci/events-compat.sh` + **새 하네스** `tests/scripts/events-compat.tests.ps1`(test-first) + `tests/run-all.ps1` 슬롯 1b5
+    - (5) `.github/workflows/ci.yml` job `events-compat` + 머리 주석 한 단락
+    - (6) `packages/events/package.json` description 갱신(scripts는 그대로)
+    - (7) `schemas/.gitkeep` · `scripts/.gitkeep` 삭제
+
+    순서는 새 테스트 2개를 먼저 쓰고 빨강을 확인한 뒤 구현해 초록으로 만드는 것이다. 초록 기준은 `pnpm --filter @jt/events test`의 38(T064) + schemas.test 전부 passed와 하네스 `N passed, 0 failed`다. 의존성 · lock 변경은 0이다(ajv · ajv-formats · vitest는 T064가 넣었다).
+  - **D2 스키마 내용**(공통: `$schema` 2020-12 · `$id` · `x-version` "1.0.0" · `title` = 토픽 이름(봉투는 "CloudEvents 1.0 봉투") · 한국어 `description` · `type: object` · `properties` · `required` · **모든 속성에 명시 `type`**(나중에 `type`을 더하면 type-changed가 되므로) · `additionalProperties` 없음 · `$ref` 없음 · 2칸 들여쓰기 · 끝 LF).
+
+    공통 꼴은 다음과 같다.
+    - UUID = `{"type": "string", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"}`
+    - 시각 = `{"type": "string", "format": "date-time"}`
+    - 비지 않은 문자열 = `{"type": "string", "minLength": 1}`
+
+    | 파일 | 필수 | 선택 | 속성 |
+    |---|---|---|---|
+    | `_envelope.json`(`$id` `https://joshuatech.dev/events/_envelope/v1`) | specversion · id · source · type · time · subject · tenantid · datacontenttype · data | — | specversion `{"type":"string","const":"1.0"}` · id `{"type":"string","pattern":"^[0-7][0-9A-HJKMNP-TV-Z]{25}$"}` · source `{"type":"string","pattern":"^[a-z][a-z0-9]*(-[a-z0-9]+)*$"}` · type `{"type":"string","pattern":"^[a-z][a-z0-9]*(-[a-z0-9]+)*(\\.[a-z][a-z0-9]*(-[a-z0-9]+)*){2,}$"}`(`../evil` · `/` · `..` · 대문자 · `_` 시작 불가 · `….v2` 허용) · time 시각 · subject `{"type":"string","pattern":"^[a-z][a-z0-9-]*:.+$"}` · tenantid UUID · datacontenttype `{"type":"string","const":"application/json"}` · data `{"type":"object"}` |
+    | `identity-admin.session.revoked` | sub · nbf · reason | sid | sub 비지 않은 문자열 · sid `{"type":["string","null"],"minLength":1}` · nbf `{"type":"integer","minimum":0}` · reason `{"type":"string","enum":["logout","logout_all","admin","authentik_webhook","tenant_suspended"]}` |
+    | `identity-admin.user.registered` | sub · tenant_id · role · registered_at | email_hash | email_hash `{"type":"string","pattern":"^[0-9a-f]{64}$"}`(sha256 소문자 hex — GitHub IdP 사용자는 메일이 없을 수 있다) · tenant_id UUID · role `{"type":"string","enum":["owner","member"]}`(`admin`은 SP-2 예약 — enum 값 추가로 넣는다) · registered_at 시각 |
+    | `identity-admin.tenant.created` | tenant_id · slug · display_name | — | tenant_id UUID · slug `{"type":"string","pattern":"^[a-z0-9][a-z0-9-]{1,30}$"}`(data-model §1) · display_name `{"type":"string","minLength":1,"maxLength":80}` |
+    | `portfolio-core.note.published` | slug · lang · title · tags · published_at | change | slug `{"type":"string","pattern":"^[a-z0-9]+(-[a-z0-9]+)*$"}` · lang `{"type":"string","enum":["ko","en","ja"]}` · title 비지 않은 문자열 · tags `{"type":"array","items":{"type":"string","minLength":1}}`(빈 배열 허용) · published_at 시각 · change `{"type":"string","pattern":"^[0-9]{3}-[a-z0-9-]+$"}`(study만 — data-model §11) |
+    | `engagement.comment.created` | comment_id · target · author_sub · created_at · body_excerpt | — | comment_id · author_sub 비지 않은 문자열 · target `{"type":"string","pattern":"^[a-z][a-z0-9-]*:.+$"}` · created_at 시각 · body_excerpt `{"type":"string","maxLength":200}`(코드 포인트 — ajv · Python 둘 다) |
+    | `media.object.ready` | media_id · owner_sub · kind · variants · bytes | — | media_id · owner_sub 비지 않은 문자열 · kind `{"type":"string","enum":["image","file"]}` · variants `{"type":"array","items":{"type":"object","properties":{"name":비지 않은 문자열,"url":{"type":"string","format":"uri"}},"required":["name","url"]}}`(빈 배열 허용) · bytes `{"type":"integer","minimum":0}` |
+
+    SP-2 토픽의 id(`comment_id` · `media_id`)에는 형식을 두지 않는다. 생산 pod의 id 체계가 정해지지 않았고, 나중에 형식을 두거나 풀면 소비자를 깨뜨릴 수 있다. sub류도 형식을 두지 않는다 — T061 · T064 표본이 `9f2c-test`다.
+  - **D3 `check-compat.mjs` 구현 규칙**(T064 머리 주석에 더하는 것):
+    - **import**: 모듈 머리는 `node:` 내장 모듈만 import한다(`node:fs` · `node:path` · `node:url` · `node:module` · `node:process`). ajv · ajv-formats는 `createRequire(import.meta.url)`로 `validateEvent`가 처음 부를 때 지연 로드한다(C3 — CI가 기준 쪽 사본을 패키지 밖 임시 디렉터리에서 돌린다). 머리 주석에 이 제약을 적는다.
+    - **Ajv 구성**: `Ajv2020`(`ajv/dist/2020`) `{strict: true, allErrors: true}` + `addKeyword("x-version")` + `ajv-formats`.
+      - 인스턴스는 `path.resolve(schemasDir)`마다 하나, 컴파일한 검증기는 파일 경로마다 캐시한다.
+      - 테스트 출력에 strict 경고가 없어야 한다.
+    - **validateEvent 경로 · 메시지**:
+      - errors path: `required` 오류는 `<instancePath>/<missingProperty>`, 그 밖에는 instancePath. 봉투는 `#`, data는 `#/data`를 앞에 붙인다.
+      - message는 한 줄이고 `<keyword>: <ajv message>` 꼴이다.
+      - data 검증은 봉투 오류 중 `#/type` 경로가 없고 `type`이 문자열일 때만 한다.
+      - 토픽 파일은 `path.resolve(dir, type + ".json")`이고, `path.dirname`이 `path.resolve(dir)`과 같지 않으면 거부한다(심층 방어 — 봉투 pattern이 1차 방어).
+      - 파일이 없으면 `{path: "#/type", message: "schema-missing: <토픽> …"}`.
+    - **diffSchema 비교 범위**: `properties` · `items`(단일 스키마) · `additionalProperties`(스키마일 때)를 재귀로 비교한다.
+      - JSON 포인터는 RFC 6901로 이스케이프한다(`~` → `~0` · `/` → `~1`).
+      - `type`은 집합으로 비교한다(없음 = 빈 집합).
+      - enum이 줄면 `enum-removed`다(enum 키가 아예 사라지는 것은 확대라 허용).
+      - **`const`는 값 하나짜리 enum으로 본다**(C3 — 값이 바뀌면 `enum-removed`).
+      - 메타데이터는 무시한다.
+    - **허용 키 목록**(C3): `type` · `properties` · `required` · `items` · `enum` · `const` · `format` · `pattern` · `minLength` · `maxLength` · `minimum` · `maximum` · `exclusiveMinimum` · `exclusiveMaximum` · `minItems` · `maxItems` · `uniqueItems` · `additionalProperties` + 메타데이터(`$schema` · `$id` · `$comment` · `title` · `description` · `examples` · `default` · `deprecated` · `readOnly` · `writeOnly`) + `x-` 접두.
+      - 이 밖의 키가 base나 head에 있으면 diffSchema가 `UnsupportedSchemaError`를 던지고, CLI는 2와 stderr로 끝난다.
+      - `examples` · `default`의 값 안은 훑지 않는다.
+    - **compareDirectories**: `.json`만 보고 이름순으로 처리한다. 파싱 실패는 예외로 드러내고(CLI 2), 파일 이름을 담는다.
+    - **CLI 출력**:
+      - stdout에는 위반 줄만 쓴다. 요약은 stderr에 쓴다(예: `checked N · added M · violations K`).
+      - **head 디렉터리가 없으면 2가 아니다** — CI 스크립트가 빈 디렉터리를 넘긴다(D5). CLI 자체는 T064 그대로 2다.
+  - **D4 새 테스트 `tests/schemas.test.mjs`(test-first · vitest · id `sch-1..`)**:
+    - 계약 C1의 필수 집합 상수 ↔ 각 파일 `required`가 정확히 같다.
+    - 모든 속성(중첩 · items 포함)에 `type`이 있다.
+    - 토픽마다 계약 모양의 표본 data로 `validateEvent`가 ok다(봉투는 SAMPLE에서 `type` · `subject`만 바꾼다).
+    - 필수 필드를 하나씩 빼면 ok false이고 경로는 `#/data/<필드>`다. 선택 필드는 빼도 ok다.
+    - 형식 · 값 음성 사례(각자 경로 단언):
+      - tenant_id 비-UUID · 대문자 UUID
+      - registered_at 날짜만
+      - role `admin`
+      - lang `fr`
+      - email_hash 대문자 · 63자
+      - change `3-x`
+      - slug 형식 위반
+      - body_excerpt 201자 거부 · 200자 통과(한글 200자 포함)
+      - bytes −1
+      - variants 항목 url 없음(`#/data/variants/0/url`) · url 상대 경로
+      - sid 빈 문자열
+      - nbf 실수
+    - 봉투 음성: source `Identity_Admin` · subject `9f2c`(종류 없음) · type 대문자 / `a..b.c` / `../evil` → 각 `#/<필드>`. `identity-admin.session.revoked.v2` 꼴은 봉투 pattern을 통과한다(schema-missing으로 실패 — v2 이름 허용 확인).
+    - **패턴 이식성**: 7파일의 모든 `pattern`에 `\d` · `\w` · `\s` · `\b` · `\p` · `(?<`가 없다(⑤).
+    - **CLI 자립성**: `check-compat.mjs`를 node_modules가 없는 임시 디렉터리에 복사해 CLI로 돌리면 0/1/2가 그대로 나오고, 소스 머리에 `node:` 밖 정적 import가 없다(C3 · D5의 기준 쪽 실행 전제).
+    - **허용 키 목록**: `anyOf` · `$ref` · `prefixItems`가 든 스키마 → diffSchema 예외 · CLI 2.
+    - **const**: 값이 바뀌면 `enum-removed`.
+    - 빨강: 스키마 · 스크립트가 없어 수집 또는 단언이 실패한다(원인을 보고).
+  - **D5 `scripts/ci/events-compat.sh`**(bash · `set -euo pipefail` · 머리 주석이 판정 규칙 정본 — kubeconform-deploy.sh 꼴).
+    - **사용**: `bash scripts/ci/events-compat.sh [--root <dir>] [--base <commit>]`. 인자가 없으면 GitHub 환경으로 기준을 정한다.
+      - `GITHUB_EVENT_NAME=pull_request`: `PR_HEAD_SHA`가 40/64-hex여야 하고, `HEAD^2` == `PR_HEAD_SHA`(다르면 2)일 때 기준 = `HEAD^1`.
+      - `push`: `PUSH_BEFORE`가 0만이면 빈 기준이다. 아니면 hex이고 커밋이 있어야 하고(없으면 2) 기준 = before.
+      - 그 밖의 이벤트는 2다.
+    - **기준 스키마**: `git cat-file -e <base>:packages/events/schemas`가 있으면 `git archive <base> packages/events/schemas | tar -x -C <tmp>`로 꺼내고, 없으면 빈 디렉터리를 쓴다("기준에 스키마 없음 — 전부 추가").
+    - **head 디렉터리**: `<root>/packages/events/schemas`가 없으면 빈 디렉터리를 쓴다(디렉터리 삭제 = 전부 schema-removed → 1).
+    - **검사기**: 기준에 `packages/events/scripts/check-compat.mjs`가 있으면 `git show`로 `<tmp>/checker/check-compat.mjs`에 꺼내 그것을 쓴다(패키지 밖 · node_modules 없음). 없으면 `<root>/packages/events/scripts/check-compat.mjs`를 쓴다(부트스트랩 — 그 사실을 출력한다).
+    - **실행**: `node <검사기> --base <기준 dir> --head <head dir>` → 종료 코드를 그대로 낸다(0/1/2).
+    - **출력**:
+      - 검사기 출력은 `::stop-commands::<실행마다 새 토큰>` … `::<토큰>::` 사이에 둔다(파일 이름은 PR이 고른 글자다 — gitleaks job과 같은 방어).
+      - `GITHUB_STEP_SUMMARY`가 있으면 세 줄(기준 · 검사기 출처 · 결과 · exit)을 쓴다.
+    - **정리**: 임시 디렉터리는 `mktemp -d`로 만들고 trap에서 지운다. 저장소 파일은 바꾸지 않는다. 도구(git · node · tar)가 없으면 2다(fail-closed).
+    - **신뢰 모델의 한계**(머리 주석 · 계약 C3에 적는다): GitHub `pull_request`는 PR 브랜치의 워크플로 정의로 돈다. 그래서 같은 PR이 `ci.yml`의 이 job이나 이 스크립트를 바꾸면 그 PR에서는 바뀐 것이 돈다 — 그 변경은 리뷰가 막는다(기준 쪽 검사기는 "검사기만 약하게 고친 PR"을 막는다).
+  - **D6 하네스 `tests/scripts/events-compat.tests.ps1`(test-first · kubeconform-deploy.tests.ps1 꼴)**:
+    - **도구 · 실행 방식**:
+      - bash(Git bash — WSL 런처 제외) · git · node 가운데 하나라도 없으면 첫 줄 `SKIP events-compat tests -- not found: …` + exit 0.
+      - 임시 git 저장소 픽스처를 만들고(로컬 user.name/email · `core.autocrlf false`), 저장소의 실제 `check-compat.mjs`를 복사해 넣는다. 스키마는 작은 합성 스키마다.
+      - 스크립트는 `bash <스크립트> --root <픽스처>`로 부르고, env로 이벤트를 흉내 낸다(merge 커밋은 `git merge --no-ff`로 만든다).
+      - 픽스처에 node_modules가 없으므로 검사기 자립성(C3)도 함께 증명된다.
+    - **실행 단언**:
+
+      | id | 경우 | 기대 |
+      |---|---|---|
+      | ec-1 | 부트스트랩 PR(기준에 packages/events 없음) | 0 · 부트스트랩 문구 |
+      | ec-2 | 허용 변경 | 0 |
+      | ec-3 | 필드 삭제 | 1 · stdout `<file> #/properties/x field-removed` |
+      | ec-4 | head 검사기를 항상 0으로 고치고 필드 삭제 | 1 · 기준 검사기 문구 |
+      | ec-5 | 스키마 디렉터리 삭제 | 1 · schema-removed |
+      | ec-6 | `HEAD^2` ≠ `PR_HEAD_SHA` | 2 |
+      | ec-7 | `PR_HEAD_SHA` 형식 오류 | 2 |
+      | ec-8 | push · before 0 | 0 |
+      | ec-9 | push · before 기준 · 필드 삭제 | 1 |
+      | ec-10 | push · 없는 커밋 | 2 |
+      | ec-11 | 모르는 이벤트 | 2 |
+      | ec-12 | `GITHUB_STEP_SUMMARY` | 세 줄 |
+      | ec-13 | stop-commands 토큰 | 앞뒤 짝 |
+      | ec-14 | 임시 디렉터리 | 남지 않음 |
+      | ec-15 | 픽스처 작업 트리 | 무변경(`git status --porcelain` 빈 값) |
+
+    - **정적 단언(ci.yml 줄 단위 — Get-JobBlock 꼴)**:
+      - job `events-compat`이 있다.
+      - checkout은 `fetch-depth: 0` + `persist-credentials: false`다.
+      - 설치는 `pnpm install --frozen-lockfile --ignore-scripts`다.
+      - `pnpm --filter @jt/events test` 스텝이 있다.
+      - `bash scripts/ci/events-compat.sh` 스텝이 있다.
+      - env는 `PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}` · `PUSH_BEFORE: ${{ github.event.before }}`다.
+      - `run:` 본문에 `${{`가 없다(식 주입 금지 — env로만 넘긴다).
+      - `timeout-minutes`가 있다.
+    - **run-all 슬롯 1b5 `ci-events-compat`**: 1b3과 같은 양성 증거 규율이다. SKIP 첫 줄일 때만 SKIP을 허용한다.
+  - **D7 ci.yml job `events-compat`**:
+    - runs-on `ubuntu-24.04-arm` · `timeout-minutes: 10`.
+    - 스텝:
+      1. checkout(같은 SHA · `fetch-depth: 0` · `persist-credentials: false`)
+      2. pnpm/action-setup
+      3. setup-node(`.node-version` · cache pnpm)
+      4. `pnpm install --frozen-lockfile --ignore-scripts`
+      5. `pnpm --filter @jt/events test`
+      6. `bash scripts/ci/events-compat.sh`(env `PR_HEAD_SHA` · `PUSH_BEFORE`)
+    - 머리 주석에 job 단락을 둔다. 판정 · 기준 규칙의 정본은 스크립트 머리 주석이다.
+    - ruleset required check에 넣을지는 운영자가 정한다(인계).
+  - **D8 기타**: package.json description을 "Event schemas (CloudEvents envelope + topic data, JSON Schema 2020-12) and the compatibility checker — see specs/003-platform-foundation/contracts/events.md"로 바꾼다. `.gitkeep` 2개를 지운다.
+  - **D9 검증(빌더 · 원문 꼬리 보고)**:
+    - `pnpm --filter @jt/events test`(2회 — 결정성)
+    - 하네스 `events-compat.tests.ps1`
+    - 기존 하네스 `kubeconform-deploy.tests.ps1` · `ci-gitleaks.tests.ps1`(static 단언 유지 확인 — 도구가 없으면 SKIP 그대로)
+    - Python 소비자 대조 — `uv run --directory packages/django-common python -I -c …`로 7파일 `Draft202012Validator.check_schema` + T061 표본 DATA · DATA_WEBHOOK · 봉투 검증 통과 + 음성 3
+    - `node --check` · `bash -n`(shellcheck가 있으면 함께)
+    - `pnpm install --frozen-lockfile --ignore-scripts`(lock 무변경)
+    - 바이트 위생(BOM · CR · TAB · 줄 끝 공백 0 · 끝 LF) · gitleaks(바뀐 경로)
+    - **`tests/run-all.ps1` 전체는 돌리지 않는다**(tofu plan 등 무관 슬롯 — 컨트롤러가 마감 때 필요한 슬롯만 돈다).
+  - **D10 리뷰 2렌즈**:
+    - **A(계약 · 문면 · 판별력)**: 문면 ↔ 산출물 · 스키마 ↔ C1/C2 표 · T064 API 준수 · schemas.test가 계약 표를 묶는가 · events-compat 기준 규칙의 정확성(merge 커밋 · before · 0 · 부트스트랩) · 빨강 진짜.
+    - **B(CI 보안 · 공급망 · 위생)**: 식 주입 · `persist-credentials` · 기준 검사기 신뢰 모델 · tar 해제 위치 · fail-closed 종료 코드 · stop-commands · 새 의존성 0 · lock 무변경 · 임시 디렉터리 정리 · 하네스의 Windows/Linux 이식성 · 비밀 0.
+  - **D11 인계**:
+    - **T069 릴레이**: 봉투 `type` = 논리 토픽 · `subject` `<종류>:<id>` · `time` UTC `Z` · `id` Crockford ULID 대문자 · `tenantid` 소문자.
+    - **T070/T073 생산자**: session.revoked의 sub는 비지 않음 · nbf는 정수 ≥ 0 · sid는 null이거나 비지 않은 문자열이다.
+    - **SP-2**:
+      - 소비자 도우미의 Python 형식 검사(`jsonschema[format-nongpl]` 등으로 date-time · uri를 검사할지)를 정한다.
+      - C4 배포 순서를 지킨다.
+      - user.registered `admin` 역할은 enum 값 추가로 넣는다.
+    - **운영자**: `events-compat`를 main ruleset required check에 넣을지 정한다.
+  - **D12 VD**: VD-T067-1은 GitHub에서의 첫 실행이다 — merge ref 전제 · 부트스트랩 경로 · arm64 설치(T064 VD-4)를 본다. **push는 사용자 확인 뒤에** 한다(이 브랜치는 origin보다 앞서 있다 · 초안 PR #1의 CI가 돈다).
+- **순서**:
+  1. 보정(C1–C6) + 설계(이 절)를 커밋한다.
+  2. 워크플로를 돌린다(api-builder 1 → 리뷰 2 병렬).
+  3. 수정한다.
+  4. 커밋 · tick 73/119 · 학습 로그로 마감한다.
+  5. T068로 넘어간다.

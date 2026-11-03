@@ -95,6 +95,7 @@ Dragonfly 키(파생 캐시, contracts/denylist.md가 정본):
 - 파일 `packages/events/schemas/<topic>.json` (JSON Schema 2020-12). `$id` = `https://joshuatech.dev/events/<topic>/v1`, `x-version` semver.
 - envelope 공통(`packages/events/schemas/_envelope.json`): `specversion`(const "1.0") · `id`(ULID) · `source`(pod 이름) · `type`(= topic) · `time`(RFC 3339) · `subject`(entity id) · `tenantid`(UUID) · `datacontenttype`(application/json) · `data`(토픽별 스키마).
 - 호환 규칙(CI): 기존 필드 삭제·타입 변경·required 추가·제거·enum 값 삭제·스키마 파일 삭제 금지, 선택 필드·enum 값 추가만 허용(상세 contracts/events.md §호환성 규칙). 스키마는 `additionalProperties: false`를 두지 않는다(소비자는 미지 속성 무시 — T064). 위반은 새 토픽(`…v2`)으로.
+- 필드 형식 · 필수의 정본은 스키마 파일이고, 표는 contracts/events.md 「필드 형식 · 필수」(T067 확정 2026-11-03)다. CI 게이트는 기준(main) 쪽 검사기로 돈다(같은 문서 §호환성 규칙).
 - SP-1 정의 토픽 6개: `identity-admin.user.registered`, `identity-admin.tenant.created`, `identity-admin.session.revoked`, `portfolio-core.note.published`, `engagement.comment.created`, `media.object.ready`. 상세는 `contracts/events.md`.
 
 ## 6. KafkaTopic / KafkaUser — 소유 platform-gitops (플랫폼 자원)
