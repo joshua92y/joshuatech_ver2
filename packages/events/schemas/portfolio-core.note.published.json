@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://joshuatech.dev/events/portfolio-core.note.published/v1",
+  "x-version": "1.0.0",
+  "title": "portfolio-core.note.published",
+  "description": "portfolio-core가 노트를 공개했다(subject note:<slug> · 발행 SP-2, CI notes-sync). 소비 예정: search 색인, notification 구독 알림, insights.",
+  "type": "object",
+  "properties": {
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$(?!\\n)",
+      "description": "노트 slug(파일 이름 — kebab-case)"
+    },
+    "lang": {
+      "type": "string",
+      "enum": [
+        "ko",
+        "en",
+        "ja"
+      ],
+      "description": "언어"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "제목"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "description": "태그 하나"
+      },
+      "description": "태그(빈 배열 허용)"
+    },
+    "published_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "공개 시각(RFC 3339)"
+    },
+    "change": {
+      "type": "string",
+      "pattern": "^[0-9]{3}-[a-z0-9-]+$(?!\\n)",
+      "description": "study 노트가 기록한 기능 디렉터리(NNN-slug — data-model §11). study 밖의 노트는 생략한다"
+    }
+  },
+  "required": [
+    "slug",
+    "lang",
+    "title",
+    "tags",
+    "published_at"
+  ]
+}

@@ -1,0 +1,27 @@
+# templates/django-pod 생성물 검사 하네스(T065) — 템플릿 자체가 아니라 생성물을 검사하는 독립 uv 프로젝트다.
+# 루트 uv 워크스페이스의 멤버가 아니다(루트 pyproject.toml members에 없다 — uv는 이 디렉터리를 자기 루트로 다루고,
+# 잠금은 이 디렉터리의 uv.lock이다). copier는 copier.yml의 _subdirectory: template 아래만 복사하므로 이 파일과 tests/는
+# 생성물에 들어가지 않는다.
+# 실행: uv run --directory templates/django-pod --locked pytest -q
+#   필요: Docker(buildx · linux/arm64) · kustomize · kubeconform이 PATH에 있어야 한다(JT_KUSTOMIZE · JT_KUBECONFORM으로
+#   실행 파일 경로를 따로 줄 수 있다). 도구가 없으면 skip이 아니라 FAIL이다.
+#   JT_SAMPLE_POD_ROOT=<dir>: 생성 트리(미니 저장소 <dir>/apps/sample-pod + <dir>/packages/django-common)를 그 디렉터리에
+#   남긴다 — 상대 경로는 저장소 루트 기준이다. 하네스는 표식 파일 .jt-sample-pod-root가 있는 디렉터리만 비운다.
+[project]
+name = "django-pod-template-tests"
+version = "0.0.0"
+description = "templates/django-pod 생성물 검사 하네스(T065) — 템플릿 자체가 아니라 생성 → 동기화 → 테스트 → 빌드 → 렌더 단언을 돈다"
+requires-python = ">=3.13,<3.14"
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=9,<10", "copier>=9.17,<10", "pyyaml>=6,<7"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = ["--tb=short"]
+filterwarnings = ["error::DeprecationWarning:tests"]

@@ -30,7 +30,7 @@ approval-review와 동일한 방식으로 기능을 식별합니다(env → 브�
 ```
 
 ## 2. Learning note draft
-`.claude/rules/content.md`를 따라 `content/study/<NNN-slug>.mdx`를 작성합니다: `draft: true`, `change: "<NNN-slug>"`, spec·plan·report·관련 decision을 나열하는 `sources`를 포함한 완전한 frontmatter; 그리고 5개 섹션 `## 문제`, `## 배운 개념`, `## 선택과 대안`, `## 결과와 검증`, `## 다음 학습`. 실질적인 출처: spec의 결정 표, plan의 Complexity Tracking, approval review의 findings, report. 노트가 이미 존재하면 `-2` 파일을 만들기 전에 먼저 확인을 구합니다.
+`.claude/rules/content.md`를 따라 `content/study/<NNN-slug>.mdx`를 작성합니다: `draft: true`, `change: "<NNN-slug>"`, spec·plan·report·관련 decision을 나열하는 `sources`를 포함한 완전한 frontmatter; 그리고 5개 섹션 `## 문제`, `## 배운 개념`, `## 선택과 대안`, `## 결과와 검증`, `## 다음 학습`. 실질적인 출처: spec의 결정 표, plan의 Complexity Tracking, approval review의 findings, report, 그리고 `content/tmp/<NNN>-*/` 아래의 task별 학습 로그(`.claude/rules/content.md` §`content/tmp/`). 6단계가 Study contract 경계 ✅를 보고한 뒤, 소모된 `content/tmp/<NNN>-*/` 디렉터리를 노트와 같은 커밋에서 삭제합니다. 노트가 이미 존재하면 `-2` 파일을 만들기 전에 먼저 확인을 구합니다.
 
 ## 3. CHANGELOG
 `CHANGELOG.md`의 `## [Unreleased]` 아래, 사용자에게 보이는 변경마다 알맞은 카테고리(Added/Changed/Fixed/Removed)에 한 줄씩 추가하고 각 줄에 `specs/<NNN-slug>/`를 링크합니다.

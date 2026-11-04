@@ -1,0 +1,244 @@
+# infra/bootstrap/traefik-config.yaml — 노드 A K3s 번들 Traefik 커스터마이즈(HelmChartConfig) — 003-platform-foundation T038
+#
+# 이 파일이 Traefik "설정"의 정본이다. 노드 A 의 /var/lib/rancher/k3s/server/manifests/traefik-config.yaml 로 설치되면 K3s deploy
+# 컨트롤러가 HelmChartConfig 를 읽어 번들 차트(traefik-40.1.4+up40.1.0, 이미지 Traefik v3.7.8)에 추가 values 파일로 넘긴다.
+# GitOps 저장소의 platform/traefik/ 에는 Middleware·TLSOption·TLSStore 만 둔다(contracts/gitops-repo.md) — 차트 값은 이곳에만 있다.
+# 비밀은 담지 않는다(참조하는 Secret 이름만 적는다).
+#   같은 디렉터리의 cloudflare-origin-pull-ca.yaml 은 공개 AOP 루트 CA Secret(비밀 아님) 의 정본 — T043 에서 tlsOptions.default.clientAuth.secretNames 가 참조한다. 설치 순서: 그 파일 먼저(그 파일 머리 "순서 규율").
+#
+# 편집 금지: 같은 디렉터리의 traefik.yaml 은 K3s 패키지 매니페스트라 k3s 가 시작할 때마다 원본으로 다시 쓴다 — 거기에 값을 넣으면 재시작 때
+#   사라진다. 커스터마이즈는 반드시 이 별도 파일로 한다. <https://docs.k3s.io/helm#customizing-packaged-components-with-helmchartconfig>
+#   우선순위 함정: 그 traefik.yaml 의 HelmChart spec.set 값은 이 파일의 valuesContent 보다 우선한다(research.md:331 — K3s 가
+#   global.systemDefaultRegistry 등을 set 으로 넣는다). set 으로 잡힌 키는 여기서 못 바꾼다 → 절차 4 의 args grep 이 그 검증이다.
+#
+# 값 키는 chart 40.1.x values.yaml 기준이다(research R1 K3S-D6). upstream chart 41.x 는 같은 설정을 다른 이름으로 옮겼으므로 최신 문서를
+#   그대로 붙여넣으면 helm 이 조용히 무시하거나 스키마 검증에서 떨어진다:
+#     40.1.x(이 파일)                          | upstream 41.x
+#     logs.general.format                      | log.format
+#     logs.access.*                            | accessLog.*
+#     logs.access.fields.headers.defaultmode   | accessLog.fields.headers.defaultMode   ← 40.1.x 는 전부 소문자(CLI 플래그 이름 그대로)
+#     logs.access.filters.statuscodes: "…"     | accessLog.filters.statusCodes: [ … ]
+#   40.1.0 values.yaml 의 logs.access.filters 블록은 `# @schema additionalProperties: false` + statuscodes/retryattempts/minduration 3키뿐이라
+#   camelCase 로 적으면 helm 이 스키마 오류로 거부한다. tasks.md T038 문면의 `defaultMode`·`statusCodes: ["400-599"]` 는 41.x 표기이므로
+#   40.1.x 철자(`defaultmode`, `statuscodes: "400-599"`)로 옮겨 적었다 — 의미는 같다(4xx·5xx 만 기록, 헤더는 기본 drop).
+#
+# 액세스 로그 헤더: defaultmode drop 만 두면 로그가 익명이 된다. svclb(klipper-lb) 뒤라 ClientHost 는 파드 IP 일 수 있으므로 실질 식별자는
+#   CF-Connecting-IP 뿐이다 → CF-Connecting-IP·CF-Ray·User-Agent 세 개만 names 로 keep 한다(research.md:186-193). Authorization·Cookie 등
+#   나머지는 그대로 drop 이다(FR-011·리뷰 F5).
+#
+# ports.websecure.forwardedHeaders.trustedIPs = Cloudflare IPv4 대역 15개(2026-09-04 확인).
+#   목록의 정본은 infra/oci/network.tf 의 data.cloudflare_ip_ranges.cloudflare.ipv4_cidrs 이고, 같은 목록이 NSG 443 ingress 규칙을 만든다.
+#   K3s manifests 디렉터리의 파일은 템플릿이 아니라 있는 그대로 적용되므로(OpenTofu 는 노드 파일을 쓰지 않고, 원격 상태를 가진 스택이 저장소에
+#   파일을 생성하게 만들지도 않는다) 이 파일은 그 데이터 소스의 "검증 가능한 리터럴 사본"으로 둔다 — 값이 커밋에 보여 리뷰가 된다.
+#   드리프트 감지 장치는 없다. 재검토 주기: 분기 1회 + infra/oci 의 tofu plan 이 NSG 규칙 증감을 보일 때마다 — 같은 분기 주기에
+#   cloudflare-origin-pull-ca.yaml 의 원본 CA 지문도 대조한다(그 파일 머리 "교체"). 대조(읽기 전용):
+#     curl -s https://api.cloudflare.com/client/v4/ips   →  .result.ipv4_cidrs 가 아래 15줄과 같아야 한다
+#     (2026-09-04 실측 etag 38f79d050aa027e3be3865e495dcc9bc, infra/oci 적용 상태의 NSG 규칙 source 15개와도 일치). 다르면 이 파일과
+#     infra/oci 를 같은 커밋에서 고치고 절차 1~2 를 다시 한다.
+#   파드 CIDR(10.42/16)은 넣지 않는다: 신뢰 목록에 넣으면 클러스터 안의 아무 파드나 X-Forwarded-* 를 위조할 수 있다. 앱은 Cloudflare 가
+#   붙이는 CF-Connecting-IP 를 쓴다. 미실측 항목(research.md:1192) — klipper-lb 가 MASQUERADE 하면 Traefik 이 보는 원격 IP 가 svclb 파드 IP 라
+#   이 목록이 매칭되지 않을 수 있다. 측정은 절차 4 의 edge `/__probe-404` 프로브 액세스 로그 한 줄(ClientHost ↔ request_CF-Connecting-IP)로 하고 결과를 런북에 적는다. 어느 쪽이든 X-Forwarded-* 를 신뢰하지 않는
+#   현 설정이 안전한 기본값이다.
+#
+# tlsOptions.default 는 minVersion + sniStrict + clientAuth(RequireAndVerifyClientCert — 관찰 단계 VerifyClientCertIfGiven 을 거쳐 2026-09-11 승격) 를 둔다. T038 문면(둘을 처음부터 함께 넣는다)과의
+#   **의도적 편차**는 투입 시점(T042·T043 으로 지연)이었고 2026-09-11 M3(관찰)·M4(승격)로 해소됐다(문면 정정은 converge 몫).
+#   이유 1(clientAuth — **해소**: 관찰 단계 2026-09-11 M3 · 승격 2026-09-11 M4, 설치 시각은 런북 §3 T043): 참조 Secret cloudflare-origin-pull-ca 의 **정본 파일**이 T043 M2(infra/bootstrap/cloudflare-origin-pull-ca.yaml)에서
+#     생겼다(클러스터 Secret 은 그 파일을 절차 1~2 로 설치한 뒤에만 존재한다). 클러스터에 없는 상태로 clientAuth 를 넣으면 Traefik 이 Secret 부재를
+#     경고만 하고 CAFiles 없이 TLSOption 을 등록 → "invalid clientAuthType: <clientAuthType 값>, CAFiles is required"(관찰 단계엔 VerifyClientCertIfGiven,
+#     지금은 RequireAndVerifyClientCert 가 들어간다) 로 TLS 설정이 깨지고
+#     websecure 라우터가 broken 상태가 되어 **443 핸드셰이크가 전부 끊긴다**. helm 스키마는 통과하므로 Job 로그에도 안 보인다.
+#   이유 2(sniStrict — **2026-09-10 해소**): sniStrict 는 SNI 에 맞는 인증서를 못 찾으면 DefaultCertificate 폴백에 가지 않고 끊는다. 게다가 인증서 탐색은 동적 인증서만
+#     보므로, 와일드카드를 TLSStore 의 defaultCertificate 로만 지정했다면 이 경로에서 못 찾는다. T042 PR-4(gitops main 4f23abd)가 TLSStore default 를
+#     **`certificates:` 목록**으로 넣어 와일드카드를 동적 인증서로 만들었고, 노드 A 안에서 판별 실험 ①② 를 통과한 뒤 값을 넣었다:
+#       ① SNI 일치(traefik.joshuatech.dev) → issuer "C=US; O=Let's Encrypt; CN=YE2" · expire Dec 8 2026 = 동적 인증서 매칭 성공
+#       ② SNI 불일치(no-such.example.invalid) → subject·issuer 모두 "CN=TRAEFIK DEFAULT CERT" = 폴백이 와일드카드가 아님
+#     ② 가 자체 서명이라는 것이 **defaultCertificate 미설정의 증거**이고, 그래서 sniStrict 를 켜도 가려질 폴백이 없다.
+#     ⚠ 되돌릴 때는 순서가 반대다: sniStrict 제거(이 파일 → 노드 A) → 그다음에 TLSStore 삭제. 뒤집으면 매칭 실패 + 폴백 부재로 443 전면 중단이다.
+#     ⚠ clientAuth 되돌리기 순서도 같다: clientAuth 블록 제거(이 파일 → 노드 A, get tlsoption default 의 spec 에서 clientAuth 빈 값 확인) → 그다음에야 Secret 삭제(addon·파일 포함). 뒤집으면 Secret 부재 + CAFiles 없는 TLSOption 등록 실패로 443 전면 중단이다. 장애 되돌리기 목표는 항상 clientAuth 없는 사본(traefik-config.pre-t043.yaml)이다.
+#   적용 순서: **T042(와일드카드 인증서) → T043(CA Secret) → TLSOption 완성**. 각 단계에서 아래 조각을 valuesContent 의 tlsOptions.default 에
+#   더하고 절차 1~2 로 다시 설치한다(중간마다 절차 4 의 443 확인).
+#     T042 뒤 — **완료(2026-09-10)**. 와일드카드가 TLSStore 의 certificates 목록으로 실려 **동적 인증서**가 된 것을 확인한 다음 넣었다:
+#         sniStrict: true
+#     T043 뒤 — **승격 완료(2026-09-11 M4 커밋; 설치 시각은 docs/runbooks/bootstrap.md §3 T043 단계 11)**. 관찰 단계 투입(2026-09-11 M3, 설치 2026-09-11T06:49:41Z: clientAuthType: VerifyClientCertIfGiven)에서
+#       hostname 매트릭스 9 호스트 중 액세스 로그가 남는 8 호스트(auth·api·mcp·argo·vault·admin·identity-m2m-prod·identity-m2m-dev) 전부의 edge 프로브(`/__probe-404`) 로그에
+#       TLSClientSubject = CN=origin-pull.cloudflare.net,O=Cloudflare Inc.,L=San Francisco,ST=CA,C=US (TLSVersion 1.3) 가 찍히고(traefik 호스트는 대시보드가 api@internal 이라
+#       액세스 로그가 기본 제외 → 구조적 제외 — TLSOption default 는 라우터 무관 전역이라 8 호스트로 충족; 승격 뒤 양성 재확인에서도 traefik 줄은 기대하지 않는다),
+#       노드 A 자체 서명 인증서는 거절(TLS alert unknown CA)·무인증서는 통과(404)인 것을 확인한 뒤 승격했다. 관찰 판정은 TLSOption 반영 시각 +
+#       idleTimeout 180 초 **이후** 프로브의 TLSClientSubject 로만 했다(옛 keep-alive 연결은 옛 TLS 설정으로 산다 — 승격 뒤 양성 재확인도 같은 규칙). kube-system Secret cloudflare-origin-pull-ca
+#       (키 ca.crt = Cloudflare Global AOP 루트 CA, 정본 infra/bootstrap/cloudflare-origin-pull-ca.yaml — 같은 디렉터리·같은 절차 1~2)를 **먼저**
+#       설치하고 CA 진위(subject CN=origin-pull.cloudflare.net · notAfter 2029-11-01 17:00 GMT · sha256 지문
+#       9A:1A:C2:B4:BE:15:F9:F2:7E:EE:20:A7:34:CB:A4:E9:89:8F:61:00:1B:3B:D7:C8:4B:69:B5:6A:3E:25:A2:B9 — contracts/hostnames-and-access.md §오리진 보호 3중 2.)를
+#       대조한 다음에만 넣는다:
+#         clientAuth:
+#           secretNames:
+#             - cloudflare-origin-pull-ca
+#           clientAuthType: RequireAndVerifyClientCert
+#       주의: 관찰 단계의 VerifyClientCertIfGiven 도 CA 불일치에는 Require 와 똑같이 443 전면 실패였다 — '무해한 단계' 가 아니라 '인증서 부재만 통과' 였다.
+#       승격 뒤 유일한 차이 = 인증서 부재도 거절(TLS1.3 post-handshake certificate required / TLS1.2 handshake failure).
+#       ⚠ clientAuthType 줄을 빠뜨리면 secretNames 만으로 **암묵적 RequireAndVerifyClientCert** 가 된다(tlsmanager.go: CAFiles 가 있으면 Require 를 먼저 박고
+#         clientAuthType 은 값이 있을 때만 덮어쓴다) — 지금은 명시값과 같지만, 관찰 단계(VerifyClientCertIfGiven)로 내릴 때 이 줄을 빠뜨리면 실제로는
+#         내려가지 않는다. 두 줄은 항상 함께 넣고 빼며, 테스트 v-20·v-25 가 그것을 고정한다.
+#
+# 선행·후속 의존:
+#   - tracing 목적지 k8s-monitoring-alloy-metrics.monitoring.svc:4317 은 T098 에서 생긴다. 그 전까지 OTLP 익스포터가 목적지를 찾지 못해 오류
+#     로그가 주기적으로 쌓인다 — 요청 처리·서빙에는 영향이 없는 순수 잡음이다. 조사에 방해되면 tracing.otlp.enabled 를 false 로 두었다가
+#     T098 에서 되돌린다(같은 절차 1~2). 도달하려면 contracts/network-policy.md 의 `kube-system`(traefik) → `monitoring` 4317 행(T041)이 필요하다.
+#   - T042: 와일드카드 인증서(Secret wildcard-joshuatech-dev-tls) + TLSStore default. 그전에는 Traefik 자체 서명 인증서로 서빙한다.
+#   - T043: CA Secret(M2) + clientAuth 관찰 단계(M3, 설치 2026-09-11T06:49:41Z) + AOP 승격(M4, 2026-09-11 커밋 — 설치는 런북 §3 T043 단계 11, 설치·검증 뒤 M5 에서 시각 기입). 승격 이후에는 절차 4 의 무인증서 직접 curl 이 **거절되는 것이 정상**이다(T032 aop-1 단언과 짝; 판별은 openssl s_client·edge auth 404·TLSClientSubject — 런북 §3 T043).
+#   - T084: 대시보드에 Authentik forward-auth 미들웨어(`authentik-forwardauth`)를 붙이며 **이 파일을 다시 고친다**
+#     (ingressRoute.dashboard.middlewares). Cloudflare 계정 교차 우회에 대한 유일한 오리진 측 통제이므로 빠뜨리면 안 된다.
+#   - 대시보드 서비스는 차트 기본값 api@internal(contracts/hostnames-and-access.md), 앞단 인증은 Cloudflare Access(GitHub IdP).
+#
+# 운영자 절차(워크스테이션 PowerShell 7; 키 joshuatech-ops 는 ssh-add -c 로 로드; 부트스트랩 창에는 노드 A 공인 IP 144.24.85.118, T039 이후에는
+#   cloudflared 터널 호스트 ssh-a.joshuatech.dev; ssh/scp 공통 옵션 -i ~/.ssh/joshuatech-ops -o IdentitiesOnly=yes 는 아래에서 "…" 로 줄인다.
+#   kubectl 은 **운영자 admin kubeconfig** 로 실행한다 — agent-view 토큰으로 되는 것은 pods·logs 조회뿐이고 helm.cattle.io·traefik.io CR 은
+#   T041 의 agent-view-extra 에도 없다. T038 시점에는 agent-view SA 자체가 아직 없다):
+#   1. 올리기:
+#        scp … infra/bootstrap/traefik-config.yaml ubuntu@144.24.85.118:/home/ubuntu/traefik-config.yaml
+#   2. 설치(반쪽 파일이 manifests 디렉터리에 놓이지 않도록 install 로 한 번에 배치):
+#        ssh … ubuntu@144.24.85.118 "sudo install -m 644 -o root -g root /home/ubuntu/traefik-config.yaml /var/lib/rancher/k3s/server/manifests/traefik-config.yaml && rm -f /home/ubuntu/traefik-config.yaml"
+#   3. K3s deploy 컨트롤러가 HelmChartConfig 를 적용 → helm-install-traefik Job 이 다시 돈다. 그다음은 **바꾼 값이 어디에 렌더되느냐**에 달렸다:
+#      (a) 파드 템플릿을 바꾸는 값(nodeSelector·logs·tracing·ports·차트 버전 등) → Deployment 롤아웃이 난다.
+#          **순단 주의**: Deployment 는 replica 1 이지만 차트 기본 updateStrategy 가 `maxUnavailable: 0 / maxSurge: 1`(40.1.0 values.yaml:267-272)이라
+#          새 파드가 Ready 가 된 뒤에 옛 파드가 빠진다 → **신규 연결이 비는 구간은 없고**, 종료되는 옛 파드의 **진행 중 연결만** 끊긴다.
+#          ("수십 초 순단"이라고 적었던 종전 문면은 실측 근거가 없었다 — 런북에도 측정치가 없다. 다음 롤아웃에서 재어 런북에 남긴다.)
+#      (b) `tlsOptions` 만 바꾸는 값(= sniStrict·clientAuth 투입/제거) → **롤아웃이 나지 않는다.** 차트는 이 값을 `templates/tlsoption.yaml` 하나에서
+#          `TLSOption` CR 로만 렌더하고, Deployment 의 `checksum/traefik-dynamic-conf` 는 `providers.file.enabled`(기본 false) 가드 안이라 파드 템플릿이 바뀌지 않는다.
+#          변경은 helm upgrade 가 `TLSOption` CR 을 갱신하고 CRD provider 가 그것을 다시 읽는 것으로 끝난다.
+#          → **파드 AGE 가 그대로인 것이 정상이다**(실패 신호가 아니다).
+#          실측(2026-09-10 sniStrict 투입): 파드 `traefik-84ff6ff49d-tk8c2` creationTimestamp `2026-09-04T09:58:33Z`·RESTARTS 0 **불변**,
+#          443 순단 0초, 엣지 무영향(auth 404 · traefik 302 · argo 302 유지).
+#      ⚠ **반영에 즉시성을 기대하지 말 것 — 절차 2 직후 조회하면 옛 값이 보인다.** 설치 → deploy 컨트롤러가 매니페스트를 집기까지
+#        약 **15 초**가 걸리고(2026-09-10 실측: 파일 mtime 17:24:20 → journal "Applied manifest" 17:24:34), 그 뒤 helm Job 이 5 초쯤 돈다.
+#        그동안 `get tlsoption default` 는 **갱신 전 spec** 을 보여준다 — 이것을 "적용 실패"로 오독하지 않는다.
+#        판정은 아래 절차 4 를 **설치 30 초 뒤에** 한 번에 하고, 그래도 옛 값이면
+#        `sudo journalctl -u k3s --since '5 min ago' | grep -E 'Applied manifest|helm-controller'` 로 컨트롤러가 집었는지부터 본다.
+#        (Job 교체 중 한 번 나오는 `error syncing … DesiredSet - Replace Wait … requeuing` 은 정상이고 곧 해소된다.)
+#          그래서 이 경우 유지보수 창의 목적은 순단 흡수가 아니라, 선행 조건이 어긋났을 때 위 두 ⚠ 되돌리기 줄의 순서(sniStrict 제거 → TLSStore 제거 · clientAuth 제거 → Secret 제거)대로 **되돌리기(clientAuth 는 pre-t043 사본 재설치)를 즉시 실행할 사람이 붙어 있는 것**이다.
+#          ⚠ 예외: 같은 창에서 K3s 패치가 번들 차트 버전을 함께 올렸다면 그때는 (a) 처럼 롤아웃이 난다(런북 §6 사후 확인).
+#   4. 확인(읽기 전용 조회 + 1회성 요청). 2026-09-04 실행에서 얻은 정정이 반영돼 있다:
+#        kubectl -n kube-system get helmchartconfig traefik -o yaml
+#        kubectl -n kube-system rollout status deploy/traefik --timeout=120s
+#        kubectl -n kube-system get pods -l app.kubernetes.io/name=traefik -o wide          # 노드 A(role=platform)에서 Running
+#                                                                                           # 주의: rollout status 가 helm upgrade 보다 먼저 지나갈 수 있다
+#                                                                                           # (옛 파드가 그대로 보인다) → AGE 가 방금이고 RESTARTS 0 인
+#                                                                                           # **새 파드**인지 한 번 더 확인한다.
+#                                                                                           # ⚠ 단 이 확인은 절차 3 (a) 일 때만 판정 기준이다.
+#                                                                                           #   (b) tlsOptions 만 바꾼 경우 AGE 유지가 정상이므로 실패로 읽지 않는다.
+#        kubectl -n kube-system get tlsoption default -o yaml                                # (b) 의 반영 정본: spec 에 sniStrict: true 와 clientAuth{secretNames: [cloudflare-origin-pull-ca], clientAuthType: RequireAndVerifyClientCert} 가 보여야 한다
+#        kubectl get tlsoption -A                                                            # 이름 default 는 클러스터에 **정확히 1개** — 2개면 옵션이 통째로
+#                                                                                           # 폐기돼 sniStrict 와 clientAuth 가 통째로 사라진다(내장 기본값 복귀 = AOP 검증 소실;
+#                                                                                           # 로그 'Default TLS Options defined in multiple namespaces' — 아래 grep 게이트가 잡는다)
+#        kubectl -n kube-system logs deploy/traefik --since=10m | grep -E 'CAFiles is required|invalid certificate|does not exist|Failed to extract CA|unknown client auth|Default TLS Options defined in multiple'   # 0줄이 정상(일반 error 는 T098 전 OTLP 잡음이라 게이트에 쓰지 않는다; --tail 은 옛 로그를 보여 무의미)
+#        kubectl -n kube-system logs job/helm-install-traefik | tail -20                    # values 스키마 오류
+#        kubectl -n kube-system get deploy traefik -o jsonpath='{.spec.template.spec.containers[0].args}' | tr ',' '\n' | grep -Ei 'accesslog|redirections|tracing|forwardedheaders'
+#                                                                                           # 키가 무시되지 않았다는 증거(40.1.x ↔ 41.x, spec.set 우선)
+#        ssh … ubuntu@144.24.85.118 "curl -sk --resolve traefik.joshuatech.dev:443:10.0.7.78 https://traefik.joshuatech.dev -o /dev/null -w 'exit=%{exitcode} http=%{http_code}\n'"
+#                                                                                           # 443 핸드셰이크 실증은 **노드 안에서 사설 IP 로** 한다.
+#                                                                                           # T043 승격 뒤 기대값은 **거절**(http=000 + -v 에서 TLS alert; 참고 exit 56/35). 숫자(302/404)가 나오면 clientAuth 가 실려 있지
+#                                                                                           # 않은 것이다(중복 TLSOption 폐기 등 → 위 get tlsoption 확인). 443 생존 판정은 edge auth 404 로, 서버 인증서는 아래 openssl s_client 로 한다.
+#                                                                                           # 워크스테이션에서 공인 IP 로 걸면 늘 000 이며, 그것은 NSG 가 443 을 Cloudflare 대역에만 열어 둔 정상 동작의 증거다(거절과 구분되지 않는다).
+#                                                                                           # T043 승격(RequireAndVerifyClientCert) 이후에는 이 노드 내부 무인증서 요청도 **거절**이 정상이다(참고값: TLS1.3 exit 56 · TLS1.2 exit 35 — 판정은 TLS alert·거절 여부로 한다, 계약 §오리진 보호 3중 2.). 서버 인증서 확인은 openssl s_client -servername 으로.
+#        ssh … ubuntu@144.24.85.118 "echo | openssl s_client -connect 10.0.7.78:443 -servername traefik.joshuatech.dev 2>/dev/null | openssl x509 -noout -issuer -enddate"   # 서버 인증서(LE·notAfter) — 클라이언트 인증서 없이 읽힌다
+#        curl.exe -sI https://auth.joshuatech.dev/__probe-404 ; kubectl -n kube-system logs deploy/traefik --since=5m | grep __probe-404 | tail -1   # AOP 양성: 줄에 TLSClientSubject 존재(반영 +180초 뒤)
+#        ssh … ubuntu@144.24.85.118 "curl -sk --resolve no-such.example.invalid:443:10.0.7.78 https://no-such.example.invalid -o /dev/null -w 'http=%{http_code}\n'"
+#                                                                                           # sniStrict 전용 판정: SNI 불일치가 이제 **핸드셰이크 실패(000)** 여야 한다. 승격 뒤에는 인증서 부재도 000 이므로 구분은 -v 의 alert 로 한다: unrecognized name/서버 종료 = SNI 불일치 · certificate required = 인증서 부재(승격 뒤) · unknown CA/bad certificate = 인증서 불일치(우리 CA 체인 실패 — 관찰 단계 자체 서명 실측 "TLS alert, unknown CA (560)"). 판별표는 런북 §3 T043(M5).
+#                                                                                           # 302/404 같은 숫자가 나오면 sniStrict 가 실려 있지 않은 것이다
+#                                                                                           # (TLSOption 중복으로 폐기됐거나 값이 렌더되지 않았다) → 위 get tlsoption 확인.
+#                                                                                           # ⚠ 함정: 차트가 `{{- with $config.sniStrict }}` 로 렌더해 **false 는 falsy 라
+#                                                                                           #   키 자체가 사라진다** — `sniStrict: false` 는 "끔"이 아니라 "미지정"이고
+#                                                                                           #   결과가 같아 조용하다. 그래서 테스트 v-24 가 리터럴 true 를 따로 본다.
+#        kubectl -n kube-system get ingressroute traefik-dashboard -o yaml                  # Host(`traefik.joshuatech.dev`), entryPoint websecure
+#        curl.exe -sI https://auth.joshuatech.dev/__probe-404                                 # edge 경유로 4xx 유발(승격 뒤 노드 내부 무인증서 curl 은 TLS 거절이라 로그가 안 남고,
+#                                                                                           #   traefik. 호스트는 api@internal 이라 액세스 로그에서 제외된다)
+#        kubectl -n kube-system logs deploy/traefik --since=10m | grep '"ClientHost"' | tail -1
+#                                                                                           # klipper-lb 소스 IP 실측(research.md:1192 미확인 항목).
+#                                                                                           # 액세스 로그는 statuscodes 400-599 만 남기므로 302 로는 한 줄도
+#                                                                                           # 남지 않는다 → 위처럼 4xx 를 일부러 유발한 뒤 그 줄에서
+#                                                                                           # ClientHost(10.42.x.x 면 소스 IP 미보존)와 request_CF-Connecting-IP 를
+#                                                                                           # 비교한다. 결과를 런북에 기록한다.
+#      helm-install-traefik Job 이 실패하면 Job 은 immutable 이라 같은 이름으로 재시도되지 않는다: 원인을 로그로 본 뒤
+#        kubectl -n kube-system delete job helm-install-traefik      # helm-controller 가 즉시 다시 만든다
+#      릴리스가 pending-install/pending-upgrade 로 남으면(kubectl -n kube-system get secrets -l owner=helm,name=traefik) 위 Job 삭제를 반복한다.
+#      수동 helm rollback 은 하지 않는다 — HelmChart/HelmChartConfig CR 이 정본이다.
+#      업그레이드 창 뒤 재확인(K3s 패치가 번들 차트 버전을 바꿀 수 있다)은 docs/runbooks/bootstrap.md §6 사후 확인 3항 — 그 절이 이 절차 1·2(재설치)·4(확인)를 가리킨다.
+#   5. 전량 제거 — T038 커스터마이즈 자체를 내릴 때만. sniStrict·clientAuth 장애 되돌리기에는 쓰지 않는다(위 ⚠ 되돌리기 두 줄: 사본 재설치가 답이다).
+#      (두 명령, 반드시 이 순서 — K3s 는 manifests 파일이 사라져도 이미 적용한 객체를 지우지 않는다(research.md:331)):
+#        ssh … ubuntu@144.24.85.118 "sudo rm -f /var/lib/rancher/k3s/server/manifests/traefik-config.yaml"
+#        kubectl -n kube-system delete helmchartconfig traefik
+#      (파일을 남긴 채 객체만 지우면 다음 k3s 재시작에 되살아난다.) 그 뒤 helm-install-traefik Job 재실행 → rollout status → 443 재확인.
+#   6. 에이전트는 이 절차를 실행하지 않는다(SSH 자격 없음, 클러스터는 읽기 전용). 실행 기록은 docs/runbooks/bootstrap.md 에 남긴다.
+#
+# 정적 계약은 tests/infra/traefik-config.tests.ps1 이 고정한다(run-all 슬롯 1k).
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    nodeSelector:
+      role: platform
+    logs:
+      general:
+        format: json
+      access:
+        enabled: true
+        format: json
+        filters:
+          statuscodes: "400-599"
+        fields:
+          headers:
+            defaultmode: drop
+            names:
+              CF-Connecting-IP: keep
+              CF-Ray: keep
+              User-Agent: keep
+    tracing:
+      sampleRate: 0.1
+      otlp:
+        enabled: true
+        grpc:
+          enabled: true
+          endpoint: k8s-monitoring-alloy-metrics.monitoring.svc:4317
+          insecure: true
+    ports:
+      web:
+        http:
+          redirections:
+            entryPoint:
+              to: websecure
+              scheme: https
+              permanent: true
+      websecure:
+        forwardedHeaders:
+          trustedIPs:
+            - 173.245.48.0/20
+            - 103.21.244.0/22
+            - 103.22.200.0/22
+            - 103.31.4.0/22
+            - 141.101.64.0/18
+            - 108.162.192.0/18
+            - 190.93.240.0/20
+            - 188.114.96.0/20
+            - 197.234.240.0/22
+            - 198.41.128.0/17
+            - 162.158.0.0/15
+            - 104.16.0.0/13
+            - 104.24.0.0/14
+            - 172.64.0.0/13
+            - 131.0.72.0/22
+    tlsOptions:
+      default:
+        minVersion: VersionTLS12
+        sniStrict: true
+        clientAuth:
+          secretNames:
+            - cloudflare-origin-pull-ca
+          clientAuthType: RequireAndVerifyClientCert
+    ingressRoute:
+      dashboard:
+        enabled: true
+        matchRule: Host(`traefik.joshuatech.dev`)
+        entryPoints:
+          - websecure

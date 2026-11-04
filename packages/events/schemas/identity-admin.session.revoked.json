@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://joshuatech.dev/events/identity-admin.session.revoked/v1",
+  "x-version": "1.0.0",
+  "title": "identity-admin.session.revoked",
+  "description": "identity-admin이 세션을 철회했다(subject user:<sub>). 거부 목록의 정본은 Dragonfly(contracts/denylist.md)이고 이 이벤트는 기록 · 분석용이다(소비 예정: insights · SP-3).",
+  "type": "object",
+  "properties": {
+    "sub": {
+      "type": "string",
+      "minLength": 1,
+      "description": "세션이 철회된 사용자의 sub(Authentik 사용자 UUID — 형식은 두지 않는다)"
+    },
+    "sid": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "description": "철회된 세션 id(sid 클레임). null이면 그 사용자의 세션 전체(nbf 이전에 발급된 토큰)"
+    },
+    "nbf": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "철회 기준 시각(epoch 초) — 이보다 먼저 발급된(iat < nbf) 토큰을 거부한다(contracts/denylist.md)"
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "logout",
+        "logout_all",
+        "admin",
+        "authentik_webhook",
+        "tenant_suspended"
+      ],
+      "description": "철회 사유(logout 단일 세션 · logout_all 전체 기기 · admin 관리자 · authentik_webhook Authentik 이벤트 · tenant_suspended 테넌트 정지)"
+    }
+  },
+  "required": [
+    "sub",
+    "nbf",
+    "reason"
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://joshuatech.dev/events/identity-admin.tenant.created/v1",
+  "x-version": "1.0.0",
+  "title": "identity-admin.tenant.created",
+  "description": "identity-admin이 테넌트를 만들었다(subject tenant:<tenant_id> · 발행 SP-2). 모든 pod가 테넌트 시드로 소비한다.",
+  "type": "object",
+  "properties": {
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$(?!\\n)",
+      "description": "테넌트 UUID(소문자 — Tenant.id)"
+    },
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,30}$(?!\\n)",
+      "description": "테넌트 slug(data-model §1 — 표시 · URL 용도, 불변)"
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "description": "표시 이름(1–80자)"
+    }
+  },
+  "required": [
+    "tenant_id",
+    "slug",
+    "display_name"
+  ]
+}

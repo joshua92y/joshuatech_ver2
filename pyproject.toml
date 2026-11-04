@@ -1,0 +1,9 @@
+# uv 워크스페이스 루트(가상 루트 — 그 자체는 파이썬 패키지가 아님)
+# Python/uv 멤버만 여기 선언한다. Node 패키지는 pnpm-workspace.yaml 참조.
+[tool.uv.workspace]
+members = [
+    "packages/django-common",
+    "apps/identity-admin",
+]
+# templates/** 는 의도적으로 멤버가 아니다 — copier 템플릿의 pyproject는 jinja 템플릿이라
+# uv가 절대 해석하면 안 된다(T001 리뷰 gotcha; T015에서 스텁 제거).
