@@ -3,7 +3,7 @@
 ## 토픽 규약
 
 - 이름: prod `<pod>.<entity>.<event>`, dev `dev.<pod>.<entity>.<event>`. pod 이름은 kebab-case, entity·event는 단수 소문자. DLQ prod `<pod>.dlq` · dev `dev.<pod>.dlq`(2026-10-16 T056 정정 — KafkaUser ACL 접두가 env별이라 dev 자격으로는 `<pod>.dlq`에 쓸 수 없다 · data-model §6).
-- 파티션 3, 키 = `tenantid`(UUID 문자열). 같은 테넌트의 이벤트는 순서를 보존한다.
+- 파티션 3, 키 = `tenantid`(UUID 문자열). 같은 테넌트의 이벤트는 같은 파티션에 들어가 그 안에서는 기록된 순서를 지킨다. 릴레이의 발행 순서는 ULID 순 최선 노력이다(실패 행 뒤의 행이 먼저 나간다 · 롤링 업데이트 동안 두 릴레이 — §outbox 릴레이 · T069 보정 2026-11-04). 소비자는 `(group, id)` 멱등이고 순서 역전을 견딘다.
 - 보존 7일. 소비자는 7일 안에 따라잡지 못하면 재색인/재투영으로 복구한다(원천은 각 pod DB).
 - 쓰기 권한: 토픽 접두(prod `<pod>.` · dev `dev.<pod>.`)의 소유 pod만. 다른 pod가 대신 발행하지 않는다.
 
@@ -86,6 +86,15 @@ def publish(topic: str, subject: str, data: dict, *, tenant_id: UUID | str | Non
 - 확정된 `tenant_id`가 봉투의 `tenantid`와 outbox 행의 `partition_key`가 된다.
 - `tenant_id`로 넘긴 값(UUID 또는 str)이 **UUID로 파싱되지 않으면 `OutboxUsageError`**(slug 금지 — 봉투 스키마 검증보다 앞선 관문 · 2026-11-02 T061 리뷰 B-1). 테넌트 컨텍스트와 `tenant_id` 인자가 **둘 다 있고 서로 다르면 `OutboxUsageError`**(심층 방어 — A 등급 트랜잭션 안에서 다른 테넌트로 레이블된 봉투가 커밋되는 코드 실수를 라이브러리가 막는다), 같으면 허용(T061 리뷰 B-2).
 - 웹훅·관리자 revoke가 넘길 `tenant_id`는 `TenantMembership`에서 토큰·본문의 `sub`로 조회한 값이다(없으면 400 — contracts/identity-admin-api.md).
+- **입력 검사와 순서**(T069 보정 2026-11-04 — 어기면 INSERT 전에 `OutboxUsageError` · 메시지에 값·data를 싣지 않는다):
+  1. default 연결이 `transaction.atomic()` 안이다.
+  2. `topic`이 봉투 `type` pattern(논리 토픽 — `_envelope.json`과 같은 문자열 · Python `re.search` 의미)에 맞고, 첫 성분이 `OUTBOX_SOURCE`이며(자기 pod — env 접두가 붙은 토픽·다른 pod의 토픽은 거부), `OUTBOX_TOPIC_PREFIX + topic`이 249자 이하다.
+  3. `subject`가 봉투 `subject` pattern에 맞는다.
+  4. `data`는 dict다(라이브러리는 키를 더하거나 바꾸지 않는다).
+  5. 테넌트: 위 규칙이다. UUID로 파싱되는 꼴(대문자·중괄호·`urn:uuid:`·하이픈 없음)은 소문자 8-4-4-4-12로 정규화하고, 컨텍스트 GUC가 UUID 꼴이 아니면(파손) `OutboxUsageError`다.
+  6. 봉투 직렬화(`allow_nan=False` — datetime·UUID·NaN·비str 키 거부)가 된다.
+  7. 직렬화 바이트가 900,000 이하다(브로커 `message.max.bytes` 1,000,000에 헤더 여유 — 메인·DLQ 둘 다 영원히 실패하는 메시지를 막는다).
+- publish는 Kafka에 닿지 않는다(행 INSERT만 · 네트워크 0). 봉투는 SDK 없이 dict로 만든다(`specversion` "1.0" · `id` = 프로세스 안에서 단조 증가하는 ULID · `time` = UTC ms `Z` 꼴 · plan의 「cloudevents 2.2」는 Python SDK 판 번호이고 쓰지 않는다 — T069). pod 이미지는 `packages/events`를 담지 않으므로 꼴 검사는 코드 상수다 — 상수와 `_envelope.json` pattern이 같은지는 django-common 시험이 지킨다(T069).
 
 ## outbox 릴레이 (django-common)
 
@@ -96,6 +105,21 @@ def publish(topic: str, subject: str, data: dict, *, tenant_id: UUID | str | Non
 - 실패: 프로듀서 오류 시 `attempts += 1`, `last_error` 기록, 지수 백오프(최대 5분). **`attempts ≥ max_attempts(10)`이면 원본 봉투를 그 env의 DLQ(prod `<pod>.dlq` · dev `dev.<pod>.dlq`)로 발행(+ `error` 헤더)하고 `dead_at`을 기록**한다(행 유지, 재처리는 수동 command).
 - **dead 행 purge**: 일 1회 `dead_at + 30 d < now()`인 행을 삭제한다(Celery beat). `outbox` 테이블이 무한히 자라지 않게 하는 유일한 경로이며, 30일은 수동 재처리 여유다.
 - 관측(relay 컨테이너 `prometheus_client` 9464, `k8s.grafana.com/scrape: "true"`): `outbox_pending`(gauge, `dead_at IS NULL`만 셈), `outbox_oldest_pending_seconds`(가장 오래된 pending의 나이, 알림 `OutboxOldestPending` > 60 s), `outbox_dead_total`(counter).
+- **구현 규칙**(T069 보정 2026-11-04 — 위 줄들의 세부 · 충돌하면 이 줄들이 우선한다):
+  - 라이브러리 API: `relay_once(*, producer=None, batch_size=100) -> RelayResult(published, failed, dead)`(한 패스 · 시간 게이트 없음 · 다른 atomic 안에서 부르면 `RuntimeError`). 명령 `outbox_relay`는 옵션 기본값이 계약 값이다(`--batch-size 100` · `--poll-interval 0.5` · `--max-backoff 300` · `--metrics-port 9464` · `--iterations 0` = 무한 — 템플릿은 인자 없이 부른다). 문면의 `relay_outbox`는 옛 이름이다.
+  - 트랜잭션: 한 패스 = `atomic(durable=True)` 하나다(선택·잠금부터 반영까지). 첫 문장 `SET LOCAL idle_in_transaction_session_timeout = '120s'`는 두 단계 flush 대기(각 35 s)를 app role의 30 s가 끊지 않게 한다(이 트랜잭션에만 · 상수).
+  - 발행 1단계: 고른 행 전부를 메인 토픽(`OUTBOX_TOPIC_PREFIX + topic`)으로 보낸다. key = `partition_key`, value = 저장된 봉투의 JSON이다(id·time 재생성 0 · 뜻이 같고 바이트는 다를 수 있다). 헤더 `ce_type`(= 행 topic) · `ce_source`(= `OUTBOX_SOURCE`) · `ce_id`(= 행 id) · `content-type`(이름 중복 없음). 그다음 `flush(35 s)`이고, 남은 메시지는 `purge` 뒤 실패로 본다(이미 기록됐을 수 있다 — 소비자 멱등).
+  - 발행 2단계: 1단계에서 실패한 행 가운데 `attempts + 1 ≥ OUTBOX_MAX_ATTEMPTS`인 것을 **같은 패스**에서 DLQ로 보낸다(같은 key·value·헤더 + `error`).
+  - 반영: 메인 성공은 DELETE다. 실패는 `attempts += 1`과 `last_error`(앞 1000자 — `str(err)`만 · payload·헤더 값 없음)다. DLQ 성공이면 `dead_at`을 쓰고, DLQ 실패면 행을 남긴다 — 다음 패스는 메인부터 다시 시도하므로 장애가 원인이면 복구 뒤 메인으로 간다.
+  - 백오프는 행이 아니라 명령 루프의 것이다. 진전 없는 패스(published 0 · failed > 0)에서만 0.5 s부터 두 배씩 300 s까지 늘고, 배치가 가득이면 바로 다음 패스를 돌며, 진전이 있으면 되돌린다. 그래서 독성 메시지는 약 5초 안에 DLQ로 가고, 전면 장애는 10번째 실패까지 약 8.5분이다. 메인만 실패하는 부분 장애로 dead가 된 행은 `outbox_requeue`로 되돌린다.
+  - 순서는 최선 노력이다(실패 행 뒤의 행이 먼저 나간다 · 롤링 업데이트 동안 두 릴레이). 소비자는 `(group, id)` 멱등이고 순서 역전을 견딘다.
+  - 수명 주기: 설정 오류는 9464를 열기 전에 실패한다(CrashLoop로 드러난다). DB 연결 오류는 백오프하고, 그 밖의 예외는 프로세스를 끝낸다(재시작). SIGTERM은 이번 패스를 마치고 끝낸다.
+  - 설정(T069 확정 · 호출 시점에 읽는다): `OUTBOX_SOURCE`(pod 이름) · `OUTBOX_TOPIC_PREFIX`(`""` · `"dev."`만) · `OUTBOX_MAX_ATTEMPTS`(10) · `KAFKA_BOOTSTRAP_SERVERS` · `KAFKA_CLIENT_CONFIG`(confluent 키 dict).
+    - `django_common.kafka.client_config()`가 검증한다: `security.protocol` 필수(`SASL_SSL` · `PLAINTEXT`만 — PLAINTEXT 기본값 금지 · 명시할 때만). `SASL_SSL`이면 `sasl.mechanism` = SCRAM-SHA-512 · `sasl.username` · `sasl.password` · `ssl.ca.location`이 필수다. `bootstrap.servers` · `transactional.id`는 금지다. 오류 메시지에는 키 이름만 싣는다.
+    - 프로듀서는 그 위에 `enable.idempotence` true · `delivery.timeout.ms` 30000 · `client.id` 기본 `OUTBOX_SOURCE`를 둔다. 이 고정값을 `KAFKA_CLIENT_CONFIG`로 바꾸려 하면 기동 실패다. T071 `/health`도 `client_config()`를 쓴다.
+  - 지표: 모듈 `django_common.outbox.metrics`는 릴레이 경로에서만 import한다 — web 프로세스 레지스트리에 outbox 지표가 생기면 relay 부재 감시(`MetricsAbsent`)를 가린다. relay env에는 `PROMETHEUS_MULTIPROC_DIR`를 두지 않는다. `outbox_oldest_pending_seconds`는 스크레이프 시점에 자란다(마지막 refresh의 DB 나이 + 그 뒤 경과 — 루프가 멈춰도 알림이 울린다).
+  - purge = 함수 `purge_dead(*, older_than=timedelta(days=30)) -> int`(DB 시계 · app role)이고, 템플릿 Celery 작업 `<pod_snake>.tasks.purge_dead_outbox`가 일 1회 감싼다.
+  - 재처리 = 명령 `outbox_requeue --id <ULID>… | --all`(함수 `requeue_dead`)이다. dead 행의 `dead_at` · `attempts` · `last_error`를 비운다 — attempts를 남기면 다음 패스가 다시 DLQ로 보낸다.
 
 ## 소비자 규칙
 

@@ -76,12 +76,12 @@ Dragonfly 키(파생 캐시, contracts/denylist.md가 정본):
 
 | 필드 | 타입 | 규칙 |
 |---|---|---|
-| `id` | ULID(text 26) | PK = CloudEvents `id` |
-| `topic` | text | `<pod>.<entity>.<event>` (env 접두는 릴레이가 붙임) |
-| `partition_key` | text | = 봉투 `tenantid` 값(테넌트 UUID) |
+| `id` | ULID(text 26) | PK = CloudEvents `id`(프로세스 안 단조 증가 · T069) |
+| `topic` | text | `<pod>.<entity>.<event>` (env 접두는 릴레이가 붙임 · 접두를 붙여 249자 이하 · T069) |
+| `partition_key` | text | = 봉투 `tenantid` 값(테넌트 UUID 정규형 36자) |
 | `payload` | jsonb | CloudEvents 1.0 envelope 전체 |
-| `created_at` | timestamptz | |
-| `attempts` | int | 기본 0 |
+| `created_at` | timestamptz | DB 기본값 `statement_timestamp()`(Django `db_default=Now()` — 지표 나이 · purge와 같은 시계 · T069) |
+| `attempts` | int | 기본 0 · 0 이상 |
 | `last_error` | text | nullable |
 | `dead_at` | timestamptz | nullable — 그 env의 DLQ(prod `<pod>.dlq` · dev `dev.<pod>.dlq`) 발행 시각 |
 
@@ -89,6 +89,7 @@ Dragonfly 키(파생 캐시, contracts/denylist.md가 정본):
 - 릴레이: relay 컨테이너가 **app role**로 `SELECT … WHERE dead_at IS NULL ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 100` → idempotent producer(key = `partition_key`, `delivery.timeout.ms` 30000) → 성공 시 DELETE. **dead 행은 다시 집지 않는다**(재발행 폭주 방지). 같은 트랜잭션에서 도메인 쓰기와 함께 INSERT되는 것만 유효하다(라이브러리가 `transaction.atomic()` 밖 INSERT를 `OutboxUsageError`로 거부).
 - 쓰기 API: `publish(topic, subject, data, *, tenant_id=None)` — 생략하면 요청 테넌트 컨텍스트에서 읽고, **컨텍스트도 인자도 없으면 `OutboxUsageError`**. 확정된 값이 `partition_key`이자 봉투의 `tenantid`가 된다(contracts/events.md).
 - 등급 B: RLS 미적용 — 릴레이가 모든 테넌트의 행을 읽는다. 지표 `outbox_pending`(`dead_at IS NULL`만)·`outbox_oldest_pending_seconds`·`outbox_dead_total`(relay 9464).
+- 인덱스(T069): `outbox_pending_idx` = `(id) WHERE dead_at IS NULL`(릴레이 `ORDER BY id LIMIT` · 지표) · `outbox_dead_at_idx` = `(dead_at) WHERE dead_at IS NOT NULL`(purge). 마이그레이션은 `django_common` 앱의 `0001`(CreateModel 하나 · RLS 연산 없음).
 
 ## 5. EventSchema — 소유 모노레포 `packages/events` (전역)
 

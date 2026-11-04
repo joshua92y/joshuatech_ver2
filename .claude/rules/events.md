@@ -18,7 +18,7 @@ Contract of record: `specs/003-platform-foundation/contracts/events.md`. On conf
 ## Topic conventions
 
 - Names: prod `<pod>.<entity>.<event>`, dev `dev.<pod>.<entity>.<event>`. Pod names are kebab-case; entity and event are singular lowercase. DLQ is prod `<pod>.dlq` · dev `dev.<pod>.dlq` (the relay prefixes the env; `contracts/events.md` §토픽 규약 is the source of truth).
-- 3 partitions; partition key = `tenantid` (UUID string), so per-tenant ordering is preserved. Retention 7 days — a consumer that falls further behind recovers by re-indexing/re-projecting from the owning pod's DB, never by extending retention.
+- 3 partitions; partition key = `tenantid` (UUID string), so a tenant's events land in one partition and keep their written order there. The relay publishes in ULID order on a best-effort basis (a failed row is retried after later rows; two relays overlap during a rolling update), so consumers dedupe by `(consumer_group, id)` and tolerate reordering. Retention 7 days — a consumer that falls further behind recovers by re-indexing/re-projecting from the owning pod's DB, never by extending retention.
 - Write access: only the owning pod publishes to its `<pod>.` topic prefix. NEVER publish on another pod's behalf.
 
 ## Schemas

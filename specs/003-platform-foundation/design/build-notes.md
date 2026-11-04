@@ -1427,3 +1427,192 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
     - 요청 트랜잭션 안에서 긴 외부 대기를 하지 않는다(30 s).
   - **시험 DB**: owner가 test_app의 멤버(INHERIT · SET)다.
 - **학습 로그**: `content/tmp/003-t068/2026-11-04.md`.
+
+## T069 (2026-11-04 시작 — US6 구현 · `packages/django-common/src/django_common/outbox/` → T061 PASS · 세션 모델 Opus 5.5)
+
+- **과제 문면(tasks.md :186)**: `OutboxEvent` 모델(B 등급 `GlobalModel`; ULID id · topic · partition_key · payload · attempts · last_error · dead_at), `publish(topic, subject, data, *, tenant_id=None)`(atomic 밖 · 테넌트 컨텍스트와 인자가 모두 없으면 `OutboxUsageError`, CloudEvents 2.2 봉투, 확정 `tenant_id` = `tenantid`(uuid) 확장 = 행 `partition_key`), `relay_outbox` command(app role · 컨텍스트 없음 · 500 ms 폴링 · 배치 100 · `WHERE dead_at IS NULL ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 100` · dead 행 재집 없음 — 재처리는 `dead_at`을 비우는 수동 command만 · confluent-kafka idempotent SASL_SSL SCRAM + cluster CA · `delivery.timeout.ms 30000` · 성공 DELETE · 실패 `attempts += 1` · `last_error` · 지수 백오프(최대 5분) · `max_attempts 10` 도달 시 원본 봉투를 `<pod>.dlq`로(+`error` 헤더) + `dead_at`(행 유지)), relay 컨테이너 `prometheus_client` HTTP 9464로 지표 3종(`outbox_pending` · `outbox_oldest_pending_seconds` · `outbox_dead_total`) + dead 행 purge beat(`dead_at + 30 d`) → T061 PASS.
+- **소스로 확인한 사실**(읽기 전용 조사 워크플로 `wf_029b6b90-1a0` — 시험 · 명세 · 런타임 세 갈래 · 1.27M 토큰, 보고 `.superpowers/t069/research/{tests,spec,runtime}.json`):
+  - ① **빨강**: `tests/test_outbox.py:51`의 `from django_common.outbox import …`가 `ModuleNotFoundError`다(T068 구현이 들어와 `django.setup()`은 지난다). 시험은 `django_common.outbox.metrics`도 import한다 → **`outbox`는 `metrics` 하위 모듈이 있는 패키지**여야 한다(문면의 단일 파일 `outbox.py`로는 안 된다).
+  - ② **모델 등록 · 마이그레이션**: `src/django_common`에 `models.py` · `migrations/`가 없다. Django는 앱 로딩 때 `<앱>.models`만 import하고, migrations 패키지가 없는 앱은 `migrate`가 표를 만들지 않는다(`--run-syncdb` 아님) → `django_common/models.py` + `migrations/0001_initial.py`(앱 이름을 준 `makemigrations django_common`)가 있어야 conftest의 migrate가 `outbox`를 만든다. `django_common/__init__.py`에서 outbox를 import하면 `AppRegistryNotReady`다. identity-admin 시험은 `apps.get_models()`에서 `db_table == "outbox"`인 모델이 정확히 하나이기를 요구한다.
+  - ③ **이름 어긋남**: 명령 이름은 계약 · T065 골든 렌더 · 생성 트리 검사 · 시험 docstring이 `outbox_relay`, 문면 · research DJANGO-D6만 `relay_outbox`다. 「CloudEvents 2.2」는 plan의 Python SDK `cloudevents` 2.2.0 판 번호다 — 봉투 규격은 1.0(`_envelope.json` `specversion` const)이고 SDK는 설치돼 있지 않으며 T061 인계는 릴레이의 재직렬화를 금지한다. 계약 §django-common 공개 API는 `relay`, 시험은 `relay_once` · `RelayResult` · `OutboxUsageError` · `metrics.refresh_metrics`다.
+  - ④ **purge 위치**: django-common에는 Celery가 없다. 계약 · T072 문면은 beat 작업을 템플릿 기본 작업(`<pod_snake>.tasks.purge_dead_outbox` · 일 1회)으로 두고, T066 api-35는 그 pod 작업으로 경계(DB now() − 30 d ± 1 h)를 고정한다 → T069는 Celery 없는 라이브러리 함수만 둔다.
+  - ⑤ **confluent-kafka 2.16.1(librdkafka 2.16.0) 실측**:
+    - `produce`의 다섯째 위치 인자는 `callback`(FakeProducer는 `on_delivery`) → 키워드로만 부른다.
+    - delivery 콜백은 `poll` · `flush` · `close`를 부른 스레드에서 돈다. 콜백 예외는 `flush` 밖으로 올라온다. DR의 `msg.headers()`는 None이다 → 행 대응은 클로저로 맺는다.
+    - `flush(timeout)`는 남은 수를 돌려준다. 시간 초과로 남은 메시지는 `purge(in_queue, in_flight)` 뒤 `flush`로 `_PURGE_*` DR을 받아야 다음 배치에 새지 않는다.
+    - 즉시 예외: `BufferError`(큐 가득) · `KafkaException`(`MSG_SIZE_TOO_LARGE` — 기본 `message.max.bytes` 1000000).
+    - 기본값: `enable.idempotence` false · `delivery.timeout.ms` 300000 · `sasl.mechanism` GSSAPI(빠져도 생성은 성공 — 경고만) · 알 수 없는 키는 생성 실패 · 정수 설정은 `'30s'` → 30(접미 무시).
+    - 실 Producer는 len 0이어도 · close 뒤에도 truthy다 — T061 인계의 「`__len__` 때문에 falsy」 근거는 틀렸다(판정 `producer is None`은 유지).
+  - ⑥ **prometheus_client 0.26.0**:
+    - `Counter("outbox_dead_total")`는 표본 `outbox_dead_total`과 `outbox_dead_created`를 낸다. 같은 이름을 다시 등록하면 `DuplicateTimeseries`다.
+    - `start_http_server`는 0.0.0.0에 붙는 daemon 스레드다.
+    - `PROMETHEUS_MULTIPROC_DIR`가 env에 있으면 값 저장 방식이 mmap 파일로 바뀐다.
+    - web 프로세스가 metrics 모듈을 import하면 web 레지스트리에도 0값 outbox 지표가 생겨 `MetricsAbsent`(relay 부재 감시)를 가린다.
+  - ⑦ **Django 6.1.2**:
+    - `select_for_update`는 평가 시점에 autocommit이면 `TransactionManagementError`다.
+    - `JSONField`는 jsonb를 `json.loads`로 읽는다 — 바이트는 보존되지 않고 뜻만 같다.
+    - `Now()`는 `STATEMENT_TIMESTAMP()`다.
+    - 관리 명령 루프는 `close_old_connections`를 직접 불러야 한다.
+    - `transaction.atomic(durable=True)`는 다른 atomic 안이면 `RuntimeError`다.
+  - ⑧ **운영 위험(시험이 못 잡음)**: 운영 app role에는 `idle_in_transaction_session_timeout 30s`가 걸려 있다(T054 PostSync). 브로커 불통이면 FOR UPDATE 잠금을 쥔 트랜잭션 안의 flush 대기가 `delivery.timeout.ms` 30 s + DR 지연(실측 0.01–0.71 s)이 된다 → 세션이 끊겨 attempts를 기록하지 못하고 같은 행을 계속 재시도한다. 메인 + DLQ 두 단계면 대기가 두 번이다.
+  - ⑨ **ULID**: 의존성 · venv에 ULID 라이브러리가 없고 Python 3.13에 `uuid7`도 없다 → 직접 구현이다. 형식은 48비트 ms + 80비트 난수, Crockford 대문자 26자, 첫 글자 0–7이다. out-11은 한 트랜잭션에서 50개를 만든다(같은 ms 안 유일성 필요).
+  - ⑩ **T068 상호작용**: tc-17은 B 등급 수가 2가 될 뿐 통과한다. 다른 스캔 대상 관계(표 · 뷰 · 함수 · 규칙)를 만들면 빨강이다. 인덱스(relkind i)는 무관하다. tc-29는 r3 G1(기대 집합을 카탈로그에서 계산)로 `public.outbox`와 충돌하지 않는다.
+  - ⑪ **봉투 · 시간**: `datetime.isoformat()`은 `+00:00`을 낸다. 시험 `TIME_RE`는 `Z`만 받는다. jsonschema 4.26에는 date-time 검사기가 없다(`rfc3339-validator` 미설치) → `time` 꼴은 out-3이 지키는 전부다.
+  - ⑫ **pod 이미지 경계**: 생성 pod 이미지는 django-common과 pod만 COPY한다 → `packages/events` 스키마를 런타임에 읽을 수 없다. 꼴 검사는 코드에 둔다.
+- **계약 보정(컨트롤러 · 이 설계와 같은 커밋 · 「T069 보정 2026-11-04」 표식)**:
+  - **C1** `contracts/events.md` §발행 API에 publish의 입력 검사(D3)를 더한다: 자기 접두 · 논리 토픽 꼴 · 물리 길이 · subject 꼴 · data dict · JSON · 크기 · tenant 정규화 · GUC 오류 → `OutboxUsageError` · 네트워크 0.
+  - **C2** 같은 문서 §outbox 릴레이를 D4–D9로 바꾼다: 명령 이름 · 옵션 · 기본값 · 라이브러리 API · 트랜잭션 구조 · 두 단계 · DLQ 실패 규칙 · `last_error` 상한 · 백오프 규칙 · 장애 때 거동 · 순서의 한계 · 프로듀서 설정 · 설정 이름 · 지표 노출 규칙 · purge 함수 · 재처리 명령.
+  - **C3** `contracts/pod-template.md` §django-common 공개 API의 `django_common.outbox` 줄과 「이벤트」 · 「메트릭」 행.
+  - **C4** `data-model.md` §4(`created_at` DB 기본값 · `attempts ≥ 0` · 길이 · 부분 인덱스 2).
+  - **C5** `.claude/rules/django-pod.md` §Outbox and events · `.claude/rules/events.md`(해당 줄)를 영어로 같이 고친다 · kr 미러 2는 translation-pending 줄.
+- **결정 D1–D16(컨트롤러)**:
+  - **D1 범위 · 빨강 → 초록**: 산출물은 아래와 같다.
+    - (1) 패키지 `src/django_common/outbox/`:
+      - `__init__.py`: 공개 이름 재노출 — `OutboxEvent` · `OutboxUsageError` · `RelayResult` · `publish` · `relay_once` · `purge_dead` · `requeue_dead`. `metrics`는 재노출하지 않는다(D5 지연 import).
+      - `models.py`(D2) · `_ulid.py`(D10) · `publisher.py`(D3 — `OutboxUsageError` · `publish` · 봉투 직렬화 `encode_envelope`) · `relay.py`(D4 · D6 — `RelayResult` · `relay_once` · `producer_config` · `build_producer`) · `maintenance.py`(D8 — `purge_dead` · `requeue_dead`) · `metrics.py`(D5).
+    - (2) `src/django_common/kafka.py` — `client_config()`(D6 · T071 `/health` 공용).
+    - (3) `src/django_common/models.py`(OutboxEvent import만 — 앱 로딩 등록) · `src/django_common/migrations/__init__.py` · `0001_initial.py`.
+    - (4) `management/commands/outbox_relay.py`(D7) · `outbox_requeue.py`(D8).
+    - (5) **새 시험** `tests/test_outbox_contract.py`(T069 소유 · oc-1..20 — D11) + `tests/test_event_patterns.py`(T067 인계 — D12).
+
+    T061 · T068 산출물(`test_outbox.py` · `_kafka.py` · `_tenant.py` · conftest · settings · `tenancy.py` · `test_tenancy*.py`)은 바꾸지 않는다. 의존성 · `uv.lock`도 바꾸지 않는다(confluent-kafka · prometheus-client · jsonschema는 이미 있다). 순서는 새 시험을 먼저 쓰고 빨강을 본 뒤 구현해 초록으로 만드는 것이다.
+  - **D2 모델 `OutboxEvent(GlobalModel)`**(`db_table = "outbox"` · 앱 라벨 `django_common`):
+    - 필드: `id = CharField(primary_key=True, max_length=26, default=new_ulid, editable=False)` · `topic = CharField(max_length=249)` · `partition_key = CharField(max_length=36)` · `payload = JSONField()` · `created_at = DateTimeField(db_default=Now())` · `attempts = PositiveIntegerField(default=0)` · `last_error = TextField(null=True, blank=True)` · `dead_at = DateTimeField(null=True, blank=True)`.
+    - `created_at`은 DB 시계다(`STATEMENT_TIMESTAMP()` — 지표 나이 · purge와 같은 시계 · INSERT `RETURNING`으로 인스턴스에 채워진다).
+    - 인덱스: `outbox_pending_idx` = `(id) WHERE dead_at IS NULL`(릴레이 `ORDER BY id LIMIT` · 지표) · `outbox_dead_at_idx` = `(dead_at) WHERE dead_at IS NOT NULL`(purge). 이름은 30자 이하(`models.E034`).
+    - 마이그레이션은 `CreateModel` 하나(인덱스 포함)다. RLS 연산 · RunSQL · GRANT는 두지 않는다(B 등급 — 권한은 owner의 기본 권한).
+  - **D3 `publish(topic, subject, data, *, tenant_id=None) -> OutboxEvent`**(호출 시점에 설정을 읽는다 · 네트워크 I/O 0 · 순서대로 검사하고 실패하면 INSERT 전에 `OutboxUsageError`):
+    1. `connections[DEFAULT_DB_ALIAS].in_atomic_block`가 아니면 → 「atomic 밖」.
+    2. `topic`이 str이 아니거나, 봉투 `type` pattern(`_envelope.json`과 같은 문자열 · Python `re.search` 의미)에 맞지 않거나, 첫 점 앞이 `OUTBOX_SOURCE`가 아니거나(자기 pod 접두 — env 접두가 붙은 토픽도 여기서 걸린다), `OUTBOX_TOPIC_PREFIX + topic`이 249자를 넘으면 → 「토픽」.
+    3. `subject`가 봉투 `subject` pattern에 맞지 않으면 → 「subject」.
+    4. `data`가 `dict`가 아니면 → 「data」.
+    5. 테넌트 확정:
+       - `tenant_id`가 `uuid.UUID`면 그대로 쓴다. str이면 `uuid.UUID(s)`로 파싱한다(대문자 · 중괄호 · `urn:uuid:` · 하이픈 없는 꼴은 소문자 8-4-4-4-12로 정규화). 그 밖의 타입이나 파싱 실패(`ValueError` · `AttributeError` · `TypeError`)는 → 「tenant_id」.
+       - 컨텍스트는 `tenancy.current_tenant_id()`로 읽는다. 그 `ValueError`(GUC 파손)는 → 「컨텍스트」(fail-closed).
+       - 둘 다 있고 다르면 → 「충돌」. 둘 다 없으면 → 「테넌트 없음」.
+    6. 봉투 `{"specversion": "1.0", "id": new_ulid(), "source": OUTBOX_SOURCE, "type": topic, "time": <UTC ms 'Z'>, "subject": subject, "tenantid": str(tenant), "datacontenttype": "application/json", "data": data}`.
+       - `time` = `datetime.now(UTC).isoformat(timespec="milliseconds")`의 `+00:00`을 `Z`로 바꾼 값이다.
+       - `encode_envelope`(`json.dumps(…, ensure_ascii=False, separators=(",", ":"), allow_nan=False)` → UTF-8)가 실패하면(`TypeError` · `ValueError` — datetime · UUID · NaN · 비str 키) → 「JSON」.
+       - 바이트가 `MAX_EVENT_BYTES = 900_000`을 넘으면 → 「크기」(브로커 `message.max.bytes` 1000000에 헤더 여유 — 메인 · DLQ 둘 다 영원히 실패하는 메시지를 막는다).
+    7. `OutboxEvent.objects.create(id=…, topic=topic, partition_key=str(tenant), payload=envelope)`를 돌려준다.
+
+    설정 `OUTBOX_SOURCE`는 봉투 `source` pattern(kebab)이 아니면 `ImproperlyConfigured`(이름만 · `from None`)다. `OutboxUsageError(Exception)`의 메시지는 규칙 이름만 싣는다(값 · data 없음).
+  - **D4 `relay_once(*, producer=None, batch_size=100) -> RelayResult`**(`RelayResult` = `@dataclass(frozen=True)` `published` · `failed` · `dead` — 이 패스에서 고른 행 수 = 셋의 합):
+    1. `producer is None`이면 `build_producer()`(D6)로 만들고, 끝나면 `flush` 뒤 버린다. 주입된 프로듀서에는 `produce` · `flush` · `poll` · (남은 메시지가 있을 때만) `purge`만 부른다.
+    2. `transaction.atomic(using=DEFAULT_DB_ALIAS, durable=True)` — 트랜잭션 밖에서만 부른다. 다른 atomic 안이면 `RuntimeError`다. 바깥 트랜잭션이 롤백되면 Kafka로 이미 나간 행이 되살아난다.
+       - 첫 문장은 `SET LOCAL idle_in_transaction_session_timeout = '120s'`(상수 · 바인드 없음)다. 두 단계 flush(각 상한 35 s) 동안 app role의 30 s가 세션을 끊지 않게 한다(사실 ⑧ · 이 트랜잭션에만 걸린다).
+    3. 선택: `list(OutboxEvent.objects.filter(dead_at__isnull=True).order_by("id").select_for_update(skip_locked=True, of=("self",))[:batch_size])`. 비면 `RelayResult(0, 0, 0)`.
+    4. **1단계 — 모든 행을 메인 토픽으로**: `OUTBOX_TOPIC_PREFIX + row.topic`, key = `partition_key` UTF-8, value = `encode_envelope(row.payload)`, 헤더 `[("ce_type", row.topic), ("ce_source", OUTBOX_SOURCE), ("ce_id", row.id), ("content-type", "application/cloudevents+json")]`(UTF-8 bytes · 이름 중복 없음). 헤더는 행의 열과 설정에서 만들고 payload를 해석하지 않는다. jsonb에서 읽은 payload는 언제나 직렬화되므로, 손으로 넣은 꼴 나쁜 행도 릴레이를 멈추지 못한다(소비자 스키마 검증이 그 DLQ로 보낸다).
+       - 호출 꼴은 `produce(topic, value=…, key=…, headers=…, on_delivery=functools.partial(기록, row.id))`(키워드만)이다.
+       - 기록 콜백은 이 호출의 지역 dict에 `err`만 적는다(DB 쓰기 · 예외 없음).
+       - `produce`가 곧바로 낸 `BufferError` · `KafkaException`은 그 행의 실패다. 다른 예외는 올린다(버그 — 프로세스가 끝나고 재시작한다).
+    5. `flush(FLUSH_TIMEOUT_S = 35)`. 0보다 크면 `purge(in_queue=True, in_flight=True)` 뒤 `flush(5)`로 purge DR을 받는다. 결과가 없는 행은 실패(「delivery 결과 없음」)다. in-flight purge는 이미 기록됐을 수 있다(중복 — 소비자 `(group, id)` 멱등).
+    6. **2단계 — DLQ**: 1단계 실패 행 가운데 `attempts + 1 ≥ OUTBOX_MAX_ATTEMPTS`인 것을 같은 패스에서 `OUTBOX_TOPIC_PREFIX + OUTBOX_SOURCE + ".dlq"`로 보낸다. value는 같은 바이트, key는 같은 `partition_key`, 헤더는 1단계 넷 + `("error", last_error 텍스트)`다. flush · purge 규칙은 5와 같다.
+    7. **반영**(같은 트랜잭션):
+       - 메인 성공 → `filter(pk__in=…).delete()`(published).
+       - 메인 실패 → 행마다 `attempts = F("attempts") + 1` · `last_error = str(err)[:LAST_ERROR_MAX = 1000]`(앞을 남긴다).
+         - DLQ까지 성공하면 `dead_at = Now()`도 쓴다(dead).
+         - 그렇지 않으면 행을 남긴다(failed). DLQ 실패면 `last_error`는 DLQ 오류다.
+       - `attempts ≥ 10`인데 `dead_at`이 NULL인 행(앞선 DLQ 실패)도 다음 패스에서 **메인부터** 다시 시도한다 — 브로커 장애가 원인일 때 복구 뒤 메인으로 간다. 메인이 또 실패하면 2단계 DLQ다.
+    8. 커밋 뒤 `metrics.OUTBOX_DEAD_TOTAL.inc(dead 수)`(D5 지연 import)를 한다.
+
+    설정 `OUTBOX_TOPIC_PREFIX`는 `""` · `"dev."` 둘만(계약 §토픽 규약), `OUTBOX_MAX_ATTEMPTS`는 1 이상의 int다. 어기면 `ImproperlyConfigured`.
+  - **D5 지표 `django_common.outbox.metrics`**(모듈 수준 1회 등록 · 레이블 없음 · 기본 REGISTRY):
+    - `OUTBOX_PENDING = Gauge("outbox_pending", …)` · `OUTBOX_OLDEST_PENDING_SECONDS = Gauge("outbox_oldest_pending_seconds", …)` · `OUTBOX_DEAD_TOTAL = Counter("outbox_dead_total", …)`(`_created` 표본은 그대로 둔다 — 프로세스 전역 env를 건드리지 않는다).
+    - `refresh_metrics() -> None`: default 별칭 · autocommit 한 문장으로 `count` · `max(Now() − created_at)`를 `dead_at IS NULL`에서 구한다(DB 시계). pending을 `set`하고, 나이는 `anchor = time.monotonic() − age`로 둔다(없으면 None).
+    - **나이는 스크레이프 시점에 자란다**: `OUTBOX_OLDEST_PENDING_SECONDS.set_function(lambda: 0 if anchor is None else time.monotonic() − anchor)`. 루프가 멈춰도 pending 행의 나이가 계속 커져 `OutboxOldestPending`(> 60 s)이 울린다. liveness TCP 9464는 데몬 스레드라 루프 정지를 못 본다.
+    - **지연 import**: `django_common.outbox`(publish 경로)를 import해도 이 모듈은 import되지 않는다(`relay_once` · 명령이 함수 안에서 import한다). web 프로세스 레지스트리에 0값 outbox 지표가 생기면 relay 부재 감시(`MetricsAbsent`)를 가린다.
+  - **D6 Kafka 설정**(설정 이름 확정 — T061 D3 가정 그대로):
+    - `OUTBOX_SOURCE`(pod 이름) · `OUTBOX_TOPIC_PREFIX`(prod `""` · dev `"dev."`) · `OUTBOX_MAX_ATTEMPTS`(10) · `KAFKA_BOOTSTRAP_SERVERS`(str) · `KAFKA_CLIENT_CONFIG`(dict — confluent 설정 키). 전부 호출 시점에 읽는다.
+    - `django_common.kafka.client_config() -> dict` 규칙(어기면 `ImproperlyConfigured` · 키 이름만 · 값 없음 · `from None`):
+      - `KAFKA_BOOTSTRAP_SERVERS`는 비지 않은 str. `KAFKA_CLIENT_CONFIG`는 str 키 Mapping.
+      - `bootstrap.servers` · `transactional.id` 키는 금지다(앞은 위 설정이 정하고, 뒤는 transactionalId ACL이 없다).
+      - `security.protocol`은 필수이고 `SASL_SSL` · `PLAINTEXT`만 받는다(대소문자 무시 — PLAINTEXT 기본값 금지 · 명시했을 때만 시험 · 로컬 compose).
+      - `SASL_SSL`이면 `sasl.mechanism`(또는 `sasl.mechanisms`) = `SCRAM-SHA-512` · `sasl.username` · `sasl.password` · `ssl.ca.location`이 비지 않은 str이어야 한다(librdkafka는 mechanism이 빠지면 GSSAPI로 조용히 만든다).
+      - 결과 = `{"bootstrap.servers": …, **KAFKA_CLIENT_CONFIG}`.
+    - `relay.producer_config()` = `client_config()` + `enable.idempotence = True` · `delivery.timeout.ms = 30000`(int) · `client.id` 기본 `OUTBOX_SOURCE`. `KAFKA_CLIENT_CONFIG`에 `enable.idempotence` · `delivery.timeout.ms` · `message.timeout.ms`가 있으면 `ImproperlyConfigured`다(계약 고정값). acks · retries · max.in.flight의 양립은 librdkafka가 생성 때 검사한다.
+    - `build_producer()`는 `confluent_kafka.Producer(producer_config())`다(import는 함수 안 — publish 경로는 confluent를 불러오지 않는다). 설정 dict는 로그 · 예외 · repr에 싣지 않는다(`sasl.password`).
+  - **D7 명령 `outbox_relay`**(계약 이름 · 인자 없는 기본값 = 계약 값):
+    - 옵션: `--batch-size`(100) · `--poll-interval`(0.5 s) · `--max-backoff`(300 s) · `--metrics-port`(9464 · 0 = 서버를 열지 않음 — 시험) · `--iterations`(0 = 무한 — 시험 · 운영 점검). 양수 검사.
+    - 순서: ① `build_producer()`(설정 오류는 포트를 열기 전에 실패 — liveness가 뜨지 않아 CrashLoop로 드러난다) ② `start_http_server(port)` ③ `refresh_metrics()` ④ 루프.
+    - 루프 한 번: `close_old_connections()` → `relay_once(producer=…, batch_size=…)` → `refresh_metrics()` → 다음 대기.
+      - 다음 대기는 셋 중 하나다. 배치가 가득(published = batch)이면 0(밀린 행을 바로 비운다 · SC-004 5 s). 진전 없음(published 0 · failed > 0)이면 지수 백오프(대기 × 2, `--poll-interval`에서 시작해 `--max-backoff`까지). 그 밖은 `--poll-interval`(진전이 있으면 백오프를 되돌린다).
+      - DB `OperationalError` · `InterfaceError`는 로그(예외 클래스 이름만) · `close_old_connections()` · 백오프다. 그 밖의 예외는 올린다 — 프로세스가 끝나 9464가 닫히고 컨테이너가 재시작한다(crash-only).
+    - SIGTERM · SIGINT: 플래그만 세운다(이번 패스를 마치고 끝낸다). 대기는 0.1 s 조각으로 플래그를 본다. 끝에서 이전 처리기를 되돌린다(`call_command` 시험이 같은 프로세스).
+    - 로그: `logging.getLogger("django_common.outbox")` 이벤트 이름 + 개수만 싣는다(payload · 설정 · 오류 본문 없음 — `last_error`는 DB에 있다).
+  - **D8 purge · 재처리**:
+    - `purge_dead(*, older_than: timedelta = timedelta(days=30)) -> int`: `filter(dead_at__lt=Now() − older_than).delete()`의 삭제 수를 돌려준다. DB 시계 · default 별칭(app role) · `dead_at` NULL은 대상 밖이다. `older_than`이 0 이하면 `ValueError`다. T072 Celery 작업 `<pod_snake>.tasks.purge_dead_outbox`가 감싼다(일 1회).
+    - `requeue_dead(ids: Collection[str] | None = None) -> int`: dead 행(`dead_at IS NOT NULL`, ids가 있으면 그 안)을 `dead_at = NULL` · `attempts = 0` · `last_error = NULL`로 되돌린다. attempts를 남기면 다음 패스가 다시 DLQ로 보내 DLQ에 중복이 생긴다.
+    - 명령 `outbox_requeue`: `--id <ULID>`(반복 · ULID 꼴 검사) 또는 `--all` 가운데 하나(둘 다 · 둘 다 없음 → `CommandError`)다. stdout 한 줄 `outbox_requeue: N`(ASCII)을 낸다. 계약의 「재처리는 `dead_at`을 비우는 수동 command」를 실제로 만든다.
+  - **D9 백오프 · 장애 · 순서(계약 문장)**:
+    - 백오프는 행이 아니라 루프의 것이고, 진전이 없는 패스에서만 자란다. 독성 메시지 하나는 다른 행이 진전하는 동안 0.5 s 간격으로 10번 실패해 DLQ로 간다. 전면 장애는 0.5 → 300 s 백오프로 10번째까지 약 8.5분이다.
+    - 장애가 그보다 길면 행은 attempts 10에 닿는다. DLQ도 닿지 않으면 행은 남고, 복구 뒤 메인으로 간다(D4-7). 메인 토픽만 실패하고 DLQ는 되는 부분 장애면 dead가 된다 → 복구 뒤 `outbox_requeue`.
+    - 순서는 최선 노력이다. 실패 행 뒤의 행은 먼저 나간다. 롤링 업데이트(maxSurge 1) 동안 릴레이 둘이 SKIP LOCKED로 행을 나눈다. 소비자는 `(group, id)`로 멱등이고 순서 역전을 견딘다.
+  - **D10 ULID `_ulid.new_ulid() -> str`**:
+    - 비트 배치: `ms = time.time_ns() // 1_000_000` · 80비트 난수(`secrets.randbits(80)`) · `(ms << 80) | rand`를 Crockford 대문자 26자로 쓴다.
+    - **프로세스 안 단조**(잠금): 같은 ms이거나 시계가 뒤로 가면 직전 ms를 쓰고 난수부를 +1 한다. 넘치면 ms + 1이다. 한 요청에서 같은 ms에 낸 두 이벤트의 `ORDER BY id`가 발행 순서와 같다(프로세스 사이 순서는 보장하지 않는다 — D9).
+  - **D11 새 시험 `tests/test_outbox_contract.py`**(T069 소유 · `django_db(transaction=True, databases=["default", "owner"])` · 자체 대역 프로듀서 · T061 픽스처 재사용):
+    - oc-1 `client_config` — 다음은 각각 `ImproperlyConfigured`이고 메시지에 키 이름은 있고 값은 없다(감시 문자열 비밀번호): bootstrap 빔 · `security.protocol` 없음 · 허용 밖 값 · SASL_SSL에서 mechanism · username · password · ca 각각 빠짐 · mechanism이 SCRAM-SHA-512가 아님 · 금지 키 2. 명시 PLAINTEXT는 통과한다.
+    - oc-2 `producer_config` — 강제 키 3 · 고정값 키가 들어오면 거부 · 실 `confluent_kafka.Producer(producer_config())`가 PLAINTEXT 꼴로 브로커 없이 만들어진다(키 오타는 생성 실패 — 시험이 확인).
+    - oc-3 publish 토픽 · subject · data:
+      - 거부: 자기 접두가 아닌 토픽 · `dev.` 접두 토픽 · 대문자 · 두 성분 · 끝 줄바꿈 · 249자 초과 · subject 콜론 없음 · subject 제어 문자 · subject 끝 줄바꿈 · data 비dict · data NaN · datetime · 900 kB 초과.
+      - 각각 `OutboxUsageError`이고 행은 0이다.
+    - oc-4 tenant 정규화 · GUC 파손: 대문자 · 중괄호 · `urn:uuid:` 꼴은 소문자 정규형으로 저장된다. int는 `OutboxUsageError`다. atomic 안에서 `set_config('app.tenant_id', 'not-a-uuid', true)` 뒤 publish는 `OutboxUsageError`다(ValueError 아님).
+    - oc-5 publish는 Kafka에 닿지 않는다(`confluent_kafka.Producer` 생성을 막아 둔 채 성공 · `KAFKA_BOOTSTRAP_SERVERS = ''`).
+    - oc-6 ULID: 꼴 · 1만 개 유일 · 생성 순서 = 정렬 순서(같은 ms 포함 · 스레드 4개 동시) · 시각부 ≈ 지금.
+    - oc-7 메시지 모양(대역): 헤더 이름 · 순서 · 중복 없음 · value JSON = payload · key = partition_key · DLQ 헤더 = 넷 + error · DLQ key = partition_key.
+    - oc-8 flush 잔여: 대역 flush가 남은 수를 돌려주고 `purge`가 `_PURGE_QUEUE` DR을 주면 그 행은 실패(attempts 1)이고 멈추지 않는다.
+    - oc-8b 실 Producer가 닫힌 포트에 붙고 `FLUSH_TIMEOUT_S`를 1로 줄이면 10 s 안에 실패로 수렴한다(purge 경로 실측).
+    - oc-9 DLQ 실패: 메인 · DLQ 둘 다 실패하는 대역으로 10번째 패스 → attempts 10 · `dead_at` NULL · `RelayResult(0, 1, 0)`. 다음 패스는 메인부터 시도한다. 메인이 성공하면 삭제되고, 메인 실패 · DLQ 성공이면 dead다.
+    - oc-10 `last_error` 상한: 5000자 오류 → 1000자 · 앞부분 보존 · DLQ error 헤더도 같다.
+    - oc-11 produce 즉시 예외: `BufferError` · `KafkaException`인 행은 실패이고, 같은 배치의 다른 행은 발행된다.
+    - oc-12 `SET LOCAL`: 대역 `produce` 안에서 같은 연결로 `SHOW idle_in_transaction_session_timeout`이 `2min`이다. 끝난 뒤 세션 값은 원래대로다. 다른 atomic 안에서 부르면 `RuntimeError`다.
+    - oc-13 `purge_dead` 경계: DB now() − 30 d − 1 h는 삭제, − 30 d + 1 h는 유지, NULL은 유지이고 반환 1이다. `older_than` 0 · 음수는 `ValueError`다.
+    - oc-14 `requeue_dead` · `outbox_requeue`: dead만 되돌리고 pending은 그대로다. `--id` · `--all` · 잘못된 id · 인자 없음 · 둘 다 → `CommandError`. 출력 한 줄.
+    - oc-15 `outbox_relay` 명령: 대역 프로듀서(`build_producer` 패치) + `--iterations 2 --metrics-port 0 --poll-interval 0` → 행 발행 · 지표 갱신. 설정 오류면 `start_http_server` 전에 실패한다(호출 기록). SIGTERM 처리기는 끝나면 원래대로다.
+    - oc-16 대기 규칙(순수 함수 단위): 가득 → 0 · 진전 없음 → 2배(상한) · 진전 → 기본으로 되돌림.
+    - oc-17 지표 지연 등록: 새 프로세스(`-I`가 아닌 시험 설정)에서 `django_common.outbox`를 import하고 publish 경로를 거쳐도 REGISTRY에 `outbox_pending`이 없다. `metrics` import 뒤에는 있다.
+    - oc-18 나이가 스크레이프 시점에 자란다: pending 1행(120 s) `refresh_metrics()` 뒤 표본이 100 이상이다. 1.1 s 뒤에는 refresh 없이 1 이상 커진다. 행을 지우고 refresh하면 0이다.
+    - oc-19 마이그레이션: `makemigrations django_common --check --dry-run` 변경 없음 · 0001에 RunSQL · RLS 없음 · 인덱스 2.
+    - oc-20 코드의 꼴 상수(type · subject · source · tenantid · id)가 `packages/events/schemas/_envelope.json`의 pattern 문자열과 같다(시험은 모노레포에서 읽는다 · pod 런타임은 읽지 않는다).
+  - **D12 T067 인계 — Python 쪽 pattern 의미 시험 `tests/test_event_patterns.py`**(T067 r2 리뷰 A2-5 · build-notes 「T067 결과」 인계):
+    - `packages/events/schemas/*.json` 7개의 모든 `pattern`이 Python `re`로 컴파일되고 `^` … `$(?!\n)` 꼴이다.
+    - `schemas.test.mjs` sch-8(ajv u 플래그 ↔ Python re — 끝 고정 · 맨 `.` · 문자 클래스)의 사례를 옮긴다(출처 줄 주석): 끝 `\n` · `\r` · 앞뒤 공백 · 대문자 · 비ASCII 닮은꼴. Python jsonschema `Draft202012Validator`(`re.search` 의미)로 같은 기대값에 대조한다.
+    - 봉투 · 토픽 data 스키마로 `publish`가 만든 봉투가 통과하는 것도 본다(out-6이 실 Kafka로 보는 것의 DB 쪽 짝).
+  - **D13 실행 · 검증**(Windows 호스트 · Docker Desktop · `uv run --directory packages/django-common …` · pytest는 한 번에 하나):
+    - 빨강: 새 시험 두 파일이 구현 없음으로 실패하는 것을 본다.
+    - 초록: `pytest tests/test_outbox.py -q` **2회**(16 · out-6 실 Kafka · VD-5) · `tests/test_outbox_contract.py` · `tests/test_event_patterns.py` · `tests/test_fixtures_kafka.py -p no:django`.
+    - 회귀: `tests/test_tenancy.py` · `tests/test_tenancy_contract.py` · `tests/test_fixtures_pg.py -p no:django`.
+    - 판별력: 결정마다 변이 하나 이상(D3 각 관문 · D4 두 단계 · `durable` · `SET LOCAL` · 키워드 호출 · purge 경로 · DLQ 실패 뒤 메인 우선 · 상한 · D5 지연 import · set_function · D6 각 규칙 · D7 순서 · 대기 규칙 · D8 경계 · requeue 필드 · D10 단조). 저장소 파일은 cmp로 복원 증명.
+    - 위생: compileall · 바이트(BOM · CR · TAB · 줄 끝 공백 · 역슬래시-u) · gitleaks(파일 하나씩) · Docker 전후(dangling 볼륨 25 · 다른 프로젝트 컨테이너 무접촉).
+  - **D14 리뷰 2렌즈**:
+    - **A(계약 · 문면 · 판별력)**: 문면 ↔ 산출물 · 편차 4(패키지 · 명령 이름 · SDK · purge 위치)와 추가 1(requeue) · 계약 C1–C5 ↔ 구현 1:1 · T061 16 + oc · 패턴 시험이 결정을 가르는가 · 인계 API.
+    - **B(데이터 · Kafka 의미 · 보안 · 운영)**: 잠금 · 트랜잭션(durable · SET LOCAL · 두 단계 flush · purge) · 중복 · 유실 경로 · DLQ 규칙 · 장애 거동 · 설정 검증(PLAINTEXT · SASL) · 비밀(설정 dict · 로그 · 예외) · 지표 신선도 · 명령 수명 주기 · Docker 위생.
+  - **D15 VD**:
+    - VD-5: 동시성 시험(out-11 · out-14)의 스레드별 연결 정리와, 릴레이가 멈췄을 때 teardown(owner `lock_timeout 30s`).
+    - out-6 실 Kafka(자동 토픽 생성 약 2 s).
+    - `SET LOCAL` 값의 실측(PG 18.6).
+    - 실 Producer purge 경로(oc-8b).
+    - 나이 성장(oc-18).
+    - 운영 SASL_SSL · CA 실측은 T075(라이브)로 넘긴다.
+  - **D16 인계**:
+    - **T070 · T073**: publish는 요청 트랜잭션 안에서 부른다.
+      - 웹훅(면제 경로)은 뷰가 `transaction.atomic()`을 직접 열고 `tenant_id`를 명시한다.
+      - 관리자 교차 테넌트 revoke는 `with tenant_context(대상):` 안에서 부른다.
+      - data 키는 넣은 그대로다(라이브러리가 더하지 않는다).
+    - **T071**: `/health` kafka 검사는 `django_common.kafka.client_config()`를 쓴다. web 프로세스는 `django_common.outbox.metrics`를 import하지 않는다.
+    - **T072**:
+      - relay 컨테이너: `python manage.py outbox_relay`(인자 없음). 재노출 파일 `<pod_snake>/management/commands/outbox_relay.py`.
+      - settings가 env를 설정으로 옮긴다: `KAFKA_BOOTSTRAP` → `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_USERNAME` · `KAFKA_PASSWORD` · CA 경로 → `KAFKA_CLIENT_CONFIG`(SASL_SSL · SCRAM-SHA-512 · `ssl.ca.location`), `ENV` → `OUTBOX_TOPIC_PREFIX`, pod 이름 → `OUTBOX_SOURCE`.
+      - relay 컨테이너에 Kafka cluster CA 마운트(골든에 없다 — 런타임 조사) · relay env에 `PROMETHEUS_MULTIPROC_DIR` 금지 · relay DB 설정 `CONN_MAX_AGE` > 0 + `CONN_HEALTH_CHECKS`.
+      - Celery 작업 `purge_dead_outbox` = `purge_dead()`.
+      - 생성물 기본 시험 2(outbox)는 purge 포함.
+    - **T075(라이브)**: SASL_SSL Producer 생성 · 배달 · ACL 거부(다른 접두)가 DLQ 경로로 가는지 실측.
+    - **T096**: 지표 이름 · 레이블 없음 · 0 상시 노출.
+    - **T061 인계 정정**: 「실 Producer는 `__len__` 때문에 falsy 가능」은 2.16.1에서 성립하지 않는다(판정 `producer is None`은 유지).
+- **순서**:
+  1. 계약 보정(C1–C5)과 설계(이 절)를 커밋한다.
+  2. 워크플로를 돌린다(api-builder 1 → 리뷰 2 병렬).
+  3. 수정한다.
+  4. 커밋 · tick 75/119 · 학습 로그로 마감한다.
+  5. T070으로 넘어간다.
