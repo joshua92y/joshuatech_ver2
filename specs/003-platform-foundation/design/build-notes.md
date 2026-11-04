@@ -1058,3 +1058,102 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
 - **인계**: **T069** Python 쪽 pattern 의미 시험(저장소 안 — `$(?!\n)` · 명시 클래스 · 끝 줄바꿈 · CR 음성 · 두 엔진 대조 53/53의 Python 절반 · A2-5) · 릴레이 봉투(`type` = 논리 토픽 · `subject` `<종류>:<id>` · `time` UTC `Z` · `id` ULID 대문자 · `tenantid` 소문자) · **T070/T073** 생산자(session.revoked `sub` 비지 않음 · `nbf` 정수 ≥ 0 · `sid` null 또는 비지 않은 문자열) · **SP-2** 소비자 도우미의 Python 형식 검사 · enum 추가 배포 순서 · user.registered `admin` 역할 · **운영자** CODEOWNERS(`packages/events/` · `scripts/ci/` · `.github/workflows/` · 모든 깊이 `.gitattributes` · 루트 `pnpm-workspace.yaml` · `package.json` · `pnpm-lock.yaml` · `.npmrc` · `.pnpmfile.cjs`(없는 경로도 지정 가능) · `.github/CODEOWNERS` 자신) · 코드 소유자 리뷰 필수 · `events-compat` · `events-test` required check(교착 방어가 events-test에 기댄다) · concurrency `cancel-in-progress`가 main push 실행을 취소하면 그 구간은 main에서 다시 검사되지 않는다(PR 게이트가 정본 · r1 B 참고) · 같은 이름 check를 만드는 새 워크플로 파일(required check의 이름 판정 — 미검증).
 - **교훈(tool-gotchas)**: `git archive` export-ignore · 체크아웃 속성 변환은 `hash-object --no-filters`로만 보인다 · setup-node `package-manager-cache` 기본 true + 「Environment details」 `yarn --version`이 `yarnPath`를 실행 → PR 코드를 돌리면 안 되는 job은 setup-node를 체크아웃 앞에 · ajv `getKeyword` · pwsh `SetEnvironmentVariable($n,$null)`은 빈 값으로 남긴다 · 픽스처 git 「자기 경로 is not a git command」 간헐(Windows · 원인 미상 — r7에서 런처 탓이 아님이 드러남 · 그 한 줄 꼴만 1회 재시도) · actionlint 색 끄기는 `-no-color` · Git Bash에서 띄운 pwsh는 `/mingw64/bin`이 PATH 앞이라 런처를 거치지 않는다 · 액션 입력의 기본값은 고정 SHA 원문으로 확인한다(r2 설계의 "캐시 입력 없음 = 캐시 없음" 오판) · pnpm vitest shim의 `NODE_PATH`(`.pnpm/node_modules`)를 시험 자식 프로세스가 물려받는다 — "패키지 밖" 시험은 env를 지우고 전제 단언을 두며, 변이 증거는 CI와 같은 명령으로 낸다 · `pnpm --filter` 무매치는 exit 0 — CI는 `--fail-if-no-match`.
 - **VD-T067-1 결과(11-04 13:21 KST · 사용자 「지금 push」 → `981ec9b..ee40a57` · 초안 PR #1 실행 41772668741 · 6 job 전부 success)**: events-compat(ubuntu24-arm64 이미지 20261025.165) — (e) 첫 스텝 setup-node(`node-version: 24` · `package-manager-cache: false`) → checkout · (f) Environment details `node: v24.22.1` · `npm: 11.19.1` · `yarn: 1.22.22`(빈 작업 공간 — 러너 판) · (a) 캐시 복원 · 저장 줄 0(「Found in cache @ /opt/hostedtoolcache/node/24.22.1/arm64」는 러너 tool cache · job 머리 「Cache mode: write」는 러너 정보 줄 · setup-node post 스텝은 정리 한 줄) · (b) `기준: PR merge 커밋의 첫째 부모 93c7469a1b70(둘째 부모 = PR head ee40a57e5621 확인)` · `기준 스키마: 없음 — 기준 커밋에 packages/events/schemas가 없다(전부 추가로 본다)` · `변경 쪽 스키마: HEAD 커밋 6fc6b889494d:packages/events/schemas(.json 7개 · 작업 트리 바이트 일치)` · `검사기: 부트스트랩 — 기준에 검사기도 스키마도 없어 HEAD 커밋 6fc6b889494d의 packages/events/scripts/check-compat.mjs를 쓴다(패키지 밖 임시 사본)` · `check-compat: checked 0 · added 7 · violations 0` · `결과: 통과 — 호환성 위반 없음(exit 0)` · (c) Linux 러너에서 바이트 대조 통과 · events-test — `pnpm install --frozen-lockfile --ignore-scripts`(41 패키지) · `pnpm --filter @jt/events --fail-if-no-match test` → check-compat.test 38 + schemas.test 229 = `Tests 267 passed (267)`(sch-14 · sch-23 · sch-24 포함 · (g) · (l)) · 남은 것: (d) main 첫 push 뒤 다음 PR의 `검사기: 기준 커밋 …`(main 머지 뒤) · (h)(i)(j) 버리는 PR은 사용자 결정으로 하지 않음. 로그 = scratch `t067-close/ci-events-{compat,test}.log`.
+
+## T068 (2026-11-04 시작 — US6 구현 · `packages/django-common/src/django_common/tenancy.py` → T060 PASS · 세션 모델 Opus 5.5)
+
+- **과제 문면(tasks.md :185)**: `TenantModel`(추상, A 등급: `tenant_id` UUID NOT NULL, 인덱스, FORCE RLS 대상) + `GlobalModel`(추상, B 등급: RLS 미적용, 허용 목록 `tenant`·`tenant_membership`·`outbox`·`session_revocation_log`), `TenantContextMiddleware`(`transaction.atomic()` + `SELECT set_config('app.tenant_id', %s, true)`, 토큰 없으면 403), `rls_policies(table)` RunSQL 헬퍼(ENABLE/FORCE/정책 USING+WITH CHECK, reverse), `check_rls` management command(A 등급 테이블이 전부 FORCE RLS인지 + B 등급 테이블이 허용 목록에 있는지 검사) → T060 PASS.
+- **소스로 확인한 사실**(읽기 전용 조사 워크플로 `wf_829c75f2-4a5` — 시험 · 명세 · 런타임 세 갈래, 보고 `.superpowers/t068/research/{tests,spec,runtime}.json`):
+  - ① **빨강**: pytest 시작 단계의 `django.setup()`이 `tests/testapp/models.py:13`의 `from django_common.tenancy import …`에서 `ModuleNotFoundError`로 세션 전체를 수집 전에 끝낸다. T068 뒤에도 `test_outbox.py` · `test_auth.py` · `test_observability.py`는 각자 모듈 부재로 빨강이므로 관문은 `tests/test_tenancy.py`(+ T068 시험 파일) 단독 실행이다.
+  - ② **시험이 고정한 모양**: `TenantModel` = `id` UUID PK(`default=uuid4`) · `tenant_id` `UUIDField`(NULL 아님) · `Meta.indexes`에 필드가 정확히 `['tenant_id', 'id']`인 인덱스(자식은 `class Meta(TenantModel.Meta)`) — 손으로 쓴 `0001`의 `widget_tenant_id_idx`는 `name='%(class)s_tenant_id_idx'`와 같아 autodetector 변경이 0이다(메모리 탐침). `GlobalModel` = 필드 없는 추상 표식(GlobalThing은 UUID PK, T061 OutboxEvent는 CharField PK). 매니저 · `save()`는 개입하지 않는다(rls-2 · rls-3 · rls-4 · 시드). `rls_policies`는 빈 `ProjectState`로 forward를 다시 적용할 수 있는 상태 무관 `RunSQL` 목록(chk-3). `check_rls`는 인자 없는 `call_command`(default = app role) · 실패 = 테이블 이름을 담은 `CommandError` · `relrowsecurity`와 `relforcerowsecurity` 둘 다 · 정책 · 비모델 테이블(rogue).
+  - ③ **Django 6.1.2는 뷰 예외를 미들웨어 안에서 응답으로 바꾼다**(`convert_exception_to_response` — `core/handlers/base.py:39,97`) → `with transaction.atomic(): return self.get_response(request)`는 500에서도 COMMIT한다(탐침: 1행 커밋). `process_exception`에서 `transaction.set_rollback(True)`이면 0행(탐침). `ATOMIC_REQUESTS`는 뷰 callable만 감싼다.
+  - ④ **바인딩**: Django PG 기본은 클라이언트 쪽 바인딩 — `str` 값은 타입 없는 리터럴, `uuid.UUID` 값은 `'…'::uuid`가 되어 `set_config(unknown, uuid, boolean)` 해석이 실패한다 → 값은 `str(tenant_id)`.
+  - ⑤ **면제 경로가 atomic을 열면 DB에 닿는다**(`Atomic.__enter__` → `ensure_connection`) — T066 api-1 · api-4(DB 마크 없음)와 `/healthz` 「외부 조회 0」(T071)을 깬다.
+  - ⑥ `transaction.atomic(durable=True)`는 다른 atomic 안이면 `RuntimeError`, TestCase가 연 블록 안은 허용(`db/transaction.py:192-203`).
+  - ⑦ 정책 식은 `NULLIF(current_setting('app.tenant_id', true), '')::uuid`여야 한다 — 같은 세션에서 지역 설정이 끝나면 `''`가 남아 `''::uuid`가 22P02로 실패한다(mw-4가 이 경로를 밟는다).
+  - ⑧ `RunSQL`: `reverse_sql`이 있어야 reversible · 목록형은 문장마다 execute · psycopg `Composed`를 넘기면 `str()`이 repr이 되므로 문자열로 만든다 · `CREATE POLICY`에는 `IF NOT EXISTS`가 없고 `DROP POLICY IF EXISTS`는 있다(PG 문서).
+  - ⑨ 인덱스 이름 30자 검사(`models.E034`)는 migrate CLI의 시스템 검사에서만 돈다 — `%(class)s_tenant_id_idx`는 클래스 이름 16자까지.
+  - ⑩ `check_rls`는 INSTALLED_APPS의 `django_common` 아래 `management/commands/check_rls.py`로 발견된다. `call_command`는 `CommandError`를 그대로 전파하고, `--database` 옵션은 기본 인자에 없다.
+  - ⑪ **카탈로그**(PG 문서 근거 · 첫 초록에서 실측): 표 `relkind` `r` · `p` · 파티션 자식 `r`(`relispartition`) · 뷰 `v` · `m`은 소유자 권한으로 기저 테이블을 읽어 RLS를 우회할 수 있다 · permissive 정책이 여럿이면 OR로 합쳐져 격리를 넓힌다 · 확장 소유 객체는 `pg_depend` `deptype='e'`.
+  - ⑫ pytest-django `settings` 픽스처는 `del settings.X`를 지원한다(`pytest_django/fixtures.py:565-574`).
+  - ⑬ **어긋남**: 403 본문(계약 = RFC 9457 `tenant_required` · 시험 = 상태 코드만) · `TENANT_CONTEXT_EXEMPT_PATHS`가 pod-template 계약에 없다 · `check_rls`를 계약은 공개 API(함수)로, 문면 · 시험은 명령으로 부른다 · 문면 「토큰 없으면 403」은 미들웨어가 JWT를 보지 않으므로 「`request.tenant_id`가 없으면 403」으로 읽는다(토큰 검증은 T070) · research 스케치(`rls_policy` 단수 · 항상 atomic · 「예외 시 rollback」 주석)는 낡았다.
+- **계약 보정(컨트롤러 · 이 설계와 같은 커밋 · 「T068 보정 2026-11-04」 표식)**:
+  - **C1** `contracts/pod-template.md` §테이블 등급의 `check_rls` 줄을 판정 규칙 전부로 바꾼다(D10) · 상수 `FRAMEWORK_TABLES` · `GLOBAL_TABLE_ALLOWLIST` · A 등급 M2M은 명시 `through`(TenantModel) · 인덱스 이름 규칙(D2).
+  - **C2** §런타임 계약 「DB 연결」 행에 미들웨어 동작 전부(D3–D7)와 「요청 트랜잭션 안에서 긴 외부 대기 금지(app role `idle_in_transaction_session_timeout` 30 s)」를 적는다.
+  - **C3** §공개 API에 `current_tenant_id` · `set_tenant_context` · `FRAMEWORK_TABLES` · `GLOBAL_TABLE_ALLOWLIST`와 `django_common.problem`(`problem_response`)을 더하고, `check_rls`는 「함수 + 같은 이름의 관리 명령」으로 적는다.
+  - **C4** `.claude/rules/django-pod.md` §Table grades · §Auth(`TENANT_CONTEXT_EXEMPT_PATHS`) · §Errors(`problem_response`)를 영어로 같이 고친다 · kr 미러는 translation-pending 줄.
+- **결정 D1–D15(컨트롤러)**:
+  - **D1 범위 · 빨강 → 초록**: 산출물은 아래와 같다.
+    - (1) `src/django_common/tenancy.py` — `TenantModel` · `GlobalModel` · `TenantContextMiddleware` · `rls_policies` · `check_rls()` · `current_tenant_id` · `set_tenant_context` · `FRAMEWORK_TABLES` · `GLOBAL_TABLE_ALLOWLIST`.
+    - (2) `src/django_common/problem.py` — `problem_response`(D5).
+    - (3) `src/django_common/management/__init__.py` · `management/commands/__init__.py` · `management/commands/check_rls.py`.
+    - (4) **새 시험** `tests/test_tenancy_contract.py`(T068 소유 · tc-1..19 — D11) + `tests/tenancyapp/{__init__,urls,views,middleware}.py`(T068 소유 시험 urlconf · 미들웨어).
+
+    T060 산출물(`test_tenancy.py` · `testapp/**` · `conftest.py` · `settings.py`)과 `0001` · `0002`는 바꾸지 않는다(② — 0001은 이미 맞다 · tc-18이 고정). 의존성 · `uv.lock`도 바꾸지 않는다. 순서는 새 시험을 먼저 쓰고 빨강(지금은 ①의 수집 오류)을 본 뒤 구현해 초록으로 만드는 것이다.
+  - **D2 모델**:
+    - `TenantModel(models.Model)`: `id = UUIDField(primary_key=True, default=uuid.uuid4, editable=False)` · `tenant_id = UUIDField()`(FK 아님 — 값 참조) · `class Meta: abstract = True; indexes = [models.Index(fields=["tenant_id", "id"], name="%(class)s_tenant_id_idx")]`.
+    - 규칙을 독스트링에 적는다: A 등급 클래스 이름은 16자 이하(넘으면 자식이 짧은 이름의 같은 인덱스를 직접 둔다 — `models.E034`) · 인덱스를 더하는 자식은 `indexes = [*TenantModel.Meta.indexes, …]` · A 등급 M2M은 명시 `through`(TenantModel 상속 — 자동 중간 테이블은 RLS가 없어 `check_rls`가 실패시킨다) · 행 거르기는 RLS만 맡는다(매니저 · `save` 무개입).
+    - `GlobalModel(models.Model)`: `class Meta: abstract = True` — 필드 없는 표식. `db_table`은 `GLOBAL_TABLE_ALLOWLIST` 안이어야 한다(D10의 모델 검사).
+  - **D3 `TenantContextMiddleware`**(sync 전용 — `sync_capable = True` · `async_capable = False`):
+    1. 면제 경로(D4)면 아무것도 하지 않고 `get_response` — atomic · 쿼리 · 경고 0.
+    2. `tenant_id = getattr(request, "tenant_id", None)`이 `uuid.UUID`가 아니면(없음 · `None` · str 포함) 403 `tenant_required`(D5) — fail-closed.
+    3. `with transaction.atomic(using=DEFAULT_DB_ALIAS, durable=True):` 안에서 `set_tenant_context(tenant_id)` 뒤 `get_response`. 요청 객체에 「이 미들웨어의 atomic이 열려 있다」 표식을 두고 블록을 나갈 때 지운다(D6).
+    4. 응답이 `StreamingHttpResponse`(FileResponse 포함)면 `__call__` 안에서 `RuntimeWarning`(D7).
+  - **D4 면제 설정 `TENANT_CONTEXT_EXEMPT_PATHS`**: 라이브러리 기본 `("/healthz", "/ready", "/health")`. 요청마다 `django.conf.settings`에서 읽는다(import 시점 · `__init__` 캐시 금지 — 규칙 §Settings). 값은 str만 담은 tuple · list · set · frozenset이어야 하고 아니면 `ImproperlyConfigured`(str 하나를 주면 `in`이 부분 문자열 검사가 되어 `/`까지 면제될 수 있다). 비교는 `request.path_info` **정확 일치**(auth 면제와 같은 규칙 · 끝 슬래시 · 접두 불인정). Bearer가 없는 경로(웹훅 · Access 전용)는 pod가 이 목록에 넣는다(규칙 §Auth — identity-admin = 헬스 3 + `/webhooks/authentik` + `/session/check`).
+  - **D5 403 `tenant_required`와 공용 problem 모듈**: `django_common.problem.problem_response(slug: str, status: int, *, title: str | None = None, detail: str | None = None) -> HttpResponse` — `Content-Type: application/problem+json` · 본문 `{"type": "https://joshuatech.dev/problems/<slug의 _를 ->", "title": <주어진 값 또는 HTTPStatus 문구>, "status": status}` + `detail`(있을 때만). 슬러그 꼴 `^[a-z][a-z0-9_]*$`가 아니면 `ValueError`. 미들웨어는 `problem_response("tenant_required", 403)`을 **돌려준다**(`PermissionDenied`를 올리면 handler403이 `forbidden`으로 바꾼다). T070 `AuthError.to_response()` · T071 헬스 503 · T073 뷰는 이 함수를 재사용한다(인계).
+  - **D6 트랜잭션 · 롤백**: 미들웨어의 atomic은 `durable=True` — 요청 트랜잭션이 가장 바깥임을 강제한다(다른 atomic 안에서 부르면 `RuntimeError` · 테스트의 TestCase 블록은 허용). 뷰 예외는 `process_exception`에서 이 미들웨어의 atomic이 열려 있을 때만 `transaction.set_rollback(True, using=DEFAULT_DB_ALIAS)`를 하고 `None`을 돌려준다 → `ATOMIC_REQUESTS`와 같은 뜻(뷰 예외 = 롤백). 예외 없이 돌려준 4xx · 5xx 응답은 커밋한다(`ATOMIC_REQUESTS`와 같다 — Ninja의 `HttpError`는 뷰 안에서 응답이 되므로 커밋 · 문서화). 요청 코드에서 `atomic(durable=True)`는 쓰지 않는다(이 미들웨어 아래에서는 항상 실패).
+  - **D7 스트리밍**: `isinstance(response, StreamingHttpResponse)`면 `warnings.warn("… StreamingHttpResponse …", RuntimeWarning, stacklevel=2)` — 본문은 트랜잭션이 끝난 뒤 컨텍스트 없이 만들어진다(A 등급은 0행 · 쓰기는 자동 커밋) · 응답은 그대로 둔다 · 차단 장치는 두지 않는다.
+  - **D8 컨텍스트 도우미**(T069 publish · T073 관리자 교차 테넌트용 — 같은 GUC 규칙을 한 곳에):
+    - `set_tenant_context(tenant_id: uuid.UUID | None, *, using=DEFAULT_DB_ALIAS) -> None` — `connections[using].in_atomic_block`이 아니면 `TransactionManagementError`(트랜잭션 밖의 `set_config(…, true)`는 조용히 무효다) · `uuid.UUID`면 `SELECT set_config('app.tenant_id', %s, true)`에 `str(…)` · `None`이면 `''`(같은 트랜잭션 안에서 컨텍스트를 비운다) · 그 밖의 타입은 `TypeError`.
+    - `current_tenant_id(*, using=DEFAULT_DB_ALIAS) -> uuid.UUID | None` — `SELECT NULLIF(current_setting('app.tenant_id', true), '')`의 NULL · `''`를 모두 `None`으로 · 값이 UUID로 해석되지 않으면 `ValueError`(우리 코드만 쓰는 GUC라 형식 오류는 버그다).
+  - **D9 `rls_policies(table: str) -> list[RunSQL]`**: 테이블 이름은 `^[a-z_][a-z0-9_]*$` · 63자 이하가 아니면 `ValueError`(마이그레이션 import 때 실패) · 큰따옴표로 인용. 매번 새 목록으로 연산 셋을 돌려준다(되돌리기는 역순 자동 정렬 — ③의 Migration.unapply).
+    - `ALTER TABLE "t" ENABLE ROW LEVEL SECURITY` ↔ `ALTER TABLE "t" DISABLE ROW LEVEL SECURITY`
+    - `ALTER TABLE "t" FORCE ROW LEVEL SECURITY` ↔ `ALTER TABLE "t" NO FORCE ROW LEVEL SECURITY`
+    - `CREATE POLICY tenant_isolation ON "t" AS PERMISSIVE FOR ALL TO PUBLIC USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid) WITH CHECK (같은 식)` ↔ `DROP POLICY IF EXISTS tenant_isolation ON "t"`
+  - **D10 `check_rls`** — 함수 `check_rls(*, using=DEFAULT_DB_ALIAS) -> list[str]`(위반 문장 목록 · 각 문장은 `<스키마 아닌 테이블 이름>: <사유>`로 시작) + 같은 이름의 관리 명령(`--database` · 기본 default · 위반이 있으면 전부를 담은 `CommandError` · 없으면 stdout 한 줄 `check_rls: OK — A 등급 N · B 등급 M · 프레임워크 K`). autocommit SELECT만 하고 권한 의존 판정(`has_table_privilege` 등)은 쓰지 않는다(app role · owner 어느 쪽에서도 같은 결과).
+    - **범위**: 시스템 스키마(`pg_catalog` · `information_schema` · `pg_toast*` · `pg_temp_*`)가 아닌 모든 스키마의 관계 `relkind ∈ {r, p, v, m, f}` · 확장 소유 객체(`pg_depend.deptype = 'e'`)는 뺀다.
+    - `FRAMEWORK_TABLES`(정확한 이름 10) → 면제.
+    - `GLOBAL_TABLE_ALLOWLIST`(B 4) → 표(`r` · `p`)여야 하고 **RLS가 꺼져 있어야** 한다(B = RLS 미적용 — 켜면 릴레이 · 웹훅이 0행을 본다).
+    - 그 밖의 모든 관계 = A 등급 → 표(`r` · `p`)여야 한다(뷰 · matview · foreign table은 위반 — 뷰는 소유자 권한으로 RLS를 우회할 수 있다) · `relrowsecurity` · `relforcerowsecurity` 둘 다 · 정책 `tenant_isolation`이 `FOR ALL`(`polcmd = '*'`) · PERMISSIVE · `USING`과 `WITH CHECK` 둘 다 있음 · 다른 PERMISSIVE 정책은 없음(OR로 격리를 넓힌다 · RESTRICTIVE는 허용).
+    - 모델 검사(정적 · DB 무관): 관리되는 구체 `TenantModel` 하위의 `db_table`이 B 허용 목록이나 `FRAMEWORK_TABLES`에 있으면 위반 · 관리되는 구체 `GlobalModel` 하위의 `db_table`이 B 허용 목록 밖이면 위반.
+  - **D11 새 시험 `tests/test_tenancy_contract.py`**(T068 소유 · T060과 같은 DB 마크 `django_db(transaction=True, databases=["default", "owner"])` · `tests/_problem.assert_problem` · `tests/_tenant`를 재사용 · 시험 urlconf/미들웨어는 `tests/tenancyapp/`):
+    - tc-1 면제 밖 · 테넌트 없음 → `assert_problem(…, 403, "tenant_required")`.
+    - tc-2 면제 경로는 DB 쿼리 0(`CaptureQueriesContext`) · 뷰 안에서 `in_atomic_block`이 거짓.
+    - tc-3 면제 목록을 요청마다 읽는다(실행 중 바꾼 값이 다음 요청에 적용) · 설정을 지우면 라이브러리 기본(헬스 3)이 적용된다.
+    - tc-4 정확 일치(`path_info`): `/healthz/` · `/healthzz`는 면제가 아니다(403 — URL 해석 전).
+    - tc-5 설정이 str 하나면 `ImproperlyConfigured`.
+    - tc-6 `request.tenant_id`가 str(UUID 글자)이면 403 `tenant_required`(tenancyapp 원시 미들웨어).
+    - tc-7 뷰가 A 등급 행을 쓴 뒤 예외 → 500 · owner로 센 행 0(롤백).
+    - tc-8 뷰가 쓴 뒤 예외 없이 500 응답을 돌려줌 → 행 1(커밋 — D6 문서화된 뜻).
+    - tc-9 뷰가 쓰고 200 → 행 1(대조).
+    - tc-10 바깥 `transaction.atomic()` 안에서 미들웨어를 부르면 `RuntimeError`(durable).
+    - tc-11 도우미: atomic 밖 `set_tenant_context` → `TransactionManagementError` · 안에서 설정 → `current_tenant_id() == 값` · `None`으로 비우면 `None`이고 A 등급 0행 · 트랜잭션이 끝난 같은 연결에서 `None`(`''` 경로) · str 인자 → `TypeError`.
+    - tc-12 `rls_policies`: 잘못된 이름 → `ValueError` · 연산 셋이 모두 reversible · owner로 `migrate testapp 0001` → RLS 꺼짐(app role이 두 테넌트 행을 모두 봄) → `migrate testapp` → 복원(`check_rls` 통과) — finally 복원.
+    - tc-13 B 테이블 `tenant`에 RLS를 켜면 `check_rls` 실패(이름 `tenant`).
+    - tc-14 widget에 다른 PERMISSIVE 정책(`FOR SELECT USING (true)`)을 더하면 실패(이름 `widget`).
+    - tc-15 owner가 만든 뷰 `leak`(`SELECT * FROM widget`)는 실패(이름 `leak`).
+    - tc-16 `tenant_isolation`을 `FOR SELECT`만으로 다시 만들면 실패 · `WITH CHECK` 없는 `FOR ALL`도 실패.
+    - tc-17 `call_command("check_rls", "--database", "owner")` 통과 · 함수 `check_rls()`는 깨끗한 DB에서 `[]`.
+    - tc-18 `makemigrations testapp --check --dry-run` → 변경 없음(TenantModel 모양 = 0001).
+    - tc-19 `problem_response` 단위: type · title · status · detail 유무 · Content-Type · 잘못된 슬러그 `ValueError`.
+    - DDL 토글은 owner autocommit으로 커밋하고 `try/finally`로 복원한다(T060 chk-2..5와 같은 방식) · pytest는 한 번에 하나.
+  - **D12 실행 · 검증**(Windows 호스트 · Docker Desktop · `uv run --directory packages/django-common …`):
+    - 빨강: 새 시험을 넣은 뒤 `pytest tests/test_tenancy_contract.py -q`가 ①의 수집 오류로 끝나는 것을 본다.
+    - 초록: `pytest tests/test_tenancy.py -q` **2회 연속**(VD-6) · `pytest tests/test_tenancy_contract.py -q` · `pytest tests/test_fixtures_pg.py -p no:django -q`(3 passed 회귀).
+    - 판별력: 구현에 변이를 넣어(예: `durable` 제거 · `process_exception` 제거 · NULLIF 제거 · `str()` 제거 · 면제 접두 일치 · 정책 이름/플래그 하나만 검사 · B RLS 검사 제거 · 뷰 허용) 해당 시험이 빨강이 되는지 확인하고 되돌린다(저장소 파일은 cmp로 복원 증명).
+    - 위생: `python -m compileall` · BOM/CR/TAB 0 · gitleaks(파일 하나씩) · `docker ps -a`에 시험 컨테이너 0(다른 프로젝트 컨테이너는 건드리지 않는다) · `docker volume ls -f dangling=true` 전후 같음(지금 25).
+  - **D13 리뷰 2렌즈**:
+    - **A(계약 · 문면 · 판별력)**: 문면 ↔ 산출물 · 계약 C1–C4 ↔ 구현 1:1 · T060 16 + tc-1..19가 결정을 실제로 가르는가(변이 대조) · 빨강이 진짜 · T069–T073 인계 API.
+    - **B(데이터 격리 · 보안)**: fail-closed 경로 전부(면제 판정 · 타입 · durable · 롤백 · NULLIF · 바인딩) · `check_rls` 우회 경로(뷰 · 정책 모양 · 스키마 · 파티션 · 확장) · SQL 인용 · 비밀 · Docker 위생.
+  - **D14 VD**: VD-6(TEST.MIRROR teardown — `test_tenancy.py` 2회 연속 · teardown에 permission denied · TRUNCATE 오류 0) · app role의 카탈로그 읽기(chk-1 default 통과가 증거) · 클라이언트 바인딩 `str` 값(mw-1) · `''` 경로(mw-4 · tc-11) · 뷰/정책 판정(tc-14..16)을 PG 18.6에서 실측.
+  - **D15 인계**:
+    - **T069**: `GlobalModel` 상속 · `db_table = "outbox"` · `publish`는 `current_tenant_id()`로 컨텍스트를 읽는다(NULL · `''` = 없음) · `problem_response`.
+    - **T070**: `request.tenant_id`는 `uuid.UUID`만 둔다(아니면 tenancy가 403) · `AuthError.to_response()`는 `problem_response` · MIDDLEWARE에서 `JwtAuthMiddleware` 바로 뒤에 `TenantContextMiddleware`.
+    - **T071**: 헬스 3종은 기본 면제 · 503 `not_ready`는 `problem_response`.
+    - **T072**: 템플릿 settings에 `TENANT_CONTEXT_EXEMPT_PATHS` · `django_common` INSTALLED_APPS(명령 발견) · RLS · 미들웨어 시험은 `transaction=True` · `check_rls`는 CI(owner `--database`)와 기동(app role) · A 등급 예시 클래스 이름 16자 이하 · B 예시는 허용 목록 안에서만.
+    - **T073**: B 모델 3개 `db_table` = 허용 이름 · 관리자 교차 테넌트 revoke는 같은 트랜잭션 안에서 `set_tenant_context(대상)` 또는 `None` 뒤 `publish(…, tenant_id=대상)` · 요청 트랜잭션 안에서 Authentik 같은 외부 호출을 오래 기다리지 않는다(30 s).
+- **순서**:
+  1. 계약 보정(C1–C4)과 설계(이 절)를 커밋한다.
+  2. 워크플로를 돌린다(api-builder 1 → 리뷰 2 병렬).
+  3. 수정한다.
+  4. 커밋 · tick 74/119 · 학습 로그로 마감한다.
+  5. T069로 넘어간다.
