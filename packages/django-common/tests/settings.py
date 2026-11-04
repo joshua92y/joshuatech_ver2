@@ -19,7 +19,7 @@ MIDDLEWARE = [
     "django_common.tenancy.TenantContextMiddleware",
 ]
 ROOT_URLCONF = "tests.testapp.urls"
-# D7 설계 가정 — 계약 §공개 API에 없는 이름 · T068이 확정한다(바꾸면 mw-3 docstring과 함께).
+# 이름 확정(T068) — 계약 §런타임 계약 「DB 연결」 ①(라이브러리 기본도 헬스 3 · 바꾸면 mw-3 docstring과 함께).
 TENANT_CONTEXT_EXEMPT_PATHS = ("/healthz", "/ready", "/health")
 
 
@@ -42,7 +42,8 @@ DATABASES = {
     # 별칭마다 flush(TRUNCATE)를 하는데 app role에는 TRUNCATE 권한이 없다 → 비우기는 owner 별칭에서만 한다.
     # TEST.MIRROR를 읽는 곳은 둘뿐이다: TransactionTestCase._databases_names(include_mirrors=False → default를
     # flush에서 제외)와 setup_databases의 set_as_test_mirror(NAME만 복사 · 자격은 바꾸지 않는다) — 후자는 conftest가
-    # django_db_setup을 재정의해 부르지 않는다. teardown 동작은 T068 첫 초록에서 실측한다(VD-6).
+    # django_db_setup을 재정의해 부르지 않는다. teardown 동작은 T068에서 실측했다(VD-6 — test_tenancy.py 2회 연속 통과 ·
+    # teardown 오류 0 · owner autouse TRUNCATE 대체 불필요).
     "default": {
         **_database("JT_TEST_PG_APP_USER", "JT_TEST_PG_APP_PASSWORD"),
         "TEST": {"MIRROR": "owner"},

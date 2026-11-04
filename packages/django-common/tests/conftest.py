@@ -169,6 +169,8 @@ def _bootstrap_roles(info: PgInfo, superuser_password: str) -> None:
         sql.SQL("CREATE ROLE {} LOGIN NOBYPASSRLS PASSWORD {}").format(
             app, sql.Literal(info.app_password)
         ),
+        # owner가 SET ROLE test_app으로 Django assume_role 경로를 재현한다(tc-24 · T068 r3) — app은 owner의 멤버가 아니다.
+        sql.SQL("GRANT {} TO {}").format(app, owner),
         sql.SQL("ALTER DATABASE {} OWNER TO {}").format(db, owner),
         sql.SQL("GRANT CONNECT ON DATABASE {} TO {}, {}").format(db, owner, app),
         sql.SQL("GRANT USAGE ON SCHEMA public TO {}").format(app),

@@ -1157,3 +1157,273 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
   3. 수정한다.
   4. 커밋 · tick 74/119 · 학습 로그로 마감한다.
   5. T069로 넘어간다.
+
+### T068 r2(리뷰 r1 반영 · F1–F12 · 2026-11-04) — D10 · D11 · D15 정정은 이 절과 r3 절이 우선한다
+
+- **경과**: 빌드 r1 + 리뷰 2렌즈(워크플로 `wf_09fe772a-fef` · 1.07M 토큰) → A medium 1 · low 6 / B medium 1 · low 7 → 수정 r2 + 리뷰 r2(`wf_632d2ccd-40c` · 1.13M 토큰). 지시문 원본은 `.superpowers/t068/prompts/t068-fix-r2.md`(gitignore)이고, 정본은 이 절이다.
+- **결정 F1–F12(컨트롤러)**:
+  - **F1 정책 식 정본 비교**(r1 A-2 = B-1 medium — 이름만 같은 `USING (true)` 정책이 통과했다 · 실측): `tenant_isolation`의 `USING` · `WITH CHECK` `pg_get_expr` 결과가 둘 다 PG 주 버전별 정본 상수(지금 `{18: …}` — 계약 ③)와 글자 그대로 같고, `polroles = {0}`(PUBLIC)이어야 한다. 정본이 없는 주 버전이면 정책이 있는 A 표마다 위반 한 줄(fail-closed — 정본 추가는 계약 개정).
+  - **F2 `FOR ALL` 단독 판별**(A-1 medium): tc-16에 `FOR UPDATE` 사례를 두고, 변이를 M16a(polcmd) · M16b(WITH CHECK 유무) · M16c(식 비교) · M16d(polroles)로 나눠 각각 잡히는지 본다.
+  - **F3 이름만 보는 판정 좁히기**(A-5 · B-3):
+    - 「Django 스키마」 = `django_migrations` 표(r)가 있는 스키마 정확히 하나다. 없거나 둘 이상이면 위반 한 줄을 내고 면제 · B를 인정하지 않는다(전부 A).
+    - 프레임워크 면제는 그 스키마의 r만, B는 그 스키마의 r · p만 인정한다.
+    - 모델 이름 검사 2가지: 허용 목록 이름 → `GlobalModel` 하위 · 프레임워크 이름 → contrib 앱(`auth` · `contenttypes` · `sessions` · `admin`).
+  - **F4 확장 제외 좁히기 · TenantModel 표 존재**(B-2): 확장 멤버 제외는 소유자가 superuser인 확장만 한다(owner가 만든 trusted 확장 `pg_trgm`에 넣은 표를 실측으로 잡음). 관리되는 구체 `TenantModel`의 `db_table`은 카탈로그에 A 표(r · p)로 있어야 한다.
+  - **F5 SECURITY DEFINER 함수 · 재작성 규칙**(B-4 — 수정안 a 「위반」): 비시스템 스키마의 `prosecdef` 함수(F4와 같은 확장 제외)와 스캔한 관계의 `pg_rewrite` 규칙(`_RETURN` 제외)은 위반이다. 실측으로 DEFINER `leak_fn()`은 컨텍스트 없는 app role에 5행을, INVOKER는 0행을 돌려줬다.
+  - **F6 범위 도우미 `tenant_context`**(B-5 — 교차 테넌트 `set_tenant_context` 패턴의 컨텍스트 누수):
+    - `@contextmanager tenant_context(tenant_id | None, *, using=…)` — savepoint 안에서 바꾸고 정상 종료면 이전 값으로 되돌린다.
+    - 블록 안 예외 · `set_rollback(True)`는 savepoint 롤백이 복원한다(`get_rollback` 가드 — 복원 쿼리를 내면 TME · M48b 실측).
+    - 바깥 atomic 밖이면 `TransactionManagementError`다(권장안 채택).
+    - 실측(VD-6): savepoint `RELEASE`만으로는 안쪽 값 B가 남고, `ROLLBACK TO`는 A로 되돌린다 — 그래서 도우미가 필요하다.
+  - **F7 런타임 role 단언**(B-7): `check_rls(*, using, require_rls_role=False)` + 명령 `--require-rls-role` → 연결 role이 superuser · BYPASSRLS면 위반 한 줄(role 이름은 싣지 않는다). 판정 SQL은 r3 G4가 대체한다.
+  - **F8 성공 줄 ASCII**(A-4 · B-8): `check_rls: OK - A 등급 N · B 등급 M · 프레임워크 K`. 런타임 문자열은 cp949로 인코딩되지 않는 글자 0을 전수 탐침했다.
+  - **F9 값싼 판별 보강**(A-6):
+    - (a) `using=` 별칭 한정(tc-25) · (b) B 이름 뷰(tc-15) · (c) 분할 표와 파티션(tc-26 — 부모만 정책이면 자식을 직접 질의할 때 샌다 · 자식도 판정) · (d) 면제 경로 뷰 예외 타입 보존(tc-27).
+    - (e) tc-6 양성 대조 · (f) tc-5 메시지에 값 없음 · (g) 다른 세션의 TEMP 표 무시(tc-28).
+  - **F10 Ninja catch-all 처리기 주의**(B-6): 계약 「DB 연결」 · 모듈 독스트링에 적는다. Ninja판 tc-7 기본 시험은 T072가 맡는다.
+  - **F11 낡은 주석**(A-7): `pyproject.toml` 머리 · `src/django_common/__init__.py` · `tests/settings.py` :22 · :45 · `0001_initial.py`의 주석 · 독스트링만 고친다. 주석 · 독스트링을 뺀 AST와 TOML 값이 HEAD와 같음을 증명했다.
+  - **F12 판별력 · 검증**: 결정마다 변이를 하나 이상 두고 r1 변이 가운데 손댄 함수의 것을 다시 돌린다. 결과는 51개 전부 포착 · 매번 68개 시험이다.
+- **D10 대체(지금 정본)**: 함수 `check_rls(*, using=DEFAULT_DB_ALIAS, require_rls_role=False) -> list[str]`과 같은 이름의 관리 명령이다. 성공 줄 · 범위(superuser 소유 확장만 제외) · 판정 ①–⑤는 계약 pod-template §테이블 등급(「T068 r2」 · 「T068 r3」 표식)이 정본이다.
+- **D11 대체**: tc-1..19에 tc-20..29를 더한다.
+  - tc-20 모델 검사(isolate_apps) · tc-21 owner가 만든 확장 · tc-22 SECURITY DEFINER · 재작성 규칙 · tc-23 `tenant_context` · tc-24 `--require-rls-role`
+  - tc-25 별칭 한정 · tc-26 분할 표 · tc-27 면제 뷰 예외 타입 · tc-28 TEMP 표 · tc-29 Django 스키마 0개 · 2개
+  - 기존 시험 확장: tc-15(이름을 흉내 낸 뷰 · 다른 스키마) · tc-16(정책 모양 사례 · 정본 deparse · 정본 없는 판) · tc-17(상수 · 함수 · 명령 · 성공 줄)
+- **D15 대체(인계 — r3 절이 더한다)**:
+  - **T069**: tc-29 기대 집합(r3 G1이 해소).
+  - **T072**:
+    - 기동은 app role `check_rls --require-rls-role`, CI는 owner `--database`로 플래그 없이 돌린다.
+    - 정책은 `rls_policies`로만 만든다. 마이그레이션에 SECURITY DEFINER · `CREATE RULE`을 두지 않는다.
+    - `check_rls` 전에 migrate가 끝나 있어야 한다(TenantModel 표 존재 검사).
+    - Ninja catch-all 처리기를 금지하고 Ninja판 tc-7 기본 시험을 둔다.
+  - **T073**: 교차 테넌트 publish · revoke는 요청 트랜잭션 안에서 `with tenant_context(대상):`로 감싼다. D15의 「`set_tenant_context(대상)` 뒤 publish」 패턴을 대체한다.
+  - **r1 리뷰 A가 짚은 인계 위험**(T068 결함이 아니라 D4 정확 일치 규칙의 귀결):
+    - T072의 `/static/…` 서빙은 `TenantContextMiddleware` 앞(WhiteNoise 등)에 둔다.
+    - 사람 admin 경로(Bearer 없음 · O1 · VD-T066-5)는 지금 설계로는 `/admin/*`이 전부 403 `tenant_required`다. T072 · T073이 호스트 기준 처리나 auth의 tenant 공급과 함께 정한다.
+    - TestCase 기반 시험은 GUC가 바깥 시험 트랜잭션 끝까지 남는다(`transaction=True`로 덮는다).
+    - tc-17 `(grade_a, framework) == (1, 2)`는 T069 뒤에도 성립한다(outbox = B). 시험 DB에 A 표 · 프레임워크 표를 더하는 뒤 과제는 함께 고친다.
+- **빌더 r2 편차(⑧ — 수용)**:
+  - tc-15 B 이름 뷰는 `outbox` 대신 `session_revocation_log`를 쓴다(T069의 `public.outbox`와 충돌).
+  - 재작성 규칙 판정은 A만이 아니라 스캔한 모든 관계(면제 · B 포함)에 적용한다.
+  - 정본 없는 주 버전은 A 표마다 한 줄이다.
+  - 위반 문장의 이름 자리: Django 스키마 줄은 `django_migrations:`, role 줄은 `current_user:`(r3 G4가 `session_user:`로 바꾼다).
+- **빌더 r2 한계(⑨)**:
+  - superuser 소유 확장 멤버 제외의 양성 쪽은 시험 DB에서 재지 못했다. 「아무것도 빼지 않음」 변이는 살아남을 수 있지만 fail-closed 방향이다. 라이브 DB(pgvector)에서 확인할 후보다.
+  - CNPG가 앱 DB에 SECURITY DEFINER 함수를 만드는 기능(Pooler `auth_query` 등)을 쓰면 `check_rls`가 실패할 수 있다(미검증 · SP-1에는 Pooler가 없다).
+  - B 분할 표의 파티션은 A로 판정된다. B 표를 분할하려면 계약 개정이 필요하다.
+  - r1 VD 잔여(그대로): 라이브 CNPG role의 카탈로그 읽기 · `TESTCONTAINERS_HOST_OVERRIDE` 없이 1회 실행.
+- **리뷰 r2**: A2 approve_with_fixes(medium 2 · low 3) · B2 approve_with_fixes(low 3) → r3.
+- **근거 공백 기록(A2-5)**:
+  - em dash를 cp949로 리디렉트하면 실패한다는 하위 프로세스 재현 기록은 없다. r1 메모리 탐침(`'—'.encode('cp949')` 실패)으로 대체한다.
+  - 보고의 M17 「chk-4 외 10」은 FAILED 줄 10개(chk-4 포함 · 「외 9」)가 맞다.
+  - red-contract 로그(06:02:15Z)는 시험 파일 최종 수정(06:10:07Z) 전에 돌았다. 그래도 실패 줄 번호 12개가 최종본과 같고, 변이(06:12Z 이후)와 최종 초록(06:24:55Z)은 최종본으로 돌았다.
+
+### T068 r3(리뷰 r2 반영 · G1–G7 · 2026-11-04) — 결정
+
+- **G1 tc-29 기대 집합을 카탈로그에서 계산**(A2-1 medium): Django 스키마가 모호하면 모든 관계가 A가 되므로, 지금 기대 집합 `{django_migrations, django_content_type, tenant}`는 T069가 만드는 `public.outbox`(B · RLS 없음)로 확정적으로 빨강이 된다.
+  - 시나리오 전에 owner로 public 스키마의 r · p 가운데 `FRAMEWORK_TABLES ∪ GLOBAL_TABLE_ALLOWLIST` 이름을 읽어 `present`(`django_migrations` 제외)를 만든다.
+  - 공허하지 않게 `{"django_content_type", "tenant"} <= present`를 단언한다.
+  - 기대 집합은 `{"django_migrations", *present}` · `{"django_migrations", "tc29_migrations", *present}`로 쓴다.
+  - 빌더는 같은 꼴(시험 DB의 표 이름 · 개수를 그대로 적은 단언)이 다른 시험에 있는지도 훑는다.
+- **G2 contrib 앱 집합 고정**(A2-4 low): tc-17에 `_CONTRIB_APP_LABELS == frozenset({"auth", "contenttypes", "sessions", "admin"})`를 둔다. 시험 settings에는 contenttypes만 있어 `auth`를 빼는 변이가 살아남았다(identity-admin 기동에서야 드러남).
+- **G3 정책 식의 의미 우회 막기**(B2-1 low — deparse는 글자 비교다):
+  - (a) **정책 의존 검사**: `tenant_isolation` 정책(`p.oid`)의 `pg_depend` 행 가운데 `refclassid`가 `pg_class`(표 · 열)가 아닌 것이 있으면 위반이다. initdb 부트스트랩 객체(OID < 12000 — 정본 식이 쓰는 객체는 전부 여기)는 pinned라 행이 없다(PG 18.6에서 정본 정책의 의존 행을 실측해 기록). 사용자 연산자 · 함수 · 타입 · 콜레이션 · 형변환 함수를 잡는다.
+    - **r3 실측 정정**: 지시 때는 「형변환 함수는 deparse에 보이지 않는다(`showimplicit = false`)」고 보았다. 실측은 반대다 — `pg_get_expr`는 맨 위 노드에만 `showimplicit = false`를 쓰고 연산자 인자는 찍는다(VD-C: owner enum + `IMPLICIT` 형변환 정책의 deparse = `((tenant_id)::uuid = …)` → 글자 비교가 이미 잡는다).
+    - 글자 비교가 못 보는 것은 **NULLIF 안의 연산자**다(NullIfExpr는 연산자를 찍지 않는다 — VD-J: `public.=(text,text)` 정책의 deparse는 정본과 같고 의존 행만 남는다 · tc-30 NULLIF 사례가 단독으로 가른다).
+  - (b) **스캔 `search_path` 고정**: `_scan_rls`는 `transaction.atomic(using=…)` 안에서 먼저 `SELECT pg_catalog.set_config('search_path', 'pg_catalog', true)`를 하고, 끝에 `transaction.set_rollback(True, using=…)`로 되돌린다. 바깥 atomic 안이면 savepoint 롤백이다 — `RELEASE`면 값이 남는다(VD-6). 이렇게 하면 DB 소유자가 `ALTER DATABASE … SET search_path = public, pg_catalog`와 `public` 연산자로 스캔 SQL(`NOT IN` · `=` 등)이나 deparse를 가리지 못한다. 정본 deparse가 고정된 `search_path`에서도 같은지는 PG 18.6에서 app role · owner 둘 다로 다시 잰다.
+  - (c) **열 타입 검사**(수정안 2)는 채택하지 않는다(근거 r3 리뷰 A3-1로 정정 — `ALTER COLUMN TYPE` 거부는 정책을 지운 뒤 바꾸면 방어가 아니다). 열 타입이 uuid가 아니면 다음 셋 중 하나가 된다.
+    1. 연산자 인자 자리의 형변환이 deparse에 찍혀 글자 비교가 잡는다(함수 형변환 VD-C 실측 · 도메인 RelabelType · `WITH INOUT` CoerceViaIO는 같은 규칙으로 추론).
+    2. 사용자 연산자 · 함수 의존이 `pg_depend`에 남는다(VD-D).
+    3. 정책 생성이 실패한다.
+- **G4 role 단언 = `session_user` 멤버십**(B2-2 low):
+  - 판정 SQL은 `SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_roles AS r WHERE (r.rolsuper OR r.rolbypassrls) AND pg_catalog.pg_has_role(session_user, r.oid, 'MEMBER'))`다. Django `OPTIONS["assume_role"]`(접속 직후 `SET ROLE`)와 `SET ROLE`이 가능한 멤버십은 `current_user`만 보면 놓친다.
+  - 위반 줄의 이름 자리는 `session_user:`다.
+  - 시험: conftest `_bootstrap_roles`에 `GRANT test_app TO test_owner` 한 문장을 더한다. owner가 `SET ROLE test_app`으로 assume_role 경로를 재현하고, superuser 자격은 여전히 픽스처 안에만 있다. tc-24에 「owner 연결 + `SET ROLE test_app` + 플래그 → 위반(옛 `current_user` 판정은 통과)」을 더한다.
+  - 선택안(연결 role이 A 표 `relowner`의 멤버면 위반)은 채택하지 않는다 — app role은 표를 소유하지 않는다(계약 role 분리 · 위 SQL이 owner 멤버십을 BYPASSRLS로 잡는다). **r4에서 채택으로 바꾼다**(H4 — 근거가 계약 전제에 기대는 순환이라는 리뷰 A3-4).
+  - T072 인계: 런타임 DB 설정에 `OPTIONS["assume_role"]` 금지.
+- **G5 계약 · 규칙 문구**(A2-3 = B2-3 low · 컨트롤러 · 이 절과 같은 커밋): 함수 시그니처 · ① Django 스키마 0개 · 2개 · ④ 함수의 확장 제외 · `tenant_context` atomic 밖 TME와 r3 결정(정책 의존 · `search_path` 고정 · `session_user` 멤버십 · `assume_role` 금지)을 계약 pod-template(「T068 r3」 표식) · 규칙 §Table grades · §Auth에 적고, kr 미러는 translation-pending 줄에 더한다.
+- **G6 설계 정본**(A2-2 medium): 이 절과 r2 절. 코드 독스트링은 「build-notes 「## T068」 · r2 · r3 절」을 가리킨다(gitignore된 지시문을 가리키지 않는다).
+- **G7 근거 공백 기록**(A2-5 low): r2 절 끝에 적었다.
+
+### T068 r3 결과 · r4 결정(리뷰 r3 반영 · H1–H6 · 2026-11-04)
+
+- **r3 결과**(워크플로 `wf_a04b080d-08b` · 1.22M 토큰 · 빌더 DONE_WITH_CONCERNS):
+  - 줄 수: `tenancy.py` 596 → 648 · `check_rls.py` 46 → 50 · `test_tenancy_contract.py` 1043 → 1280(시험 함수 38 · 수집 57) · conftest +2(`GRANT test_app TO test_owner`와 주석).
+  - 빨강(r2 구현으로 최종 시험): 5 failed / 52 passed — tc-24와 tc-30 넷.
+  - 초록: `test_tenancy.py` 16 ×2 · `test_tenancy_contract.py` 57 · `test_fixtures_pg.py` 3.
+  - **D11 대체 — tc-30 다섯**:
+    - ① 형변환: owner enum + `IMPLICIT` 형변환. 실측 deparse `((tenant_id)::uuid = …)`와 사유 3줄을 단언한다.
+    - ② NULLIF 안 연산자: 고정 전후 deparse가 정본과 같고 위반은 의존 한 줄뿐이다(G3 a 단독).
+    - ③ 도메인 + 사용자 `=`: 고정 deparse가 `OPERATOR(public.=)`이고 의존도 걸린다(G3 a · b). r2에서 실해는 컨텍스트 없음 · A · B 모두 3행이었다.
+    - ④ 적대적 `search_path`: 결과가 기준과 같다(G3 b 단독).
+    - ⑤ 바깥 atomic: 전후 `search_path`가 같고 바깥 지역 GUC가 남는다(`set_rollback`).
+    - 확장: tc-16(고정 deparse · `pg_depend` (refclass, 열, deptype) 집합 2원소 — 행은 3개(표 `a` · 열 `n` ×2)인데 VD 실측이고 중복도는 단언하지 않는다) · tc-17(`_CONTRIB_APP_LABELS`) · tc-24(`SET ROLE` · `session_user:`) · tc-29(`present` 계산).
+  - 변이 44개 가운데 43개를 잡았다. N2b(`is_local` 거짓)는 동치라 살았고, N6은 기대 조각을 고쳐 다시 돌렸다(33/40).
+  - **편차(빌더 ⑧ — 수용)**:
+    - ⑧-1 형변환 전제는 반증됐다. NULLIF 사례로 대체했다(위 G3 a 정정).
+    - ⑧-2 VD를 상시 단언으로 옮겼다. 변이 N2b · N4b · N4d를 더했다.
+    - ⑧-3 `_Policy.oid`와 `foreign_dependents` 인자를 두었다.
+  - **인계(빌더 ⑨)**:
+    - G1 훑기: `public.outbox`로 깨지던 것은 tc-29뿐이었다. tc-17의 `(A, 프레임워크) == (1, 2)`는 A · 프레임워크 표를 더하는 뒤 과제가 함께 고친다.
+    - T072:
+      - 런타임 DB 설정에 `assume_role` 금지.
+      - CNPG app role의 `inRoles`에 owner 금지(두면 기동 실패).
+      - `rls_policies`는 `search_path`를 바꾸지 않은 마이그레이션 세션에서 적용한다.
+      - `check_rls`는 트랜잭션을 연다(바깥 atomic 안이면 savepoint).
+    - 시험 DB: owner가 test_app의 멤버(INHERIT · SET)다. 뒤 과제가 role 멤버십을 단언하면 감안한다.
+  - VD(PG 18.6):
+    - 정본 정책 `pg_depend` = `pg_class` 3행(표 `a` · 열 `n` ×2).
+    - 고정 deparse = 정본(app · owner).
+    - `search_path` 복원 2경우.
+    - `SET ROLE` 상태 `(test_app, test_owner)`.
+    - `_RETURN` 이름의 비뷰 규칙은 PG가 거부한다.
+  - 세션 중 다른 프로젝트 컨테이너(`cc-business-permissions-*`)가 새로 생겼다 — 빌더가 만든 것이 아니고 손대지 않았다.
+- **리뷰 r3**: A3 approve_with_fixes(low 4) · B3 approve_with_fixes(low 4) → r4.
+- **r4 결정 H1–H6(컨트롤러)**:
+  - **H1 상속 · 파티션 부모**(B3-1): `pg_inherits`를 읽고, A로 판정된 관계(r · p)의 부모가 A가 아니면(B · 프레임워크 · 스캔 밖) 위반 한 줄이다. 부모를 거친 질의에는 부모의 RLS만 적용된다(문서 5.11). 시험 tc-31은 `CREATE TABLE … () INHERITS (tenant)` + `rls_policies`를 쓰고, r3 상태에서 실해(컨텍스트 없는 app이 `tenant` 질의로 자식 행을 봄)를 VD로 재현한 뒤 r4로 막힘을 본다.
+  - **H2 A 표의 정책은 `tenant_isolation` 하나**(B3-4): RESTRICTIVE 정책도 위반이다(사유: PERMISSIVE는 OR로 넓히고, RESTRICTIVE 식은 `tenant_isolation`보다 먼저 모든 행에 평가될 수 있다). tc-14의 RESTRICTIVE 허용 사례를 위반으로 뒤집는다. VD: RESTRICTIVE 식(`name::integer > 0` 꼴)이 먼저 평가되어 다른 테넌트 값이 오류 메시지에 실리는지 PG 18.6에서 EXPLAIN과 오류 원문으로 잰다. 재현되지 않아도 금지 결정은 유지한다 — SP-1에 RESTRICTIVE의 쓰임이 없다.
+  - **H3 role SQL 고정**(A3-3 = B3-2): tc-24에서 `tenancy._RLS_ROLE_SQL`을 최종 원문(H4 반영)과 같다고 단언한다(`rolname = session_user` · `'SET'` 변이를 잡는다). 멤버십 양성 실측은 VD 잔여로 T072/T075 라이브에 넘긴다 — 임시 LOGIN role + `GRANT <pod>_owner TO …` → `check_rls --require-rls-role` 위반 확인 → DROP.
+  - **H4 role 판정에 관계 소유 멤버십**(A3-4 — G4 선택안 채택): `--require-rls-role`은 `session_user`가 스캔 범위 관계의 `relowner`이거나 그 멤버일 때도 위반이다(같은 한 줄 · 이름 자리 `session_user:` · 사유에 「소유」를 더한다). 시험: owner가 임시로 `GRANT CREATE ON SCHEMA public TO test_app` → 임시 표를 `ALTER TABLE … OWNER TO test_app` → app + 플래그 → 위반 → finally `DROP` · `REVOKE`.
+  - **H5 문구**(A3-1 = B3-3): 계약 ③ · 규칙 · 위 G3 a · c는 컨트롤러가 이 커밋에서 고쳤다(NULLIF 안 연산자 · initdb 부트스트랩 pinned). 빌더는 `tenancy.py`의 같은 표현(:345-346)과 tc-16 독스트링(:607)을 주석만 고친다.
+  - **H6 결과 기록**(A3-2): 이 절.
+  - **검사 범위의 경계**(계약 r4): `check_rls`는 RLS의 카탈로그 모양(관계 등급 · 정책 모양 · 식 · 상속), 소유자 권한으로 도는 객체(뷰 · `SECURITY DEFINER` · 재작성 규칙), 런타임 role을 본다. 데이터 흐름(트리거 · 애플리케이션 코드가 A 행을 B 표로 옮기기)은 보지 않는다 — 마이그레이션 · 코드 리뷰 몫이다. r4 리뷰는 이 경계 밖의 발견을 「범위 메모」로만 낸다.
+
+### T068 r4 결과 · r5 결정(리뷰 r4 반영 · I1–I5 · 2026-11-04)
+
+- **r4 결과**(워크플로 `wf_6c6cd7f9-9f3` · 0.87M 토큰 · 빌더 DONE · 통합 리뷰 1):
+  - 줄 수: `tenancy.py` 648 → 726 · `check_rls.py` 50 → 53 · `test_tenancy_contract.py` 1280 → 1448(시험 함수 40 · 수집 60).
+  - 빨강(r3 구현으로 최종 시험): 5 failed / 55 passed — tc-14 · tc-24 · tc-31 ×3.
+  - 초록: `test_tenancy.py` 16 ×2 · `test_tenancy_contract.py` 60 · `test_fixtures_pg.py` 3.
+  - **D11 대체 — 시험**:
+    - tc-14 → `test_tc_14_any_other_policy_fails`(RESTRICTIVE 단독 · 두 정책 동시 = 위반).
+    - tc-24: H4 소유 사례(`GRANT CREATE` → `OWNER TO test_app` → app + 플래그 = role 줄 · 플래그 유무와 상관없이 비-role 줄은 같다) · `relowner` 단언 · 마지막 단언 = H3 원문 고정.
+    - tc-31 둘(B 상속 자식 · 매개변수 2 = 프레임워크 부모 · B 분할 표의 파티션).
+  - **확정 원문** `_RLS_ROLE_SQL` = BYPASSRLS · superuser 멤버십 EXISTS **OR** 스캔 범위(`_SCAN_RELATIONS` — `_RELATIONS_SQL`과 같은 FROM · WHERE 조각) 관계 가운데 `pg_has_role(session_user, c.relowner, 'MEMBER')`인 것이 있다. 시험은 조합된 전체 원문을 고정한다 — 그래서 범위 조각을 바꾸는 변이(M15 · M25 · M42)도 그 단언에 걸린다.
+  - **VD(PG 18.6)**:
+    - H1 실해(r3 구현): `INHERITS (tenant)` 자식 + `rls_policies` → r3 `check_rls()` = `[]`. 컨텍스트 없는 app role로 자식 직접 질의는 0행이었고, `SELECT label FROM tenant`는 자식 두 테넌트 행과 부모 행을 돌려줬다. EXPLAIN은 `Append`이고 자식 쪽에 Filter가 없다. r4는 그 자식 한 줄이다.
+    - H2 재현: widget에 `RESTRICTIVE … USING ((name)::integer > 0)`(B 행 값 `b-secret`)을 두었다.
+      - ANALYZE 뒤 Seq Scan의 Filter는 RESTRICTIVE 식이 먼저다 → 컨텍스트 A인 app role이 `DataError: invalid input syntax for type integer: "b-secret"`을 받는다(B 값 누설).
+      - 통계 없는 3행 · 인덱스 경로(Bitmap · Index Scan)에서는 새지 않는다 — 누설은 계획에 따라 다르다. 금지 결정은 그대로다.
+    - H4: 소유 이전이 된다. 소유자가 된 app은 ENABLE · FORCE · NO FORCE · DISABLE RLS를 모두 실행했다. 원문 SQL 값은 이전 전 app False · owner True, 이전 뒤 app True, 정리 뒤 app False다.
+    - 분할 인덱스의 `pg_inherits` 행(relkind I/i)은 오탐을 내지 않는다. A 부모 + B 부모 다중 상속은 위반 한 줄이다.
+    - 스캔 밖 부모는 owner 자격으로 만들 수 없다(시스템 표 부모 → `must be owner` · 임시 표 부모 거부 · `pg_` 스키마 거부) → 변이 P2(스캔 밖 부모 허용)가 사례 없이 살았다(fail-closed 결정 · 양성 실측은 superuser VD 선택).
+  - 변이 37개 가운데 36개를 잡았다(P2 생존 — 위). N4b(앞 EXISTS 주체를 current_user로)는 이제 원문 단언만 잡는다 — owner가 모든 표를 소유해 두 EXISTS가 같이 참이기 때문이다.
+  - **편차(빌더 ⑧ — 수용)**:
+    - `_INHERITS_SQL`은 셋째 열 `inhparent::regclass::text`(스캔 밖 부모 이름 · 고정 `search_path`라 스키마가 붙는다)와 `ORDER BY inhrelid, inhseqno`를 가진다.
+    - A가 아닌 부모가 여럿이면 한 줄에 정렬해 싣는다.
+    - `_relation_grade`로 등급을 먼저 다 정하고 판정한다(두 번 훑기 — 부모가 자식보다 뒤에 정렬될 수 있다).
+    - role 줄 문구를 재배치했다.
+  - **인계(빌더 ⑨)**:
+    - T072:
+      - 런타임 app role은 pod DB의 비시스템 스키마에서 아무 관계도 소유하지 않는다. 런타임 app 자격의 DDL(`createcachetable` 등)이 있으면 기동 `--require-rls-role`이 실패한다.
+      - DB 소유자는 pod owner role이다.
+    - conftest를 `GRANT … WITH INHERIT FALSE`로 바꾸면 tc-24 정리의 DROP을 app 연결로 옮겨야 한다.
+    - **받아들인 잔여**(범위 메모):
+      - `SET SESSION AUTHORIZATION`(superuser로 인증한 세션)
+      - 논리 복제 · publication
+      - FK · 고유 제약 covert channel
+      - DB · 스키마 소유(H4 범위 밖 — SP-1은 owner가 DB를 소유한다)
+      - 일반 상속에서 B 자식에 직접 쓰기(데이터 흐름)
+- **리뷰 r4**(통합 렌즈 · approve_with_fixes · low 4): R4-1 H1 반대 방향 · R4-2 r4 결과 미기록(이 절) · R4-3 판별 잔여 · R4-4 문구(컨트롤러가 이 커밋에서 고쳤다 — 규칙 §Auth · §Table grades 끝 · 계약 「DB 연결」).
+- **r5 결정 I1–I5(컨트롤러)**:
+  - **I1 상속 양쪽 등급**(R4-1 (a)): A로 판정된 관계의 상속 · 파티션 **자식**이 A가 아니면(허용 목록 · 프레임워크 이름) 그 자식 이름으로 위반 한 줄이다(사유: A 부모의 자식인데 A가 아니다 — 부모로 쓴 A 행이 이 관계에 저장되어 RLS 없이 읽힌다). 계약 ③ · 규칙은 「양쪽 등급이 같아야 한다」로 고쳤다. 시험: tc-31에 A 분할 표 + `tenant_membership` 파티션 · `django_session` 파티션 두 사례(위반 = 그 파티션 한 줄)와 실해 VD(컨텍스트 없는 app이 파티션을 직접 읽어 두 테넌트 행)를 둔다.
+  - **I2 relkind p 자식**(R4-3 (b)): 비-A 부모(B 분할 표 `tenant_membership`)의 파티션이 A 분할 표(`… PARTITION BY RANGE`)인 사례 = 그 파티션 한 줄(relkind p).
+  - **I3 H4 단독 사례**(R4-3 (c)): `tc24_owned`를 `(tenant_id uuid, id integer)` + `rls_policies`로 만든 뒤 소유를 넘긴다. 그러면 플래그 없는 `check_rls() == []`이고, 플래그를 켜면 role 줄 하나뿐이다.
+  - **I4 견고성**(r4 리뷰 「견고성 메모」): tc-24 정리는 DROP이 실패해도 REVOKE가 돈다(중첩 try). tc-31 등 예약 이름(`tenant_membership` · `django_session`)으로 표를 만드는 사례는 만들기 전에 그 이름이 없음을 단언한다(있던 표를 지우지 않는다).
+  - **I5 런타임 문구**(r4 리뷰 범위 메모 · 선택 채택): `_isolation_problems`의 의존 사유 「(사용자 정의 연산자 · 함수 · 타입 · 콜레이션 · 형변환)」을 「표 · 열 밖의 객체(사용자 객체 · initdb 후반 객체 — 연산자 · 함수 · 타입 · 콜레이션 · 형변환)」 꼴로 넓혀 규칙과 같은 뜻으로 맞춘다(cp949 안전).
+  - **받아들이는 잔여(R4-3 (a))**: G4 앞 EXISTS(BYPASSRLS · superuser 멤버십)의 행동 판별은 r3 SET ROLE 사례가 했고, 지금은 원문 고정이 지킨다. 「BYPASSRLS이면서 아무것도 소유하지 않는 login role」은 superuser가 만드는 conftest 개정이라 하지 않는다 — 멤버십 양성과 함께 T072/T075 라이브 VD로 넘긴다.
+
+### T068 r5 결과(수렴 · 2026-11-04)
+
+- **r5 결과**(워크플로 `wf_a8d6c750-fef` · 0.73M 토큰 · 빌더 DONE_WITH_CONCERNS):
+  - 줄 수: `tenancy.py` 726 → 764 · `check_rls.py` 53 → 54 · `test_tenancy_contract.py` 1448 → 1580(시험 함수 42 · 수집 64). SQL 상수 변경은 0이다.
+  - 빨강(r4 구현으로 최종 시험): 6 failed / 58 passed — tc-30 ×3(I5 문구) · tc-31 I1 ×2 · 사슬.
+  - 초록: 16 ×2 · 64 · 3.
+  - **D11 대체 — 시험**:
+    - tc-31 I1 매개변수 2(A 분할 표 `tc31_ap`의 `tenant_membership` · `django_session` 파티션 = 그 파티션 한 줄 · 사례 안에서 실해 `(0, 2)`를 상시 단언).
+    - I2(B 분할 표의 A 분할 파티션 `tc31_sub` = relkind p 한 줄).
+    - 사슬(B(p) → A(p) → 프레임워크(r) = 관계마다 한 줄 · 실해 `(2, 0, 2)`).
+    - tc-24 I3(RLS가 걸린 표를 app에 넘김 → 플래그 없이 `[]` · 플래그를 켜면 role 줄 하나).
+    - I4(중첩 try 정리 · 예약 이름 사전 단언 `_assert_absent`).
+  - **VD(PG 18.6)**:
+    - I1 실해(r4 구현): 두 파티션 모두 r4 `check_rls()` = `[]`. 부모로 쓴 행이 그 파티션에 저장된다(tableoid).
+    - 컨텍스트 없는 app의 (부모, 파티션) = `(0, 2)`, 컨텍스트 A = `(1, 2)`.
+    - 쓰기도 샌다 — B 행을 부모로 넣으면 정책이 막고, 파티션에 직접 넣으면 된다.
+    - EXPLAIN: Filter는 부모 질의에만 있다.
+    - VD-I1b: 일반 상속에서는 부모로 쓴 행이 부모에 남는다.
+    - 분할 인덱스 행 · 다른 세션의 TEMP 상속 자식은 오탐이 없다.
+  - 변이 11/11(Q1–Q5 · P1 · P1b · P1c · P1d · P3 · P4). Q4 · P4는 원문 단언보다 앞선 행동 단언에서 잡혔다. 변이 실행기의 CRLF 판정 버그로 두 번 「EXPECTED-MISS」가 찍혔다 — 고쳐 세 번째로 다시 돌렸고, 실패 집합은 세 번 모두 같았다.
+  - **편차(빌더 ⑧ — 수용)**: 자식 쪽 판정은 스캔된 자식 가운데 B · 프레임워크로 판정된 것만 본다(B ↔ 프레임워크 링크 · 스캔 밖 자식은 판정하지 않는다 — 계약 · 규칙을 이 뜻으로 고쳤다 · R5-2). A 부모가 여럿이면 정렬해 한 줄에 싣는다. 괄호 안에 판정된 등급을 싣는다. I4를 적용하지 않은 곳: tc-15(뷰) · tc-17(전용 스키마 CASCADE) · tc-29(롤백).
+  - 세션 중 남의 컨테이너(`currentness_*` 4개)가 생겼다 — 손대지 않았다.
+- **리뷰 r5**(통합 · approve_with_fixes · low 3 · **수렴 판정** — 「리뷰를 닫아도 된다 · r6 불필요」). 컨트롤러가 직접 마무리했다(T067 r8과 같은 방식):
+  - **R5-1**: I1 사유 「부모로 쓴 A 행이 이 관계에 저장되어」는 일반 상속 자식에는 사실이 아니다.
+    - 사유를 두 경우 모두 맞는 꼴로 바꿨다: 「이 관계를 직접 읽는 질의에는 이 관계의 RLS만 적용되어 A 부모를 거쳐 보이는 행이 RLS 없이 읽힌다(파티션이면 부모로 쓴 A 행도 이 관계에 저장된다)」. 시험 `CHILD_REASON`도 그 조각으로 맞췄다.
+    - `test_tc_31_plain_inheritance_child_of_grade_a_parent_fails`(`CREATE TABLE tenant_membership () INHERITS (widget)` = 한 줄 · relkind r)를 더했다.
+    - 변이 「I1을 파티션 부모(relkind p)에만」 → 그 시험만 빨강(1 failed / 64 passed) · cmp 복원.
+  - **R5-2**: 계약 ③ · 규칙 · 모듈 독스트링 · `_INHERITS_SQL` 주석을 「A 등급 관계가 낀 링크는 양쪽이 모두 A · B ↔ 프레임워크 링크와 스캔 밖 자식은 판정 밖」으로 고쳤다.
+  - **R5-3**: 이 절.
+
+### T068 결과(r1 → r5 · 2026-11-04) — D1–D15의 정정은 r2 · r3 · r4 · r5 절이 우선한다
+
+- **경과**: 조사 `wf_829c75f2-4a5` → r1 `wf_09fe772a-fef`(1.07M) → r2 `wf_632d2ccd-40c`(1.13M) → r3 `wf_a04b080d-08b`(1.22M) → r4 `wf_6c6cd7f9-9f3`(0.87M) → r5 `wf_a8d6c750-fef`(0.73M). 빌드 · 리뷰 합계는 약 5.0M 토큰이다.
+- **리뷰 회차별 지적**(높음 · 중간 · 낮음):
+  - r1: A 0 · 1 · 6 / B 0 · 1 · 7
+  - r2: A2 0 · 2 · 3 / B2 0 · 0 · 3
+  - r3: A3 0 · 0 · 4 / B3 0 · 0 · 4
+  - r4: 통합 0 · 0 · 4
+  - r5: 통합 0 · 0 · 3(수렴)
+- **최종 산출물**:
+  - `src/django_common/tenancy.py` 768줄 · `problem.py` 46 · `management/__init__.py` · `management/commands/__init__.py` · `management/commands/check_rls.py` 54.
+  - `tests/test_tenancy_contract.py` 1599줄(시험 함수 43 · 수집 65) · `tests/tenancyapp/` 4파일.
+  - conftest +2(`GRANT test_app TO test_owner`) · 주석 전용 4파일(`pyproject.toml` · `__init__.py` · `tests/settings.py` · `0001_initial.py`).
+  - 계약 · 규칙 · kr 미러 · 이 build-notes.
+- **컨트롤러 독립 검증**(최종본 · 10:41–10:44Z):
+  - `pytest tests/test_tenancy.py -q` 16 passed ×3 · `tests/test_tenancy_contract.py -q` 65 passed ×2 · `tests/test_fixtures_pg.py -p no:django -q` 3 passed(경고 1 = T060 K9 허용).
+  - 바이트 위생 15파일 OK(최대 줄 119) · 주석 전용 4파일 AST · TOML 동일 · compileall OK · 런타임 문자열 cp949 실패 0(tenancy 175 · problem 11 · check_rls 15) · gitleaks 19/19 rc 0.
+  - Docker: dangling 볼륨 25 → 25 · testcontainers 잔존 0.
+- **계약 보정 이력**(`285af5b` 뒤 전부 이 커밋):
+  - r2: 정본 식 · PUBLIC · Django 스키마 · superuser 확장 · DEFINER · 규칙 · 모델 검사 · `--require-rls-role` · ASCII 성공 줄 · frozenset · Ninja · `tenant_context`.
+  - r3: 정책 의존 · `search_path` 고정 · `session_user` 멤버십 · 시그니처 · Django 스키마 0/2 · 함수 확장 제외 · TME · `assume_role` 금지.
+  - r4: 문구 정정 · 정책 하나 · 상속 부모 · 관계 소유 멤버십 · 검사 범위의 경계.
+  - r5: A가 낀 링크 양쪽 A · `assume_role` 문장 · 판정 밖 두 경우.
+- **report.md 후보**:
+  - ① 설계 D10의 「모양 판정」은 부족했다. 이름만 같은 `USING (true)` 정책이 r1을 통과했다. 그 뒤 정본 deparse · `pg_depend` 의존 · `search_path` 고정 · 정책 하나 · 상속 양쪽 등급으로 늘었다.
+  - ② 문면 밖 산출물: `tenant_context`(교차 테넌트 컨텍스트 누수 방지) · `check_rls(require_rls_role=…)` + `--require-rls-role`(기동 검사) · `problem_response`(D5).
+  - ③ T060 픽스처 확장: conftest 한 문장(assume_role 재현).
+  - ④ 실측으로 막은 누설 넷(이전 판이 통과시킨 것):
+    - 도메인 + 사용자 `=` 정책 — 컨텍스트 없이 전 행.
+    - 전역 표를 상속 부모로 둔 테넌트 표 — 부모 질의로 전 행.
+    - RESTRICTIVE 형변환 식 — 순차 스캔에서 다른 테넌트 값이 오류 메시지로 샌다.
+    - 테넌트 분할 표의 전역 이름 파티션 — 직접 질의로 전 행 · 쓰기도.
+  - ⑤ 검사 범위의 경계를 계약에 적었다(데이터 흐름은 리뷰 몫).
+- **VD 요약**(PG 18.6 · 180006):
+  - TEST.MIRROR teardown 연속 통과(VD-6).
+  - app role의 카탈로그 읽기 · 클라이언트 바인딩 `str` · `''` 경로.
+  - 정본 deparse(app · owner · 고정 전후 같음) · 정본 정책 `pg_depend` = `pg_class`만.
+  - savepoint 지역 GUC: `RELEASE`면 남고 `ROLLBACK TO`면 되돌아간다.
+  - 누설 재현 넷(위 ④) · 소유 이전과 소유자의 RLS 토글 · em dash의 cp949 실패.
+- **VD 잔여(라이브 · T072/T075)**:
+  - superuser 소유 확장 멤버 제외의 양성(pgvector).
+  - CNPG app role의 카탈로그 읽기와 `check_rls --require-rls-role` 통과.
+  - 멤버십 양성(임시 LOGIN role + `GRANT <pod>_owner TO …` → 위반 확인 → DROP).
+  - 「BYPASSRLS이면서 아무것도 소유하지 않는 login role」 판별 · 스캔 밖 부모의 양성(superuser).
+  - CNPG Pooler `auth_query`의 SECURITY DEFINER 함수(SP-1에는 Pooler가 없다).
+  - `TESTCONTAINERS_HOST_OVERRIDE` 없이 1회.
+- **인계(최종)**:
+  - **T069**: `GlobalModel` · `db_table = "outbox"` · `current_tenant_id()` · 교차 테넌트 publish는 `tenant_context`. tc-29는 카탈로그 계산이라 `public.outbox`와 충돌하지 않는다. 시험 DB에 다른 스캔 대상 관계를 만들지 않는다(tc-17 개수).
+  - **T070**: `request.tenant_id`는 `uuid.UUID`만 · `AuthError.to_response()`는 `problem_response` · MIDDLEWARE에서 `JwtAuthMiddleware` 바로 뒤에 `TenantContextMiddleware`.
+  - **T071**: 헬스 3 기본 면제 · 503은 `problem_response`.
+  - **T072**:
+    - 기동은 app role `check_rls --require-rls-role`, CI는 owner `--database`.
+    - 정책은 `rls_policies`로만 만든다. SECURITY DEFINER · `CREATE RULE` · RESTRICTIVE · 등급이 섞인 상속 · `assume_role`은 금지.
+    - CNPG app role의 `inRoles`에 owner를 두지 않는다. app은 아무 관계도 소유하지 않는다.
+    - `rls_policies`는 `search_path`를 바꾸지 않은 세션에서 적용한다.
+    - 정적 자산은 `TenantContextMiddleware` 앞에서 서빙한다.
+    - Ninja catch-all 처리기를 금지하고 Ninja판 tc-7 기본 시험을 둔다.
+    - `check_rls` 전에 migrate가 끝나 있어야 한다.
+  - **T073**:
+    - B 모델 3개의 `db_table`은 허용 이름이다.
+    - 교차 테넌트 revoke · publish는 `with tenant_context(대상):`.
+    - 사람 admin 경로(Bearer 없음)는 지금 설계로 403 `tenant_required`다 — 호스트 기준 처리나 auth의 tenant 공급을 함께 정한다.
+    - 요청 트랜잭션 안에서 긴 외부 대기를 하지 않는다(30 s).
+  - **시험 DB**: owner가 test_app의 멤버(INHERIT · SET)다.
+- **학습 로그**: `content/tmp/003-t068/2026-11-04.md`.
