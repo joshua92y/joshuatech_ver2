@@ -2,7 +2,7 @@
   "name": "@jt/events",
   "version": "0.0.0",
   "private": true,
-  "description": "Event schemas and contracts (skeleton, T015; see specs/003-platform-foundation/contracts/events.md)",
+  "description": "Event schemas (CloudEvents envelope + topic data, JSON Schema 2020-12) and the compatibility checker — see specs/003-platform-foundation/contracts/events.md",
   "type": "module",
   "scripts": {
     "build": "echo @jt/events: skeleton, no build step",

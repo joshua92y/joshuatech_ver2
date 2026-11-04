@@ -109,6 +109,18 @@ $c = $LASTEXITCODE
 Write-Host ($o.TrimEnd())
 Check 'ci-gitleaks' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see ci-gitleaks test output above"
 
+# 1b5. ci-events-compat (T067) — tests/scripts/events-compat.tests.ps1: scripts/ci/events-compat.sh 하네스(임시 git 저장소 픽스처로 PR merge 커밋 ·
+#       push 기준 · 기준 쪽 검사기 · 부트스트랩 · 종료 코드를 실행 단언 + .github/workflows/ci.yml job events-compat 정적 검사 · 네트워크 불필요).
+#       도구(bash · git · node)가 없으면 하네스가 첫 줄 'SKIP events-compat tests -- ' + exit 0으로 끝난다 — 그때만 SKIP 허용.
+#       그 밖에는 1b3과 같은 양성 증거 규율: exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 · 크래시 = FAIL). 사본 시험
+#       (EVENTS_COMPAT_SCRIPT · EVENTS_COMPAT_CI)이면 요약 줄 끝에 접미가 붙어 이 판정을 통과하지 못한다. 심볼릭 링크를 만들 수 없는
+#       머신에서는 그 단언만 'SKIP ec-26b …' 줄과 'N skipped' 줄로 드러나고 통과 수에 들지 않는다(요약 줄은 그대로 판정한다).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/events-compat.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+if ($c -eq 0 -and $o -match '\ASKIP events-compat tests -- ') { Write-Host 'SKIP ci-events-compat -- allowed (bash, git or node not found; see SKIP line above)' }
+else { Check 'ci-events-compat' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see events-compat harness output above" }
+
 # 1c. specs index freshness — 이 검사는 낡은 인덱스를 발견하면 specs/README.md를 갱신하는 부작용이 있다(FAIL이면 diff를 검토하고 커밋한다)
 $o = pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/update-specs-index.ps1 2>&1 | Out-String
 Check 'specs-index-fresh' ($LASTEXITCODE -eq 0 -and $o -match '\(unchanged\)') ("exit=$LASTEXITCODE; $($o.Trim()) -- if stale: README was regenerated now, review and commit specs/README.md; if error: fix the spec header and rerun")
