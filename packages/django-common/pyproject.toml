@@ -1,8 +1,10 @@
 # django-common — Django pod 공용 라이브러리. 현재: 런타임 의존성 + 시험 인프라(T060 · T061 · T062 · T063, test-first)
 # + T068 구현(django_common.tenancy · django_common.problem · 관리 명령 check_rls — tests/test_tenancy.py ·
-# tests/test_tenancy_contract.py 초록). tests/test_outbox.py는 django_common.outbox가, tests/test_auth.py는
-# django_common.auth가, tests/test_observability.py는 django_common.observability · django_common.health가 없어 아직
-# 빨강이다 — 그 구현 모듈은 T069(outbox) · T070(auth) · T071(observability · health)에서 들어온다.
+# tests/test_tenancy_contract.py 초록) + T069 구현(django_common.outbox · django_common.kafka · 모델 OutboxEvent ·
+# 마이그레이션 0001 · 관리 명령 outbox_relay · outbox_requeue · outbox_purge — tests/test_outbox.py ·
+# tests/test_outbox_contract.py · tests/test_event_patterns.py 초록). tests/test_auth.py는 django_common.auth가,
+# tests/test_observability.py는 django_common.observability · django_common.health가 없어 아직 빨강이다 — 그 구현 모듈은
+# T070(auth) · T071(observability · health)에서 들어온다.
 [project]
 name = "django-common"
 version = "0.0.0"

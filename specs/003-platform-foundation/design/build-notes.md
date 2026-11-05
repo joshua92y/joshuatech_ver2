@@ -1498,14 +1498,14 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
 
     설정 `OUTBOX_SOURCE`는 봉투 `source` pattern(kebab)이 아니면 `ImproperlyConfigured`(이름만 · `from None`)다. `OutboxUsageError(Exception)`의 메시지는 규칙 이름만 싣는다(값 · data 없음).
   - **D4 `relay_once(*, producer=None, batch_size=100) -> RelayResult`**(`RelayResult` = `@dataclass(frozen=True)` `published` · `failed` · `dead` — 이 패스에서 고른 행 수 = 셋의 합):
-    1. `producer is None`이면 `build_producer()`(D6)로 만들고, 끝나면 `flush` 뒤 버린다. 주입된 프로듀서에는 `produce` · `flush` · `poll` · (남은 메시지가 있을 때만) `purge`만 부른다.
+    1. `producer is None`이면 `build_producer()`(D6)로 만들고, 끝나면 `flush` 뒤 버린다. 주입된 프로듀서에는 `produce` · `flush` · `poll` · (남은 메시지가 있을 때만) `purge`만 부른다. 〔r4 L6 · L7이 대신한다 — relay_once는 poll을 부르지 않는다(패스 전 poll(0)은 명령의 것) · purge는 flush가 치명을 올려도 부른다(relay 모듈 독스트링)〕
     2. `transaction.atomic(using=DEFAULT_DB_ALIAS, durable=True)` — 트랜잭션 밖에서만 부른다. 다른 atomic 안이면 `RuntimeError`다. 바깥 트랜잭션이 롤백되면 Kafka로 이미 나간 행이 되살아난다.
        - 첫 문장은 `SET LOCAL idle_in_transaction_session_timeout = '120s'`(상수 · 바인드 없음)다. 두 단계 flush(각 상한 35 s) 동안 app role의 30 s가 세션을 끊지 않게 한다(사실 ⑧ · 이 트랜잭션에만 걸린다).
-    3. 선택: `list(OutboxEvent.objects.filter(dead_at__isnull=True).order_by("id").select_for_update(skip_locked=True, of=("self",))[:batch_size])`. 비면 `RelayResult(0, 0, 0)`.
-    4. **1단계 — 모든 행을 메인 토픽으로**: `OUTBOX_TOPIC_PREFIX + row.topic`, key = `partition_key` UTF-8, value = `encode_envelope(row.payload)`, 헤더 `[("ce_type", row.topic), ("ce_source", OUTBOX_SOURCE), ("ce_id", row.id), ("content-type", "application/cloudevents+json")]`(UTF-8 bytes · 이름 중복 없음). 헤더는 행의 열과 설정에서 만들고 payload를 해석하지 않는다. jsonb에서 읽은 payload는 언제나 직렬화되므로, 손으로 넣은 꼴 나쁜 행도 릴레이를 멈추지 못한다(소비자 스키마 검증이 그 DLQ로 보낸다).
+    3. 선택: `list(OutboxEvent.objects.filter(dead_at__isnull=True).order_by("id").select_for_update(skip_locked=True, of=("self",))[:batch_size])`. 비면 `RelayResult(0, 0, 0)`. 〔r2 J4 · r3 K5가 대신한다 — `id`와 `octet_length(payload::text)`를 잠그고(크기 상한 안 행만) 바이트 예산 안 앞부분만 읽는다〕
+    4. **1단계 — 모든 행을 메인 토픽으로**: `OUTBOX_TOPIC_PREFIX + row.topic`, key = `partition_key` UTF-8, value = `encode_envelope(row.payload)`, 헤더 `[("ce_type", row.topic), ("ce_source", OUTBOX_SOURCE), ("ce_id", row.id), ("content-type", "application/cloudevents+json")]`(UTF-8 bytes · 이름 중복 없음). 헤더는 행의 열과 설정에서 만들고 payload를 해석하지 않는다. jsonb에서 읽은 payload는 언제나 직렬화되므로, 손으로 넣은 꼴 나쁜 행도 릴레이를 멈추지 못한다(소비자 스키마 검증이 그 DLQ로 보낸다). 〔r2 J3이 대신한다 — value = `payload::text`의 UTF-8(Python으로 해석 · 재직렬화하지 않는다)〕
        - 호출 꼴은 `produce(topic, value=…, key=…, headers=…, on_delivery=functools.partial(기록, row.id))`(키워드만)이다.
        - 기록 콜백은 이 호출의 지역 dict에 `err`만 적는다(DB 쓰기 · 예외 없음).
-       - `produce`가 곧바로 낸 `BufferError` · `KafkaException`은 그 행의 실패다. 다른 예외는 올린다(버그 — 프로세스가 끝나고 재시작한다).
+       - `produce`가 곧바로 낸 `BufferError` · `KafkaException`은 그 행의 실패다. 다른 예외는 올린다(버그 — 프로세스가 끝나고 재시작한다). 〔r2 J6이 대신한다 — relay_once는 올리고, 명령은 로그 + 백오프로 버틴다〕
     5. `flush(FLUSH_TIMEOUT_S = 35)`. 0보다 크면 `purge(in_queue=True, in_flight=True)` 뒤 `flush(5)`로 purge DR을 받는다. 결과가 없는 행은 실패(「delivery 결과 없음」)다. in-flight purge는 이미 기록됐을 수 있다(중복 — 소비자 `(group, id)` 멱등).
     6. **2단계 — DLQ**: 1단계 실패 행 가운데 `attempts + 1 ≥ OUTBOX_MAX_ATTEMPTS`인 것을 같은 패스에서 `OUTBOX_TOPIC_PREFIX + OUTBOX_SOURCE + ".dlq"`로 보낸다. value는 같은 바이트, key는 같은 `partition_key`, 헤더는 1단계 넷 + `("error", last_error 텍스트)`다. flush · purge 규칙은 5와 같다.
     7. **반영**(같은 트랜잭션):
@@ -1531,21 +1531,21 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
       - `SASL_SSL`이면 `sasl.mechanism`(또는 `sasl.mechanisms`) = `SCRAM-SHA-512` · `sasl.username` · `sasl.password` · `ssl.ca.location`이 비지 않은 str이어야 한다(librdkafka는 mechanism이 빠지면 GSSAPI로 조용히 만든다).
       - 결과 = `{"bootstrap.servers": …, **KAFKA_CLIENT_CONFIG}`.
     - `relay.producer_config()` = `client_config()` + `enable.idempotence = True` · `delivery.timeout.ms = 30000`(int) · `client.id` 기본 `OUTBOX_SOURCE`. `KAFKA_CLIENT_CONFIG`에 `enable.idempotence` · `delivery.timeout.ms` · `message.timeout.ms`가 있으면 `ImproperlyConfigured`다(계약 고정값). acks · retries · max.in.flight의 양립은 librdkafka가 생성 때 검사한다.
-    - `build_producer()`는 `confluent_kafka.Producer(producer_config())`다(import는 함수 안 — publish 경로는 confluent를 불러오지 않는다). 설정 dict는 로그 · 예외 · repr에 싣지 않는다(`sasl.password`).
+    - `build_producer()`는 `confluent_kafka.Producer(producer_config())`다(import는 함수 안 — publish 경로는 confluent를 불러오지 않는다). 설정 dict는 로그 · 예외 · repr에 싣지 않는다(`sasl.password`). 〔r4 L6 — error_cb(비치명 이벤트 이름 로그)를 단다〕
   - **D7 명령 `outbox_relay`**(계약 이름 · 인자 없는 기본값 = 계약 값):
     - 옵션: `--batch-size`(100) · `--poll-interval`(0.5 s) · `--max-backoff`(300 s) · `--metrics-port`(9464 · 0 = 서버를 열지 않음 — 시험) · `--iterations`(0 = 무한 — 시험 · 운영 점검). 양수 검사.
-    - 순서: ① `build_producer()`(설정 오류는 포트를 열기 전에 실패 — liveness가 뜨지 않아 CrashLoop로 드러난다) ② `start_http_server(port)` ③ `refresh_metrics()` ④ 루프.
+    - 순서: ① `build_producer()`(설정 오류는 포트를 열기 전에 실패 — liveness가 뜨지 않아 CrashLoop로 드러난다) ② `start_http_server(port)` ③ `refresh_metrics()` ④ 루프. 〔r2 J6 · r4 L7이 대신한다 — 9464를 먼저 열고, 생성은 루프 안 · 패스 전 poll〕
     - 루프 한 번: `close_old_connections()` → `relay_once(producer=…, batch_size=…)` → `refresh_metrics()` → 다음 대기.
-      - 다음 대기는 셋 중 하나다. 배치가 가득(published = batch)이면 0(밀린 행을 바로 비운다 · SC-004 5 s). 진전 없음(published 0 · failed > 0)이면 지수 백오프(대기 × 2, `--poll-interval`에서 시작해 `--max-backoff`까지). 그 밖은 `--poll-interval`(진전이 있으면 백오프를 되돌린다).
-      - DB `OperationalError` · `InterfaceError`는 로그(예외 클래스 이름만) · `close_old_connections()` · 백오프다. 그 밖의 예외는 올린다 — 프로세스가 끝나 9464가 닫히고 컨테이너가 재시작한다(crash-only).
+      - 다음 대기는 셋 중 하나다. 배치가 가득(published = batch)이면 0(밀린 행을 바로 비운다 · SC-004 5 s). 진전 없음(published 0 · failed > 0)이면 지수 백오프(대기 × 2, `--poll-interval`에서 시작해 `--max-backoff`까지). 그 밖은 `--poll-interval`(진전이 있으면 백오프를 되돌린다). 〔r2 J4 · r3 K9 · r5 M1이 대신한다 — 대기 = max(직전, 폴링, 0.5 s) × 2 · 잘림 0 · 치명 재생성 첫 빈 패스는 유지〕
+      - DB `OperationalError` · `InterfaceError`는 로그(예외 클래스 이름만) · `close_old_connections()` · 백오프다. 그 밖의 예외는 올린다 — 프로세스가 끝나 9464가 닫히고 컨테이너가 재시작한다(crash-only). 〔r2 J6이 대신한다 — 루프 안 오류로 끝나지 않는다(로그 + 백오프)〕
     - SIGTERM · SIGINT: 플래그만 세운다(이번 패스를 마치고 끝낸다). 대기는 0.1 s 조각으로 플래그를 본다. 끝에서 이전 처리기를 되돌린다(`call_command` 시험이 같은 프로세스).
-    - 로그: `logging.getLogger("django_common.outbox")` 이벤트 이름 + 개수만 싣는다(payload · 설정 · 오류 본문 없음 — `last_error`는 DB에 있다).
+    - 로그: `logging.getLogger("django_common.outbox")` 이벤트 이름 + 개수만 싣는다(payload · 설정 · 오류 본문 없음 — `last_error`는 DB에 있다). 〔r2 J6 · r3 K11이 대신한다 — 예외 클래스 + 값 없는 진단 필드도 싣는다〕
   - **D8 purge · 재처리**:
     - `purge_dead(*, older_than: timedelta = timedelta(days=30)) -> int`: `filter(dead_at__lt=Now() − older_than).delete()`의 삭제 수를 돌려준다. DB 시계 · default 별칭(app role) · `dead_at` NULL은 대상 밖이다. `older_than`이 0 이하면 `ValueError`다. T072 Celery 작업 `<pod_snake>.tasks.purge_dead_outbox`가 감싼다(일 1회).
     - `requeue_dead(ids: Collection[str] | None = None) -> int`: dead 행(`dead_at IS NOT NULL`, ids가 있으면 그 안)을 `dead_at = NULL` · `attempts = 0` · `last_error = NULL`로 되돌린다. attempts를 남기면 다음 패스가 다시 DLQ로 보내 DLQ에 중복이 생긴다.
     - 명령 `outbox_requeue`: `--id <ULID>`(반복 · ULID 꼴 검사) 또는 `--all` 가운데 하나(둘 다 · 둘 다 없음 → `CommandError`)다. stdout 한 줄 `outbox_requeue: N`(ASCII)을 낸다. 계약의 「재처리는 `dead_at`을 비우는 수동 command」를 실제로 만든다.
   - **D9 백오프 · 장애 · 순서(계약 문장)**:
-    - 백오프는 행이 아니라 루프의 것이고, 진전이 없는 패스에서만 자란다. 독성 메시지 하나는 다른 행이 진전하는 동안 0.5 s 간격으로 10번 실패해 DLQ로 간다. 전면 장애는 0.5 → 300 s 백오프로 10번째까지 약 8.5분이다.
+    - 백오프는 행이 아니라 루프의 것이고, 진전이 없는 패스에서만 자란다. 독성 메시지 하나는 다른 행이 진전하는 동안 0.5 s 간격으로 10번 실패해 DLQ로 간다. 전면 장애는 0.5 → 300 s 백오프로 10번째까지 약 8.5분이다. 〔r2 J6 · J12 · r3 K9 · r4 L4 · r5 M1이 대신한다 — 오류에서도 자란다 · 첫 대기 1 s · 홀로 실패 약 8.5분 · 브로커 전면 불통 약 14분(계약 「시간」) · 치명 뒤 첫 빈 패스는 대기 유지〕
     - 장애가 그보다 길면 행은 attempts 10에 닿는다. DLQ도 닿지 않으면 행은 남고, 복구 뒤 메인으로 간다(D4-7). 메인 토픽만 실패하고 DLQ는 되는 부분 장애면 dead가 된다 → 복구 뒤 `outbox_requeue`.
     - 순서는 최선 노력이다. 실패 행 뒤의 행은 먼저 나간다. 롤링 업데이트(maxSurge 1) 동안 릴레이 둘이 SKIP LOCKED로 행을 나눈다. 소비자는 `(group, id)`로 멱등이고 순서 역전을 견딘다.
   - **D10 ULID `_ulid.new_ulid() -> str`**:
@@ -1616,3 +1616,450 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
   3. 수정한다.
   4. 커밋 · tick 75/119 · 학습 로그로 마감한다.
   5. T070으로 넘어간다.
+
+### T069 r1 결과 · r2 결정(리뷰 r1 반영 · J1–J12 · 2026-11-04)
+
+- **r1 결과**(워크플로 `wf_b35c53f2-657` · 1.65M 토큰 · 빌더 DONE_WITH_CONCERNS):
+  - 새 파일 16개, 추적 파일 변경은 0이다.
+    - `kafka.py` 69 · `models.py` 9 · `migrations/0001_initial.py` 34 · `outbox/` 7파일(`publisher.py` 190 · `relay.py` 250 · `metrics.py` 59 등)
+    - 명령 2(`outbox_relay.py` 208 · `outbox_requeue.py` 43)
+    - 시험 `test_outbox_contract.py` 1221(25) · `_outbox_fakes.py` 205 · `test_event_patterns.py` 445(52)
+  - 빨강: 구현 파일 전에 `ModuleNotFoundError: django_common.kafka` · `…outbox`. tp-1..7은 T067 스키마의 Python 의미라 처음부터 초록이다(판별력은 변이 P1–P3).
+  - 초록: `test_outbox.py` 16 ×2(**T061 PASS**) · contract 25 · patterns 52 · fixtures_kafka 1 · 회귀 16 · 65 · 3.
+  - 변이 97개 전부 잡았다(최종 바이트 2회차 · 1806 s). 1회차에 D10-2(ULID 잠금)가 살아 oc-6에 결정적 경합 시험을 더했다.
+  - VD:
+    - `SET LOCAL` = `2min`(밖 `0`).
+    - out-6 실 Kafka 첫 패스 0.68 s · 수신 2.2 s.
+    - 실 Producer purge(닫힌 포트) = `FLUSH_TIMEOUT_S=1`이면 1.03 s `_PURGE_QUEUE`, 기본이면 30.3 s `_MSG_TIMED_OUT`.
+    - 나이가 refresh 없이 +1.1 s 자란다.
+    - VD-5: 스레드 연결 1 → 1. 잠금을 쥔 채 멈춘 릴레이 → teardown TRUNCATE가 30.4 s 뒤 `LockNotAvailable`로 끝난다(유한한 실패).
+  - 편차(빌더 ⑧ — 수용):
+    - 비str 키 반복 검사(`json.dumps`가 `{1: …}`를 조용히 `"1"`로 바꾼다 — 실측).
+    - RecursionError를 「JSON」으로 본다.
+    - 0001 CRLF → LF(내용 같음).
+    - `--max-backoff ≥ --poll-interval` 검사 · 끝에 지표 서버 닫기 · OUTBOX_* 검증도 포트 전.
+- **리뷰 r1**: A approve_with_fixes(medium 2 · low 7) · B approve_with_fixes(medium 4 · low 7).
+  - medium:
+    - A-1 = B-6: jsonb가 1e16 이상 float를 숫자열로 펼쳐 900 KB 관문이 뚫린다 — 실측 989 B → 30,489 B.
+    - A-2: 「메시지에 값 없음」 단언이 공허하다(SENTINEL을 입력에 넣지 않았다).
+    - B-1: 장수 프로듀서가 fatal 오류 뒤 회복하지 못한다.
+    - B-2: 900 KB × 100행이 relay 192Mi를 넘어 OOM 재시작 반복.
+    - B-3: 깊은 중첩 거부가 Windows C 재귀 한도(3000)에 기대어 Linux(10000)에서 oc-3이 깨진다.
+    - B-4: relay가 web과 같은 pod라 relay CrashLoop가 pod Ready를 떨어뜨려 web API까지 끊는다.
+- **r2 결정 J1–J12(컨트롤러 — 계약 events.md · pod-template · 규칙은 이 절과 같은 커밋에서 「T069 r2」로 고쳤다)**:
+  - **J1 data 관문 = jsonb 왕복 꼴**(A-1 · A-3 · B-3 · B-6 · A-5 ①): 한 번의 반복 순회(재귀 없음)로 본다.
+    - 타입: dict(키 str만) · list · str · int(bool 포함) · float · None만. 그 밖(tuple · datetime · UUID · Decimal · bytes 등)은 거부한다.
+    - 깊이: `MAX_DATA_DEPTH = 64` 이하(플랫폼 재귀 한도와 무관 · 순환 참조도 여기서 끝난다).
+    - NUL: str 키 · 값에 `\x00`이 없다(jsonb 22P05).
+    - float: 유한하고 `repr`에 지수(`e`)가 없다. PG numeric은 지수를 펼쳐 쓴다 — 1e300은 301자리, 1e-300은 소수 300자리이고, 1e16 이상은 다시 읽으면 int다.
+    - 위반은 「JSON」 `OutboxUsageError`이고 RecursionError 잡기는 보조로 남는다.
+  - **J2 크기 = 릴레이가 보낼 바이트**(A-1): 측정은 PG jsonb 텍스트와 같은 꼴(`json.dumps(…, ensure_ascii=False, separators=(", ", ": "))`의 UTF-8 길이)이고 상한은 900,000이다. J1의 float 규칙이 있어야 이 측정이 릴레이 값과 같다 — VD로 여러 꼴 data에서 `octet_length(payload::text)`와 대조한다.
+  - **J3 릴레이 값 = `payload::text`**(B-7 · A-1): 릴레이는 payload를 Python으로 해석 · 재직렬화하지 않는다. 쿼리가 `payload::text`를 받아 UTF-8 bytes로 보낸다. 헤더는 열 · 설정에서 만든다. 손으로 넣은 꼴 나쁜 행(5000자리 수 등)도 릴레이를 멈추지 못한다.
+  - **J4 바이트 예산**(B-2):
+    - ① `id`와 `octet_length(payload::text)`를 `FOR UPDATE SKIP LOCKED LIMIT batch_size`로 잠근다.
+    - ② 누적이 `RELAY_BATCH_BYTES = 8 MiB` 안인 앞부분(최소 1행)만 `payload::text`를 읽어 보낸다.
+    - ③ 나머지 잠긴 행은 손대지 않는다(커밋 때 풀린다).
+    - `relay_once(*, producer=None, batch_size=100, batch_bytes=RELAY_BATCH_BYTES)`로 키워드를 더한다(T061 호출과 양립).
+    - 패스가 행 수나 바이트에서 잘렸는지는 `RelayResult`의 비교 밖 필드(`field(compare=False)`)로 알린다 — T061의 `RelayResult(2, 0, 0) ==` 비교를 깨지 않는다. 명령은 잘렸으면 대기 0이다.
+  - **J5 fatal 프로듀서**(B-1):
+    - `_deliver`가 produce 예외 · DR 오류의 `fatal()`을 표시한다.
+    - `relay_once`는 그 패스를 평소대로 반영 · 커밋한 뒤 `ProducerFatalError`를 올린다.
+    - 명령은 로그 + 백오프 뒤 프로듀서를 버리고 다음 패스에 `build_producer()`로 다시 만든다.
+    - 시험은 대역이 `KafkaError(_FATAL, …, fatal=True)`를 내면 재생성되는지 본다.
+  - **J6 relay는 오류로 끝나지 않는다**(B-4): pod Ready = 모든 컨테이너 ready라서, relay CrashLoop는 web 엔드포인트를 뺀다.
+    - 명령 순서: 9464를 먼저 연다(열 수 없을 때만 종료). 〔r3 K2 · r4 L4가 대신한다 — 오류로 끝나는 경로는 루프 전 실패와 9464를 열 수 없을 때〕
+    - 루프에서 프로듀서가 없으면 만들기를 시도하고, `relay_once`를 돈다.
+    - 아래는 전부 로그(이름 · 예외 클래스만) + 백오프다: 프로듀서 생성 실패 · `ImproperlyConfigured` · DB 오류(+ `close_old_connections`) · `ProducerFatalError` · 그 밖의 `Exception`. 〔r3 K11 — 예외 클래스 + 값 없는 진단 필드〕
+    - SIGTERM · SIGINT만 끝낸다. 〔r4 L4 — 「정상 종료는 SIGTERM · SIGINT뿐」〕
+    - 설정을 고치면 Reloader 롤아웃이 다시 띄운다(T046). 그동안 쌓이는 행은 `OutboxOldestPending`이 알린다.
+  - **J7 refresh 분리**(B-8): `refresh_metrics`는 따로 try로 감싼다(실패 = 로그). 대기 규칙은 relay 결과로만 정한다. 연달아 도는 동안 refresh 최소 간격은 1 s다.
+  - **J8 Kafka 금지 키 확대**(A-4 · B-5):
+    - 금지: `metadata.broker.list` · `delivery.report.only.error` · `partitioner` · `enable.gapless.guarantee`.
+    - `SASL_SSL`에서 `enable.ssl.certificate.verification` 거짓(bool · 문자열 꼴) · `ssl.endpoint.identification.algorithm` `none`을 거부한다.
+  - **J9 메시지 값 단언**(A-2): data · JSON · 크기 사례 입력에 SENTINEL을 심고, `SENTINEL not in str(error)` + `error.__cause__ is None and error.__suppress_context__`를 단언한다. 변이 「④ · ⑥ 메시지에 `{data!r}` · `from None` 제거」를 더한다.
+  - **J10 명령 `outbox_purge`**(A-7 ④): 인자 없이 `purge_dead()`를 부르고 stdout에 한 줄 `outbox_purge: N`을 낸다. `has_celery=false` pod는 템플릿이 CronJob으로 부른다(T072).
+  - **J11 정리**(A-8 · A-5 ①):
+    - 낡은 설명 3곳을 주석 · 독스트링만 고친다(`pyproject.toml` 머리 · `src/django_common/__init__.py` · `management/commands/__init__.py`).
+    - `test_event_patterns.py` 쉼표 뒤 공백.
+    - oc-3에 순환 참조 사례.
+  - **J12 문서**(컨트롤러 — 이 커밋):
+    - 계약 문장 정정(A-6 · B-9): 독성 시간은 조건부 · 관문은 `publish()` · 정지 감지는 조건부 · 장애 시간에 flush 대기 포함.
+    - 아래 r2 인계 · report.md 후보.
+    - 빌더 보고 정정(A-9 = B-11): 「줄 120자 이하」는 손으로 쓴 15파일만이다 — `0001`은 makemigrations 생성 그대로이고 긴 줄 2개가 있다.
+  - **시험 미고정으로 남기는 것**(A-5 ② ③): 테넌트 확정(⑤)과 JSON(⑥)의 상대 순서(관측 차이는 메시지뿐) · dead 카운터의 「커밋 뒤」 증가(커밋 실패 때만 과다 계수).
+- **r2 인계 추가(D16 보강)**:
+  - **T072**:
+    - ENV=test의 `OUTBOX_TOPIC_PREFIX`는 `"dev."`다(시험 브로커 · T061 · T066 가정).
+    - 생성물 시험 설정은 `KAFKA_CLIENT_CONFIG = {"security.protocol": "PLAINTEXT"}`를 명시한다(기본값이 없다).
+    - `ssl.ca.location`은 마운트 경로 상수다(env.example 20키에 CA 키가 없다).
+    - `has_celery=false` pod는 `outbox_purge` CronJob을 둔다.
+    - relay `terminationGracePeriodSeconds` ≥ 90 s(최악 패스 80 s).
+    - relay DB `OPTIONS`(`connect_timeout` · `keepalives_*` 또는 `tcp_user_timeout`)로 반쯤 열린 연결의 멈춤을 묶는다.
+    - relay를 별도 Deployment로 나누는 것은 SP-2 검토다(지금은 J6으로 결합을 줄였다).
+  - **T071**: Sentry는 `include_local_variables=False`이거나 재귀 스크러버 + `sasl.password`다(설정 dict가 예외 프레임 지역변수에 남는다 — B-10).
+  - **T096**: 조건 없는 정지 감지(하트비트 지표 — 지표 3종 고정을 바꾸는 결정 · B-9).
+  - **T070 · T073**: data는 J1 꼴로만 넣는다(라이브러리가 막는다).
+- **report.md 후보**(A-8):
+  - 편차: 단일 파일 `outbox.py` → 패키지 · `relay_outbox` → `outbox_relay` · cloudevents 2.2.0 SDK 미사용(plan Primary Dependencies) · purge beat → 라이브러리 함수 + 템플릿 작업.
+  - 추가: `outbox_requeue` · `outbox_purge` · `django_common.kafka` · `models.py` · `migrations/`.
+
+### T069 r2 결과 · r3 결정(리뷰 r2 반영 · K1–K13 · 2026-11-05)
+
+- **r2 결과**(워크플로 `wf_4d9b7621-c54` · 빌더 DONE_WITH_CONCERNS · 2026-11-04 23:04 – 11-05 00:48):
+  - 구현: `kafka.py` 98 · `publisher.py` 240 · `relay.py` 323 · `outbox_relay.py` 232 · 새 `outbox_purge.py` 22. r1 산출물 셋(`outbox/__init__.py` · `maintenance.py` · `metrics.py`)은 독스트링만 바꿨다.
+  - 시험: `test_outbox_contract.py` 1764줄(32개 — oc-21..27 추가) · `_outbox_fakes.py` 206 · `test_event_patterns.py` 445.
+  - 빨강: r1 구현 + 최종 시험 = `14 failed, 18 passed`(23:33:45).
+  - 초록(최종 바이트 · 00:45–00:46): `test_outbox.py` 16 ×2(**T061 PASS**) · contract 32 · patterns 52 · fixtures_kafka 1 · 회귀 16 · 65 · 3.
+  - 변이 158개 = 죽음 154 + 동치 4(`allow_nan` · `isfinite` · RecursionError · `max(1, …)`) · 3705 s.
+  - VD:
+    - J2: data 13꼴 중 12꼴이 같다. `-0.0`만 측정이 1바이트 크다(보수 쪽).
+    - J3: 손으로 넣은 5000자리 정수 행이 실 Kafka로 나간다.
+    - J4: 예산 1 MiB → 1행 · 정점 2.0 MB, 8 MiB → 8행 · 16.0 MB.
+    - J6: 설정 오류 6 s · DB 닫힘 14 s 뒤에도 살아서 지표를 낸다. 포트 독점이면 0.54 s에 exit 1.
+    - J5 실 브로커 VD는 할 수 없었다(로컬 cp-kafka는 인가가 꺼져 있다 → T075).
+  - **보고 정정(A2-7 = B2-9)**: 시각 순서에서 한 단계가 빠졌다.
+    - 빨강(23:33:45) 뒤, 변이(23:38:57) 전인 23:37–23:38에 구현 3파일(`outbox_relay.py` · `kafka.py` · `relay.py`)을 고쳤다.
+    - 확인된 차이는 포트 실패 메시지에 `--metrics-port <n>`을 넣은 것 하나다. 나머지 두 파일의 차이는 남은 사본이 없어 복원할 수 없다(`r2-impl/`가 23:38:11에 덮였다).
+    - 그래서 `r2-impl-sha256.txt`(23:33)는 수정 전 스냅샷이다.
+    - 변이 · 최종 초록 · 최종 VD는 모두 최종 바이트로 돌았다(두 리뷰가 확인).
+- **리뷰 r2**(같은 워크플로): A approve_with_fixes(low 7) · B approve_with_fixes(low 9). high · medium은 0이다. r1 medium 6건(A-1 = B-6 · A-2 · B-1 · B-2 · B-3 · B-4)은 해소됐다.
+- **r3 결정 K1–K13**(컨트롤러). K1–K4는 문서 결정이고, 이 절과 같은 작업에서 계약 · 규칙에 반영했다(「T069 r3」으로 검색). K5–K13은 r3 빌더 몫이다.
+  - **K1 계약을 구현에 맞춰 넓힌다**(A2-1 · B2-8 ②): 빌더 편차 ⑧-1 · 4 · 5 · 6 · 8을 받는다. 보안상 더 강하고 실측 근거가 있다.
+    - 금지 키에 `default.topic.config`를 더한다. confluent가 그 안의 키를 최상위 값보다 우선해 합치므로 모든 검사를 덮는다.
+    - 금지 키 · 고정값 키는 `topic.` 접두를 뗀 속성 이름으로 비교한다. librdkafka가 `topic.<속성>`을 토픽 속성으로 읽기 때문이다.
+    - ⑥: data 자신이 깊이 1이고, 안의 dict · list마다 1을 더한다. 짝 없는 서로게이트와 4300자리를 넘는 int는 「JSON」으로 거부한다.
+    - ⑦: 순회 중 바이트 하한이 상한을 넘으면 그 자리에서 「크기」로 거부한다. 뒤에 ⑥ 위반이 있어도 「크기」일 수 있다(메시지만 다르다 — 시험으로 고정하지 않는다).
+    - `relay_once`는 치명 오류 패스를 커밋한 뒤 `ProducerFatalError(.result)`를 올린다. `relay` 하위 모듈에서 import하고, 패키지 최상위에는 재노출하지 않는다(⑧-9).
+    - 치명 판정은 `KafkaError.fatal()` 또는 코드 `_FATAL`이다(출처는 K6). 〔r4 L2가 대신한다 — 출처는 produce 예외 · flush/poll 예외 · DR(error_cb 아님)〕
+    - CLI 인자 오류는 포트를 열기 전에 `CommandError`로 끝난다. 템플릿은 인자 없이 부른다.
+  - **K2 계약 문장 정정**(A2-2 · B2-8 ① ③):
+    - events.md 「고정값을 바꾸려 하면 기동 실패」 → 「프로듀서 생성이 `ImproperlyConfigured`로 실패한다 — 로그 + 백오프이고 프로세스는 산다」.
+    - data-model §4 「라이브러리가 atomic 밖 INSERT를 거부」 → events.md와 같은 문장(관문은 `publish()` · 모델 직접 쓰기는 규칙으로 금지).
+    - events.md purge 줄 「(Celery beat) … 유일한 경로」에 「Celery가 없는 pod는 `outbox_purge` CronJob」을 더한다.
+    - relay가 끝나는 경로를 바로 적는다. 기동 전 실패(설정 import · system checks · 인자 오류 · 지표 모듈 초기화 — 예: 없는 디렉터리를 가리키는 `PROMETHEUS_MULTIPROC_DIR`)와 9464를 열 수 없을 때뿐이다. 루프 안 오류로는 끝나지 않는다.
+  - **K3 pod-template을 T072 전에 맞춘다**(A2-3 · B2-8 ③):
+    - 생성 트리 deploy/base와 Celery 행에 `has_celery=false` CronJob `<pod>-outbox-purge`를 더한다. 일 1회 `manage.py outbox_purge` · `envFrom`은 `<pod>-env`만 · `pg-main-ca` 마운트 · securityContext 5항목 · `automountServiceAccountToken: false` · requests 256Mi · `concurrencyPolicy: Forbid`. 〔r4 L1이 대신한다 — envFrom은 ConfigMap `<pod>-config` + `<pod>-env`〕
+    - Kafka 행: `ENV=test`의 `OUTBOX_TOPIC_PREFIX`는 `"dev."`다. 시험 설정은 `KAFKA_CLIENT_CONFIG = {"security.protocol": "PLAINTEXT"}`를 명시하고, `ssl.ca.location`은 마운트 경로 상수다.
+    - 생성물 `test_outbox.py` 행과 §기본 테스트 2의 DLQ는 env DLQ다(시험 = `dev.<pod>.dlq`).
+    - relay 프로브 행: pod `terminationGracePeriodSeconds` ≥ 90 s(최악 패스 80 s).
+    - 메트릭 행: `PROMETHEUS_MULTIPROC_DIR`가 왜 relay를 죽이는지 적고, `envFrom` 공유를 조심하라고 적는다.
+    - §기본 테스트 6 렌더 단언에 셋을 더한다. grace ≥ 90 · relay env와 그 원천(ConfigMap · `<pod>-env` 템플릿)에 `PROMETHEUS_MULTIPROC_DIR` 없음 · `has_celery=false`로 한 번 더 생성한 렌더의 CronJob 단언. T072가 하네스에 test-first로 더한다. 〔r4 L1이 넓힌다 — 워크로드 셈 · web · relay · migrate 검사 · CronJob 명령 · `call_command("outbox_purge")`〕
+  - **K4 T075 인계 정정**(A2-4): 치명 오류 재현 조건을 고친다.
+    - 「IdempotentWrite 없는 InitProducerId」는 이 클러스터에서 치명 오류가 아니다. 멱등 InitProducerId는 Write만으로 허용된다(KIP-679 · 브로커 ≥ 2.8 · VD-7 확정 — T056).
+    - 재현 순서: topic Write가 하나도 없는 사용자(예: Describe만 가진 임시 KafkaUser)로 relay를 띄운다 → InitProducerId 거부 → `error_cb` fatal(K6) → `ProducerFatalError` → 재생성 로그를 확인한다 → Write ACL을 복구한 뒤 회복을 확인한다. 〔r5 M6이 대신한다 — T075 VD 두 갈래(「r5 인계」)〕
+    - produce 예외 · DR · `error_cb`가 각각 fatal 표시와 코드 중 무엇을 싣는지도 기록한다. 〔r5 M6 — produce 예외 · flush · poll 예외 · DR〕
+  - **K5 크기 상한을 넘는 행은 릴레이가 보지 않는다**(A2-5 · B2-4):
+    - 선택 ①의 조건에 `octet_length(payload::text) <= MAX_EVENT_BYTES`를 더한다. publish ⑦과 같은 수이고 같은 측정이라, publish로 만든 행은 늘 안이다.
+    - 넘는 행(손으로 넣은 행뿐이다)은 잠그지도 · 읽지도 · 보내지도 · 고치지도 않는다. attempts · last_error · dead_at이 그대로고, `RelayResult`와 대기 규칙에도 들지 않는다.
+    - 그 행은 pending으로 남아 `outbox_pending`에 들고 `OutboxOldestPending`이 알린다. 처리는 런북의 수동 확인 · 삭제다(T114 인계).
+    - 그래서 손 행 하나가 머리를 막거나(B2-4) relay를 OOM시키지(A2-5) 못한다.
+    - 두 리뷰는 「그 패스의 실패(attempts + 1)」를 제안했지만 받지 않는다. 실패로 세면 홀로 남은 손 행이 진전 없음 백오프를 300 s로 키워, 그 뒤 새 이벤트가 최대 5분 늦는다(SC-004).
+    - dead로 두지도 않는다. DLQ도 같은 값이라 실패하고(dead는 DLQ 사본이 있을 때만 — r1 D4), `outbox_dead_total`에는 알림이 없어 30일 뒤 purge가 유일한 사본을 조용히 지운다.
+    - 남는 한계(계약에 적었다): DB는 후보 행의 텍스트 길이를 패스마다 센다. 거대 손 행이 있으면 그 변환 비용이 패스마다 든다. 해법은 수동 삭제다.
+    - 시험: 머리에 손으로 넣은 900,001바이트 행 + 정상 행 2 → 첫 패스에 정상 행 둘 published · 손 행은 그대로(attempts 0 · last_error NULL) · produce에 손 행 없음 · 잘림 아님 · 대기 = 폴링 간격. 경계: 정확히 900,000바이트인 손 행은 보낸다. 수 MB 손 행이 있어도 tracemalloc 정점이 손 행 크기와 무관하다.
+  - **K6 치명 오류를 `error_cb`로도 잡는다**(B2-2): 실제 confluent에서는 DR에 fatal 표시가 거의 실리지 않는다. 그래서 flush 중에 난 치명 오류를 그 패스에서 놓치고, 다음 패스의 produce에서야 잡는다(회복이 한 패스 늦고, 일화마다 attempts가 2씩 든다). 〔r4 L2 · L6이 대신한다 — 치명은 flush · poll 예외로 온다〕
+    - `build_producer`가 confluent `error_cb`를 단다. 콜백이 받은 오류가 치명(`fatal()` 또는 코드 `_FATAL`)이면 그 프로듀서를 치명으로 표시한다.
+    - `relay_once`는 그 패스를 반영 · 커밋한 뒤 `ProducerFatalError`를 올린다. produce 예외 · DR 판정은 그대로 둔다.
+    - 콜백은 오류마다 이름 · fatal · retriable만 로그한다(메시지 없음). `error_cb`를 달면 librdkafka 기본 오류 로그가 사라지기 때문이다. 〔r4 L2 · L6이 대신한다 — 비치명 이벤트 이름만 · 사라질 기본 로그는 처음부터 없다〕
+    - 표시는 그 프로듀서에 묶는다(방법은 빌더 선택 — 얇은 감싸개 · 하위 클래스 등). 주입된 대역(T061)처럼 표시가 없는 프로듀서는 치명이 아니다.
+    - `producer_config()` 결과는 바뀌지 않는다(oc-2).
+    - `ProducerFatalError`에 값 없는 오류 이름 필드를 더해도 된다(명령 로그용).
+    - 시험: 대역 생성기로 flush 중 `error_cb`(fatal)를 부르면 그 패스 반영 · 커밋 · `ProducerFatalError` · 다음 반복 재생성. 비치명 `error_cb`(`_TRANSPORT`)는 로그만 남긴다. 로그에 메시지 · SENTINEL이 없다.
+  - **K7 신호 없는 직접 DELETE**(B2-3): relay 성공 삭제와 `purge_dead`가 Django `Collector`를 거치지 않는다. sender 없는 delete 수신기가 pod에 하나라도 있으면 Collector가 지울 행 전체(payload 포함)를 읽고 `json.loads`하기 때문이다.
+    - 삭제 전 SELECT는 0이고, `pre_delete` · `post_delete`도 0이다.
+    - 방법은 빌더 선택이다(`QuerySet._raw_delete` 또는 바인딩 SQL — 테이블 이름은 모델 메타에서).
+    - purge는 DB 시계(`STATEMENT_TIMESTAMP()`)와 반환값(삭제 수)을 그대로 둔다.
+    - 시험: sender 없는 `pre_delete` · `post_delete` 수신기를 단 채 oc-22(손 행) · oc-13(purge 경계) · 성공 삭제를 돌린다. 기대는 수신기 호출 0 · payload를 읽는 SELECT 0 · DELETE 문 하나다.
+  - **K8 Kafka 설정 검사를 fail-closed로**(B2-1): r2의 「거짓 꼴 · none 거부」는 정확 일치만 봐서 앞 공백 · NUL로 비켜 갔다(실측).
+    - 키와 str 값(`KAFKA_BOOTSTRAP_SERVERS` 포함)에 NUL(U+0000)이 있으면 거부한다. confluent는 C 문자열로 넘겨 NUL에서 자른다. 메시지에는 설정 · 키 이름만 싣고, 키 자체에 NUL이 있으면 「키」라고만 쓴다.
+    - `SASL_SSL`의 TLS 두 키는 양성 목록이다.
+      - `ssl.endpoint.identification.algorithm`: 없거나 `"https"`(대소문자 무시).
+      - `enable.ssl.certificate.verification`: 없거나 `True` · 정수 `1`(bool 아님) · `"true"` · `"t"`(대소문자 무시) · `"1"`.
+      - 그 밖은 전부 거부한다. librdkafka의 왼쪽 공백 제거 · 대소문자 무시 해석을 흉내 내지 않으므로, 공백이 붙은 안전한 값도 거부된다.
+    - 시험(oc-1 사례):
+      - 거부: 앞 공백 none · 탭 none · none+NUL · false+NUL · `" true"` · `"no"` · 키 partitioner+NUL · bootstrap.servers+NUL · delivery.report.only.error+NUL.
+      - 통과: `"https"` · `"HTTPS"` · 키 없음 · `True` · `"TRUE"` · `"t"` · `"1"` · `1`.
+  - **K9 오류 · 진전 없음 백오프의 하한**(B2-5): `--poll-interval 0`이면 오류 백오프가 0에 머물러, 루프 안 오류가 바쁜 루프 · 로그 폭주가 된다.
+    - 백오프 = `min(max(previous, poll_interval, 0.5) × 2, max_backoff)`. 0.5는 계약 폴링 기본값이다.
+    - `--max-backoff 0`(시험)은 상한이라 여전히 0이다(oc-15b 그대로).
+    - 빈 패스 대기는 폴링 간격 그대로다. `--poll-interval 0`은 시험용이라고 도움말 · 독스트링에 적는다.
+    - 시험(oc-16): 폴링 0 + 오류 → 1.0 · 진전 없음 → 1.0 · 다시 → 2.0.
+  - **K10 data 검사의 일시 메모리를 묶는다**(B2-6): 지금은 넓은 컨테이너의 자식을 한꺼번에 스택에 넣은 뒤에야 하한을 본다(정수 2,000,000개 list 거부까지 정점 129 MB).
+    - 컨테이너를 만나면 괄호와 구분자(`, ` × (원소 수 − 1))를 하한에 먼저 더한다. 지금은 구분자를 세지 않으므로 유효한 하한이다.
+    - 자식은 한꺼번에 스택에 넣지 않고 차례로 꺼낸다(반복자 스택 등 — 빌더 선택).
+    - 받는 data의 집합은 그대로다. 하한은 실제 길이의 하한으로 남는다(oc-21 · oc-3 경계).
+    - 시험: 정수 2,000,000개 list · 키 1,000,000개 dict · 폭이 큰 공유 참조를 거부할 때 tracemalloc 정점 < 2 MB(입력은 tracemalloc 시작 전에 만든다) · 900,000 경계 그대로.
+  - **K11 루프 로그에 값 없는 진단 필드**(B2-7): J6 뒤로는 지속 오류가 「클래스 이름만」 남아 원인을 알 수 없다. `error` · `db_error` · `refresh_error` · `producer_fatal` 줄에 다음을 더한다.
+    - `KafkaException`이면 `KafkaError.name()`(예: `_INVALID_ARG` · `_SSL`).
+    - DB 오류면 원인 psycopg 예외의 SQLSTATE(없으면 생략).
+    - 그 밖이면 가장 안쪽 트레이스백 프레임의 파일 이름 · 줄 · 함수.
+    - 메시지 · 인자 · 지역변수는 싣지 않는다(SENTINEL 단언 그대로).
+    - 생성 단계 실패의 재현은 「pod 안에서 `relay.build_producer()`」다. `client_config()`만으로는 CA · 값 꼴 · 양립 검사 실패를 재현하지 못한다.
+    - 시험: oc-15d · oc-25 · oc-26에 필드 단언과 SENTINEL 부재를 더한다.
+  - **K12 판별력 빈틈**(A2-6):
+    - oc-24에 DLQ 단계 치명 사례를 더한다. attempts = MAX−1 행 + 메인 실패 + DLQ DR 치명 → `ProducerFatalError` · attempts 10 · dead_at NULL · last_error = DLQ 오류 · 다음 반복 재생성. 변이 「`fatal = fatal or dlq_fatal` 제거」가 죽어야 한다.
+    - oc-26에 refresh DB 오류 뒤 `close_old_connections` 셈(또는 변이)을 더한다.
+    - oc-23 독스트링 수치를 `PEAK_LIMIT`에 맞춘다.
+  - **K13 보고의 시각 정직성**: 단계마다(빨강 · 빨강 뒤 수정 · 변이 · 최종) 구현 파일 sha256 스냅샷을 남긴다. 빨강 뒤에 구현을 고쳤으면 무엇을 왜 고쳤는지 보고에 적는다.
+  - **받지 않는 것**: 폴링 0 금지(B2-5 대안 — 시험이 쓴다) · A2-1 (d)를 시험으로 고정하기(K1 문장으로 충분).
+- **r3 인계 추가(D16 · r2 인계 보강)**:
+  - **T072**: K3 전부 · relay 종료 경로(K2) · relay 컨테이너 env에 `PROMETHEUS_MULTIPROC_DIR` 없음 · 생성 단계 실패 재현은 `relay.build_producer()`(K11) · librdkafka 오류 로그는 relay 로거의 이름 줄로 바뀐다(K6). 〔r4 L1 · L2 · r5 「r5 인계」 T072가 대신한다 — K3 → L1 · 마지막 구절(librdkafka 오류 로그 …)은 지운다(L2) · 나머지(K2 종료 경로 · K11 재현 · PROMETHEUS)는 r5 T072 줄에 모았다〕
+  - **T114**: `incident-response.md` `OutboxOldestPending` 절의 원인 셋 — relay 정지 · Kafka 장애 · 크기 상한을 넘는 손 행. 마지막은 `octet_length(payload::text) > 900000`인 pending 행을 조회해 확인한 뒤 삭제한다(K5).
+  - **T075**: K4. 〔r5 M6(「r5 인계」)이 대신한다〕
+
+### T069 r3 결과 · r4 결정(리뷰 r3 반영 · L1–L10 · 2026-11-05) — K6의 error_cb 치명 경로는 이 절의 L2 · L6이 대신한다
+
+- **r3 결과**(워크플로 `wf_bc83a238-f8e` · 7.5 h · 빌더 DONE_WITH_CONCERNS):
+  - **빌더가 한 번 끊겼다.** run1(01:37–02:55)이 최종 변이 59번째(`J5-commit-first`)를 `relay.py`에 쓴 채 끊겼다. run2(06:01–08:37)가 시작 상태에서 그것을 발견했다(`00-found-state.txt`). run1의 변이 전 백업으로 되돌리고, 남은 후보를 결정 · 계약과 대조해 다시 검토한 뒤 빨강부터 끝까지 새로 돌렸다(run1 로그는 증거로 쓰지 않았다). 변이 실행기에는 현재 변이 표식(`current-mutant.json`)을 두어, 끊긴 뒤 다음 실행이 되돌리고 멈추게 했다.
+  - 줄 수: `kafka.py` 126 · `relay.py` 414 · `publisher.py` 257 · `outbox_relay.py` 286 · `maintenance.py` 46 · 시험 `test_outbox_contract.py` 2166(35개 — oc-28 · 29 · 30 추가) · `_outbox_fakes.py` 211.
+  - 빨강(r2 구현 + 최종 시험): `12 failed, 23 passed`(06:18:49). 초록(최종 바이트): `test_outbox.py` 16 ×2(**T061 PASS**) · contract 35 · patterns 52 · fixtures_kafka 1 · 회귀 16 · 65 · 3.
+  - 변이 194개(r2 158 + K 36) = 죽음 191 + 동치 3(E1–E3). 독스트링 수정 뒤 `relay.py` 변이 56개를 다시 돌려 56/56이 죽었다.
+  - VD:
+    - K5: 머리의 손 행(900,001 B)이 그대로 남는다. 잠금 SQL에 크기 조건이 있다. 10 MB · 40 MB 손 행에서도 패스 정점은 약 18 KB다.
+    - K7: DELETE 한 문장이고 수신기 호출은 0이다.
+    - K8: r2의 우회 꼴이 전부 거부된다(` https`는 fail-closed 거짓 양성).
+    - K10: 거부 정점이 129 MB에서 824 B로 줄었다.
+    - K11: 진단 필드가 실 하위 프로세스 로그에 나온다(`kafka_error=_INVALID_ARG` · `sqlstate=25006` · `at=kafka.py:114:client_config`). SENTINEL은 0이다.
+  - 보고 ⑧: K6 근거 문장이 실측과 다르다(error_cb가 없을 때 사라질 기본 로그는 처음부터 없다). K5 잠금 쿼리는 길이를 두 번 계산한다. 지시문의 「18줄 · `??` 9줄」은 19줄 · 10줄이 맞다(컨트롤러의 셈 오류).
+- **리뷰 r3**: A approve_with_fixes(medium 1 · low 4) · B approve_with_fixes(medium 1 · low 3).
+  - **B3-1 medium — K6의 전제가 실물과 다르다**: confluent-kafka 2.16.1은 치명 오류를 error_cb로 주지 않고 flush · poll에서 `KafkaException(fatal=True)`로 올린다. 같은 호출에서 DR 콜백이 뒤따르면 그 예외를 원인으로 한 `SystemError`가 된다.
+    - relay에서는 예외가 `relay_once` 밖으로 새어 그 패스가 롤백된다. 명령은 그것을 일반 오류로 다뤄 치명 프로듀서를 버리지 않는다. 그래서 회복은 r2처럼 한 패스 늦다(유실은 0 · 이미 나간 메시지는 중복).
+    - **컨트롤러 재현**(librdkafka 시험 API `rd_kafka_test_fatal_error` · ctypes · 브로커 없음 · 닫힌 포트): 유휴 · 메시지 3개 두 경우 모두 `poll`이 `KafkaException CLUSTER_AUTHORIZATION_FAILED fatal=True`를 올렸다. error_cb 호출은 0이다. DR 3개는 `_PURGE_QUEUE`이고, 다음 `flush`는 0을 돌려줬다. 이후 produce는 `_FATAL`(fatal 표시 없음)이다.
+  - **A3-1 medium**: has_celery=false CronJob의 「`envFrom`은 `<pod>-env`만」은 ConfigMap을 뺀다. 그러면 settings import가 필수값 누락으로 실패해 purge가 매일 실패한다(문서 결함 · 하네스는 못 잡는다).
+  - low:
+    - A3-2 = B3-2: K6 근거 문장이 틀렸다 · `retriable`은 늘 False다 · T071 인계가 빠졌다.
+    - A3-3: 공개 API 요약 · `.error_name` · 고정값 별칭이 계약에 없다.
+    - A3-4: 문면 잔여 여섯.
+    - A3-5 = B3-4: 잠금 쿼리가 길이를 두 번 계산한다.
+    - B3-3: 유휴 relay가 poll하지 않는다. 오류 이벤트가 다음 비지 않은 패스에 몰리고, 유휴 중 치명 오류도 그때서야 드러난다.
+  - 빌더 보고 잔여(A): 시각 순서에서 stage-14가 빠졌다. 「J5 꼴 4개」는 실제 2개다(합계 17은 맞다).
+- **r4 결정 L1–L10**: L1–L5는 문서 결정이고, 이 절과 같은 작업에서 계약 · 규칙에 반영했다(「T069 r4」로 검색). L6–L10은 r4 빌더 몫이다.
+  - **L1 CronJob 환경**(A3-1):
+    - `envFrom`은 런타임 컨테이너와 같다(ConfigMap `<pod>-config` + Secret `<pod>-env` · `<pod>-migrate` 없음).
+    - requests · securityContext 행에 CronJob을 넣는다.
+    - §기본 테스트 6: has_celery=false 렌더의 워크로드는 Deployment 1(web+relay) + PreSync Job 1 + CronJob 1이다. web · relay · migrate 검사는 그대로 적용한다. CronJob 명령이 `manage.py outbox_purge`인지 단언하고, 생성물 시험이 시험 settings로 `call_command("outbox_purge")`를 돈다(T072).
+  - **L2 치명 오류 출처를 실물대로 적는다**(B3-1 · A3-2 · B3-2 — 문서):
+    - 치명 판정은 `KafkaError.fatal()` 또는 코드 `_FATAL`이다. 출처는 셋이다.
+      - produce 예외(코드 `_FATAL`).
+      - **flush · poll 예외**: confluent는 치명 오류를 error_cb로 넘기지 않고 `KafkaException`으로 올린다. 같은 호출에서 DR 콜백이 뒤따르면 그 예외를 원인으로 한 `SystemError`가 된다.
+      - DR 오류.
+    - error_cb: confluent는 사용자 error_cb가 없으면 비치명 오류 이벤트(`_TRANSPORT` · `_ALL_BROKERS_DOWN` 등)를 버린다. 그래서 콜백 줄(`outbox_relay.kafka_error name=…`)이 그 이벤트의 유일한 기록이다. 치명 오류와 `retriable`은 이 콜백에 실리지 않는다(2.16.1 실측 — 그 두 필드는 뺀다).
+    - librdkafka 자체 로그(FAIL · SSL · FATAL 줄)는 error_cb와 무관하게 stderr로 나가는 비JSON 줄이다.
+    - 인계:
+      - T071: 이 stderr 줄을 그대로 받을지, confluent `logger` 설정으로 Python 로깅에 넣을지 정한다(넣으면 poll · flush 때 나온다).
+      - T072: r3 인계의 「librdkafka 오류 로그는 relay 로거의 이름 줄로 바뀐다」를 지운다.
+      - T075: 재현 순서는 아래 「r4 인계 보강」이다. 〔r5 「r5 인계」가 대신한다〕
+  - **L3 계약을 구현에 맞춘다**(A3-3):
+    - pod-template 공개 API에 하위 모듈 `relay`(`ProducerFatalError` — `.result` · `.error_name` · `build_producer` · 최상위 재노출 없음)를 더한다. 〔r5 M4 문장 정정 — `build_producer()`는 함수다〕
+    - events.md 라이브러리 API에 `.error_name`을 더한다.
+    - 고정값 키에 별칭 `message.timeout.ms`와 `topic.` 표기를 적는다(events.md · 규칙).
+  - **L4 문면 잔여**(A3-4):
+    - 규칙 Relay 줄에 Celery 없는 pod의 CronJob을 더한다.
+    - events.md 트랜잭션 규칙을 data-model §4와 같은 문장으로 맞춘다.
+    - 수명 주기: 「오류로 끝나는 경로는 …뿐」 / 「정상 종료는 SIGTERM · SIGINT뿐」으로 나눠 적는다.
+    - 백오프: 「대기 = max(직전, 폴링, 0.5 s) × 2 — 첫 오류 대기 1 s」를 적는다.
+    - 규칙의 「committed as row failures」를 「the pass is committed (successes deleted, failures recorded)」로 바꾼다.
+  - **L5 길이 두 번 계산은 받아들인다**(A3-5 = B3-4):
+    - 잠금 쿼리가 상한 안 행마다 `octet_length(payload::text)`를 Filter와 출력에서 두 번 센다. PG는 조건과 출력의 같은 식을 합치지 않는다.
+    - 최악은 900 KB 100행일 때 패스당 약 180 MB 변환이다. DB 쪽 CPU일 뿐이고 정확성과는 무관하다.
+    - 계약 「한계」에 적는다. LATERAL 원시 SQL은 SP-2 최적화 후보다.
+  - **L6 flush 예외를 치명으로 다룬다**(B3-1 — 코드): `_deliver`의 flush 두 곳(첫 flush와 purge 뒤 flush)을 감싼다.
+    - 치명으로 보는 꼴: `args[0]`이 치명(`_is_fatal`)인 `KafkaException`, 또는 `__cause__`(없으면 `__context__`)가 그런 `KafkaException`인 `SystemError`다. 그 밖의 예외는 그대로 올린다(버그 — 롤백 · 명령은 로그 + 백오프).
+    - 치명이면 그 오류의 이름을 패스의 치명 이름으로 둔다(produce의 `_FATAL`보다 우선 — 원인이 보인다).
+    - 첫 flush에서 났으면 purge(in_queue · in_flight) 뒤 flush(PURGE_FLUSH_TIMEOUT_S)로 남은 DR을 받는다. 이 flush의 같은 꼴 예외도 삼킨다. DR이 없는 행은 「delivery 결과 없음」 실패다.
+    - 메인 단계에서 치명이 서면 DLQ 단계를 건너뛴다. 같은 프로듀서로는 `_FATAL` 실패가 뻔하고, DLQ 오류가 last_error의 메인 오류를 덮기 때문이다. DLQ 단계에서 난 치명(oc-24)은 그대로 둔다.
+    - 그 패스를 반영 · 커밋한 뒤 `ProducerFatalError(result, error_name=<원인 이름>)`을 올린다. 명령은 프로듀서를 버리고 다시 만든다.
+    - error_cb의 치명 표시(`_FatalMark`의 치명 갈래 · `RelayProducer.fatal_error_name`)는 실물에서 닿지 않으므로 없앤다. error_cb는 비치명 이벤트의 이름만 로그한다(`outbox_relay.kafka_error name=<name>` — fatal · retriable 필드 삭제). 감싸개가 표시만을 위해 있었다면 없애도 된다(빌더 판단 — 공개 이름이 바뀌면 계약 · 규칙과 맞추도록 보고 ⑧).
+    - 명령 `_diagnostics`: 예외의 `__cause__` · `__context__`가 `KafkaException`이면 그 KafkaError 이름을 싣는다(SystemError 경로의 원인 보존). 〔r5 M3 — SystemError로 좁힌다〕
+  - **L7 패스 전 poll**(B3-3): 명령 루프가 반복마다 relay_once 전에 `producer.poll(0)`을 부른다(프로듀서가 있을 때 · 같은 try 안).
+    - 비치명 이벤트가 시간에 따라 흩어져 로그된다(다음 비지 않은 패스에 몰리지 않는다).
+    - poll이 치명 예외(L6의 꼴)를 올리면 행에 닿기 전에 프로듀서를 버린다. 로그는 `outbox_relay.producer_fatal <클래스> kafka_error=<이름> published=0 failed=0 dead=0`이다. 그 반복은 오류(백오프)로 센다 — 원인이 그대로(ACL 등)면 재생성이 백오프 속도로만 반복된다. 〔r5 M1 — 재생성 뒤 첫 빈 패스가 대기를 되돌려 유휴 중에는 성립하지 않았다(약 1.5 s 주기) · M1이 성립시킨다〕
+    - 그 밖의 poll 예외는 일반 오류 경로다.
+  - **L8 독스트링 정리**(A3-3 · A3-4의 코드 쪽):
+    - `outbox/__init__` 독스트링(「ProducerFatalError는 명령만 쓴다」 → 계약 문구).
+    - 시험 모듈 독스트링 · oc-15b 독스트링.
+    - outbox_relay.py 「열 수 없을 때만 CommandError로 끝난다」 → 루프 전 실패의 하나.
+    - relay.py 9 · 「설정」 문단 → L2 · L6 · L7.
+  - **L9 시험**: oc-29를 실물 꼴로 다시 쓴다.
+    - (a) flush가 DR(큐의 메시지 `_PURGE_QUEUE`)을 준 뒤 `KafkaException(KafkaError(CLUSTER_AUTHORIZATION_FAILED, fatal=True))`를 올리는 꼴.
+    - (b) 그 예외를 원인으로 한 `SystemError` 꼴.
+    - (a) · (b)의 기대: 그 패스 커밋(행 attempts + 1 · last_error = DR 오류 또는 「delivery 결과 없음」) · DLQ 단계 없음(attempts = MAX−1 행 포함) · `ProducerFatalError(error_name="CLUSTER_AUTHORIZATION_FAILED")` · 다음 반복 재생성.
+    - (c) 유휴 중 poll(0)이 치명 → 행 무변경 · 재생성 · 백오프 · 로그 줄.
+    - (d) 비치명 error_cb → `kafka_error name=_TRANSPORT` 한 줄(fatal · retriable 필드 없음 · 메시지 · SENTINEL 없음).
+    - 변이: 「flush 예외 미포착」 · 「SystemError 원인 미확인」 · 「치명 뒤 DLQ 단계 수행」 · 「poll 생략」 · 「poll 치명 무시(프로듀서 유지)」 · 「원인 이름 대신 `_FATAL`」.
+  - **L10 VD**: 컨트롤러 탐침과 같은 ctypes `rd_kafka_test_fatal_error`(브로커 없음 · 닫힌 포트)를 최종 바이트로 돌린다.
+    - ① pending 3행에서 relay_once의 flush 직전에 치명 → 결과 · 행 상태 · `ProducerFatalError.error_name` · 로그.
+    - ② 명령 루프가 유휴일 때 치명 → poll이 잡아 재생성하는지 · 로그 줄 원문 · stderr `FATAL` 줄.
+    - 시험 모음에는 넣지 않는다(시험 API · 포인터 오프셋에 기대므로 VD 전용).
+- **r4 인계 보강**: T075 재현 순서(K4 정정): 〔r5 M6(「r5 인계」)이 대신한다〕
+  1. topic Write가 없는 사용자로 relay를 띄운다.
+  2. InitProducerId 거부 → (유휴여도) poll이 치명 예외 → `outbox_relay.producer_fatal KafkaException kafka_error=<원인>` + librdkafka stderr `FATAL` 줄을 확인한다.
+  3. 백오프 속도로 재생성이 반복되는지 본다.
+  4. Write ACL을 복구한 뒤 회복(`outbox_relay.pass`)을 확인한다.
+  - produce 예외 · flush · poll 예외 · DR이 fatal 표시와 코드 중 무엇을 싣는지 기록한다.
+
+### T069 r4 결과 · r5 결정(리뷰 r4 반영 · M1–M9 · 2026-11-05) — 앞 절에서 뒤 절이 대신하는 문장에는 줄 끝 〔…〕 표식을 달았다(M5)
+
+- **r4 결과**(워크플로 `wf_fef764e3-f80` · 2.4 h · 빌더 DONE_WITH_CONCERNS):
+  - 시작 점검: HEAD `5fb1076` · status 19줄 · r3 표식 없음 · `??` 17파일 sha256 = r3 최종(stage-15).
+  - 줄 수: `relay.py` 415 · `outbox_relay.py` 324 · `outbox/__init__.py` 30 · 시험 `test_outbox_contract.py` 2368(39개 — oc-29를 29a–e로) · `_outbox_fakes.py` 230(`on_poll` 훅 · `raising()`).
+  - `RelayProducer` · `_FatalMark`를 없앴다. `build_producer()`는 error_cb(비치명 이벤트 이름 로그)를 단 confluent `Producer`를 돌려준다(계약 · 규칙과 모순 없음 — 빌더 ⑧-1).
+  - 빨강(r3 구현 + 최종 시험): `7 failed, 32 passed`(09:35). 빨강 뒤 수정은 독스트링 두 곳뿐이다(AST 동일 · 되돌리면 sha256이 빨강 때와 같다).
+  - 초록(최종 바이트): `test_outbox.py` 16 ×2(**T061 PASS**) · contract 39 · patterns 52 · fixtures_kafka 1 · 회귀 16 · 65 · 3.
+  - 변이 114개(r3 재실행 91 + L 23) = 죽음 114 · 생존 0. 대상이 없어진 K6 변이 넷은 돌지 않았다.
+  - VD(ctypes `rd_kafka_test_fatal_error` · 브로커 없음 · 닫힌 포트):
+    - ① relay_once의 flush 직전 치명: flush가 `SystemError ← KafkaException(CLUSTER_AUTHORIZATION_FAILED, fatal)`을 올린다 → purge → `flush(5) = 0` → `ProducerFatalError(.result = (0, 3, 0) · .error_name = CLUSTER_AUTHORIZATION_FAILED)` · 세 행 모두 attempts 1 · last_error `_PURGE_QUEUE`.
+    - ② 명령 유휴 중 치명: `outbox_relay.producer_fatal KafkaException kafka_error=CLUSTER_AUTHORIZATION_FAILED published=0 failed=0 dead=0` → 1.0 s 뒤 재생성. stderr에 `%0|…|FATAL|<client.id>#producer-N| … Fatal error: Broker: Cluster authorization failed …` 줄이 나온다.
+    - 비치명 error_cb 줄은 패스 전 poll마다 흩어져 나왔다(`name=_TRANSPORT` · `name=_ALL_BROKERS_DOWN` · 주소 · 메시지 0).
+  - 보고 ⑧:
+    - ⑧-3: DLQ 건너뜀은 메인 단계의 모든 치명 출처(produce · flush · DR)에 적용했다(규칙대로 · oc-24로 고정).
+    - ⑧-4: 진단 원인 보존 갈래가 계약 문장에 없다.
+    - ⑧-6: **유휴 중 지속 치명은 약 1.55 s마다 재생성된다**(12반복 8.31 s에 생성 6). 새 프로듀서의 빈 패스가 대기를 폴링 간격으로 되돌리기 때문이다. 행이 있으면 1.22 → 2.23 → 4.22 → 8.24 s로 자란다.
+    - ⑧-7: 예비 변이 실행이 경로 오류(POSIX 경로로 만든 id 목록이 비었다)로 전체를 돌기 시작해, 빌더가 자기 프로세스 트리만 끝냈다. 표식 복원이 소스를 되돌렸다(r3 교훈의 표식이 실제로 쓰였다).
+- **리뷰 r4**: A approve_with_fixes(medium 1 · low 4) · B approve_with_fixes(medium 1 · low 2). high 0.
+  - **A4-1 = B4-1 medium — 유휴 중 지속 치명의 재생성 폭주**: L7의 「원인이 그대로면 재생성이 백오프 속도로만 반복된다」가 유휴 중에는 성립하지 않는다.
+    - 기전: poll 치명 → 대기 1.0 → 새 프로듀서의 첫 poll(0)은 통과한다(치명은 연결 뒤 비동기로 선다) → 빈 패스가 대기를 0.5로 되돌린다 → 다음 poll 치명 → 1.0 …
+    - 결과: 주기 약 1.5–2.5 s(분당 24–40회)로 클라이언트 생성 · SASL · stderr `FATAL` 줄 · `producer_fatal` 줄이 반복된다. 유휴라 `OutboxOldestPending`도 울리지 않는다. 유실은 0이다.
+    - 시험은 2반복만 보아 이 주기를 고정하지 않았다.
+  - low:
+    - A4-2: 계약 문장 셋 — 진단 필드에 원인 보존 갈래가 없다 · DLQ 건너뜀이 flush 치명에만 묶인 듯 읽힌다 · `build_producer`가 예외의 필드처럼 읽힌다.
+    - A4-3: build-notes 앞 절의 뒤집힌 문장이 표시 없이 남았다(D7 · J6 · K3 · K4 · K6 · r3 인계 T072).
+    - A4-4: T075 재현 순서가 실측하지 않은 「InitProducerId 거부 → 치명」을 사실로 적었다. 회복 확인 줄(`outbox_relay.pass`)은 행이 있어야 나온다.
+    - A4-5: 대역 SystemError의 메시지가 실물(`<function …> returned a result with an exception set`)과 다르다. 시험 모듈 독스트링의 r2 빨강 목록(oc-29)이 지금 시험과 어긋난다.
+    - B4-2: purge 뒤 flush에서만 난 치명(첫 flush는 잔여만 돌려줌)을 가르는 시험이 없다 — `flush_fatal = flush_fatal or purge_fatal`을 지우는 변이가 산다(정적 추론).
+    - B4-3: 진단 원인 보존 갈래가 계약 · 규칙에 없고, 범위가 SystemError보다 넓다 — `except KafkaException` 처리 중 난 다른 예외의 `at=`이 원인 이름으로 바뀐다.
+  - 빌더 보고 정직성: 두 리뷰 모두 수치 · 시각 · sha256 · 로그가 기록과 맞는다고 확인했다.
+- **r5 결정 M1–M9**: M4 · M5 · M6과 M1 · M3의 계약 · 규칙 문장은 컨트롤러가 이 절과 같은 작업에서 반영했다(「T069 r5」로 검색). M1–M3 · M7의 코드 · 시험 · 독스트링과 M8 · M9는 r5 빌더 몫이다.
+  - **M1 치명 재생성 직후의 빈 패스는 대기를 되돌리지 않는다**(A4-1 = B4-1 — 두 리뷰의 (나)):
+    - 명령은 치명으로 프로듀서를 버릴 때(poll 치명 · `ProducerFatalError` 둘 다) 표시를 세운다.
+    - 다시 만든 프로듀서로 도는 첫 패스가 결과를 돌려주면 표시를 지운다. 그 첫 패스가 빈 패스(published · failed · dead 모두 0)면 대기를 직전 값 그대로 둔다. 그 밖의 결과(진전 · 진전 없음 · 잘림 · dead만)는 평소 규칙이다.
+    - 그 반복이 결과 없이 오류로 끝나면(생성 실패 · 비치명 poll 예외 · DB 오류 등) 표시는 남는다 — 결과를 돌려준 첫 패스까지. 〔r5 리뷰 B5-2 — 그래서 치명 뒤 DB 장애가 이어지면, 회복 뒤 첫 빈 패스는 이미 한 대기 넘게 산 프로듀서여도 대기를 한 번 더 유지한다(≤ `--max-backoff`). 드문 경로라 문서로 받아들였다(계약 「첫 패스」 → 「결과를 돌려준 첫 패스」). 받지 않은 코드 안: 이전 반복에 만든 프로듀서의 패스 전 poll이 통과하면 표시를 지운다〕
+    - 규칙은 `next_wait`의 키워드 인자(예: `after_fatal_rebuild: bool = False`)로 두어 순수 함수 시험(oc-16)이 고정한다. 루프는 표시만 관리한다.
+    - 까닭: 빈 패스는 새 프로듀서가 쓸 만한지 보여 주지 않는다(produce · flush가 없고, 치명은 연결 뒤 비동기로 선다).
+    - 효과: 지속 치명이면 유휴 중에도 대기 열이 1, 1, 2, 2, 4, 4 … 300 s로 자라고, 재생성 간격이 약 1.5 · 3 · 6 · 12 … s로 는다. 상한에 닿은 뒤(약 1022 s)에는 약 600 s(유지 300 + 치명 백오프 300)마다 다시 만든다(r5 리뷰 A5-1 · B5-1 — 처음엔 「300 s까지」로 적었다). 행이 있으면 그 패스가 치명으로 끝나 유지 없이 1 · 2 · 4 … 300 s로 는다.
+    - 받아들인 대가(r5 리뷰 A5-1 · B5-1 정정 — 처음 적은 「유지된 대기를 한 번(≤ 300 s)」은 절반이었다): 원인을 고친 뒤에도 유휴 relay는 진행 중인 유지 대기와 치명 백오프를 마저 채운 뒤에야 새 프로듀서를 만든다(유지 대기 중인 프로듀서는 고치기 전에 만든 것이라 이미 치명이다). 그사이 들어온 행은 최대 약 2 × `--max-backoff`(≈ 600 s) 늦고, 새 프로듀서의 첫 빈 패스가 대기를 한 번 더 유지해 폴링 간격으로 돌아오기까지 최대 약 900 s다. 장애 내내 pending 행이 있었다면 치명 백오프 한 번(≤ 300 s)이다. 유휴 치명 동안 지표 refresh도 대기마다라 새 행의 나이가 최대 한 대기 늦게 보인다(`OutboxOldestPending`도 그만큼 늦다). 모두 장애 회복 직후 한 번이고 SC-004의 정상 상태 밖이다. 바로 되돌리려면 pod 재시작이다(T114 런북). 리뷰 실측: 빌더 덧 탐침(대역 · 상한 4 s)에서 유지 대기 중 도착한 행은 [4.0, 4.0] 뒤 발행 · 리뷰 A 가상 시계(상한 300 s) 최악 598.1 s · 리뷰 B mock 치명(상한 4 s) 7.05 s.
+    - 가정: 치명이 새 프로듀서 생성 뒤 유지된 대기(처음 1 s) 안에 선다. 그보다 늦으면(생성 → 치명 시간 L > 1 s) 빈 패스가 그 전에 대기를 되돌려, 주기가 약 (1 s + L)에 머문다. 번들 librdkafka 2.16.0 mock 클러스터(루프백 · 리뷰 B 실측 6회)에서 InitProducerId 거부의 L은 0.517–0.528 s였다 — PID 획득 타이머(500 ms) 뒤 브로커 연결 한 번이라 여유는 약 0.48 s다(r5 리뷰 B5-3 정정 — 처음엔 「1 s보다 훨씬 짧다」로 적었다). 클러스터 안 SASL_SSL은 연결 시간이 더해진다. T075 VD가 L과 재생성 간격을 잰다 — L이 0.8 s를 넘으면 첫 유지 대기에 하한(예: 2 s)을 두는 안을 검토한다(아래 「받지 않은 안」의 따로 두는 재생성 백오프와 함께).
+    - 받지 않은 안:
+      - (가) 받아들이고 문서만 고치기 — 분당 24–40회 재생성이 ACL 누락의 유일한 증상이 된다.
+      - 빌더 안 「발행 진전이 있을 때만 되돌림」 — 회복 뒤 유휴 relay가 다음 발행까지 최대 300 s 대기에 머문다.
+      - (다) 행이 생길 때까지 재생성하지 않기 — 유휴 중 비치명 줄과 회복 감지를 잃는다.
+      - 재생성 백오프를 패스 대기와 따로 두기(수준 · 생성 시각 · 건강 창) — L에 견고하지만 상태와 상수가 는다(T075 실측이 가정을 깨면 SP-2 후보).
+    - 문서: 명령 독스트링 「패스 전 poll」 · 「대기 next_wait」 문단(빌더) · events.md 백오프 줄과 치명 줄 · 규칙 Relay 줄(컨트롤러).
+    - 시험(oc-29f 새로 · oc-16 보강):
+      - 지속 치명: 행 없음 · 프로듀서 4개 모두 `on_poll=raising(None, _fatal_error())`(첫 poll은 통과 · 둘째 poll 치명) · `--iterations 8` → 대기 [0.5, 1.0, 1.0, 2.0, 2.0, 4.0, 4.0] · 생성 4 · `producer_fatal` 줄 4.
+      - 회복: 치명 하나 뒤 건강한 프로듀서 · 행 없음 · `--iterations 5` → [0.5, 1.0, 1.0, 0.5].
+      - `ProducerFatalError` 경로: 행 하나를 성공 DR로 보낸 뒤 flush가 치명을 올리는 대역(`ProducerFatalError(.result = (1, 0, 0))` — 그 행은 지워진다) → 다시 만든 프로듀서의 첫 패스는 빈 패스 → 대기 유지.
+      - oc-16: `after_fatal_rebuild=True`일 때 빈 패스 → 직전 값 · 진전 → 폴링 간격 · 진전 없음과 오류 → 두 배 · 잘림 → 0 · dead만 → 폴링 간격. 기본값(False)의 기존 단언은 그대로다.
+      - 기존 oc-24 [1.0, 0.5] · oc-28 · oc-29a–d의 대기 단언은 그대로 초록이어야 한다(다시 만든 프로듀서의 첫 패스가 진전이면 평소 규칙).
+      - 변이: 표시를 poll 치명에만 세움 · 표시를 지우지 않음 · 첫 패스면 결과와 무관하게 유지 · 유지 대신 두 배 · 생성할 때 표시를 지움 · 오류로 끝난 반복에서 표시를 지움.
+  - **M2 purge 뒤 flush에서만 난 치명을 가른다**(B4-2 — 시험만):
+    - 사례: 행 하나는 HOLD · `on_flush=raising(None, _fatal_error())` — 첫 flush는 잔여 1을 돌려주고 purge 뒤 flush가 치명을 올린다.
+    - 기대: `purge_calls` [(True, True)] · `flush_calls` [35, 5] · `ProducerFatalError(.result = (0, 1, 0) · .error_name = CLUSTER_AUTHORIZATION_FAILED)` · 행 attempts + 1 · last_error `_PURGE_QUEUE` · attempts = MAX−1 행을 함께 두면 DLQ 단계가 없다(그때 결과 수는 그에 맞춘다).
+    - r4 구현도 지키는 거동이라 빨강은 없다. 판별력은 변이 `L6-purge-fatal-dropped`(`flush_fatal = flush_fatal or purge_fatal` 제거)가 보인다.
+  - **M3 진단 원인 보존을 SystemError로 좁힌다**(B4-3 · A4-2 ① · 빌더 ⑧-4):
+    - `_diagnostics`의 원인 보존 갈래는 `SystemError`에만 적용한다. 기준은 `_fatal_exception_name`과 같다 — `__cause__`, 없으면 `__context__`가 `KafkaException`(인자가 `KafkaError`)이면 `kafka_error=<이름>`이다. 치명 여부와는 무관하다(진단이다).
+    - 그 밖의 예외는 `at=<파일>:<줄>:<함수>`를 지킨다 — `except KafkaException` 처리 중 난 버그(암묵 `__context__`)의 위치를 잃지 않는다.
+    - 시험(oc-15d 또는 oc-29e 쪽): `__context__`가 KafkaException인 RuntimeError → `at=` · `__cause__`가 다른 예외이고 `__context__`가 KafkaException인 SystemError → `at=`(원인 = cause). oc-29c의 SystemError 두 꼴은 그대로 `kafka_error=`다.
+    - 변이: 갈래를 모든 예외에 적용(r4 꼴) · context를 cause보다 먼저 봄 · cause가 있어도 context로 넘어감.
+    - 문서: events.md 진단 필드 문장 · 규칙 진단 괄호(컨트롤러) · 명령 독스트링 「로그」(빌더).
+  - **M4 계약 문장 정정**(A4-2 ② ③ · 빌더 ⑧-3 — 문서):
+    - events.md: 「메인 단계에서 치명이 서면(produce · flush · DR 어느 출처든) DLQ 단계를 건너뛴다」.
+    - pod-template 공개 API: 「하위 모듈 `relay`(`ProducerFatalError`(`.result` · `.error_name`) · `build_producer()`(error_cb를 단 confluent `Producer` — 감싸개 없음) — 최상위 재노출 없음)」.
+  - **M5 앞 절 표식**(A4-3 — 문서):
+    - 앞 절에서 뒤 절이 대신하는 문장의 줄 끝에 〔…〕 표식을 달았다: D6 `build_producer` · D7 순서 · 다음 대기 · crash-only · J6 종료 두 줄 · K3 envFrom · 렌더 단언 · K4 재현 순서 두 줄 · K6 머리 · 기본 로그 문장 · r3 인계 T072 · T075 · r4 L3 · L6 진단 · L7 · 「r4 인계 보강」. 〔r5 리뷰 A5-2로 더했다: D4 주입 프로듀서 호출 · 선택 · value · 다른 예외 · D7 로그 · D9 백오프 · J6 로그 · K1 치명 출처 · L2 T075 줄 — r3 인계 T072 표식은 범위를 고쳤다(A5-3)〕
+    - T069 결과 절 머리에도 우선 줄을 둔다.
+    - 하위 에이전트에게는 표식이 달린 줄을 그대로 넘기거나, 대신하는 절(r4 L1 · r5 M6)을 넘긴다.
+  - **M6 T075 인계를 VD로 다시 쓴다**(A4-4 — 문서 · 아래 「r5 인계」).
+  - **M7 시험 잔여**(A4-5 — 독스트링 · 상수):
+    - `_system_error` 메시지를 실물 꼴(`<function record at 0x…> returned a result with an exception set {SENTINEL}` 또는 중립 문구)로 바꾼다. SENTINEL은 남긴다.
+    - 시험 모듈 독스트링의 빨강 목록에 「(당시 시험 기준 — oc-29는 r4에서 29a–e로 갈음)」을 붙이고, r5 목록(M1 · M3)을 더한다.
+  - **M8 판별력 · 시각 정직성**:
+    - M1 · M3의 결정마다 단독으로 죽이는 시험과 변이가 있어야 한다.
+    - r4 변이 가운데 `outbox_relay.py`에 걸린 것(L7-* · K9 · K11 · J4–J7 쪽)은 최종 바이트로 다시 돈다. relay.py는 바뀌지 않는다(바뀌면 그 변이도 다시 돈다).
+    - 단계별 sha256 스냅샷을 남기고, 빨강 뒤 수정은 무엇을 왜 고쳤는지 적는다. 변이 실행기는 표식 파일을 둔다.
+  - **M9 VD**:
+    - 빌더 r4 ②'를 최종 바이트로 다시 돌린다 — 실 `build_producer` · 생성 0.2 s 뒤 ctypes 치명 · 유휴 · 9–10반복 → 생성 간격이 약 1.5 · 3 · 6 · 12 s로 느는지 본다.
+    - 회복 변형: 치명 둘 뒤 치명을 넣지 않는 프로듀서 → 유지 대기 한 번 뒤 0.5 s로 돌아오는지 본다.
+- **r5 인계**(r3 인계의 T075 줄 · 「r4 인계 보강」을 대신한다):
+  - **T075**(M6 · VD — 외부 거동은 실측 뒤 정한다): topic Write가 하나도 없는 임시 KafkaUser로 relay를 띄운다. 기본 가정은 (i)이고, 어느 갈래였는지 기록한다.
+    - (i) 치명: InitProducerId가 `CLUSTER_AUTHORIZATION_FAILED`로 거부되고, librdkafka가 그것을 멱등 프로듀서의 치명으로 본다. 번들 librdkafka 2.16.0 mock 클러스터에서는 재현됐다(r5 리뷰 B5-3 — poll이 `KafkaException(…, fatal=True)` · error_cb 0건 · 그 뒤 produce는 `_FATAL`). 유휴 relay에 `outbox_relay.producer_fatal KafkaException kafka_error=CLUSTER_AUTHORIZATION_FAILED published=0 failed=0 dead=0` 줄과 stderr `%0|…|FATAL|<client.id>#producer-N| [thrd:main]: Fatal error: Broker: Cluster authorization failed: Failed to acquire idempotence PID from broker <host:port/id>: Broker: Cluster authorization failed` 줄이 나온다(FATAL 줄에도 브로커 주소가 실린다).
+      - 생성 → 치명 시간 L을 잰다(mock 0.52 s). 재생성 간격의 기준: L ≈ 0.5 s면 약 2 · 3 · 6 · 12 s(mock), L 0.2 s면 1.56 · 3.07 · 6.06 · 12.06 s(r5 VD ① · ctypes).
+      - 간격이 자라지 않고 일정하면 M1 가정이 깨진 것이다(약 1 s + L을 폴링 간격 단위로 올린 값 · 2.5 s 이상 — 예: L 1.2 s → 2.5 s 고정). 1.5 s 고정이면 M1이 꺼진 꼴(r4 거동)이다(r5 리뷰 A5-3 · B5-3 — 빌더 보고 ⑨의 「약 1.5 s에 머물면 가정이 깨진 것」은 틀렸다).
+      - 행이 있으면 줄이 `outbox_relay.producer_fatal ProducerFatalError kafka_error=CLUSTER_AUTHORIZATION_FAILED published=0 failed=N dead=0`이고, 행 last_error는 원인이 아니라 `_PURGE_QUEUE`다(원인은 줄의 kafka_error에서 본다). 치명이 이어지는 동안 attempts가 10을 넘어도 DLQ로 가지 않는다(치명 패스는 DLQ 단계를 건너뛴다 — 고친 뒤 메인으로 간다).
+    - (ii) 재시도: librdkafka가 PID 획득 실패를 재시도한다. `producer_fatal` 줄은 없고, stderr에 `%4|…|GETPID|…: Failed to acquire idempotence PID from broker <host:port/id>: <오류>: retrying` 줄이 약 0.5 s마다 쌓인다. 행은 delivery 시한(30 s) 뒤 `_MSG_TIMED_OUT`으로 실패한다(attempts + 1 · 진전 없음 백오프 1 · 2 · 4 …). `OutboxOldestPending`이 울린다. 번들 판 mock에서 이 꼴은 재시도되는 코드(예: `COORDINATOR_NOT_AVAILABLE`)에서만 나왔고, ACL 거부(31)는 (i)이었다(r5 리뷰 B5-3).
+    - 회복: pending 행 하나를 둔 채 Write ACL을 복구하고, `outbox_relay.pass published=1`과 `producer_fatal` · `GETPID` 줄이 그치는지 본다(유휴로 두면 pass 줄이 나오지 않는다). pending 행을 둔 채 고치면 pass 줄은 그때의 치명 백오프(≤ 300 s) 안에 나온다. 유휴 relay를 고친 뒤 행을 넣으면 최대 약 600 s 늦을 수 있다(M1 대가 — r5 리뷰 A5-1). 두 꼴의 지연을 재고, 기다리지 않으려면 pod를 재시작한다.
+    - 일부 토픽만 Write를 뺀 변형도 본다 — 행마다 `TOPIC_AUTHORIZATION_FAILED`(비치명)인지(r5 리뷰 B5-3 — mock에서는 비치명이었다).
+    - produce 예외 · flush · poll 예외 · DR이 각각 fatal 표시와 코드 중 무엇을 싣는지 기록한다.
+  - **T071**: librdkafka FAIL · FATAL 줄은 error_cb와 무관한 비JSON stderr이고, FAIL 줄에는 브로커 주소가 실린다. 그대로 받을지, confluent `logger`로 Python 로깅에 넣을지 정한다. 비치명 오류 이벤트는 이벤트마다 `outbox_relay.kafka_error name=…` 한 줄이고, 유휴 중에도 다음 패스 전 poll(≤ 대기 간격 뒤)에 나온다 — 실측 간격 약 2 s(닫힌 포트 · Windows · r5 리뷰 A5-3 — 「poll마다」는 과장이었다). 실 경로의 FATAL 줄에도 브로커 host:port/id가 실린다. (ii)라면 GETPID 줄이 프로듀서당 초당 약 2개다(r5 리뷰 B5-3).
+  - **T072**: r4 L1(CronJob 환경 · §기본 테스트 6) · relay 종료 경로 · relay env에 `PROMETHEUS_MULTIPROC_DIR` 없음. 명령은 반복마다 `producer.poll(0)`을 부르므로 생성물 시험의 대역 프로듀서에 `poll`이 있어야 한다. `relay.build_producer()`는 실 Producer다(`.inner` · `.fatal_error_name` 없음). 생성 단계 실패(CA · 값 꼴 · 양립)의 재현은 pod 안에서 `relay.build_producer()`를 부르는 것이다(K11 — r3 인계 T072의 남은 항목 · r5 리뷰 A5-3).
+  - **T114**: `incident-response.md` `OutboxOldestPending` 절의 원인(relay 정지 · Kafka 장애 · 크기 상한을 넘는 손 행 — K5)에 Kafka ACL을 두 갈래로 더한다(r5 리뷰 B5-3).
+    - ① Write가 하나도 없음 → InitProducerId 치명(T075 (i)). 유휴 relay는 알림 없이 `producer_fatal` 줄과 stderr `FATAL` 줄만 남긴다. 재생성 간격은 약 1.5 · 3 · 6 … s로 늘다가, 약 1022 s 뒤에는 약 600 s(유지 300 + 치명 백오프 300)마다다(M1 — r5 리뷰 A5-1 · B5-1 정정 · 상한 주기는 계산과 시뮬레이션 값이고 실측은 처음 네 간격까지다). `producer_fatal` 줄은 FATAL 줄보다 최대 한 유지 대기 늦다. 행이 쌓이면 그때 알림이 울린다 — 유휴 중 새로 든 행의 나이는 다음 refresh까지 보이지 않아 알림이 최대 한 대기(≤ 300 s) 늦다. ACL을 고친 뒤 새 행의 최악 지연은 약 600 s다. 바로 되돌리려면 pod를 재시작한다.
+    - ② 일부 토픽만 Write가 없음 → 행마다 `TOPIC_AUTHORIZATION_FAILED`(비치명) · `producer_fatal` 없음 · 진전 없음 백오프 · `OutboxOldestPending` · 10회 뒤 DLQ(DLQ 토픽도 막혔으면 행이 남는다).
+    - 치명 뒤 DB 장애가 이어지면 회복 뒤 대기가 한 번 더 유지된다(≤ 300 s · M1 · r5 리뷰 B5-2).
+
+### T069 결과(r1 → r5 · 2026-11-04..05) — D1–D16 · J · K · L · M의 정정은 뒤 절(r2 · r3 · r4 · r5)과 이 절이 우선한다(앞 절 줄 끝 〔…〕 표식)
+
+- **경과**: 조사 `wf_029b6b90-1a0`(1.27M) → r1 `wf_b35c53f2-657`(1.65M) → r2 `wf_4d9b7621-c54`(1.62M) → r3 `wf_bc83a238-f8e`(2.15M · 빌더 한 번 끊김) → r4 `wf_fef764e3-f80`(1.51M) → r5 `wf_6a40c898-7c6`(1.35M · 1.6 h). 빌드 · 리뷰 합계는 약 9.55M 토큰이다.
+- **리뷰 회차별 지적**(높음 · 중간 · 낮음):
+  - r1: A 0 · 2 · 7 / B 0 · 4 · 7
+  - r2: A2 0 · 0 · 7 / B2 0 · 0 · 9
+  - r3: A3 0 · 1 · 4 / B3 0 · 1 · 3
+  - r4: A4 0 · 1 · 4 / B4 0 · 1 · 2(medium은 같은 한 건)
+  - r5: A5 0 · 1 · 2 / B5 0 · 0 · 3(A5-1 medium = B5-1 low — 같은 한 건 · 모두 문면이라 컨트롤러 반영으로 닫았다)
+- **r5 결과**(빌더 DONE_WITH_CONCERNS — 우려 ⑧-1 = M1 대가 문장이 최악을 절반으로 적었다 → A5-1 · B5-1):
+  - 바뀐 파일은 `outbox_relay.py`(324 → 357)와 `test_outbox_contract.py`(2368 → 2570 · 시험 39 → 42 — oc-29f · 29g · 15f)뿐이다. `relay.py` · `_outbox_fakes.py`는 r4와 sha256이 같다.
+  - 빨강(r4 구현 + 최종 시험): `3 failed, 39 passed`(12:09) — oc-29f(네 사례) · oc-15f · oc-16. oc-29g(M2)는 r4도 지키는 거동이라 초록이고, 판별력은 변이 `L6-purge-fatal-dropped`가 보인다. 빨강 뒤 시험 수정은 0이다.
+  - 변이 76개(새 17 = M1 11 · M2 1 · M3 5 + r4 재실행 59) = 죽음 76 · 생존 0 · 복원 76. r4의 `outbox_relay.py` 변이 48개를 모두 다시 돌렸고, `relay.py`는 바뀐 시험에만 기대던 11개를 다시 돌렸다(두 리뷰가 jsonl로 범위를 확인했다).
+  - VD(M9 · 실 `build_producer` · 닫힌 포트 · 생성 0.2 s 뒤 ctypes 치명 · 유휴): 생성 간격 1.56 · 3.07 · 6.06 · 12.06 s · 대기 [0.5, 1, 1, 2, 2, 4, 4, 8, 8] · 회복 [0.5, 1, 1, 2, 2, 0.5, 0.5]. 리뷰 B는 번들 librdkafka 2.16.0 mock 클러스터의 실제 InitProducerId 치명(L 0.517–0.528 s)에서도 간격이 2.0 · 3.0 · 6.0 s로 느는 것을 확인했다.
+- **r5 리뷰 반영**(컨트롤러 · 2026-11-05 — 6차 빌더 라운드는 두지 않았다. 코드 · 시험 · 변이 · VD는 두 렌즈 모두 결정과 1:1이라고 판정했다):
+  - A5-1 · B5-1(M1 대가 · 상한 주기 수치): 계약 events.md 치명 줄 · 지표 줄, 규칙 Relay 문장, kr 미러 pending, 위 M1 「효과」 · 「받아들인 대가」, 명령 독스트링을 같은 수치로 고쳤다 — 상한에서 재생성 약 600 s(유지 300 + 치명 백오프 300) · 고친 뒤 최악 약 2 × `--max-backoff`(≈ 600 s) · 폴링 간격으로 돌아오기까지 최대 약 900 s · pending 행이 있었다면 ≤ 300 s · 긴 대기 중 지표 refresh 지연.
+  - B5-2(치명 뒤 DB 오류가 이어질 때 표시가 남는다): (가)를 골랐다. 계약 · 규칙 · 독스트링의 「첫 패스」를 「결과를 돌려준 첫 패스」로 바꾸고 그 경로를 적었다. 드문 경로 · 데이터 영향 0 · 지연은 `--max-backoff` 이하 한 번이라 빌드 라운드를 더하지 않았다. 받지 않은 (나) 코드 안(이전 반복에 만든 프로듀서의 패스 전 poll이 통과하면 표시를 지움)은 위 M1 표식에 적었다.
+  - B5-3 · A5-3(인계 보정): 「r5 인계」 T075 (i) · (ii) · 회복과 T071 · T072 · T114를 mock 실측과 판별 기준으로 고쳤다. 빌더 보고 ⑨의 「간격이 약 1.5 s에 머물면 가정이 깨진 것」은 틀린 기준이라 옮기지 않았다. M1 가정 줄에 실측 L을 적었다.
+  - A5-2(앞 절 표식): 9줄에 〔…〕 표식을 더하고(M5 줄에 목록), r3 인계 T072 표식의 범위를 고쳤다. `relay.py` 독스트링의 「진전 없는 패스에서만 자란다」는 계약 · 명령 독스트링을 가리키는 문장으로 바꿨다.
+  - 코드 두 파일(`outbox_relay.py` 357 → 361 · `relay.py` 415)은 독스트링만 바뀌었다. 독스트링을 뺀 AST · 주석 토큰 · 줄 길이(≤ 120자)가 같은지 스크립트로 확인했다(원본은 scratch 백업).
+- **최종 산출물**(`packages/django-common/` 아래):
+  - `src/django_common/outbox/`: `__init__.py` 30 · `models.py` 46 · `_ulid.py` 51 · `publisher.py` 257 · `relay.py` 415 · `maintenance.py` 46 · `metrics.py` 61.
+  - `src/django_common/kafka.py` 126(`client_config()` — T071 `/health` 공용) · `models.py` 9(OutboxEvent 등록) · `migrations/__init__.py` · `0001_initial.py` 34.
+  - 관리 명령 `outbox_relay.py` 361 · `outbox_requeue.py` 43 · `outbox_purge.py` 22.
+  - 시험 `tests/test_outbox_contract.py` 2570(42개) · `tests/test_event_patterns.py` 445(52개) · `tests/_outbox_fakes.py` 230.
+  - 주석 전용 3파일(`pyproject.toml` · `__init__.py` · `management/commands/__init__.py`) · 계약 events.md · pod-template.md · data-model.md · 규칙 · kr 미러 · 이 build-notes.
+- **컨트롤러 독립 검증**(최종 바이트 · 2026-11-05 13:38–13:45 · 시험은 하나씩):
+  - `test_outbox.py` 16 ×2(16.99 s · 14.92 s — **T061 PASS**) · contract 42 · patterns 52 · fixtures_kafka 1 · 회귀 tenancy 16 · tenancy_contract 65 · fixtures_pg 3. 경고 둘은 기존 `PytestConfigWarning: Unknown config option: DJANGO_SETTINGS_MODULE`(`-p no:django`)이다.
+  - 위생 RESULT OK(26파일 — BOM · CR · TAB · 줄 끝 공백 · 역슬래시-u · 끝 LF · 120자 초과는 0001 생성물 :19 · :31뿐) · 주석 전용 3파일 AST/값 동일(`management/commands/__init__.py`는 따로 확인) · 메모리 compile 19파일.
+  - gitleaks 8.30.1: 파일 26개를 하나씩 돌려 모두 exit 0(양성 대조 rc 1로 호출이 공허하지 않음을 확인) · `gitleaks:allow` 0 · Docker dangling 25 → 25 · 컨테이너 목록 같음.
+- **한계(남긴 것)**:
+  - 변이 「표시를 빈 패스에서만 지움」은 산다 — 컨트롤러가 실행해 확인했다(계약 시험 42 통과 · 소스 sha 복원). 관측 차이는 「치명 → 재생성 첫 패스가 진전 없음 · 잘림 → 다음 빈 패스」에서 대기 한 번(≤ `--max-backoff`)뿐이다(리뷰 A5 관찰).
+  - B5-2 경로(치명 뒤 DB 오류 반복 → 회복 뒤 대기 한 번 더 유지)는 문서로 받아들였다.
+  - 대역 `_system_error`의 메시지는 `<function record at 0x…>`다. 실물은 중첩 함수라 `<function _deliver.<locals>.record at 0x…>`일 것이다(추론 · 단언에 쓰이지 않는다 — 리뷰 A5 관찰).
+  - 상한 주기 약 600 s와 고친 뒤 최악 약 600 s는 계산 · 가상 시계 시뮬레이션 · 축소판 실측(상한 4 s)에서 얻었다. 실제 sleep 실측은 처음 네 간격까지다.
+- **문면과 다르게 한 것(report.md 후보)**:
+  - ① 단일 파일 `outbox.py` → 패키지 `outbox/`(시험이 하위 모듈 `metrics`를 import한다 — 사실 ①).
+  - ② 명령 이름 `relay_outbox` → `outbox_relay`(계약 · T065 골든 렌더 · 시험 독스트링 — 사실 ③).
+  - ③ 「CloudEvents 2.2 봉투」 → SDK 없이 dict 봉투(`specversion` "1.0" — 2.2는 Python SDK 판 번호 · pod 이미지에 스키마 패키지가 없어 꼴 상수는 코드에 두고 시험이 스키마와 같음을 지킨다).
+  - ④ 「dead 행 purge beat」 → 라이브러리 함수 `purge_dead()` + 템플릿 Celery 작업(T072) + Celery 없는 pod의 `outbox_purge` 명령 · CronJob(django-common에는 Celery가 없다).
+  - ⑤ 문면 밖 산출물: `kafka.client_config()`(설정 검증 공용) · `outbox_requeue`(dead 재처리) · `outbox_purge` · django_common 앱의 `models.py` + 마이그레이션 0001.
+  - ⑥ DLQ는 env DLQ다(prod `<pod>.dlq` · dev `dev.<pod>.dlq` — 계약 §토픽 규약).
+  - ⑦ 「지수 백오프(최대 5분)」는 행이 아니라 명령 루프의 것이다(대기 = max(직전, 폴링, 0.5 s) × 2 ≤ 300 s · 잘림 0 · 치명 뒤 결과를 돌려준 첫 빈 패스는 대기 유지 — K9 · M1). 대기 하나하나는 5분 이하지만, 치명 원인을 고친 뒤의 실효 지연은 대기 둘(≈ 10분)일 수 있다(r5 리뷰 A5-1 · A5 관찰).
+  - ⑧ 문면 밖 안전장치: publish의 jsonb 왕복 관문 · PG 텍스트 꼴 크기 상한 · relay 값 = `payload::text` · 바이트 예산 · 크기 상한 손 행 제외 · relay 무종료 수명 주기 · 치명 프로듀서 재생성(produce · flush · poll · DR) · Kafka 설정 양성 목록.
+  - ⑨ 「max_attempts 10 도달 시 DLQ + dead_at」: 메인 단계가 치명이면 그 패스의 DLQ 단계를 건너뛴다. 치명이 이어지는 동안 행은 attempts ≥ 10 · `dead_at` NULL로 남고, 고친 뒤 메인부터 다시 시도한다(L6 · r5 리뷰 A5 관찰).
+- **실측으로 뒤집힌 가정(report.md 후보)**:
+  - jsonb는 숫자를 다시 쓴다(`1e300` → 301자리) — Python 직렬화 크기로는 관문이 뚫린다(r1 리뷰 실측 989 B → 30,489 B).
+  - Django `delete()`는 삭제 신호 수신기가 있으면 지울 행을 먼저 읽는다 → `_raw_delete`.
+  - librdkafka는 설정 값을 C 문자열로 받아 NUL에서 자르고, 열거형 값의 앞 공백 · 대소문자를 무시한다 → 양성 목록.
+  - confluent-kafka 2.16.1은 치명 오류를 error_cb로 주지 않고 `flush` · `poll` 예외로 준다(r3 설계 K6 반증).
+  - 재생성 직후 빈 패스는 건강의 증거가 아니다(r4 실측 약 1.5 s 재생성 → M1).
+  - M1의 대가는 대기 하나가 아니라 둘이다(고치기 전에 만든 프로듀서의 유지 대기 + 그 프로듀서를 버리는 치명 백오프 — 빌더 덧 탐침 · 두 리뷰 독립 재현).
+  - 생성 → 치명 시간 L은 「1 s보다 훨씬 짧다」가 아니라 약 0.52 s다(번들 librdkafka 2.16.0 mock · PID 획득 타이머 500 ms 뒤 연결 한 번).
+- **사고**:
+  - r3 빌더가 변이 도중 끊겨 소스에 변이를 남겼다 → 다음 실행이 발견 · 복원 · 처음부터 재실행 → 변이 표식 파일 규칙(r4에서 실제로 작동했다).
+  - 컨트롤러 지시문의 셈 오류(18 → 19줄) · 이전 라운드 스크립트 경로 오지정(도구가 거부했다).
+  - r5 리뷰 B의 부수 효과 2건 — 저장소 · scratch 밖에 임시 파일을 잘못 만들었다가 지웠고, 상태 확인 명령이 배경 작업이 되어 TaskStop으로 멈췄다. 영향은 0이고 리뷰가 스스로 보고했다.
+- **VD 잔여(라이브)**:
+  - T075: (i) · (ii) 판별 · 클러스터 안 L · 유휴 재생성 간격(자라는지 · 일정한지) · 회복 지연 두 꼴(pending 행을 둔 채 고치기 · 유휴 중 고친 뒤 행 넣기) · 부분 ACL(`TOPIC_AUTHORIZATION_FAILED`) · produce · flush · poll · DR의 fatal 표시와 코드 · Linux에서 L 재측정.
+  - T072: 생성물 시험 대역의 `poll` · CronJob env · `terminationGracePeriodSeconds` ≥ 90.
+  - T071: FATAL · FAIL · GETPID stderr 줄(브로커 주소 포함)의 수집 형식.
+- **인계(최종)** — 「r5 인계」가 정본이다(T071 · T072 · T075 · T114). 더해서:
+  - **T096**: 조건 없는 relay 정지 감지(하트비트 지표)는 T096 결정이다(J7 · 계약 지표 줄).
+  - **T072**: 템플릿 Celery 작업 `<pod_snake>.tasks.purge_dead_outbox`가 `purge_dead()`를 감싼다 · relay 컨테이너는 인자 없는 `manage.py outbox_relay` · `terminationGracePeriodSeconds` ≥ 90 · relay DB 설정 `CONN_MAX_AGE` > 0 + `CONN_HEALTH_CHECKS`.
+  - **SP-2 후보**: 재생성 백오프를 패스 대기와 따로 두기 · 첫 유지 대기 하한(T075의 L이 0.8 s를 넘으면) · 잠금 쿼리 길이 이중 계산을 피하는 LATERAL 원시 SQL.
+- **학습 로그**: `content/tmp/003-t069/2026-11-04.md` · `2026-11-05.md`.
