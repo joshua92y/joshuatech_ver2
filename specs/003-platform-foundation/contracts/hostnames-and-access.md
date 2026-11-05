@@ -103,7 +103,7 @@ Job은 prod 자격을 절대 받지 않는다. tester가 얻는 것은 로그 �
 
 ```
 Authorization: Bearer <exchanged access token, aud=<pod>>   # 기본 impersonation — act 클레임 없음
-CF-Access-Client-Id: <service token id>                     # common_name = web-bff-<env> (호출자 식별)
+CF-Access-Client-Id: <service token id>                     # Access JWT common_name = 서비스 토큰 web-bff-<env>의 Client ID(<32 hex>.access — 토큰 이름이 아니다 · 호출자 식별 · T070 정정)
 CF-Access-Client-Secret: <service token secret>
 x-request-id: <ulid>
 traceparent: 00-<trace>-<span>-01

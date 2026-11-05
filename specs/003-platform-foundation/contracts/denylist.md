@@ -21,6 +21,7 @@
 3. **fail-closed**: Dragonfly 연결 실패·타임아웃(`socket_timeout` 0.2 s)·NOPERM 등 어떤 오류든 비헬스 경로는 503 RFC 9457 `type: https://joshuatech.dev/problems/denylist-unavailable`. 헬스 경로(`/healthz`·`/ready`·`/health`)는 거부 목록을 조회하지 않는다. **클라이언트 재시도 0**: 어느 생성 경로든 `retry=Retry(NoBackoff(), 0)`과 `socket_connect_timeout` 0.2 s를 **명시**한다. 근거(redis-py 8.1.0 실측 · 소스): `Redis(...)` 생성자 기본값은 `ExponentialWithJitterBackoff` 10회 재시도라 연결 거부 ≈ 4.7 s · 응답 없는 소켓 ≈ 6.8 s 뒤에야 실패하고, `Redis.from_url()`은 retry 미지정 시 `Retry(NoBackoff(), 0)`이다 — 어느 기본값에도 기대지 않는다(기본값 변경 방어). 판정은 타임아웃 0.2 s 안에 끝나고(`retries=0` 실측 0.20–0.22 s) 재시도는 호출자(BFF)의 몫이다(T062 보정 2026-11-02 · 리뷰 B-7).
 4. 결과를 pod 안에서 캐시하지 않는다(BFF의 `/session/check` 2 s 캐시는 BFF 계층의 것).
 5. 메트릭: `denylist_lookup_seconds`(histogram), 오류는 `denylist_lookup_seconds{result="error"}`.
+6. 공개 API(T070 보정 2026-11-05): `django_common.auth.Denylist().lookup(sub, sid=None) -> DenylistRecord(sub_nbf, sid_revoked)` · `DenylistRecord.revokes(iat)`(T073 `/session/check`가 같은 것을 쓴다). `DRAGONFLY_URL`은 호출 시점에 읽는다. URL에 쿼리가 있으면 조회 실패(503)로 본다 — redis-py는 URL 쿼리를 키워드 인자보다 우선해 타임아웃 · 재시도 설정을 덮어쓴다. 값이 정수가 아니면 조회 실패(503)다. 예외 메시지(키 = sub · URL)는 응답 · 로그 · 연쇄 예외에 싣지 않는다.
 
 ## 쓰기 규약 (identity-admin만)
 

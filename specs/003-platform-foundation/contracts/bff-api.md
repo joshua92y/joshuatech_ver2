@@ -40,9 +40,9 @@ access 토큰은 쿠키에 넣지 않는다. BFF isolate 메모리 캐시 `Map<s
 ## 하류 호출 규약
 
 - 헤더: `Authorization: Bearer <exchanged access>`, `CF-Access-Client-Id`, `CF-Access-Client-Secret`, `x-request-id`, `traceparent`, `x-forwarded-user-sub`(정보용, 신뢰하지 않음).
-- 토큰 교환(RFC 8693, Authentik 2026.8 OSS) — **기본은 impersonation**: `POST https://auth.joshuatech.dev/application/o/token/` `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`, `subject_token`=사용자 access(web-bff), `subject_token_type=urn:ietf:params:oauth:token-type:access_token`, `audience=<pod>`, `client_id/secret`=web-bff. **`actor_token`은 보내지 않는다**(OSS에는 authentik `Actor`를 만드는 지원 경로가 없어 client-credentials 토큰을 actor로 쓰면 `invalid_grant`). 호출자 식별은 **Access 서비스 토큰의 `common_name`**(`web-bff-<env>`)이 맡는다 — contracts/identity-admin-api.md §호출자 식별. 실패(400/403) → BFF 401 `exchange_denied`.
+- 토큰 교환(RFC 8693, Authentik 2026.8 OSS) — **기본은 impersonation**: `POST https://auth.joshuatech.dev/application/o/token/` `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`, `subject_token`=사용자 access(web-bff), `subject_token_type=urn:ietf:params:oauth:token-type:access_token`, `audience=<pod>`, `client_id/secret`=web-bff. **`actor_token`은 보내지 않는다**(OSS에는 authentik `Actor`를 만드는 지원 경로가 없어 client-credentials 토큰을 actor로 쓰면 `invalid_grant`). 호출자 식별은 **Access 서비스 토큰의 `common_name`**(서비스 토큰 `web-bff-<env>`의 Client ID `<32 hex>.access` — 토큰 이름이 아니다 · T070 정정)이 맡는다 — contracts/identity-admin-api.md §호출자 식별. 실패(400/403) → BFF 401 `exchange_denied`.
   - **VD-1(검증 후 결정)**: T081 착수 시 OSS에서 `Actor` 생성이 되면 `actor_token`(BFF client-credentials)을 붙인 delegation으로 바꾸고 pod는 `AUTH_ACTOR_SUB`로 `act.sub`를 검증한다(옵션 A). 안 되면 위 impersonation 그대로(옵션 B). BFF 코드는 `actor_token` 파라미터를 붙일지 여부만 달라진다.
-- 폐기 확인: `GET <IDENTITY_M2M_URL>/session/check?sub=<sub>&iat=<iat>&sid=<sid>` → `{ active: boolean }`. 결과를 **2 s** 캐시. `active=false`면 쿠키 삭제 + 401 `session_revoked`. 상류 503(`denylist-unavailable`) → BFF 503 `upstream_unavailable`(fail-closed; 쿠키는 유지).
+- 폐기 확인: `GET <IDENTITY_M2M_URL>/session/check?sub=<sub>&iat=<iat>&sid=<sid>` → `{ active: boolean }`. 결과를 **2 s** 캐시. `active=false`면 쿠키 삭제 + 401 `session_revoked`. 상류 503(슬러그와 무관 — `denylist_unavailable` · `auth_keys_unavailable` 등) → BFF 503 `upstream_unavailable`(fail-closed; 쿠키는 유지 · T070 보정).
 - `access_token`·`code`·`state`를 URL 경로·쿼리에 싣지 않는다(교환·폐기 확인은 헤더/본문).
 
 ## 타임아웃 · 재시도

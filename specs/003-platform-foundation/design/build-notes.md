@@ -2063,3 +2063,120 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
   - **T072**: 템플릿 Celery 작업 `<pod_snake>.tasks.purge_dead_outbox`가 `purge_dead()`를 감싼다 · relay 컨테이너는 인자 없는 `manage.py outbox_relay` · `terminationGracePeriodSeconds` ≥ 90 · relay DB 설정 `CONN_MAX_AGE` > 0 + `CONN_HEALTH_CHECKS`.
   - **SP-2 후보**: 재생성 백오프를 패스 대기와 따로 두기 · 첫 유지 대기 하한(T075의 L이 0.8 s를 넘으면) · 잠금 쿼리 길이 이중 계산을 피하는 LATERAL 원시 SQL.
 - **학습 로그**: `content/tmp/003-t069/2026-11-04.md` · `2026-11-05.md`.
+
+## T070 (2026-11-04 착수 · 11-05 설계 확정 — US6 구현 · `packages/django-common/src/django_common/auth.py` → T062 PASS · 세션 모델 Opus 5.5)
+
+- **과제 문면(tasks.md T070)**: `JwtAuthMiddleware`(PyJWT `PyJWKClient` 1h 캐시 — JWKS URL은 svc DNS · `iss`(공개 issuer URL) · `aud` · `exp` · `nbf` 검증 · `act.sub` 검증은 `AUTH_ACTOR_SUB`가 설정된 경우에만) · `AccessJwtValidator`(Cloudflare `/cdn-cgi/access/certs` · AUD 집합 `ACCESS_AUD_M2M` · `ACCESS_AUD_ADMIN` + `ACCESS_EXPECTED_CN` — `common_name` 불일치 · 부재 403) · `Denylist`(redis-py · ACL 사용자 `<pod>` · `socket_timeout` · `socket_connect_timeout` 0.2 · 키 `revoked:sub:{sub}`(nbf epoch) · `revoked:sid:{sid}` 파이프라인 1회 · 조회 실패 503 fail-closed) · Ninja auth callable · 면제 목록 · 웹훅 HMAC 헬퍼 → T062 PASS.
+- **소스로 확인한 사실**(읽기 전용 조사 워크플로 `wf_84149399-610` — 시험 · 명세 · 런타임 세 갈래 · 1.41M 토큰, 보고 `.superpowers/t070/research/{tests,spec,runtime}.json`):
+  - ① **빨강**: `tests/test_auth.py`와 `tests/authapp/views.py`가 `django_common.auth`를 import한다 → 모듈 부재로 `ModuleNotFoundError`(수집 단계).
+    - 시험이 고정한 공개 이름은 5개다: `AuthError` · `JwtAuthMiddleware` · `WebhookEvent` · `WebhookSignatureInvalid` · `verify_authentik_webhook`.
+    - 시험 32개(auth-1..32)는 DB 없이 Dragonfly 컨테이너와 로컬 JWKS 서버로 돈다.
+  - ② **판정 순서(시험 고정)**: 면제(정확 일치 · 무검사 · Dragonfly 무접촉) → Access 전용 경로(Access만) → Access(403 `access_required`) → Bearer(401 `invalid_token`) → `act.sub`(설정 시만) → 거부 목록(401 `session_revoked` · 503 `denylist_unavailable`).
+    - 판정은 URL 해석 전이다(urlconf에 없는 경로도 403/401).
+    - act · tenant_id · 거부 목록 사이의 상대 순서와 동시 실패 우선순위는 시험이 고정하지 않는다.
+  - ③ **PyJWT 2.15.1**:
+    - `require`가 없으면 `exp` 없는 토큰도 통과한다. `issuer`를 넘기지 않으면 iss를 보지 않는다.
+    - `PyJWKClientError`(모르는 kid)는 `InvalidTokenError` 하위가 아니다. JWKS 응답이 JSON이 아니거나 본문 읽기 중 OSError면 PyJWT 밖 예외가 그대로 샌다.
+    - 생성자 기본값: `timeout` 30 s · `lifespan` 300 s · `cooldown_duration` 30 s. fetch는 RLock을 쥔 채 돈다.
+    - 모르는 kid면 마지막 성공 fetch 뒤 cooldown이 지났을 때만 1회 재조회한다(홍수가 fetch 폭주를 만들지 않는다). lifespan이 지난 뒤 fetch가 실패하면 만료된 키를 쓰지 않고 `PyJWKClientConnectionError`다.
+  - ④ **redis-py 8.1.0**:
+    - `Redis()` 생성자 기본은 지수 백오프 10회 재시도 · 타임아웃 5 s, `from_url` 기본은 재시도 0이지만 타임아웃 5 s다 → 세 값을 명시해야 한다.
+    - **URL 쿼리가 키워드 인자를 덮어쓴다**(`?socket_timeout=5` 실측 — 0.2 s fail-closed 상한이 무력화된다).
+    - 기본 RESP3다. 파이프라인 오류 메시지에 키(= sub)가 실린다. `TimeoutError`는 `ConnectionError` 하위가 아니다.
+  - ⑤ **Django 6.1.2**:
+    - `request.get_host()`는 불릴 때만 `DisallowedHost`(→ handler400 400)를 올린다. 그래서 「업무 경로는 인증 전 400」은 누군가 판정 전에 `get_host()`를 불러야 성립한다.
+    - 시험 Client는 첫 요청 때 미들웨어를 적재하고(Client 1 = 인스턴스 1), 처리되지 않은 예외를 다시 올린다.
+    - T068 `TenantContextMiddleware`는 `__call__`에서 `uuid.UUID`인 `request.tenant_id`를 요구한다.
+  - ⑥ **표준 라이브러리**:
+    - `hmac.compare_digest`는 비ASCII str에 `TypeError`다.
+    - `json.loads`는 깊은 중첩에 `RecursionError`다(ValueError 아님).
+    - `uuid.UUID`는 str가 아닌 값에 `AttributeError` · `TypeError`이고, 32 hex · 중괄호 · `urn:uuid:` 꼴도 받는다.
+  - ⑦ **시험이 고정하지 않는 것**: `AccessJwtValidator` · `Denylist` · Ninja callable의 모양 · JWKS · certs fetch 실패 응답 · fetch 타임아웃 · leeway 값 · 스킴 없는 팀 도메인 · 경로 설정 타입 검사 · 빈 설정 · 클레임 모양(빈 sub · 비str tenant_id · 비dict act) · 거부 목록 값이 정수가 아닐 때 · 호스트 400의 책임 · sync/async · 웹훅 대문자 hex · `Z` 접미 · 빈 비밀.
+  - ⑧ **어긋남**:
+    - spec 인증 순서 두 곳(:421 · :430)이 계약 · 시험(Access 먼저)과 다르다 → 계약이 우선한다(report.md 편차 후보).
+    - `ACCESS_EXPECTED_CN` 값: 계약 identity-admin-api.md:35는 Client ID인데, `hostnames-and-access.md:106` · `bff-api.md:43`의 「common_name = web-bff-<env>」은 낡았다(ADR 0006 · tasks.md T075 본문은 고칠 수 없다 — report.md 편차 후보).
+    - 웹훅 면제: pod-template은 「pod가 명시」, identity-admin-api.md · T062 시험은 라이브러리 기본(`AUTH_EXEMPT_PATHS` = 헬스 3 + `/webhooks/authentik`) → 시험 · identity-admin 계약을 따른다.
+    - pod-template §공개 API 요약이 시험이 import하는 이름과 다르다.
+    - Ninja auth callable은 문면에만 있고 계약 · 시험이 없다. Ninja `auth=` 목록은 OR 의미이고, Ninja 기본 401 본문은 RFC 9457이 아니다.
+  - ⑨ **미결(O1 · O2 — T062 · T066 · T068에서 넘어온 것)**: 사람 admin 경로는 GitHub IdP Access JWT라 `common_name`도 Bearer도 없다 → 지금 체인이면 403이다. 그 요청은 tenant도 없어 T068이 `/admin/*`을 403 `tenant_required`로 막는다(면제는 경로 정확 일치뿐).
+- **계약 보정(컨트롤러 · 이 설계와 같은 커밋 · 「T070 보정 2026-11-05」 표식)**:
+  - **C1** `contracts/pod-template.md` §런타임 계약 「인증」 행과 §공개 API(`django_common.auth`)를 D2–D10으로 고친다. §기본 테스트 3에 fetch 실패 503을 더한다.
+  - **C2** `contracts/identity-admin-api.md` 인증 계층에 호스트 400 선행 · fetch 실패 503 `auth_keys_unavailable` · 클레임 모양 · 오류 슬러그 목록을 더한다. `hostnames-and-access.md:106` · `bff-api.md:43`의 낡은 `common_name` 문구를 Client ID로 바로잡는다. `bff-api.md` 폐기 확인 줄의 「상류 503(`denylist-unavailable`)」을 「상류 503(어느 슬러그든)」으로 넓힌다.
+  - **C3** `contracts/denylist.md` §조회 규약에 공개 API(D7) · URL 쿼리 거부 · 값 이상 = 503 · 메시지 · 로그에 키(sub) 없음을 적는다.
+  - **C4** `.claude/rules/django-pod.md` §Auth를 영어로 같이 고친다 · kr 미러는 translation-pending 줄.
+- **결정 D1–D14(컨트롤러)**:
+  - **D1 범위**: `src/django_common/auth.py` 한 모듈과 새 시험 `tests/test_auth_contract.py`(T070 소유 · 시험이 고정하지 않은 표면)다. 필요하면 `tests/authcontractapp/`(T070 소유 urlconf)와 `tests/_auth_fakes.py`를 더한다. T062 산출물(`test_auth.py` · `_jwt.py` · `_dragonfly.py` · `_secret.py` · `authapp/` · conftest · settings)은 바꾸지 않는다. 의존성 · `uv.lock` 변경은 0이다.
+  - **D2 미들웨어 판정**(sync 전용 · `request.path_info` 정확 일치 · 설정은 호출 시점에 읽는다 · 순서 고정):
+    0. 면제 `AUTH_EXEMPT_PATHS`(라이브러리 기본 `("/healthz", "/ready", "/health", "/webhooks/authentik")` · str만 담은 tuple · list · set · frozenset이 아니면 `ImproperlyConfigured`) → 아무것도 하지 않고 통과한다(호스트 검사 · 요청 속성 · Dragonfly 모두 없음).
+    1. **호스트 선행**: `request.get_host()`를 부른다. `ALLOWED_HOSTS` 밖이면 `DisallowedHost` → handler400 400 `invalid_host`다(인증보다 먼저 · 미들웨어 순서와 무관).
+    2. Access 전용 `AUTH_ACCESS_ONLY_PATHS`(기본 `()` · 같은 타입 검사)면 Access만 본다 → `request.access_claims` → 뷰.
+    3. Access(D3) → 4. Bearer(D4) → 5. act(설정 시) → 6. 거부 목록(D7).
+    7. 성공이면 `request.access_claims` · `request.auth_claims`(검증된 payload 전체) · `request.tenant_id`(클레임이 있을 때만 · `uuid.UUID`)를 두고 뷰를 부른다. 실패 · 면제 경로에서는 이 속성을 두지 않는다.
+  - **공개 API**(`django_common.auth.__all__`): `JwtAuthMiddleware` · `AccessJwtValidator`(문면 이름 — `validate(token: str) -> dict` · 실패는 `AccessRequired` · `AuthKeysUnavailable` · 미들웨어 ④가 쓴다) · `Denylist` · `DenylistRecord` · `AuthError`와 하위 여섯(D8) · `WebhookEvent` · `verify_authentik_webhook`. Bearer 검증 단계는 공개하지 않는다(문면에 없다).
+  - **D3 Access**(실패 → 403 `access_required`):
+    - 헤더 `Cf-Access-Jwt-Assertion`.
+    - certs = `<팀 기준 URL>/cdn-cgi/access/certs`. `ACCESS_TEAM_DOMAIN`에 스킴이 없으면 `https://`를 붙이고, `http://`는 루프백 호스트(시험 서버)만 받는다 — 아니면 `ImproperlyConfigured`.
+    - `algorithms=["RS256"]` · `audience` = 비지 않은 값만 모은 `{ACCESS_AUD_M2M, ACCESS_AUD_ADMIN}`(dev의 빈 `ACCESS_AUD_ADMIN`은 집합에서 뺀다) · `issuer` = 팀 기준 URL · `require = exp, iat, aud, iss` · `leeway = 5 s` · nbf는 있으면 검증한다.
+    - `common_name`이 str이고 `ACCESS_EXPECTED_CN`과 같아야 한다(등호 — 값의 모양은 보지 않는다).
+  - **D4 Bearer**(실패 → 401 `invalid_token`):
+    - `Authorization: Bearer <token>` — 스킴은 대소문자 무시, 구분은 공백 하나, 토큰에 공백이 없어야 한다.
+    - JWKS는 `AUTHENTIK_JWKS_URL`만 쓴다(Access 키와 섞지 않는다 · discovery 금지 · 공개 DNS 조회 0).
+    - `RS256` · `audience = AUTHENTIK_AUDIENCE` · `issuer = AUTHENTIK_ISSUER` · `require = exp, iat, sub, aud, iss` · `leeway 5 s`.
+    - 클레임 모양(fail-closed): `sub`는 비지 않은 str, `sid`가 있으면 비지 않은 str, `tenant_id`가 있으면 소문자 정규형 UUID 문자열(`str(uuid.UUID(v)) == v` — 다른 꼴 · 비str은 거부 · seed_tenant(T073)가 이 꼴로 쓴다), `AUTH_ACTOR_SUB`가 비어 있지 않으면 `act`가 dict이고 `act.sub`가 같아야 한다.
+  - **D5 키 가져오기**:
+    - `PyJWKClient(url, cache_jwk_set=True, lifespan=3600, timeout=2)`를 미들웨어 인스턴스 안에 URL별로 캐시한다(Authentik · Access 따로 · `cooldown_duration`은 기본 30 s 그대로 · 새 인스턴스는 다시 가져온다 — auth-28).
+    - **fetch 실패**(`PyJWKClientConnectionError` · JWKS 꼴 오류 `PyJWKSetError` · JSON 오류 · `OSError`)는 토큰 결함이 아니라 의존성 장애다 → **503 `auth_keys_unavailable`**(새 슬러그). 만료 뒤 fetch 실패도 같다(만료된 키를 쓰지 않는 fail-closed).
+    - 모르는 kid(재조회 뒤에도 키 없음)는 토큰 결함이다 → Access 403 · Bearer 401.
+    - BFF는 상류 503을 슬러그와 무관하게 `upstream_unavailable`로 바꾸고 쿠키를 유지한다(로그아웃하지 않는다 — C2).
+  - **D6 설정**:
+    - 이름은 시험 그대로다: `AUTHENTIK_ISSUER` · `AUTHENTIK_JWKS_URL` · `AUTHENTIK_AUDIENCE` · `ACCESS_TEAM_DOMAIN` · `ACCESS_AUD_M2M` · `ACCESS_AUD_ADMIN` · `ACCESS_EXPECTED_CN` · `AUTH_ACTOR_SUB` · `DRAGONFLY_URL` · `AUTH_EXEMPT_PATHS` · `AUTH_ACCESS_ONLY_PATHS`.
+    - 비어 있으면 안 되는 것(ISSUER · JWKS_URL · AUDIENCE · TEAM_DOMAIN · AUD_M2M · EXPECTED_CN · DRAGONFLY_URL)이 없거나 비면 요청 때 `ImproperlyConfigured`다(설정 이름만 · `from None` → 500). 기동 시 존재 검사는 T072 settings 몫이다.
+    - 빈 값이 유효한 것: `AUTH_ACTOR_SUB`(impersonation) · `ACCESS_AUD_ADMIN`(dev — 집합에서 뺀다).
+  - **D7 거부 목록 `Denylist`**(공개 — T073 `/session/check`가 재사용한다):
+    - `Denylist()` — `lookup(sub: str, sid: str | None = None) -> DenylistRecord(sub_nbf: int | None, sid_revoked: bool)`.
+    - 호출 시점에 `DRAGONFLY_URL`을 읽고, URL별로 클라이언트를 인스턴스 안에 캐시한다(같은 인스턴스가 바뀐 URL을 따른다).
+    - 클라이언트: `Redis.from_url(url, socket_timeout=0.2, socket_connect_timeout=0.2, retry=Retry(NoBackoff(), 0))`. URL에 쿼리가 있으면 거부한다(쿼리가 타임아웃을 덮어쓴다 — 사실 ④). 지연 생성이고, 생성자에서 연결 · PING을 하지 않는다(auth-21).
+    - 파이프라인 1회(`transaction=False` — GET + sid가 있으면 EXISTS).
+    - 값이 정수가 아니거나(`int()` 실패) 어떤 예외든(`RedisError` 하위 · `TimeoutError` · 그 밖) `DenylistUnavailable`(503 `denylist_unavailable`)이다. 예외 메시지(키 · URL)는 응답 · 로그 · 연쇄 예외에 싣지 않는다(`from None`).
+    - 판정 도우미 `DenylistRecord.revokes(iat: int) -> bool` = (`sub_nbf`가 있고 `> iat`) 또는 `sid_revoked`.
+    - 지표 `denylist_lookup_seconds`(Histogram · 레이블 `result` ∈ ok · revoked · error · 모듈 수준 1회 등록).
+    - 결과를 캐시하지 않는다(auth-16).
+  - **D8 오류 형**: `AuthError(Exception)`(속성 `slug` · `status` · `to_response()` = `problem_response`)와 하위 `InvalidToken`(401 `invalid_token`) · `AccessRequired`(403 `access_required`) · `SessionRevoked`(401 `session_revoked`) · `DenylistUnavailable`(503 `denylist_unavailable`) · `AuthKeysUnavailable`(503 `auth_keys_unavailable`) · `WebhookSignatureInvalid`(401 `webhook_signature_invalid`). detail에 토큰 · 비밀 · URL · 예외 문자열을 싣지 않는다. `WWW-Authenticate` 등 추가 헤더는 두지 않는다.
+  - **D9 웹훅 헬퍼** `verify_authentik_webhook(body: bytes, signature: str | None, *, secret: str, now: datetime | None = None) -> WebhookEvent`(frozen dataclass `pk` · `created`(aware) · `data`):
+    - 빈 `secret`은 `ValueError`다(설정 오류 — pod settings가 기동에서 먼저 막는다 · 심층 방어).
+    - 서명 꼴 `^sha256=[0-9a-f]{64}$`(소문자만 — 계약)이 아니면 거부한다.
+    - 본문 UTF-8 디코드 · JSON(`RecursionError` 포함) · 비객체 · `pk`(비지 않은 str) · `created`(str · tz 있는 ISO 8601 — `Z` 허용)의 실패도 전부 `WebhookSignatureInvalid`다.
+    - 정규형 JSON의 HMAC-SHA256을 `compare_digest`로 비교하고, `|now − created| > 300 s`면 거부한다.
+  - **D10 Ninja auth callable · 사람 admin 경로**:
+    - Ninja auth callable은 만들지 않는다. 미들웨어가 모든 비면제 경로를 URL 해석 전에 판정하므로 중복이고, Ninja `auth=`는 OR 의미이며 기본 401 본문이 RFC 9457 밖이다(사실 ⑧). 뷰는 `request.auth_claims` · `request.tenant_id`를 읽는다. 문면 편차 → report.md 후보.
+    - O1 · O2(사람 admin 경로 · 그 tenant)는 T070 범위 밖이다. 서비스 토큰 경로만 구현하고, 계약에 미결로 적어 T072 · T073 · T084(VD-T066-5)로 넘긴다. 선택지는 (a) `ADMIN_HOST` + `aud = ACCESS_AUD_ADMIN` 사람 모드 · (b) admin 호스트를 별도 미들웨어 스택으로 · (c) T084 실측 뒤 결정이다.
+  - **D11 새 시험 `tests/test_auth_contract.py`**(T070 소유 · T062가 고정하지 않은 표면 · 값 없음 단언은 입력에 SENTINEL을 심어 공허하지 않게 한다 — T069 J9 교훈):
+    - 호스트 400 선행(자격 없는 보호 경로 + 밖 Host = 400 · certs 요청 0 · 면제 경로는 호스트 검사 안 함).
+    - 경로 설정 타입 검사 · 요청마다 읽기.
+    - 팀 도메인 스킴 처리 · 루프백 밖 `http://` 거부.
+    - 빈 필수 설정 = `ImproperlyConfigured`(이름만 · SENTINEL 없음).
+    - JWKS · certs fetch 실패(닫힌 포트 · 응답 없는 소켓 · JSON 아님 · 빈 키 세트) = 503 `auth_keys_unavailable`(약 2 s 안) · 모르는 kid = 401/403 · 만료 뒤 fetch 실패 = 503.
+    - 클레임 모양 거부(빈 sub · 비str sub · 비정규 tenant_id(대문자 · 중괄호 · `urn:uuid:` · 32 hex) · 비dict act · 빈 sid) = 401(500 아님).
+    - 소문자 `bearer` 스킴 수락 · 공백 둘 · 토큰 공백 = 401 · Access 미래 nbf = 403.
+    - 거부 목록: 값 비정수 = 503 · URL 쿼리 = 503 · `Denylist` 공개 API(원시 값 · URL 변경 추적 · 오류 형 · 메시지에 sub 없음).
+    - 지표 레이블 ok · revoked · error.
+    - 웹훅(빈 비밀 · 대문자 hex · `Z` · 깊은 중첩 · 비UTF-8 · ±300 s 경계).
+    - sync 전용 · import 부작용 0(소켓 · 스레드).
+  - **D12 로그**: 미들웨어는 판정마다 로그를 남기지 않는다(요청 로그는 T071 RequestMiddleware가 상태 코드로 남긴다). 예외 둘 — 키 fetch 실패와 거부 목록 오류는 WARNING 한 줄이다(이벤트 이름 · 출처 `authentik`/`access`/`denylist` · 예외 클래스 — 토큰 · URL · 키 · 메시지 없음).
+  - **D13 VD**:
+    - VD-T070-1: Authentik identity-admin provider 서명 키가 RSA인지(T081 — EC면 전부 401).
+    - VD-5(T076): `common_name` = Client ID.
+    - pod → Cloudflare certs egress(T085 · T076).
+    - 0.5 s 상한의 flake 감시.
+  - **D14 인계**:
+    - T071: 마스킹 목록에 `cf-access-jwt-assertion`을 더한다. `sub_hash`는 `auth_claims["sub"]`에서 만든다.
+    - T072:
+      - MIDDLEWARE = RequestId → … → JwtAuth → TenantContext.
+      - settings 존재 검사 · `TENANT_CONTEXT_EXEMPT_PATHS`에 웹훅 · Access 전용 경로.
+      - handler400 · 프로브 Host.
+    - T073:
+      - `/session/check`는 `Denylist().lookup`을 쓴다.
+      - 웹훅 뷰는 atomic + `verify_authentik_webhook`이다.
+      - O1 · O2를 결정한다.
+    - T081: RSA 키 · act(VD-1) · 웹훅 매핑(VD-T062-1).
+    - T092(BFF): 상류 503은 슬러그와 무관하게 `upstream_unavailable` · 쿠키 유지.
