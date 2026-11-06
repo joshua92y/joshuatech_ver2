@@ -326,7 +326,7 @@ foreach ($p in $paths) {
 Remove-Variable j
 "read=$read/8 hits=$hits"    # PASS = read 8/8 **그리고** hits 0 (fail-closed: 하나라도 못 읽으면 FAIL). hits ≥ 1이면 그 경로의 consumer를 켜지 않는다
 ```
-- 게이트 2(consumer 자체, 무토큰 — T072·T075·T077 인계): django-pod 템플릿 pydantic-settings 검증기가 `PLACEHOLDER-`로 시작하는 값에서 기동 실패(fail-closed) + T077 tester 단언 `PLACEHOLDER-` 0.
+- 게이트 2(consumer 자체, 무토큰 — T072·T075·T077 인계): django-pod 템플릿 pydantic-settings 검증기가 `PLACEHOLDER-`로 시작하는 값에서 기동 실패(fail-closed) + T077 tester 단언 `PLACEHOLDER-` 0. 범위(T070 r6 — data-model §8): 웹훅 `secret` · `jwks_url` · `issuer`는 범위 안이다 — US6 기동 전에 실값 · 계약 값으로 덮어쓴다(웹훅 비밀은 들어오는 쪽 검증 키라 플레이스홀더를 두지 않는다). US4에서야 실값이 생기는 나가는 쪽 자격(`client_id` · `client_secret` · `api_token` · `kv/{env}/openfga/*` — `preshared`는 위 US6 교체 규칙)을 US6 동안 sentinel로 둘지 — 둔다면 게이트 2 범위에서 빼고 게이트 1을 키 단위로 그 consumer 활성화(T081 · T082) 앞에 둔다 — 는 T075가 T072와 함께 정한다.
 - 검증: role 6 = `vault list auth/kubernetes/role` · 정책 6(+내장) = `vault policy list` · 정례 plan `No changes` · 게이트 1 = `read=8/8 hits=0`.
 - 되돌리기: 잘못된 role/정책은 코드 수정 → 재apply(0 destroy 원칙). kv 마운트 삭제 금지. 플레이스홀더 경로 되돌리기 = `vault kv metadata delete kv/<path>`.
 

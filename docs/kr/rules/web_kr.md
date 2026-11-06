@@ -1,3 +1,4 @@
+> translation-pending (2026-11-06) — 영어 원본 §BFF contract(프록시 허용 경로 정확 일치 · 상류 URL = 기준 URL + 허용 경로 상수 · `/session/check` 질의를 세션 값으로 다시 만든다 · 폐기 확인 판정은 200 + boolean `active`뿐 · 자격을 싣는 하류 호출은 리디렉션을 따르지 않는다 · 상류 3xx는 시간 초과와 같은 503 · 프록시는 pod가 만든 응답(2xx JSON · 4xx problem+json)만 상태 · 본문 · `content-type`을 중계(그 밖 = 503 · 옮긴 pod 4xx 본문은 pod 계약 몫) · 정적 맵 = 경로 + 메서드 · 같은 origin 경로 정의(`return_to` · `Location` — `\` · 제어 문자 금지 · WHATWG origin 대조) · 어느 라우트도 하류 응답 헤더를 옮기지 않는다 · 변형 판정은 핸들러 기준(`Location` 꼴 · 파서가 접는 꼴) · logout 실패 갈래(세션 · CSRF 검사 통과 뒤 쿠키는 늘 지운다) — T070 r3 · r4 · r5 · r6 · r6 마감) · §Logging and masking(응답 쪽 자격 `Set-Cookie` · `CF_Authorization` 금지 — T070 r6 마감) · §Cookies and caching invariants(`jt_csrf` 수명 = `jt_session` — T070 r6 마감) 개정분 미반영. /finish에서 동기화.
 > 번역본(편의용). 정본은 영어 원본 `.claude/rules/web.md`이며 충돌 시 영어가 우선한다. 동기화: /finish.
 
 ```yaml

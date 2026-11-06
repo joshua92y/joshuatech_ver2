@@ -2180,3 +2180,1099 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
       - O1 · O2를 결정한다.
     - T081: RSA 키 · act(VD-1) · 웹훅 매핑(VD-T062-1).
     - T092(BFF): 상류 503은 슬러그와 무관하게 `upstream_unavailable` · 쿠키 유지.
+
+### T070 r1 결과 · r2 결정(리뷰 r1 반영 · N1–N13 · 2026-11-05)
+
+- **r1 결과**(워크플로 `wf_7acf8b9b-797` · 1.67M 토큰 · 약 2시간 10분 · 빌더 DONE_WITH_CONCERNS):
+  - 새 파일 7개, 추적 파일 변경은 0이다.
+    - `auth.py` 683 · 시험 `test_auth_contract.py` 1353(시험 함수 32 · 사례 104 · ac-1..22) · `_auth_fakes.py` 250 · `authcontractapp/` 4파일(`urls` · `views` · `middleware` · `__init__`)
+  - 빨강(14:29): `test_auth_contract.py`는 `ImportError: cannot import name 'auth' from 'django_common'`, `test_auth.py`는 `ModuleNotFoundError: No module named 'django_common.auth'`다(둘 다 수집 단계 · exit 2).
+  - 빨강 뒤 수정 5건은 보고에 시각과 함께 적혀 있다: 시험 논리 `caplog.clear()` · 줄 길이 · `poll_interval` 0.05 · ac-5c 추가 · 독스트링 2줄. ac-5c는 빨강을 보지 못했고, 판별력은 변이 M43 · M44로 보였다.
+  - 초록: `test_auth.py` 32 ×3(**T062 PASS**) · contract 104 · fixtures jwks 3 · dragonfly 1 · 회귀 tenancy 16 · 65 · outbox 16 · 42 · patterns 52 · fixtures_pg 3.
+  - 변이 73개 중 71개를 잡았다(T070 시험만 54 · T062만 9 · 둘 다 8).
+    - 살아남은 M22(알고리즘 목록 넓힘) · M23(원시 키 + HS256)은 동치 변이다.
+    - 근거: PyJWK가 알고리즘을 키에 묶고(api_jws.py:415–430), 원시 RSA 키는 HMAC · none에서 `TypeError` · `InvalidKeyError`다. 빌더 탐침과 리뷰 A · B가 소스로 확인했다.
+  - VD:
+    - 0.5 s 상한의 여유는 0.17 s 이상이다(모드마다 20회).
+    - 키 fetch는 블랙홀 · 닫힌 포트 모두 2.02–2.06 s다. Windows는 닫힌 포트도 연결 재시도로 약 2 s가 걸린다.
+    - Windows 닫힌 포트의 Dragonfly 실패는 `TimeoutError`로 나타난다.
+    - `INFO commandstats`가 MULTI/EXEC를 센다(M57이 잡혔다).
+    - VD-T070-1 · VD-5 · certs egress는 이 환경에 Authentik · Cloudflare가 없어 미실측이다(T081 · T076 · T085).
+  - 편차(빌더 ⑧ — 처리는 아래 N2):
+    - ① 비면제 경로에서 판정 전에 요청 속성 셋을 지운다
+    - ② 팀 기준 URL 꼴 검사를 넓혔다
+    - ③ `AUTHENTIK_JWKS_URL` 스킴 오류 = `ImproperlyConfigured`
+    - ④ `Denylist.lookup` 인자 검사(`TypeError` · `ValueError`)
+    - ⑤ 지표 `result="revoked"` = 폐기 키가 있었다
+    - ⑥ JSON null인 `sid` · `tenant_id` = 「있음」 → 401
+    - ⑦ 웹훅 헬퍼 입력 형 검사
+    - ⑧ 로그 `error=` = 예외 클래스 이름(URL 쿼리 거부는 `url_query`)
+    - ⑨ `AuthError` 기본값 = `invalid_token` / 401
+  - 한계(빌더 · PyJWT 2.15):
+    - ① 서명 키 후보가 없는 200 응답은 lifespan(1 h) 동안 503으로 고착된다.
+    - ② fetch 실패는 마지막 성공 fetch 시각을 갱신하지 않는다. 그래서 장애 중에는 모르는 kid마다 재조회한다(N10).
+    - ③ timeout은 소켓 동작 단위다(N11).
+- **리뷰 r1**: A approve_with_fixes(medium 2 · low 7) · B approve_with_fixes(low 4).
+  - B 탐침 결과, 아래가 모두 fail-closed로 끝났고 500으로 새는 경로는 없었다:
+    - JWT 우회 30여 종
+    - 키 fetch 실패 10종
+    - 거부 목록 예외 6종
+  - medium:
+    - A-1: `revokes()`의 「오래된 sub 키(nbf ≤ iat) + 폐기된 sid」 조합을 어느 시험도 가르지 않는다. sid를 무시하는 변이가 T062 · T070 · T066 세 스위트를 모두 통과한다. 실제로 일어나는 순서다: 전체 로그아웃 → 재로그인 → 단일 기기 로그아웃이면 330 s 동안 두 키가 같이 있다.
+    - A-2: 빌더 편차 ⑧-1 · 3 · 4 · 5 · 6 · 7을 시험이 고정했는데 계약에는 없다.
+  - low:
+    - A-3: 키 fetch 상한 3.5 s가 timeout 2 s와 3 s를 가르지 못한다.
+    - A-4: `path_info` · 클라이언트 재사용 · `auth_claims` 전체가 판별되지 않는다.
+    - A-5: `ACCESS_TEAM_DOMAIN` · `AUTHENTIK_AUDIENCE`의 운영 출처가 없다.
+    - A-6: 웹훅 호스트 검사 주체가 비어 있다.
+    - A-7: 인계 정밀도.
+    - A-8: 패키지 독스트링이 낡았다.
+    - A-9: 보고 세부가 정확하지 않다.
+    - B-1: 장애 중 모르는 kid 재조회가 잠금을 쥔 채 직렬화된다.
+    - B-2: 시간 상한은 소켓 동작 단위다.
+    - B-3: 설정 오류 500 프레임에 지역 변수가 남는다.
+    - B-4: 스냅샷 표에 빈 칸이 있다.
+- **r2 결정 N1–N13(컨트롤러)**: 계약(pod-template · identity-admin-api · denylist · bff-api) · data-model · 규칙은 이 절과 같은 변경에서 「T070 r2」 표식으로 고쳤다.
+  - **N1 거부 판정 조합**(A-1):
+    - ac-13에 `DenylistRecord(sub_nbf=T, sid_revoked=True).revokes(T + 1) is True`를 더한다.
+    - 미들웨어 사례를 하나 더한다: 같은 토큰에 대해 `revoked:sub:{sub}` = iat − 60과 `revoked:sid:{sid}`를 함께 쓰면 401 `session_revoked`다.
+    - 변이 M76(`sub_nbf`가 있으면 `sid_revoked`를 보지 않는다)이 잡혀야 한다.
+  - **N2 빌더 편차 채택 → 계약**(A-2):
+    - ⑧-1 채택: 비면제 경로는 호스트 검사 뒤, 판정 전에 `access_claims` · `auth_claims` · `tenant_id`를 지운다.
+      - 따라서 이 속성을 두는 미들웨어는 JwtAuth **뒤**에만 둔다(T072 MIDDLEWARE 제약 — 계약 인증 행 · 규칙 §Auth).
+      - 면제 경로는 건드리지 않는다(D2 ⓪). 앞선 미들웨어가 둔 값이 그대로 남으므로, T072가 기동에서 포함 관계를 검사한다(N7).
+    - ⑧-2 채택 + 강화: N9.
+    - ⑧-3 채택: 키 URL(`AUTHENTIK_JWKS_URL`)이 http · https가 아니면 `ImproperlyConfigured`(500)다. 토큰 결함 401로 접지 않는다.
+    - ⑧-4 채택: `lookup(sub, sid=None)`에서 `sub`는 비지 않은 str, `sid`는 None 또는 비지 않은 str이다. 어기면 `TypeError` · `ValueError`(호출자 오류)이고, T073은 질의 검증 400을 앞에 둔다(N7).
+    - ⑧-5 채택: `denylist_lookup_seconds{result}`의 `revoked`는 「폐기 키가 하나라도 있었다」는 뜻이다.
+      - 판정 결과가 아니다. 오래된 sub 키 때문에 200을 받은 요청도 revoked로 센다.
+      - 거부한 요청 수는 401 응답 지표로 본다.
+    - ⑧-6 채택: 키가 있으면(JSON null 포함) 꼴을 본다. 그래서 null `sid` · `tenant_id`는 401 `invalid_token`이다.
+      - 근거: 이 클레임은 우리 ScopeMapping이 만든다. null을 「없음」으로 접으면 sid 폐기가 조용히 무력화된다. 〔U10 — `tenant_id`만 맞다 · `sid`는 Authentik provider가 싣는다〕
+      - 대신 data-model §9 ScopeMapping을 「attribute가 있을 때만 키를 넣는다」로 고친다. T081이 식을 그렇게 쓰고 VD로 실측한다.
+      - `tenant_id`가 없는 사용자는 T068의 403 `tenant_required`를 받는다.
+    - ⑧-7 채택: 웹훅 헬퍼에서 str 아닌 `secret` · bytes 아닌 `body`는 `TypeError`, naive `now`는 `ValueError`다. 서명 실패 401과 구별되는 호출 · 설정 오류다.
+    - ⑧-8 · ⑧-9는 기록만 한다. 로그 형식은 D12 범위이고, 기본 형의 값에는 공개 의미가 없다.
+  - **N3 키 fetch 상한**(A-3):
+    - 시험의 `KEY_FETCH_LIMIT_S`를 2.8 s 이하로 낮춘다. BFF 3 s보다 작고, timeout 2 s와 3 s를 가른다.
+    - 변이 M35b(timeout 3)가 잡혀야 한다.
+    - 계약 문구를 「fetch 타임아웃 2 s — 연결 · 읽기 소켓 동작마다(DNS 해석과 전체 시간은 묶지 않는다)」로 고친다.
+    - 타임아웃 표 두 곳(pod-template · identity-admin-api)에 키 fetch 행을 더한다.
+  - **N4 판별 3사례**(A-4):
+    - ① `SCRIPT_NAME="/x"`로 `/healthz`를 부르면 200이다. 면제는 `path_info` 정확 일치이므로, `request.path`로 바꾼 변이를 잡는다.
+    - ② 같은 `Denylist`로 3번 조회하면 Dragonfly `connections_received` 차이가 1이다. URL별 클라이언트 재사용 — 매번 `from_url` 하는 변이를 잡는다.
+    - ③ 계약 시험 뷰가 `sorted(auth_claims)`를 비추고, 추가 클레임(예: `groups`)이 그대로 있는지 본다. payload 전체여야 하므로 `{"sub": …}`만 두는 변이를 잡는다. T073 관리자 판정이 `groups`에 기댄다.
+  - **N5 설정 출처**(A-5): ConfigMap에 두 키를 더한다(pod-template 설정 행 · 규칙 §Settings).
+    - `ACCESS_TEAM_DOMAIN` = `joshua-tech.cloudflareaccess.com`. dev · prod가 같은 Zero Trust 팀이고 비밀이 아니다(spec 가정).
+    - `AUTHENTIK_AUDIENCE` = pod 이름. BFF 교환의 `audience=<pod>`가 만드는 `aud`이고, 계약은 `aud=<pod>`다(identity-admin = `identity-admin`).
+    - **VD-T070-2(T081)**: 교환 토큰의 `aud`가 요청한 `audience` 값(pod 이름) 그대로 나오는지 실측한다. provider client_id가 나오면 T081 blueprint가 client_id를 pod 이름으로 맞춘다.
+    - tasks.md T072 · T075의 ConfigMap 목록에는 이 두 키가 없다 → report.md 편차 후보.
+    - T065 하네스의 ConfigMap 검사는 부분집합 검사라 깨지지 않는다(렌더에는 T072가 더한다).
+  - **N6 웹훅 호스트**(A-6):
+    - 미들웨어는 면제 경로에서 호스트를 보지 않는다(D2 ⓪ 유지 — 헬스 프로브가 근거).
+    - 웹훅의 호스트 검사는 **웹훅 뷰(T073)가 HMAC 앞에서 `request.get_host()`로** 한다(identity-admin-api §호스트 · 인증 계층 1 · 규칙 §Auth).
+    - 참고: Django `CommonMiddleware`(django/middleware/common.py:48)와 OTel Django 미들웨어(`build_absolute_uri("?")` · otel_middleware.py:166)도 모든 요청에서 `get_host()`를 부른다. 그래서 실제 스택에서는 그 단계가 먼저 400을 낸다. 계약은 그 동작에 기대지 않는다.
+  - **N7 인계 정밀도**(A-7 · B 관찰 1 · 2 · 6):
+    - T072:
+      - 프로브 Host 해결은 **필수**다. 위 두 미들웨어가 헬스 경로에서도 `get_host()`를 부르기 때문이다(pod-template 프로브 행).
+      - MIDDLEWARE 순서는 RequestId → … → JwtAuth → TenantContext이고, 요청 속성을 두는 미들웨어는 JwtAuth 뒤에 둔다(N2 ⑧-1).
+      - 기동 검사: `AUTH_EXEMPT_PATHS` ⊆ `TENANT_CONTEXT_EXEMPT_PATHS`, `AUTH_ACCESS_ONLY_PATHS` ⊆ `TENANT_CONTEXT_EXEMPT_PATHS`.
+      - 웹훅이 없는 pod는 `AUTH_EXEMPT_PATHS` = 헬스 3종을 명시한다. 라이브러리 기본의 `/webhooks/authentik`을 물려받지 않는다.
+      - `ENV` prod · dev의 `ACCESS_TEAM_DOMAIN`은 https만 받는다(루프백 http는 `ENV=test`만).
+    - T073:
+      - `/session/check`는 모듈 수준 `Denylist` 하나를 재사용한다. 요청마다 새로 만들면 연결 풀 · TCP · AUTH 왕복이 붙는다.
+      - 질의 검증(400)을 lookup 앞에 둔다. 빈 `sub` · 빈 `sid`(`sid=`) · 정수 아닌 `iat`는 400 `validation_error`다(identity-admin-api /session/check 행).
+      - BFF는 `sid`가 없으면 쿼리에서 뺀다(bff-api).
+  - **N8 패키지 독스트링**(A-8): `src/django_common/__init__.py` 독스트링의 「auth(T070)는 뒤 과제」 문장을 구현 목록으로 옮긴다. D1 범위의 예외이고, AST가 같음을 증명한다.
+  - **N9 팀 기준 URL 정규형**(A-9 ② · B 관찰 2):
+    - `ACCESS_TEAM_DOMAIN`을 `<scheme>://<host>[:<port>]`로 **다시 만든다**.
+      - 스킴 · 호스트는 소문자로 맞춘다.
+      - 기본 포트(https 443 · http 80) · 빈 포트(`host:`) · 끝 `/`는 뗀다.
+    - 호스트는 소문자로 맞춘 뒤 `[a-z0-9.-]+`이거나 루프백 IP 리터럴이어야 한다. 공백 · 제어 문자 · 비ASCII · `_`는 `ImproperlyConfigured`다. 〔U2 — LDH 규칙 · 포트 1–65535로 좁힌다〕
+    - 그 밖의 규칙은 그대로다: 스킴이 없으면 https, http는 루프백 IP 리터럴만, 사용자 정보 · 경로 · 쿼리 · 조각은 거부.
+    - 근거: Cloudflare `iss`는 소문자이고 포트가 없다. 정규형이 아니면 모든 요청이 조용히 403이 된다.
+    - 시험(대문자 호스트 수락 · `:443` 수락 · 공백 · 비ASCII 거부)과 변이(소문자화 없음 · 포트 그대로 · 문자 검사 없음)를 더한다.
+  - **N10 장애 중 재조회 직렬화**(B-1 — 받아들인다 · (가)):
+    - 동작: PyJWT 2.15.1 `get_signing_key`는 RLock을 쥔 채 cooldown을 판정하고 재조회한다(jwks_client.py:277–291 · 소스 확인).
+      - fetch가 실패하면 마지막 성공 fetch 시각이 그대로 남는다.
+      - 그래서 키 엔드포인트가 응답하지 않는 동안에는 모르는 kid가 올 때마다 최대 2 s 재조회가 돈다. 〔U5 — 소켓 동작마다 2 s · 연결은 주소마다〕
+      - 그동안 같은 출처의 모든 판정이 잠금을 기다린다. 캐시로 통과했을 아는 kid도 포함이다.
+    - 도달 범위:
+      - Access 단계는 다른 자격보다 먼저 돈다. 그래서 엣지를 거치지 않고 pod 포트에 닿는 클러스터 안 호출자(같은 ns · NetworkPolicy가 허용한 `identity` · traefik)가 자격 없이 일으킬 수 있다.
+      - Bearer 단계는 유효한 Access를 통과한 뒤에만 닿는다.
+      - 엣지 트래픽은 Cloudflare가 헤더를 덮어쓰므로 불가하다.
+      - fail-closed는 유지되고 우회는 없다. 가용성 문제다.
+    - 처리:
+      - auth.py 독스트링 한계와 report.md에 바로잡아 적는다. 빌더 r1의 「Access 뒤의 호출자만」 서술을 정정한다.
+      - T085 VD에 R3을 더한다: 블랙홀 certs에 모르는 kid를 연속으로 보내면서, 동시에 들어온 정상 요청이 얼마나 기다리는지 잰다(gthread 기준).
+      - 실패 백오프(실패 뒤 cooldown 동안 네트워크 없이 503)를 넣을지는 R3 결과로 정한다(SP-2 후보). 〔U4 — r3에서 지금 넣는다〕
+  - **N11 시간 상한 = 소켓 동작 단위**(B-2):
+    - 「키 fetch 2 s」 · 「거부 목록 0.2 s」는 연결 · 읽기 소켓 동작마다 걸리는 상한이다.
+    - 따로 걸리는 것:
+      - DNS 해석(`getaddrinfo`)은 시간 제한 밖이다.
+      - Dragonfly 새 연결의 핸드셰이크 왕복(HELLO · AUTH · CLIENT SETINFO 등 최대 4)은 왕복마다 0.2 s다.
+      - 키 fetch는 잠금 안에서 직렬화된다.
+    - 고칠 곳: auth.py 독스트링 한계와 계약 문구(pod-template 인증 행 · 타임아웃 표 · denylist §조회 규약 3).
+    - T072 · T085 인계:
+      - `DRAGONFLY_URL` 호스트를 끝 점 FQDN(`dragonfly-<env>.data.svc.cluster.local.`)으로 쓸지 검토한다(ndots 검색 왕복 제거).
+      - VD R2: CoreDNS 상류가 지연 · 실패할 때 certs fetch와 새 연결에 걸리는 시간을 잰다.
+      - redis-py 왕복 줄이기(driver_info · 유지보수 알림 끄기)는 실측 없이 바꾸지 않는다.
+  - **N12 설정 오류 500의 프레임 지역 변수**(B-3):
+    - 원인: `_BearerValidator.validate`는 헤더를 해석하기 전에 `_required("AUTHENTIK_*")`를 부른다. 그래서 설정이 비면 그 프레임에 원문 `header`(Bearer JWT)가, `_authenticate` 프레임에 클레임이 지역 변수로 남는다.
+    - T071이 막는다: Sentry `include_local_variables=False`(T071 설계 D7)에 더해, T071 시험에 auth 설정 오류 500 경로를 넣는다. SENTINEL Bearer를 심고, Sentry transport 대역의 이벤트에 SENTINEL이 없음을 단언한다.
+    - 1차 방어는 T072 기동 검사(필수 7개 존재 · 비지 않음)다. 〔U3 — 기동 검사가 `check_settings()`를 부른다〕
+    - auth.py는 바꾸지 않는다.
+  - **N13 보고 기록 정정**(A-9 ① ③ · B-4):
+    - 스냅샷 표 빨강 행의 `_auth_fakes.py`는 `1135114b…`다. 14:37 `poll_interval` 수정 뒤 `4ab5cc21…`로 바뀌었고, 판정과는 무관하다.
+    - M53 · M73은 번호만 비었다(정의는 73개).
+    - 「T070 결과」 절에 바르게 옮긴다.
+- **r2 범위**:
+  - 빌더: N1 · N3 · N4 · N8 · N9 + 독스트링 한계(N10 · N11) + 보고 정정(N13).
+  - 컨트롤러가 이미 고친 것: 계약 · 규칙 · data-model(N2 · N3 문구 · N5 · N6 · N7 · N11 문구).
+  - 변이: 새 변이(M76 · M35b · N4 셋 · N9 셋)를 더한다. r1 변이 가운데 바뀐 함수(`_team_base_url` · `_base_url_parts`)에 걸린 M13–M16은 최종 바이트로 다시 돌린다.
+  - 시험 파일은 더하거나 강화만 한다. 기존 단언을 지우거나 약하게 하지 않았음을 diff로 보인다.
+- **B 관찰(결함 아님 — 기록)**:
+  - 거부 목록 값의 `int()`는 공백 · `_` · 부호를 받는다. 쓰는 쪽이 identity-admin뿐이라 무해하다.
+  - iat에도 leeway 5 s가 걸린다. 같은 클러스터 NTP라 무시할 만하다.
+  - `revokes(iat)`는 iat 형을 보지 않는다. T073이 400으로 먼저 거른다(N7).
+  - 고립 서로게이트가 든 `sub`는 거부 목록 키 인코딩에서 503이 된다. 서명된 토큰만 닿는다.
+
+### T070 r2 결과 · r3 결정(리뷰 r2 반영 · U1–U13 · 2026-11-05) — N10의 실패 백오프 보류와 N12의 1차 방어 문장은 이 절의 U4 · U3이 대신한다(앞 절 줄 끝 〔…〕 표식)
+
+- **r2 결과**(워크플로 `wf_30612bb7-77c` · 1.33M 토큰 · 약 71분 · 빌더 DONE):
+  - 바뀐 파일:
+    - `auth.py` 683 → 719(`10c68c8a…` → `f3db2f79…`): N9 팀 기준 URL 재구성 · 상수 `_DEFAULT_PORTS` · `_HOST_NAME` · 독스트링 N10 · N11.
+    - `__init__.py`: 독스트링만이다(N8 · 독스트링을 뺀 AST 동일 · 주석 토큰 동일).
+    - `test_auth_contract.py` 1353 → 1519(시험 함수 38 · 사례 130).
+    - `authcontractapp/views.py`: echo 응답에 `auth_claim_names` · `groups`를 더했다.
+  - 시험에서 지운 줄은 4줄이다. 약해진 단언은 0이다.
+    - `KEY_FETCH_LIMIT_S` 3.5 → 2.8(강화)
+    - 그 주석 1줄
+    - ac-6b 독스트링 2줄
+  - 빨강(16:37–16:38 · r1 `auth.py` 그대로): 20 failed / 110 passed. 실패는 N9 사례뿐이다(ac-4d 6 · ac-4e 14).
+  - 초록: `test_auth.py` 32 ×2 · contract 130 · fixtures jwks 3 · dragonfly 1 · 회귀 16 · 65 · 16 · 42 · 52 · 3.
+  - 변이 17/17(M76 · M35b · M77–M87 · M13–M16을 최종 바이트로). T062 실패는 0이다.
+  - VD N3:
+    - 키 fetch 실패 판정은 2.0121–2.0992 s였다(모드마다 20회 · cold/warm).
+    - 2.8 s까지 여유가 0.70 s 이상이다.
+    - 측정은 Windows 로컬뿐이다. CI는 django-common pytest를 돌리지 않는다.
+  - 편차(빌더 ⑧ 1–8):
+    - 1–7은 계약 문구와 같아 그대로 둔다: 원문 전체 문자 검사 · `?` `#` 글자 거부 · 괄호 호스트는 루프백만 · ipaddress 정규 표기 · `_loopback_literal` · fetch_data 가로채기 시험 · N8 표기.
+    - 8(계약 정규식이 끝 점 · 빈 라벨 · 앞 하이픈을 받는다)은 U2가 닫는다.
+- **리뷰 r2**: A approve_with_fixes(low 7) · B approve_with_fixes(low 4). high · medium은 0이다.
+  - B 탐침:
+    - N9 정규형에 50값을 넣었다. 다른 출처를 받아들인 값은 0이다.
+    - certs URL과 iss는 같은 base에서 나온다.
+    - 오류에 값 · 연쇄가 없고, 이름 조회는 0이다.
+    - Access 우회 19종을 다시 돌렸다. 정규형 iss만 받아들였다.
+  - low:
+    - A-1: 웹훅 body 형을 시험이 고정하지 않는다. 구현이 bytearray를 받는다.
+    - A-2: 거부 목록 「판정은 0.2 s 안」 문구 · 규칙 lookup 문장의 비str sid가 빠졌다.
+    - A-3: 계약 정규식 잔여(끝 점 · 빈 라벨 · 앞 하이픈 · 포트 0).
+    - A-4: N12 참조 · T071 Access 프레임.
+    - A-5: T073 계약 시험의 주인이 없다.
+    - A-6: pyproject 머리 주석이 낡았다.
+    - A-7: 교환 토큰 `sid` 꼴을 재는 VD가 없다.
+    - B-1: 연결 시간 초과는 주소마다 걸린다. 빈 캐시 장애에서는 계단 대기가 공격자 없이 생긴다.
+    - B-2: 요청 때 설정 오류가 늘었다 → 기동 검사가 같은 함수를 써야 한다 · N12 Access 단계.
+    - B-3: BFF가 비정상 응답을 fail-closed로 묶지 않는다.
+    - B-4: Bearer 계층에 환경 경계가 없다.
+- **r3 결정 U1–U13(컨트롤러)**: 계약(pod-template · identity-admin-api · denylist · bff-api) · 규칙 · kr 미러는 이 절과 같은 변경에서 「T070 r3」 표식으로 고쳤다.
+  - **U1 웹훅 body는 bytes만**(A-1):
+    - 구현을 계약 문면(「bytes 아닌 body → `TypeError`」)에 맞춘다.
+      - bytearray · memoryview · str · int · list는 `TypeError`다.
+      - `bytes(body)` 변환은 필요 없어진다. Django `request.body`는 bytes다.
+    - 시험: ac-15에 int · list · memoryview · bytearray · str body → `TypeError`를 더한다.
+    - 변이: M88(형 검사 삭제 — A-1 실측으로 int · list가 401로 접히고 memoryview는 수락된다) · M89(bytearray 다시 수락).
+  - **U2 팀 기준 URL 호스트 문법 — 지금 좁힌다**(A-3 (a) · B-2):
+    - 이름 호스트는 LDH 규칙을 따른다:
+      - 라벨은 1–63자 `[a-z0-9-]`이고 영숫자로 시작하고 끝난다(하이픈은 가운데만).
+      - 빈 라벨이 없다(앞 점 · 끝 점 · `..`).
+      - 전체는 253자 이하다.
+      - 마지막 라벨이 숫자만이면 안 된다. `https://0` · `https://10.0.0.1` · `https://127.1` · `https://010.0.0.1` 같은 값을 막는다. 이런 값은 이름 조회가 inet_aton 꼴로 엉뚱한 주소를 풀 수 있다. 〔16진 꼴 `0x…`도 — V1〕
+    - 포트는 1–65535다(`:0` 거부). `:0443`은 443으로 읽혀 떼진다(같은 목적지).
+    - 루프백 IP 리터럴 규칙과 N9의 나머지 규칙은 그대로다.
+    - 근거:
+      - 끝 점(`…com.`)은 이름이 풀린다. 그러면 certs URL과 iss가 모두 `…com.`이 되어 Cloudflare iss(`…com`)와 어긋난다. N9가 닫겠다던 조용한 403이다.
+      - 빈 라벨 · 앞 점은 IDNA 인코딩에서 UnicodeEncodeError → 503으로 이미 시끄럽다. 앞 · 끝 하이픈 · 포트 0은 이름 조회 · 연결 실패 503이다. 둘 다 설정 오류로 앞당긴다.
+    - 시험: ac-4e(거부) · ac-4d(수락 — `xn--` 라벨 · 숫자가 섞인 라벨 · 63자 라벨 · 루프백 https)에 사례를 더한다.
+    - 변이: 끝 점 수락 · 빈 라벨 수락 · 라벨 끝 하이픈 수락 · 숫자만인 마지막 라벨 수락 · 포트 0 수락 · 길이 검사 없음 가운데 넷 이상.
+  - **U3 공개 `check_settings()`**(B-2):
+    - `django_common.auth.check_settings() -> None`을 더한다. 요청 때 인증 계층이 읽는 설정을 그 판정 함수 그대로 한 번에 검사한다(사본 규칙을 만들지 않는다).
+      - `AUTH_EXEMPT_PATHS` · `AUTH_ACCESS_ONLY_PATHS`(형)
+      - `ACCESS_TEAM_DOMAIN`(팀 기준 URL — U2 포함)
+      - `ACCESS_AUD_M2M` · `ACCESS_EXPECTED_CN` · `AUTHENTIK_ISSUER` · `AUTHENTIK_AUDIENCE`(필수)
+      - `AUTHENTIK_JWKS_URL`(필수 + http · https — 키 클라이언트 생성과 같은 판정)
+      - `ACCESS_AUD_ADMIN` · `AUTH_ACTOR_SUB`(선택 · str)
+      - `DRAGONFLY_URL`(필수 · 쿼리 없음 · `Redis.from_url`이 받는 URL — 생성만)
+    - 네트워크 · 이름 조회 · Dragonfly 연결 · 키 fetch는 0이다.
+    - 실패는 `ImproperlyConfigured`다(설정 이름만 · 값 없음 · `from None`). 고정된 순서로 검사하고 첫 실패에서 멈춘다.
+    - 요청 때 동작은 그대로다. `DRAGONFLY_URL` 쿼리는 요청 때 503 `denylist_unavailable`(`error=url_query`)이고, `check_settings()`에서는 설정 오류다.
+    - T072가 기동 검사에서 부른다(부르는 자리는 T072가 정한다).
+      - 그러면 N12의 1차 방어가 「필수 7개 존재 · 비지 않음」에서 「요청 때 500이 되는 설정 오류 전부」로 넓어진다.
+      - 끝 줄바꿈이 붙은 ConfigMap 값(YAML 블록 스칼라 `|` — B-2)도 기동에서 멈춘다. 〔r3에서는 `ACCESS_TEAM_DOMAIN`만 맞았다 — V2가 나머지를 닫는다〕
+    - 시험:
+      - 나쁜 값마다 그 설정 이름의 `ImproperlyConfigured`가 난다. SENTINEL 값은 메시지 · args · `__cause__` · `__context__`에 없다.
+      - 좋은 설정이면 None이다.
+      - 이름 조회 · 연결 · fetch가 0이다.
+      - 요청 때 `ImproperlyConfigured`가 되는 값은 모두 `check_settings()`도 거부한다(같은 판정).
+    - 변이: 팀 URL 검사 생략 · `DRAGONFLY_URL` 쿼리 검사 생략 · JWKS 스킴 검사 생략 · 검사 중 연결(PING 등) 가운데 셋 이상.
+  - **U4 키 fetch 실패 백오프 — 지금 넣는다**(B-1 · N10 처리 변경):
+    - 까닭:
+      - N10은 실패 백오프를 SP-2 후보로 미뤘다.
+      - r2 B가 공격자 없이 생기는 경우를 실측했다. 캐시가 비었거나 만료된 장애에서는 아는 kid 판정까지 요청마다 잠금 안에서 fetch를 되풀이해 대기가 계단처럼 쌓인다. 0.4 s 대역에서 동시 5건 = 0.4 · 0.8 · 1.2 · 1.6 · 2.0 s이고 fetch는 5회였다.
+      - 그런 장애: 기동 직후 egress 차단 · 마지막 성공 뒤 1 h가 지난 장애 · 장애 중 pod 재시작.
+    - 동작:
+      - `_KeyClient`(키 URL 하나)는 fetch가 실패하면(어떤 예외든) 백오프 창을 둔다.
+      - 창은 1 s에서 시작해 연속 실패마다 2배가 되고, 최대 30 s다. 성공하면 초기화한다.
+      - 창은 직전 창을 2배 해서 구한다. 실패 횟수로 거듭제곱하면 오래가는 장애에서 float 변환이 넘친다.
+      - 창 안에서 fetch가 필요한 판정(빈 캐시 · 만료 · 모르는 kid 재조회)은 네트워크 없이 503 `auth_keys_unavailable`이다.
+      - 이때 WARNING은 `auth.keys_unavailable source=<access|authentik> error=backoff`다. 거부 목록의 `error=url_query`와 같은 꼴이다.
+      - 캐시로 통과하는 판정(유효 캐시 · 아는 kid)은 영향이 없다.
+    - 결과:
+      - 동시 요청은 fetch 한 번의 시간만 잠금을 기다린다(소켓 동작마다 2 s × 해석된 주소 수 + DNS). 계단이 없어진다.
+      - 장애 중 fetch는 키 URL마다 최대 30 s에 한 번이다.
+      - 회복이 늦어지는 시간은 최대 창 길이(30 s)다.
+    - 대가: 기동 직후나 만료 시점의 일시 장애 한 번이 그 키 URL의 fetch를 1 s 동안 막는다.
+    - 시계:
+      - 단조 시계를 쓴다.
+      - 시험의 ShiftedClock은 PyJWT 세 모듈의 `time`만 바꾼다. 그래서 시험이 이 시계를 따로 다룬다(방법은 빌더가 정한다).
+    - 영향을 받는 기존 시험:
+      - ac-8은 만료 뒤 certs만 되살린 직후 다시 요청한다. 창 안이라 fetch가 막힌다.
+      - 시계를 창 밖으로 옮기거나 그 자리에서 백오프를 단언하도록 조정한다. 바뀐 줄마다 이유를 보고한다(약해진 단언 0).
+      - T062 `test_auth.py`와 T066 `apps/identity-admin/tests/test_api.py`에는 키 엔드포인트 실패 뒤 회복 순서가 없다(컨트롤러 grep).
+    - 시험:
+      - 빈 캐시 + 실패 → 두 번째 판정은 fetch 0이고 즉시 503 `error=backoff`다.
+      - 창이 지나면 다시 가져온다. 연속 실패는 창을 2배로 늘리고 30 s에서 멈춘다. 성공하면 처음(1 s)으로 돌아간다.
+      - 창 안에서도 캐시의 아는 kid는 200이다.
+      - 동시 요청이 계단 없이 끝난다.
+    - 변이: 백오프 없음 · 성공 때 초기화 없음 · 2배 없음 · 상한 없음 · 캐시 적중도 막음 가운데 넷 이상.
+    - 계약: pod-template 인증 행 · 타임아웃 표, identity-admin-api 타임아웃 표, 규칙 §Auth.
+  - **U5 시간 상한 독스트링 · 계약 문구**(B-1 둘째):
+    - 연결 시간 초과는 해석된 주소(A · AAAA)마다 따로 걸린다.
+      - Python `socket.create_connection`이 주소를 차례로 시도한다.
+      - B 실측: 주소 1 · 2 · 3개에서 2.09 · 4.04 · 6.04 s.
+    - N10 독스트링의 「최대 2 s」를 「연결 · 읽기 소켓 동작마다 2 s(연결은 주소마다)」로 고친다.
+    - N10 한계 문단은 U4 뒤의 동작으로 다시 쓴다.
+      - 잠금 대기는 fetch 한 번의 시간으로 줄어든다.
+      - 모르는 kid 재조회도 창 안에서는 네트워크를 타지 않는다.
+      - Access 단계 도달 범위 문장은 그대로 둔다.
+    - T085 VD R3을 넓힌다:
+      - 실제 certs 호스트의 주소 수와 egress drop 때 fetch 1회 시간
+      - 빈 캐시 + 블랙홀 + 동시 요청의 대기(U4 뒤 계단이 없는지)
+      - 그동안 `/healthz` 프로브 지연(gthread)
+  - **U6 문구**(A-2):
+    - denylist §조회 규약 3과 규칙 §Auth의 「판정은 0.2 s 안」을 「맺어진 연결에서」로 좁힌다. 소켓 동작마다 · 새 연결 핸드셰이크 왕복 · DNS 해석 밖을 함께 적는다.
+    - 규칙의 lookup 문장을 "a `sid` that is neither None nor a non-empty string"으로 고친다(비str sid = `TypeError` — 구현 · denylist §6 · §공개 API와 같다).
+    - kr 미러 translation-pending 줄에 r3 개정분을 더한다.
+  - **U7 N12 참조 정정 · T071 인계 보강**(A-4 · B-2):
+    - N12의 「T071 설계 D7」은 T071 설계 초안의 D7(`configure_sentry` — `include_local_variables=False`)이다. T071 설계 커밋이 build-notes 「## T071」 D7로 들여온다. T069 인계의 「False 또는 재귀 스크러버」 택일을 False로 닫는다.
+    - T071 시험(초안 D11)의 auth 설정 오류 500은 두 경로로 낸다. 둘 다 SENTINEL을 `Authorization`과 `Cf-Access-Jwt-Assertion`에 함께 심고, 이벤트 어디에도 SENTINEL이 없음을 단언한다.
+      - (a) `AUTHENTIK_AUDIENCE` 등을 비운다 → Bearer 프레임(`header`).
+      - (b) `ACCESS_TEAM_DOMAIN`에 끝 줄바꿈 같은 꼴 오류를 넣는다 → Access 프레임. `AccessJwtValidator.validate`의 `token`은 원문 Access JWT다. 만료 전까지 엣지에서 다시 쓸 수 있는 자격이다.
+    - N12의 1차 방어는 U3의 기동 검사다.
+  - **U8 T073 계약 시험**(A-5): T066 시험은 아래 둘을 고정하지 않는다. T073이 자기 계약 시험으로 고정한다.
+    - (a) `/session/check?sub=&iat=…`와 `?sub=x&iat=…&sid=` → 400 `validation_error`, Dragonfly 새 연결 0.
+    - (b) `CommonMiddleware` · OTel 미들웨어 없이(N6 — 그 단계에 기대지 않는다) 웹훅 + `ALLOWED_HOSTS` 밖 Host → 400 `invalid_host`. 틀린 서명이어도 401이 아니라 400이다(HMAC 앞에서 판정).
+  - **U9 pyproject 머리 주석**(A-6):
+    - 컨트롤러가 주석만 고친다.
+      - 「+ T070 구현(django_common.auth — tests/test_auth.py · tests/test_auth_contract.py 초록)」을 더한다.
+      - 남은 빨강은 observability · health(T071)만 적는다.
+    - `tomllib.loads` 결과가 같음을 확인했다.
+    - T071 지시문의 pyproject 허용 범위(머리 주석의 낡은 문장)는 그대로 맞다.
+  - **U10 교환 토큰 `sid` · `tenant_id` 꼴 VD**(A-7):
+    - N2 ⑧-6의 근거 「이 클레임은 우리 ScopeMapping이 만든다」는 `tenant_id`에만 맞다. `sid`는 Authentik provider가 싣는다.
+    - T081 VD(VD-T070-2와 같은 캡처)에서 교환 토큰(audience=identity-admin)을 본다:
+      - `sid`는 없거나 비지 않은 str이어야 한다.
+      - `tenant_id`는 없거나 소문자 정규형 UUID여야 한다.
+    - `sid`가 null로 실리면 pod 요청 전부가 401이다(fail-closed 전면 장애). T081이 go-live 전에 막는다.
+  - **U11 BFF 폐기 확인 응답 처리**(B-3):
+    - bff-api 폐기 확인 줄에 규칙을 더한다. 판정에 쓰는 응답은 200이면서 `active`가 boolean인 것뿐이다.
+    - 그 밖(400 `validation_error` · 403 `access_required` 등 4xx · 5xx · 시간 초과 · 본문 꼴 오류 · `active` 없음)은 503 `upstream_unavailable`이다(쿠키 유지 · 활성으로 보지 않는다).
+    - 403은 서비스 토큰 만료 · 회전 사고 때 모든 세션에서 한꺼번에 난다.
+    - T092 시험 인계: 400 · 403 · 500 · `active` 없는 200 → 503.
+  - **U12 Bearer 계층의 환경 경계**(B-4 — 기록 · 회귀 아님):
+    - dev · prod pod는 Bearer 검증 조건을 모두 공유한다(provider · iss · JWKS · aud = pod 이름 · impersonation이라 act 검사 없음).
+    - 환경 경계는 Access 계층뿐이다(환경별 서비스 토큰 → `ACCESS_EXPECTED_CN` · `ACCESS_AUD_M2M`). 거부 목록도 환경마다 따로다.
+    - T081 결정 항목: 환경별 audience(예: dev `dev-identity-admin` — BFF `audience=`와 ConfigMap을 함께 바꾼다) 또는 VD-1 옵션 A가 확정될 때 환경 결속을 함께 다룬다.
+    - report.md에 적는다.
+  - **U13 기록 정정**:
+    - r2 보고 ⑧-8 「끝 점 · 빈 라벨 · 앞 하이픈 → 조용한 403」은 일부만 맞다(B-2 실측). 조용한 403은 끝 점뿐이고(TLS 호스트 검증에 따라 503), 빈 라벨 · 앞 점은 IDNA 오류 503이다. U2 뒤에는 모두 설정 오류다.
+    - N11의 끝 점 FQDN 검토는 `DRAGONFLY_URL`에만 해당한다. `ACCESS_TEAM_DOMAIN`은 끝 점을 받지 않는다(U2).
+    - 「T070 결과」 절과 report.md에 바르게 옮긴다.
+- **r3 범위**:
+  - 빌더: U1 · U2 · U3 · U4 · 독스트링(U2 · U3 · U4 · U5) · U4로 바뀌는 기존 시험 조정(줄마다 이유).
+  - 컨트롤러가 이미 고친 것: 계약(pod-template · identity-admin-api · denylist · bff-api) · 규칙 · kr 미러(U1–U6 · U11 문구) · pyproject 머리 주석(U9) · 이 절.
+  - 변이: M88부터 번호를 잇는다(U1 둘 · U2 넷 이상 · U3 셋 이상 · U4 넷 이상). 바뀐 함수에 걸린 r1 · r2 변이(M13–M16 · M80–M87 · 웹훅 형 검사 · 키 fetch 분류)는 최종 바이트로 다시 돌린다.
+  - VD:
+    - U4 계단 해소: 메모리 안 fetch 실패 0.4 s 대역 동시 5건(r2 B 재현)과 블랙홀 실측
+    - U5 주소마다 연결 시간 초과: B 탐침 재현 또는 인용
+
+### T070 r3 결과 · r4 결정(리뷰 r3 반영 · V1–V7 · 2026-11-06) — U2의 숫자 라벨 규칙과 U3의 끝 줄바꿈 문장은 이 절의 V1 · V2가 넓힌다(앞 절 줄 끝 〔…〕 표식) · r3 보고 ⑧-2(PyJWT 잠금 재진입) · ⑧-5(순서 고정 주장)는 V4 · V3이 대신한다
+
+- **r3 결과**(워크플로 `wf_8bc179c8-c5c` · 1.52M 토큰 · 약 110분 · 빌더 DONE):
+  - 바뀐 파일:
+    - `auth.py` 719 → 839(`f3db2f79…` → `bf5e1e55…`):
+      - U1 body 형 검사(`bytes(body)` 변환 삭제)
+      - U2 `_ldh_host_name`(`_HOST_LABEL` · `_HOST_MAX_LENGTH` · `_DIGITS_ONLY` — `_HOST_NAME` 삭제) · 포트 0 거부
+      - U3 공개 `check_settings()`와 공유 도우미 셋(`_key_client` · `_denylist_client` · `_url_has_query` — 요청 경로와 같은 함수를 부른다)
+      - U4 `_KeyClient.fetch_data` 백오프(`_KEYS_BACKOFF_INITIAL_S` 1.0 · `_KEYS_BACKOFF_MAX_S` 30.0)
+      - U5 독스트링
+    - `__init__.py`: 독스트링에 `check_settings`만 더했다(독스트링을 뺀 AST 동일 · 주석 토큰 동일).
+    - `test_auth_contract.py` 1519 → 1890(시험 함수 38 → 45 · 사례 130 → 235).
+    - `_auth_fakes.py` 250 → 257: `install_shifted_clock`이 `django_common.auth.time`도 바꾼다.
+    - authcontractapp · `test_auth.py`는 그대로다.
+  - 시험에서 지운 57줄(약해진 단언 0 — 리뷰 A 대조):
+    - 독스트링 23
+    - 매개 변수 목록을 모듈 상수로 옮긴 것 33(노드 id 그대로)
+    - ac-8 경고 줄 기대를 2줄에서 3줄로 늘린 것 1(강화)
+  - ac-8 조정:
+    - certs를 되살린 직후 요청에서 백오프를 단언한다(503 · fetch 0).
+    - 그 뒤 시계를 창 밖(1.25 s)으로 옮기고 원래 단언은 그대로 둔다.
+  - 빨강(18:15–18:16 · r2 `auth.py` 그대로): 98 failed / 133 passed. 실패는 결정마다 맞다.
+    - U3: ac-1 · ac-23 78건
+    - U1: ac-15 bytearray
+    - U2: ac-4e 11건
+    - U4: ac-8 · ac-24a–d
+  - 초록(최종 바이트 19:01–19:03 · 한 번에 하나): `test_auth.py` 32 ×2 · contract 235 · fixtures jwks 3 · dragonfly 1 · 회귀 16 · 65 · 16 · 42 · 52 · 3.
+  - 변이 55개를 모두 잡았다: 새 25(M88–M112) + 바뀐 함수에 걸린 r1 · r2 변이 30을 최종 바이트로 다시 돌린 것.
+    - M14(루프백 밖 http 허용)는 첫 실행에서 살아남았다. U2 뒤에는 `http://0.0.0.0` · `http://[::]`가 호스트 규칙에서 먼저 걸려 http 규칙에 닿지 않는다.
+    - ac-4b에 `http-name` · `http-localhost`를 더해 다시 돌렸고, 잡혔다.
+    - M46 · M47 · M48은 r1과 같이 T062가 잡는다.
+  - VD:
+    - U4 계단 — 메모리 안 0.4 s 실패 · 빈 캐시 · 동시 5건:
+      - r2: 0.4 · 0.8 · 1.2 · 1.6 · 2.0 s · fetch 5
+      - 최종: 모두 0.40 s · fetch 1
+    - U4 블랙홀(실제 urllib) · 동시 5건:
+      - r2: 2.03 … 10.16 s · fetch 5
+      - 최종: 모두 2.02–2.03 s · fetch 1
+      - 창 안 두 번째 판정은 0.0003 s
+    - U5 주소마다 연결 시간 초과: 닫힌 루프백 포트 1 · 2 · 3개에서 2.02 · 4.03 · 6.03 s(리뷰 r2 B 재현).
+  - 편차(빌더 ⑧ 1–8):
+    - 그대로 둔다:
+      - 1: 시계 패치
+      - 3: 창은 실패를 안 시각부터 센다
+      - 4: 공유 도우미 추출 — 바뀐 함수에 걸린 r1 · r2 변이 15개를 지시문 목록 밖에서 다시 돌렸다
+      - 6: `DRAGONFLY_URL` 해석 · 생성의 어떤 예외든 설정 오류
+      - 7: M80은 LDH 규칙으로 잡힌다
+    - 다른 결정이 대신한다:
+      - 2(`_client_lock` 재진입): V4
+      - 5(「ac-23c가 순서를 고정한다」 — 사실과 다르다): V3
+  - 관찰: 빌더가 시작 때 Up이던 남의 컨테이너 `cc-managed-…` 하나가 끝 목록에 없었다고 보고했다. 조치는 하지 않았다.
+    - 빌더의 docker 명령은 조회뿐이었고, `docker events`에도 그 이름이 없다.
+    - 무접촉 대상이고 원인은 모른다.
+- **리뷰 r3**: A approve_with_fixes(low 4) · B approve_with_fixes(low 2). high · medium은 0이다.
+  - B 탐침:
+    - r2 B-1 계단을 r2 사본과 최종으로 다시 쟀다. 사라졌다(메모리 안 동시 5건 · 블랙홀 동시 3건 모두 fetch 1).
+    - 백오프 상태 기계:
+      - 만료된 키를 다시 쓰는 경로가 없다.
+      - 창 안에서도 캐시로 통과하는 판정은 통과한다.
+      - 건강한 엔드포인트에 모르는 kid를 쏟아부어도 창이 열리지 않는다.
+      - 연속 실패 1100회에서 창은 30 s 상한에서 멈춘다(넘침 없음).
+      - 상태는 잠금 안에서만 바뀐다.
+    - `check_settings()`:
+      - 좋은 설정에서 연결 · 이름 조회 · 스레드 · fetch · Dragonfly · 로그 · 지표 변화가 0이다.
+      - 나쁜 값 24개는 모두 설정 이름만 싣는다.
+      - 요청 경로와 차분 418조합에서 놓친 값이 0이다.
+    - U1: bytes가 아닌 body는 서명 판정 전에 TypeError다(401로 접히지 않는다).
+    - U5: 독스트링이 CPython · PyJWT 2.15.1 · redis-py 소스와 맞다.
+  - low:
+    - A-1: 끝 줄바꿈 · 앞뒤 공백이 붙은 인증 문자열 설정이 `check_settings()`를 통과하고, 요청마다 조용한 403 · 401이 된다(`ACCESS_TEAM_DOMAIN` 밖 7개).
+      - U3의 「끝 줄바꿈 ConfigMap 값도 기동에서 멈춘다」는 `ACCESS_TEAM_DOMAIN`에만 맞았다.
+    - A-2 · B-1(같은 지적): 마지막 라벨이 `0x` 16진 꼴(`0x7f000001` · `127.0.0.0x1` · `169.254.169.0xfe`)이면 LDH 이름으로 받는다.
+      - inet_aton · getaddrinfo가 이름 조회 없이 숫자 IP로 푼다.
+      - https만 해당한다. TLS 호스트 검증이 막아 503이고, 우회는 없다.
+    - A-3: ac-23c는 JWKS 스킴 검사(⑦)의 자리를 고정하지 않는다.
+      - 모든 값을 str이 아닌 목록으로 두므로 `_required`에서 걸린다.
+      - 보고 ⑧-5의 「ac-23c가 고정한다」는 사실과 다르다.
+    - A-4: 리뷰 r2 B의 범위 밖 관찰 셋이 어디에도 라우팅되지 않았다 — BFF 프록시의 `/session/check` · session_revoked 판정 지표 · Python ≥ 3.13.2.
+    - B-2: `_KeyClient.fetch_data`가 PyJWT 비공개 속성 `_client_lock`을 직접 쥔다.
+      - 그 속성이 없는 판에서는 모든 fetch가 AttributeError다. 창도 열리지 않아 모든 요청이 503이다.
+      - CI는 이 시험을 돌리지 않는다.
+- **r4 결정 V1–V7(컨트롤러)**: 계약(pod-template · bff-api) · 규칙 · kr 미러는 이 절과 같은 변경에서 「T070 r4」 표식으로 고쳤다.
+  - **V1 숫자 꼴 마지막 라벨 — 16진도 거부한다**(A-2 · B-1):
+    - 규칙: 마지막 라벨이 숫자 꼴이면 이름이 아니다.
+      - 숫자 꼴 = 10진 숫자만, 또는 `0x` + 16진 숫자(빈 것 포함 — `0x` 자체도).
+      - 소문자로 맞춘 라벨에 fullmatch한다. WHATWG URL 「ends in a number」와 같다.
+    - 까닭:
+      - U2의 근거(「이름 조회가 inet_aton 꼴로 엉뚱한 주소를 푼다」)가 16진 성분에도 그대로 맞는다.
+      - 이 값은 지금 `check_settings()`를 통과하고, 창마다 의도하지 않은 IP(예: 169.254.169.254:443)로 연결을 시도한다. U2가 설정 오류로 앞당기려던 부류다.
+    - 받는 값은 그대로다:
+      - 마지막이 아닌 라벨의 `0x…`(예: `0x7f.example.com`)
+      - `0x`로 시작하지만 16진이 아닌 마지막 라벨(`a.0xg`)
+      - `xn--` 라벨 · 숫자가 섞인 라벨
+    - 시험:
+      - ac-4e(거부 — ac-23b가 같은 목록을 쓴다): `https://0x7f000001` · `https://0X7F000001` · `https://127.0.0.0x1` · `https://169.254.169.0xfe` · `https://a.0x1` · `https://0x`
+      - ac-4d(수락): `0x7f.example.com` · `a.0xg`
+    - 변이: 16진 마지막 라벨 수락(r3 규칙으로 되돌림) · `0x` 뒤 빈 것 수락.
+  - **V2 인증 문자열 설정은 공백 없는 출력 가능 ASCII만 받는다 — 아니면 설정 오류다**(A-1 (b)를 넓혀):
+    - 규칙: `_required` · `_optional`은 값의 글자가 하나라도 `!`(U+0021)–`~`(U+007E) 밖이면 `ImproperlyConfigured`(설정 이름만)로 거부한다.
+      - 걸리는 것: 공백 · 제어 문자 · 줄바꿈 · 탭 · 비ASCII 전부(NBSP 같은 Unicode 공백 · 폭 0 · BOM · 보이지 않는 채움 문자 · 동형 글자)
+      - 팀 기준 URL 원문 검사(`_base_url_parts`)와 같은 범위다.
+      - `str.isprintable()`로는 모자란다. 한글 채움 문자(U+3164) · 점자 빈칸(U+2800)은 보이지 않지만 출력 가능 글자로 분류된다.
+    - 빈 값 규칙은 그대로다(`_optional`의 빈 값은 유효하다).
+    - 대상: 두 함수로 읽는 설정 전부다.
+      - `ACCESS_TEAM_DOMAIN` · `ACCESS_AUD_M2M` · `ACCESS_AUD_ADMIN` · `ACCESS_EXPECTED_CN`
+      - `AUTHENTIK_JWKS_URL` · `AUTHENTIK_ISSUER` · `AUTHENTIK_AUDIENCE` · `AUTH_ACTOR_SUB` · `DRAGONFLY_URL`
+      - 모두 ASCII 식별자 · URL이라(URL의 특수 글자는 퍼센트 인코딩) 그 밖의 글자를 담을 정당한 까닭이 없다.
+    - 까닭:
+      - YAML 블록 스칼라 `|`의 끝 줄바꿈, 복사해 붙인 폭 0 문자 · BOM · 동형 글자가 든 값은 비교(iss · aud · common_name · act.sub)에서 늘 어긋난다.
+      - 그러면 모든 판정이 조용한 403 · 401이 된다. fail-closed 전면 장애인데 500이 아니라 드러나지 않는다.
+      - 요청 경로와 `check_settings()`가 같은 함수를 쓰므로 둘 다 바뀐다. 요청 때는 500(설정 오류)이고, 기동 검사에서는 기동 실패다.
+    - 행동 변화(받아들인다): 지금 동작하는 값 둘이 설정 오류가 된다. 〔셋이다 — `ACCESS_AUD_ADMIN`도(W5)〕
+      - `AUTHENTIK_JWKS_URL`: urllib이 앞뒤 공백을 떼어 fetch가 됐다.
+      - `DRAGONFLY_URL`: urlsplit이 탭 · 줄바꿈을 지웠다.
+      - 둘 다 정상 경로는 ESO Secret · ConfigMap의 정확한 값이다. 영향은 잘못 넣은 값뿐이다.
+    - 경로 목록 설정(`_paths`)은 범위 밖이다.
+      - 값이 ConfigMap이 아니라 settings 코드에 있다.
+      - `path_info`는 공백을 담을 수 있다.
+    - 시험:
+      - ac-5a · ac-5b · ac-5c(ac-23b가 같은 목록을 쓴다)에 설정마다 값을 더한다: 끝 줄바꿈 · 앞 공백 · 가운데 공백 · 탭 · NBSP · 폭 0(U+200B) · BOM(U+FEFF) · 한글 채움 문자(U+3164) · 키릴 동형 글자(U+0430). 〔ASCII 제어 문자 · DEL도 — W1〕
+      - 값에 SENTINEL을 심어 이름만 실리는지 단언한다.
+      - `_optional`의 빈 값은 그대로 유효하다.
+    - 변이: 검사 없음 · `_optional`만 빠짐 · 공백 허용(범위를 U+0020부터) · 비ASCII 출력 가능 글자 허용(isprintable 규칙).
+  - **V3 `check_settings()` 순서 시험을 깊은 오류 값으로 한 번 더 돌린다**(A-3 (a)):
+    - ac-23c는 모든 설정을 str이 아닌 값으로 두어 형 검사 자리만 고정한다.
+    - str 꼴의 깊은 오류 값으로 같은 절차를 한 번 더 돌린다. 그러면 스킴 검사 · 쿼리 검사의 자리까지 고정된다.
+      - 경로 목록: str이 아닌 원소를 담은 목록
+      - 팀 도메인: LDH 위반
+      - 문자열 설정: V2 위반
+      - `AUTHENTIK_JWKS_URL`: `ftp://`
+      - `DRAGONFLY_URL`: 쿼리
+    - 변이: `_key_client(...)`(스킴 검사)를 ⑧ 뒤로 · ⑩ 뒤로 옮긴다.
+    - r3 보고 ⑧-5의 문장은 「T070 결과」 절에 바로잡아 옮긴다: r3에서는 형 검사 자리만 고정됐고, r4 시험이 깊은 검사의 자리를 고정한다.
+  - **V4 백오프 잠금은 자기 잠금이다 — PyJWT 비공개 속성에 기대지 않는다**(B-2 — 리뷰 제안 (a)와 다르게):
+    - `_KeyClient.__init__`이 자기 `threading.RLock()`을 두고, `fetch_data`는 그 잠금만 쥔다. `_client_lock`은 읽지 않는다.
+    - 까닭:
+      - PyJWT 2.15.1에서 `_client_lock`을 쥐는 곳은 `get_signing_key`(jwks_client.py:277)뿐이다. `fetch_data`는 쥐지 않는다(소스 확인).
+        - 그래서 순서는 언제나 PyJWT 잠금 → 자기 잠금이다.
+        - 반대 순서로 쥐는 경로가 없으므로 교착이 없다.
+      - 리뷰 제안 (a)(`_client_lock`이 있으면 그것을 다시 쥔다)는 위험하다.
+        - 그 속성이 재진입 불가 잠금으로 바뀐 판에서는 `get_signing_key`가 쥔 잠금을 같은 스레드가 다시 쥐려다 요청 스레드가 멈춘다. 503보다 나쁘다.
+        - 자기 잠금은 그 속성의 유무 · 종류와 무관하다.
+      - 범위 축소(`>=2.15.1,<2.16`)는 하지 않는다. 2.x 보안 판이 막힌다. 범위는 그대로 `>=2.13,<3`이다.
+    - 2.15.1에서는 동작이 그대로다. `get_signing_key` 경로는 PyJWT 잠금이 이미 직렬화하고, 상태 갱신은 자기 잠금 아래에서 한다.
+    - 시험(모의 부모 — 2.15.1 동작에서 잠금만 바꿔 흉내 낸다):
+      - `_client_lock`이 없는 부모(잠금 없는 `get_signing_key`): fetch 실패가 창을 열고, 다음 판정은 `error=backoff` 503이다(AttributeError가 아니다).
+      - `_client_lock`이 재진입 불가 `threading.Lock`인 부모: 판정이 멈추지 않고 끝난다(스레드 join 시간 제한으로 단언).
+      - 잠금 없는 부모 + 빈 캐시 + 실패하는 fetch + 동시 5건: fetch는 1이다(자기 잠금이 직렬화한다). 〔성공 fetch의 중복 제거는 PyJWT 잠금 몫 — W3〕
+    - 변이: `_client_lock` 재사용(r3 코드 · 리뷰 (a)) · 잠금 없음.
+    - 독스트링에 한 줄을 남긴다: 「PyJWT 2.15.1 호출 순서(get_signing_key → get_signing_keys → get_jwk_set → fetch_data)와 공개 메서드 이름 둘(`get_signing_keys` · `fetch_data`)에 기댄다 — PyJWT를 올리면 test_auth_contract를 돌린다」.
+    - 인계(CI 공백):
+      - CI `test` job은 아직 자리표시다(T002 골격 · T060 기록). django-common pytest(testcontainers)를 CI에서 돌리는 일의 주인이 tasks.md에 없다.
+      - 그래서 Renovate의 uv 잠금 갱신이 PyJWT를 올려도 CI가 이 결합을 시험하지 않는다.
+      - report.md에 공백으로 적는다. T072(템플릿 CI 연결)가 test job을 채울 때 django-common pytest도 넣을지 정한다.
+  - **V5 BFF 프록시의 `/session/check`는 세션 값으로만 부른다**(A-4 ① · r2 B 범위 밖 관찰 1): 〔경로 대조 · 리디렉션 규칙 — W7〕
+    - 문제:
+      - spec FR-027 · tasks.md T089 · T092는 프록시 허용 경로에 `/session/check`를 둔다.
+      - 상류 `/session/check`는 Access 전용 경로라 Bearer로 호출자를 묶지 않는다.
+      - 그래서 로그인한 아무 사용자가 `/api/proxy/identity-admin/session/check?sub=<남>&iat=0`으로 다른 사용자(다른 테넌트 포함)의 폐기 여부 · `nbf`를 물을 수 있다. BFF가 서비스 토큰을 빌려주는 혼동된 대리인이다.
+    - 결정:
+      - 허용 경로는 그대로 둔다(FR-027 · tasks.md 문면과 같다).
+      - 프록시가 `/session/check`를 부를 때는 클라이언트 질의를 버린다. `/api/session`의 폐기 확인과 같은 세션 값(`sub` · `iat` · 있으면 `sid`)으로 질의를 다시 만든다.
+      - 허용 경로에서 빼는 안(리뷰 제안 (a))은 승인본 spec FR-027 문면과 어긋나므로 고르지 않는다.
+    - 계약: bff-api 프록시 행에 이 규칙을 더한다.
+    - 인계:
+      - T089 시험: 프록시 `/session/check?sub=<남>&iat=0&sid=<남>`을 부르면 상류 질의가 세션 값이다(클라이언트 질의 · 중복 키 없음 · `sid` 클레임이 없으면 `sid`도 없음).
+      - T092가 구현한다.
+  - **V6 범위 밖 관찰 둘의 인계**(A-4 ② ③):
+    - T071 — 요청 로그(request_finished)에 problem 슬러그를 남길지 정한다.
+      - 지금은 `session_revoked`(탈취 토큰 재사용 신호)를 `invalid_token`과 가를 지표가 없다.
+      - 거부 목록 지표의 `revoked`는 판정이 아니고, 401은 둘이 섞인다.
+      - T071 설계가 결정한다.
+    - T072 — 이미지 Python이 3.13.2 이상인지 확인한다. 〔판 확인 — W8〕
+      - urlsplit의 괄호 앞뒤 잡음 거부(`_check_bracketed_netloc` — CVE-2025-0938 수정)가 3.13.2부터 있다.
+      - `requires-python >=3.13,<3.14`는 3.13.0–3.13.1을 허용한다. 옛 판에서도 루프백 리터럴로 바뀔 뿐 다른 출처가 되지는 않는다.
+      - Dockerfile 기본 이미지 digest를 고를 때 그 판을 적는다.
+  - **V7 기록 정정**:
+    - U3의 「끝 줄바꿈이 붙은 ConfigMap 값도 기동에서 멈춘다」는 r3에서 `ACCESS_TEAM_DOMAIN`에만 맞았다(A-1). V2 뒤에는 인증 문자열 설정 전부에 맞는다.
+    - r3 보고 ⑨ T072 「check_settings 밖」 목록에 공백 항목이 없던 것도 V2로 닫힌다.
+    - r3 보고 ⑧-5(ac-23c가 순서를 고정한다)는 사실과 다르다(A-3). V3이 바로잡는다.
+    - 「T070 결과」 절과 report.md에 바르게 옮긴다.
+- **r4 범위**:
+  - 빌더: V1 · V2 · V3 · V4(구현 · 시험 · 독스트링).
+  - 컨트롤러가 이미 고친 것: 계약(pod-template 인증 행 · bff-api 프록시 행) · 규칙 §Auth · kr 미러(V1 · V2 · V5 문구) · 이 절.
+  - 변이: M113부터 번호를 잇는다(V1 둘 · V2 넷 · V3 둘 · V4 둘).
+    - 바뀐 함수에 걸린 앞 회차 변이는 최종 바이트로 다시 돌린다.
+    - 대상: `_ldh_host_name`의 M90–M98 · `_required` · `_optional`에 걸린 r1 변이 · `fetch_data`의 M106–M112 · `check_settings`의 M99–M105.
+  - VD: U4 계단 해소를 최종 바이트로 다시 잰다(메모리 안 0.4 s 실패 · 동시 5건 · fetch 1).
+
+### T070 r4 결과 · r5 결정(리뷰 r4 반영 · W1–W8 · 2026-11-06) — V2의 시험 꼴 · 행동 변화, V4 시험 (c), V5 · V6은 이 절의 W1 · W5 · W3 · W7 · W8이 넓힌다(앞 절 줄 끝 〔…〕 표식)
+
+- **r4 결과**(워크플로 `wf_356ea59d-b81` · 1.39M 토큰 · 약 95분 · 빌더 DONE):
+  - 바뀐 파일:
+    - `auth.py` 839 → 876(`bf5e1e55…` → `7011a4c2…`):
+      - V1 `_NUMERIC_LABEL`(`[0-9]+|0x[0-9a-f]*` fullmatch — `_DIGITS_ONLY` 대신)
+      - V2 공유 도우미 `_printable_ascii`(`_required` · `_optional`이 거친다 · 이름만 실은 `ImproperlyConfigured` · `from None`)
+      - V4 `_KeyClient._backoff_lock`(RLock — `_client_lock`은 주석에만 남는다)
+      - 독스트링: 모듈 Access 절 · 「인증 문자열 설정」 문단 · 「한계」 · 「PyJWT 결합」 줄 · `check_settings` 순서를 고정하는 시험 이름
+    - `test_auth_contract.py` 1890 → 2168(시험 함수 45 → 51 · 사례 235 → 399 · r3 노드 id 235개가 모두 남았다 · 지운 줄은 독스트링 3줄을 넓혀 쓴 것뿐이다).
+    - `_auth_fakes.py` 257 → 314: 모의 부모 둘(`install_lockless_parent` · `install_plain_lock_parent`).
+    - `__init__.py` · `test_auth.py` · authcontractapp는 그대로다.
+  - 빨강(11:26–11:27 · r3 `auth.py` 그대로): 158 failed / 241 passed. 실패는 결정마다 맞다.
+    - V1: ac-4e 7 + ac-23b 7
+    - V2: ac-5a 45 · ac-5c 8 · ac-5b 18 · ac-23b 69
+      - r3에서도 초록인 사례가 넷 있다. 다른 검사가 먼저 걸렸다(BOM이 앞에 붙은 URL은 스킴 검사 · `DRAGONFLY_URL` 앞 공백 · BOM은 `from_url` ValueError).
+    - V3: ac-23d 1
+      - 원인은 V2 부재다. r3 `_required`가 V2 위반 문자열을 통과시켜 ④에서 `AUTHENTIK_JWKS_URL`이 실렸다.
+      - ⑦ · ⑪의 자리는 r3에서도 맞았다.
+    - V4: ac-24e(fetch 0) · ac-24f(2 s join 시간 초과 — 교착) · ac-24g(`error=AttributeError`)
+  - 초록(최종 바이트 12:07–12:10 · 한 번에 하나): `test_auth.py` 32 ×2 · contract 399 · fixtures jwks 3 · dragonfly 1 · 회귀 16 · 65 · 16 · 42 · 52 · 3 · ac-24 묶음 3회.
+  - 변이 41개 중 40개를 잡았다.
+    - 새 10(M113–M122)은 모두 잡혔다. M119 · M120은 ac-23d만, M122는 ac-24g만 잡는다.
+    - 바뀐 함수에 걸린 앞 회차 변이 26(M90–M112 · M41 · M42 · M45)을 최종 바이트로 다시 돌렸다. 모두 잡혔다.
+    - 목록 밖 확인 5(`_base_url_parts`의 M15 · M83 · M84 · M86 · M87) 가운데 M83(원문 글자 범위 검사 삭제)만 살아남았다.
+      - 동치 변이다. 유일한 호출자 `_team_base_url`이 `_required`(V2)를 거친 값에 `https://`만 붙여 넘긴다.
+  - VD:
+    - U4 계단 재측정(메모리 안 0.4 s 실패 · 빈 캐시 · 동시 5건 · 3회): 모두 0.400–0.401 s · fetch 1. 잠금 없는 부모에서도 같다.
+    - r3 사본 + 잠금 없는 부모(대조): 모든 판정이 0.0003–0.0024 s에 `error=AttributeError` 503 · fetch 0이다. r3 B-2의 고장 꼴을 재현했다.
+    - V4 근거 소스(PyJWT 2.15.1): `_client_lock` 생성은 :128이고, 쥐는 곳은 :277(`get_signing_key`) 하나뿐이다. `fetch_data`(:147) · `get_jwk_set`(:190) · `get_signing_keys`(:234)는 쥐지 않는다.
+  - V2 충돌 확인(읽기만): 0건(`tests/settings.py` · conftest · T066 `test_api.py` · templates golden-render).
+  - 편차(빌더 ⑧):
+    - 1: M83 동치 — `_base_url_parts`의 원문 검사는 심층 방어로 남긴다(W8).
+    - 2: V2를 공유 도우미 하나로 구현했다(규칙 한 곳).
+    - 3: V2 시험은 설정 8 × 값 꼴 9를 모두 덮었다. 동형 글자는 감시 문자열 바로 뒤에 넣었다.
+    - 4: V1 거부 사례에 `hex-after-sentinel`을 더했다. 지시한 여섯 값에는 감시 문자열이 없어 「값이 새지 않는다」 단언이 공허했다.
+    - 5: VD에 `staircase-lockless` 모드를 더했다.
+- **리뷰 r4**: A approve_with_fixes(low 5) · B approve_with_fixes(low 4). high · medium은 0이다. A-1과 B-2는 같은 지적이다.
+  - 탐침:
+    - A: 빌더 보고의 수치를 모두 대조했다(해시 · 줄 수 · 빨강 158 분해 · 변이 41 · VD · mtime). V5 규칙은 FR-027 · T089 · T092 문면과 부딪히지 않는다.
+    - B — V1 우회 시도 75값(대소문자 · `0X` · 긴 16진 · 32비트 초과 · 8진 · 1–5성분 · 전각 · 아랍-인도 숫자 · `xn--` · IPv4 매핑 IPv6):
+      - V1이 이름으로 받는데 inet_aton · getaddrinfo(AI_NUMERICHOST)가 숫자로 푸는 값은 0이다.
+      - glibc `__inet_aton_exact`도 1–4성분의 10진 · 8진 · 16진만 받는다. 꼴로 거르는 V1은 플랫폼과 무관하다. r3 B-1의 Linux 미실측 항목은 소스 논리로 닫는다.
+    - B — V2 차분 1755조합(설정 9 × 코드 포인트 65 × 자리 3):
+      - 놓친 값 0 · 요청 경로와 `check_settings()`의 판정 차이 0
+      - 정당한 운영 꼴 18값(64 hex AUD · `<32 hex>.access` · svc URL · 퍼센트 인코딩 비밀번호 등)은 하나도 막히지 않았다.
+    - B — V4 잠금 순서 계측(10스레드 × 3회 · 경로 5): 자기 잠금을 쥔 채 PyJWT 잠금을 얻는 경로 0 · 잠금 밖 상태 쓰기 0. 블랙홀(실제 urllib) 동시 3건은 2.08 s · fetch 1이다.
+  - low:
+    - A-1 · B-2: V2 시험 값 꼴 아홉에 공백이 아닌 ASCII 제어 문자 · DEL이 없다.
+      - 「`isascii()` + `isspace`」 규칙 변이와 상한에 DEL을 넣은 변이가 설정 8개에서 시험 전체를 통과한다(메모리 탐침).
+      - 제어 문자 · DEL 사례는 ac-4e(`ACCESS_TEAM_DOMAIN`)에만 있다. 거기서는 `_base_url_parts`가 같은 범위를 따로 거부해 `_printable_ascii` 변이가 가려진다(M83의 반대 방향).
+      - ac-4e에는 폭 0 · BOM · 한글 채움 문자 꼴이 없다. 「`ACCESS_TEAM_DOMAIN`은 ac-4b · ac-4e가 덮는다」 주석은 일부만 맞다.
+    - A-2: V2 「행동 변화」가 「지금 동작하는 값 둘」만 적는다.
+      - `ACCESS_AUD_ADMIN`도 r3에서 동작하던 값이다. 공백이 든 값은 audience 집합의 맞지 않는 원소일 뿐이라 M2M 판정이 200이었다.
+      - r4에서는 모든 Access 판정 500 · 기동 실패다(메모리 탐침).
+    - A-3: T075 플레이스홀더 절차(US6 시점 `kv/{env}/authentik/identity-admin`에 임의 값)와 기동 `check_settings()`(U3 + V2)가 부딪히는데 인계가 없다. `placeholder` 같은 값은 키 URL 스킴 검사 · V2에서 기동 실패다.
+    - A-4: V5가 `apps/web` 경로 규칙 §BFF contract에 없다(r3 U11도 없다). T092 빌더는 그 규칙을 적재한다.
+    - A-5: 모듈 독스트링 「한계(장애 중 잠금 대기)」에서 V4 자기 잠금 문장 바로 뒤에 「그래서 … 캐시로 통과할 아는 kid 포함 … 잠금을 기다리고」가 온다.
+      - 그래서 캐시 적중을 막는 것이 자기 잠금처럼 읽힌다. 실제로는 PyJWT 2.15.1 잠금이다.
+    - B-1: V2가 새로 여는 설정 오류 500 · 기동 실패의 트레이스백 프레임 지역 변수(`_required.value` · `_printable_ascii.value`)에 `DRAGONFLY_URL` 비밀번호가 남는다.
+      - structlog 26.1.0 기본 `dict_tracebacks`(`show_locals=True`)는 그 값을 JSON으로 렌더한다(실측). `format_exc_info` · `show_locals=False`는 싣지 않는다.
+      - T071 인계(N12 · U7)는 Sentry만 막는다. r3 리뷰 B R-4(`check_settings()` 프레임의 비밀번호 URL)도 라우팅되지 않았다.
+    - B-3: 자기 잠금은 PyJWT 잠금이 없는 부모에서 fetch를 직렬화만 하고 중복을 없애지 않는다.
+      - 빈 캐시 + 느린 성공 fetch(0.3 s) + 동시 5건이면 fetch 5 · 0.3 … 1.5 s 계단이다. 기다리던 판정이 잠금을 얻기 전에 이미 캐시 확인을 지났기 때문이다.
+      - PyJWT 2.15.1 그대로면 fetch 1이고 모두 0.301 s다. PyJWT 잠금이 캐시 확인까지 감싼다.
+      - ac-24g는 실패 경로만 본다.
+    - B-4: V5 문장에 경로 대조 규칙이 없다. 정확 일치인지, 디코딩 뒤 비교인지, 상류 경로를 클라이언트 경로로 잇는지가 정해지지 않았다.
+      - 접두 일치 + `/tenants/me%2F..%2F..%2Fsession%2Fcheck?sub=<남>` 같은 꼴이면 상류 URL이 WHATWG 정규화로 `/session/check`가 된다. 재작성 판정(`=== '/session/check'`)은 거짓이라 남의 폐기 여부가 중계된다(스펙 지식 · 미실측).
+      - `new URL(clientPath, base)`는 `//host/…`로 호스트를 바꾼다. 서비스 토큰이 다른 호스트로 간다.
+  - 범위 밖 관찰(B):
+    - `_KeyClient.__init__`이 `super().__init__()` 뒤에 자기 상태를 둔다. 생성 중에 fetch하는 판이면 AttributeError다.
+    - Django `SafeExceptionReporterFilter.hidden_settings`가 `DRAGONFLY_URL` · `DATABASE_URL`에 맞지 않는다. DEBUG 페이지나 AdminEmailHandler를 켜면 비밀번호 URL이 나온다(r4와 무관하게 전부터 있다).
+    - 서비스 토큰을 싣는 상류 호출은 리디렉션을 따르지 않아야 한다(r3 관찰).
+- **r5 결정 W1–W8(컨트롤러)**: 계약(bff-api · pod-template · data-model) · 규칙(web §BFF contract · django-pod §Auth) · kr 미러는 이 절과 같은 변경에서 「T070 r5」 표식으로 고쳤다.
+  - **W1 V2 시험 꼴에 ASCII 제어 문자 · DEL을 더한다**(A-1 · B-2):
+    - `AUTH_STRING_FORMS`에 둘을 더한다. 둘 다 감시 문자열 바로 뒤에 넣는다.
+      - `escape`(ESC U+001B — 색 있는 터미널 출력에서 복사한 ANSI 시퀀스)
+      - `delete`(DEL U+007F — `~` 바로 위 경계)
+      - ac-5a · ac-5b · ac-5c · ac-23b가 같은 목록으로 늘어난다.
+    - `TEAM_DOMAIN_REJECTED_CASES`에 폭 0(U+200B) · BOM(U+FEFF) · 한글 채움 문자(U+3164)를 더한다.
+      - 그러면 `ACCESS_TEAM_DOMAIN`도 V2 꼴 아홉과 제어 문자 · DEL을 모두 덮는다.
+      - 그 설정에서는 `_base_url_parts` 원문 검사가 같은 범위를 따로 거르므로 `_printable_ascii` 변이를 가르지 못한다. 판별력은 나머지 8개 설정이 보인다.
+    - 「`ACCESS_TEAM_DOMAIN`은 ac-4b · ac-4e가 덮는다」 주석을 사실대로 고친다.
+    - 변이(M123부터):
+      - M123: 상한에 DEL을 넣는다(`"!" <= ch <= chr(0x7F)`).
+      - M124: ASCII이고 공백이 아니면 받는다(`not value.isascii() or any(ch.isspace() for ch in value)`일 때만 거부).
+      - 둘 다 r4 시험 바이트로는 살아남고(리뷰 탐침과 같은지 확인한다), r5 시험으로 잡혀야 한다.
+  - **W2 독스트링 「한계(장애 중 잠금 대기)」의 인과를 바로잡는다**(A-5):
+    - 「그래서 … 기다린다」는 PyJWT 2.15.1 잠금(`get_signing_key` :277)의 결과로 적는다.
+    - 자기 잠금 문장은 그 뒤로 옮기고 한 구절을 붙인다: 자기 잠금은 `fetch_data` 안에서만 쥐므로 캐시 적중 판정은 그 잠금을 쥐지 않는다(T070 r4 V4).
+    - 동작은 바뀌지 않는다.
+  - **W3 중복 제거는 PyJWT 잠금 몫이다 — 시험으로 결합을 고정한다**(B-3 (b)):
+    - `_KeyClient` 독스트링에 한 문장을 더한다. 〔「PyJWT 결합」 줄에도 — r6 X2〕
+      - 자기 잠금은 fetch를 직렬화할 뿐 중복을 없애지 않는다.
+      - PyJWT 잠금이 없는 판에서 빈 캐시 · 만료에 동시 요청이 몰리고 fetch가 성공하면, fetch가 요청 수만큼 돈다. 기다리던 판정은 이미 캐시 확인을 지났다.
+      - 2.15.1에서는 PyJWT 잠금이 캐시 확인까지 감싸 fetch 1이다.
+    - 시험 ac-24h는 실제 PyJWT 부모로 돈다(모의 부모가 아니다).
+      - 조건: 빈 캐시 + 메모리 안 느린 성공 fetch(유효 키 집합) + 동시 5건(Barrier)
+      - 기대: fetch 1 · 다섯 판정 모두 통과 · 가장 늦은 판정 < 2 × fetch 시간
+      - 이 시험이 실패하면 PyJWT가 중복 제거를 그만둔 것이다. 그때 자기 상태로 중복을 없애는 안(아래 고르지 않은 안)을 다시 정한다. 시험 독스트링에 적는다.
+      - 판별력: 같은 시험을 잠금 없는 모의 부모(`install_lockless_parent`)로 한 번 돌려 실패(fetch 5)함을 보고에 보인다. 운영 코드 변이가 아니라 의존성 결합의 탐침이라 시험으로 남기지 않는다.
+    - 고르지 않은 안 (a) — 자기 세대 번호로 중복을 없앤다:
+      - 2.15.1에서는 동작이 같다. PyJWT가 잠금을 없앤 가상의 판에서만 의미가 있다.
+      - 기다리던 모르는 kid 재조회가 자기 요청보다 먼저 시작된 fetch의 결과를 받게 된다. 키 교체 직후의 신선도가 바뀐다(PyJWT 재조회 cooldown 30 s와 얽힌다).
+      - ac-24h가 PyJWT 갱신 때 그 경우를 드러내므로 그때 정한다.
+  - **W4 프레임 지역 변수의 비밀은 렌더링 층에서 막는다**(B-1):
+    - 통제 지점은 예외 렌더러 하나다.
+      - 인증 경로의 다른 프레임도 원문 Bearer `header` · Access `token`(U7) · `sub`를 지역 변수로 쥔다.
+      - 그래서 `_required`에서 값 하나를 지워도(`del value` — 리뷰 선택안) 트레이스백에서 비밀이 사라지지 않는다. `auth.py`는 바꾸지 않는다.
+    - T071이 맡는다:
+      - 렌더링: 준비된 설계 초안은 이미 `format_exc_info`(지역 변수 없음)만 쓰고 `dict_tracebacks` · `ExceptionDictTransformer(show_locals=True)`를 금지한다. Sentry는 `include_local_variables=False`다(N12).
+      - 규칙 문장: 규칙 §Logging의 「frame locals를 남기지 않는다 · `format_exc_info`」 문장은 T071 계약 보정(준비된 문서 스크립트)이 넣는다. T070에서는 따로 넣지 않는다(중복 · 앞뒤 문장 충돌).
+      - 시험: auth 설정 오류 500 경로에 (c)를 더한다. `DRAGONFLY_URL` V2 위반(비밀번호 자리에 SENTINEL · 끝 줄바꿈) + 유효 Access · Bearer → 500.
+      - 세 경로 (a) · (b) · (c) 모두, 수집한 JSON 로그 줄(`request_failed` · `django.request`)과 Sentry transport 이벤트 어디에도 SENTINEL이 없음을 단언한다. 지금 초안의 (a) · (b)는 Sentry만 본다.
+    - T072가 맡는다:
+      - 기동 검사(`check_settings()`) 실패 출력(stderr · 로그 · Sentry)에도 같은 단언을 둔다.
+      - `DEBUG=False` 고정과 `mail_admins`(AdminEmailHandler) 미사용을 확인한다. Django `SafeExceptionReporterFilter.hidden_settings`는 `DRAGONFLY_URL` · `DATABASE_URL`에 맞지 않아 설정 덤프에 비밀번호 URL이 나온다. 〔ExceptionReporter 세 경로 · 통제는 미사용 — r6 X7〕
+  - **W5 V2 행동 변화는 셋이다 — `ACCESS_AUD_ADMIN`**(A-2):
+    - 셋째 값: `ACCESS_AUD_ADMIN`에 공백 · 보이지 않는 글자가 든 값은 r3에서 audience 집합의 맞지 않는 원소였을 뿐이라 M2M 판정이 200이었다. r4부터는 모든 Access 판정 500 · 기동 실패다.
+    - 정상 경로(ConfigMap의 정확한 값 — prod 64 hex · dev 빈 값)는 영향이 없다.
+    - 규칙 §Auth · pod-template 인증 행의 근거 문장을 넓힌다. 조용한 403 · 401뿐 아니라 우연히만 동작하던 값(라이브러리가 공백을 떼는 URL 설정 · 맞지 않는 audience일 뿐이던 `ACCESS_AUD_ADMIN`)도 설정 오류로 앞당긴다. 〔URL 문구 — r6 X8〕
+    - report.md에 셋으로 적는다.
+  - **W6 US6 플레이스홀더도 기동 검사를 통과해야 한다**(A-3): 〔r6 X4가 고친다 — T044 sentinel 덮어쓰기 · 웹훅 비밀은 실값 · 나가는 쪽 자격은 T075〕
+    - `kv/{env}/authentik/identity-admin`의 `jwks_url` · `issuer`는 처음부터 계약 값이다. 플레이스홀더가 아니다. 〔라이브 값은 T044 sentinel — 덮어쓴다(X4)〕
+      - 값: `http://authentik-server.identity.svc:9000/application/o/identity-admin/jwks/` · `https://auth.joshuatech.dev/application/o/identity-admin/`(contracts/identity-admin-api.md §호스트)
+      - US4에서도 바뀌지 않는다.
+    - `client_id` · `client_secret` · `api_token`과 `kv/{env}/openfga/{store_id,preshared}`는 비지 않은 공백 없는 ASCII 임시 값이다(V2 · T066 비밀 빈 값 기동 실패).
+    - US4 전에는 Authentik이 없어 JWKS fetch가 실패한다. Bearer 판정은 503 `auth_keys_unavailable`이다. JWT 경로를 쓰지 않는 기간이라 영향이 없다(`/health` 확인은 Access 서비스 토큰 — T075 문면).
+    - 계약: data-model.md `kv/{env}/authentik/identity-admin` 행에 이 규칙을 더한다.
+    - 인계:
+      - T075: ExternalSecret · 기동 확인
+      - T043 절차 한 줄의 운영자 블록: 넣기 전에 꼴을 판정한다
+      - T081: 실값으로 교체할 때도 같은 꼴
+  - **W7 BFF 프록시 경로 대조 · 리디렉션 규칙**(B-4 · A-4 · r3 B 관찰): 〔응답 중계 규칙 — r6 X3〕
+    - 허용 경로는 정확 일치다. 아래 둘은 404이고, 상류를 부르지 않는다.
+      - 원문 경로에 인코딩된 구분자 · 점(`%2F` · `%5C` · `%2E` — 대소문자 무관)이 있다.
+      - 디코딩한 경로가 허용 상수와 글자 그대로 같지 않다(접두 · 끝 슬래시 · 빈 세그먼트 · `.`/`..` · 대소문자 · `;` 매개 변수 변형).
+    - 상류 URL은 정적 맵 기준 URL + 일치한 허용 경로 상수다. 클라이언트 경로 문자열을 잇지 않고, `new URL(clientPath, base)`를 쓰지 않는다.
+    - `/session/check` 질의 재작성(V5)은 같은 일치 결과에 묶는다.
+    - 자격(서비스 토큰 `CF-Access-Client-*` · 교환 토큰 · client secret)을 싣는 하류 호출은 리디렉션을 따르지 않는다(`redirect: 'manual'`). 〔호출 목록 · 3xx 결과 — r6 X5〕
+      - Fetch 표준의 기본 `follow`는 사용자 정의 헤더를 지우지 않고 `Location`으로 다시 보낸다. Workers 런타임에서의 동작은 T092가 로컬 서버로 확인한다.
+      - 폐기 확인에서 3xx는 U11대로 503 `upstream_unavailable`이다.
+    - 계약은 bff-api 프록시 행과 §하류 호출 규약이다. 규칙은 web §BFF contract에 V5 · U11 · W7을 더한다(kr 미러는 translation-pending).
+    - 인계(T089 시험 · T092 구현):
+      - 변형 사례 `/session/check/` · `/Session/check` · `/session%2Fcheck` · `/tenants/me/..%2F..%2Fsession%2Fcheck` · `//session/check` · `/session/check;x` → 모두 404 · 상류 호출 0 〔핸들러 단위 — 통합 단은 308 · r6 X6〕
+      - 상류가 3xx를 돌려주면 따라가지 않는다(로컬 서버가 두 번째 요청 0을 기록한다).
+  - **W8 기록**:
+    - M83은 동치 변이다. 「T070 결과」 한계에 적는다(r1 M22 · M23처럼).
+      - `_base_url_parts`의 원문 검사는 심층 방어로 남긴다.
+      - W1의 `ACCESS_TEAM_DOMAIN` 가림은 그 대가다.
+    - V6 「3.13.2부터」를 확인했다. gh-105704(CVE-2025-0938)의 3.13 백포트 PR #129526이 2025-02-02에 3.13 브랜치에 머지됐고, 그 뒤 첫 판이 3.13.2(2025-02-04)다.
+    - `_KeyClient.__init__`의 속성 순서(B 관찰)는 바꾸지 않는다.
+      - 2.15.1 생성자는 fetch하지 않는다(ac-23a가 fetch 0을 지킨다).
+      - 생성 중에 fetch하는 판이 오면 AttributeError가 `check_settings()` · 요청 시험을 바로 깨뜨린다. PyJWT를 올릴 때 test_auth_contract가 드러낸다.
+    - PyJWT 결합의 둘째 경로(A 참고): 생성 pod의 `uv.lock`(T073 copier `_tasks: uv lock`)도 범위 안 최신 PyJWT로 잠긴다.
+      - test_auth_contract가 본 적 없는 판이다.
+      - V4 CI 공백 인계(report.md · T072)와 같은 줄에 적는다.
+- **r5 범위**:
+  - 빌더: W1(시험 · 주석) · W2 · W3(독스트링 · ac-24h · 판별력 탐침). 운영 코드 동작은 바뀌지 않는다(독스트링뿐).
+  - 컨트롤러가 이미 고친 것:
+    - 계약: bff-api 프록시 행 · §하류 호출 규약 · pod-template 인증 행의 근거 · data-model `kv/{env}/authentik/identity-admin` 행
+    - 규칙: web §BFF contract · django-pod §Auth 근거
+    - kr 미러: django-pod · web translation-pending
+    - 이 절
+  - 변이: M123 · M124(W1).
+    - r5는 운영 코드 동작을 바꾸지 않는다. 그래서 앞 회차 변이는 다시 돌리지 않는다.
+    - 다만 V2 묶음(M115–M118)은 새 시험 바이트로 한 번 더 돌려 그대로 잡히는지 본다.
+
+### T070 r5 결과 · r6 결정(리뷰 r5 반영 · X1–X8 · 2026-11-06) — W6의 data-model 문장, W7의 응답 중계 · 리디렉션 호출 목록 · 변형 판정 층, W4의 T072 인계, W5 근거의 URL 문구는 이 절의 X4 · X3 · X5 · X6 · X7 · X8이 고친다(앞 절 줄 끝 〔…〕 표식)
+
+- **r5 결과**(워크플로 `wf_81d70237-c68` · 1.32M 토큰 · 약 79분 · 빌더 DONE):
+  - 바뀐 파일:
+    - `auth.py` 876 → 880(`7011a4c2…` → `f02b8b7a…`) · 독스트링만 바뀌었다. 독스트링을 뺀 AST와 주석 토큰 30개가 r4와 같다.
+      - W2 모듈 「한계(장애 중 잠금 대기)」: 대기의 원인을 PyJWT 2.15.1 `_client_lock`(:277 — 캐시 확인과 `fetch_data`를 함께 감싼다)으로 적었다. 자기 잠금 문장은 뒤로 옮겼다(캐시 적중 판정은 자기 잠금을 쥐지 않는다).
+      - W3 `_KeyClient`: 「직렬화할 뿐 중복은 없애지 않는다 … 2.15.1에서는 캐시 확인까지 감싸 fetch 1(ac-24h)」.
+    - `test_auth_contract.py` 2168 → 2246(시험 함수 51 → 52 · 사례 399 → 438). r4 노드 id 399개가 모두 남았고, 지운 8줄은 모두 주석 · 독스트링이다.
+      - W1: `escape`(`chr(0x1B)`) · `delete`(`chr(0x7F)`) 꼴로 ac-5a +10 · ac-5b +4 · ac-5c +2 · ac-23b +19가 늘었다. `TEAM_DOMAIN_REJECTED_CASES`의 폭 0 · BOM · 한글 채움으로 ac-4e +3이 늘었다.
+      - W3: ac-24h(실제 PyJWT 부모 · 루프백 키 서버 0.3 s 지연 · 동시 5건). django_common.auth 기록 0 단언을 더했다.
+    - `_auth_fakes.py` 314 → 329: `KeyServer.set_delay(path, seconds)`. GET 수는 기다리기 전에 센다.
+  - r4 `auth.py`로 돌린 새 시험: 438 passed. 새 39건이 모두 초록이다(운영 코드가 이미 맞다는 기대대로).
+  - 초록(최종 바이트 13:37–13:40 · 한 번에 하나): `test_auth.py` 32 ×2 · contract 438 · fixtures jwks 3 · dragonfly 1 · 회귀 16 · 65 · 16 · 42 · 52 · 3 · ac-24 묶음 3회(10 passed).
+  - 판별력:
+    - M123(상한에 DEL) · M124(ASCII이고 공백이 아니면 받는다)는 r4 시험 바이트로는 살아남고(399 passed), r5 바이트로 잡혔다(16 · 32 failed).
+    - M115–M118을 r5 바이트로 다시 돌렸고 모두 잡혔다(173 · 45 · 32 · 33 failed).
+    - ac-24h를 잠금 없는 모의 부모로 돌린 탐침은 fetch 5 · 판정 0.32 → 1.61 s 계단으로 실패했다(시험으로 남기지 않았다). 실제 부모는 fetch 1 · 0.32 s × 5다.
+  - 편차(빌더 ⑧):
+    - 1: 지시문 전제를 소스로 바로잡았다. PyJWT 2.15.1 `fetch_data`는 `finally`가 아니라 성공 경로 끝(:185–186)에서만 캐시를 채운다. :181–184 주석이 `finally` 쓰기를 일부러 피한다고 적고, `get_jwk_set`이 :222–223에서 한 번 더 넣는다.
+      - **컨트롤러 지시문의 사실 오류**다. 시험 설계는 지시대로 실제 `fetch_data`에 네트워크 쪽 지연을 건 것이라 결과에는 영향이 없다.
+    - 2: 셈은 `urlopen` 대역이 아니라 루프백 키 서버로 했다. 2.15.1은 `build_opener(...).open`을 쓴다.
+    - 3: 편집 도구가 기존 줄의 공백 하나를 지운 것을 diff로 찾아 고쳤다. 변이와 r4 코드 실행은 최종 바이트로 다시 돌렸고 결과가 같다.
+  - 위생: compileall · 바이트 8파일 · gitleaks 8파일(하나씩) clean. Docker 컨테이너 7개 이름이 전후로 같고, dangling 볼륨은 25 → 25다.
+- **리뷰 r5**: A approve_with_fixes(low 4) · B approve_with_fixes(medium 2 · low 4).
+  - 같은 지적: A-2 = B-2 · A-3 = B-4 · A-4 = B-6.
+  - B는 코드 · 시험 산출물의 결함을 0으로 봤다. medium 둘은 컨트롤러가 r5에 고친 계약 문장(W6 · W7)의 공백이다.
+  - 탐침:
+    - A: auth AST · 주석 30/30 · 수집 id 399 ⊂ 438 · ac-24h 메모리 재현(실제 부모 3/3 · 잠금 없는 부모 FAIL) · V2 변이를 실제 사례 목록으로 판정 · W6 값 `check_settings()` None · T071 `docs.py` 치환 원문 14/14 일치.
+    - B: W7 경로 변형 20꼴(어느 것도 남의 질의를 상류 `/session/check`에 싣지 못한다 — 틈은 응답 쪽 하나) · W4 프레임 지역 변수 세 경로 실측 · ExceptionReporter 텍스트 보고서 실측 · 바이트 19파일 · gitleaks 14파일.
+  - medium:
+    - B-1: 프록시 「응답을 그대로 중계」에 응답 헤더 · 3xx 규칙이 없다.
+      - Access는 서비스 토큰으로 인증된 응답에 앱 범위 JWT 쿠키 `CF_Authorization`을 실을 수 있다.
+        - Cloudflare 문서: 「엄격 서비스 토큰 인증」은 조직 설정이고, 켜면 그 쿠키를 돌려주지 않는다.
+        - 그 설정은 2026-10-05 이후 만든 조직에서만 기본으로 켜진다. 우리 조직은 그 전에 만들었다. 미실측이다.
+      - 그 쿠키가 브라우저로 가면 로그인한 사용자가 m2m 호스트 `/session/check?sub=<남>`을 직접 불러 W7 · V5 질의 재작성을 우회한다.
+        - 그 경로는 Access 전용이다. 쿠키의 `common_name`은 `web-bff-<env>`이고, `session_duration`은 24 h다(infra/cloudflare/access.tf).
+      - 「그대로 중계」는 쿠키를 `/api/auth/*`에서만 설정한다는 계약 · web 규칙과 부딪힌다.
+      - `redirect: 'manual'` 뒤 상류 3xx(`Location` 포함)를 그대로 중계하는 경우도 정해지지 않았다.
+    - B-2 · A-2: W6이 웹훅 HMAC 비밀(`kv/{env}/authentik/webhooks/identity-admin` `secret`)을 빠뜨렸고, T044 게이트와 맞춰지지 않았다.
+      - 라이브 값은 8경로의 모든 키가 T044 sentinel `PLACEHOLDER-T044-SENTINEL`이다(2026-09-17 투입 — docs/runbooks/vault-unseal.md §US6 플레이스홀더 8경로).
+        - W6의 「`jwks_url` · `issuer`는 처음부터 계약 값」은 라이브 상태와 다르다. 덮어쓰는 단계가 없다.
+      - 웹훅 비밀은 들어오는 쪽 검증 키다. `/webhooks/authentik`은 Access · Bearer 면제라 HMAC만이 그 경로를 지킨다.
+        - 저장소 문서에 적힌 sentinel이나 고정 임시 값으로 pod가 뜨면, pod 포트에 닿는 클러스터 안 호출자가 서명한 `logout` 본문을 보낼 수 있다.
+        - 그러면 임의 사용자의 사용자 단위 폐기(강제 로그아웃 · 감사 오염)가 된다.
+        - 빈 HMAC 키를 기동 실패로 막은 이유(contracts/identity-admin-api.md)와 같은 부류다.
+      - W6 · T075의 「플레이스홀더로 기동」이 T044 규칙 셋과 부딪힌다.
+        - 불변식: sentinel 잔존 0 = consumer 활성화 전제.
+        - 게이트 1: 경로 단위로 `PLACEHOLDER-` 0(T075 · T081).
+        - 게이트 2: 설정 검증기가 `PLACEHOLDER-`에서 기동 실패(T072 · T075 · T077).
+        - sentinel을 알아볼 수 없는 고정 임시 값으로 바꾸면 게이트가 남은 플레이스홀더를 가르지 못한다.
+      - W6의 근거 「(V2 · T066 비밀 빈 값 기동 실패)」는 일부에만 맞는다.
+        - `check_settings()`가 보는 것은 `jwks_url` · `issuer`뿐이다.
+        - `api_token` · `store_id` · `preshared` · 웹훅 비밀은 T066 기동 검사(존재 · 비밀 비지 않음)만 받는다.
+        - `client_id` · `client_secret`에 대응하는 identity-admin 설정은 없다(ESO 동기화 몫).
+  - low:
+    - A-1: V2 수락 쪽 경계(`!` U+0021 · `~` U+007E)를 가르는 시험이 없다.
+      - 수락 사례의 문장 부호가 `-./:@[]_` 여덟 개뿐이다. 그래서 `!` 거부 · `~` 거부 · RFC 3986 글자만 받는 변이가 사례 전체를 통과한다(메모리 탐침).
+      - fail-closed라 시끄럽게 드러나지만 판별력 공백이다. 예: 비밀번호에 `~` · `!`가 든 `DRAGONFLY_URL`이 기동 실패가 된다.
+    - A-3 · B-4: W7 인계 「변형 사례 모두 404」는 핸들러 단위에서만 성립한다(스펙 지식 · 미실측). 누출은 0이다.
+      - 핸들러 앞에서 바뀌는 꼴: Next.js 기본 끝 슬래시 · 겹친 슬래시 308 · WHATWG의 점 세그먼트 접기.
+      - 캐치올 매개 변수는 디코딩돼 있다. 그래서 원문 검사의 입력이 정해져야 한다.
+      - 정적 맵이 일반 객체면 `constructor` · `__proto__`가 참이 된다.
+      - 기준 URL이 끝 슬래시로 끝나면 `//session/check`가 생긴다.
+    - A-4 · B-6: 「PyJWT 결합」 줄(모듈 · `_KeyClient`)이 W3이 시험으로 고정한 셋째 결합을 적지 않는다. 셋째 결합은 잠금 범위(캐시 확인까지 감싸는 중복 제거)다.
+    - B-3: 리디렉션 규칙의 호출 목록과 3xx 결과에 빈 곳이 있다.
+      - client secret을 싣는 Authentik 호출 셋(callback 코드 교환 · refresh · refresh revoke)이 목록에 없다.
+      - 폐기 확인 밖 호출의 3xx 결과가 없다. 3xx를 401 · 쿠키 삭제로 접는 구현과 503으로 접는 구현이 갈린다.
+    - B-5: W4의 T072 인계가 ExceptionReporter 누출 근거를 설정 덤프로만 적는다.
+      - 실측으로는 요청 META의 `HTTP_CF_ACCESS_JWT_ASSERTION`(원문 Access JWT)도 텍스트 보고서에 실린다. 정리 정규식에 맞지 않기 때문이다.
+      - HTML 본문 · DEBUG 페이지에는 프레임 지역 변수가 실린다.
+      - 지금 인계(DEBUG=False · mail_admins 미사용)가 막으므로 틈은 아니다.
+  - 참고(A · B):
+    - pod-template · 규칙의 「라이브러리가 앞뒤 공백을 떼는 URL」은 좁다. `urlsplit`은 탭 · CR · LF를 자리와 무관하게 지운다.
+    - ac-24h 시간 단언의 여유는 0.27 s다(실측 0.33 s · 상한 0.6 s). CI에서 돌게 되면 flake 감시 대상이다.
+    - `/tenants/me`의 클라이언트 질의를 상류로 보낼지가 정해지지 않았다. Bearer에 묶여 누출은 없다.
+    - compileall이 `tests/__pycache__`에 pyc를 썼다. gitignore 대상이라 무해하고, auth pyc는 0이다.
+- **r6 결정 X1–X8(컨트롤러)**: 같은 변경에서 아래를 「T070 r6」 표식으로 고쳤다.
+  - 계약: bff-api · pod-template · data-model
+  - 규칙: web §BFF contract · django-pod §Auth
+  - 런북: vault-unseal §US6 플레이스홀더
+  - kr 미러
+  - **X1 V2 수락 쪽 경계를 시험으로 고정한다**(A-1):
+    - 수락 사례를 새로 둔다(기대 `check_settings() is None`):
+      - 자유 꼴 6개(`ACCESS_AUD_M2M` · `ACCESS_AUD_ADMIN` · `ACCESS_EXPECTED_CN` · `AUTHENTIK_ISSUER` · `AUTHENTIK_AUDIENCE` · `AUTH_ACTOR_SUB`): `!`–`~` 94자 전부(`"".join(map(chr, range(0x21, 0x7F)))`)
+      - `AUTHENTIK_JWKS_URL`: 경로에 `~` · `!` · 하위 구분자(`$&'()*+,;=`)가 든 루프백 URL
+      - `DRAGONFLY_URL`: 비밀번호 자리에 `~!$&'()*+,;=`
+    - 요청 경로 대조를 하나 둔다. `ACCESS_EXPECTED_CN`에 94자 값을 두고 같은 `common_name`을 실은 Access 토큰을 보내면 200이다. 판정 함수가 하나라 사례 하나로 고정된다.
+    - 변이:
+      - M125: `"!" < character`(`!`를 거부)
+      - M126: `character < "~"`(`~`를 거부)
+      - 둘 다 r5 시험 바이트로는 살아남고 r6 바이트로 잡혀야 한다.
+      - M123 · M124 · M115–M118은 r6 바이트로 한 번 더 돌린다.
+  - **X2 「PyJWT 결합」 줄에 잠금 범위를 더한다**(A-4 · B-6 — 독스트링만):
+    - 모듈 줄: 호출 순서 · 공개 메서드 이름 둘에 셋째를 더한다 — get_signing_key의 클라이언트 잠금이 캐시 확인까지 감싸는 것.
+      - 이 결합이 동시 빈 캐시 판정의 fetch 중복을 없앤다. ac-24h가 고정한다.
+      - ac-24h가 실패하면 W3의 고르지 않은 안 (a)를 다시 정한다.
+    - `_KeyClient` 줄: 「(호출 순서 · 공개 메서드 이름 둘 · 잠금 범위)」.
+  - **X3 프록시 · `/api/health`는 응답에서 고른 것만 중계한다**(B-1): 〔중계 범위(pod JSON 2xx · 4xx만) · 모든 라우트 · 응답 쪽 마스킹 — 「T070 결과」 F1 · F6 · F7〕
+    - 프록시: 상류 응답의 상태 · 본문 · `content-type`만 옮긴다.
+      - `set-cookie` · `location` · `cf-*`를 비롯한 그 밖의 상류 응답 헤더는 옮기지 않는다.
+      - `x-request-id`는 BFF가 자기 값을 싣는다(하류에 넘긴 값과 같다).
+    - 상류 3xx는 중계하지 않는다. 503 `upstream_unavailable`이다.
+    - `/api/health`는 BFF가 만든 본문(`{ status, upstream, upstream_ms, checks }`)만 낸다. 상류 헤더를 옮기지 않는다.
+    - 요청 쪽도 §하류 호출 규약의 헤더만 싣는다. 클라이언트의 `cookie` · `cf-access-token` · `authorization` · 그 밖의 요청 헤더는 하류로 옮기지 않는다.
+    - 클라이언트 질의는 `/session/check` 재작성 말고는 상류로 가지 않는다. `/tenants/me`는 질의를 버린다(A 참고 · X6과 같은 문장).
+    - 계약의 근거 문장: Access는 서비스 토큰 응답에 앱 범위 `CF_Authorization` 쿠키를 실을 수 있다. 그 쿠키가 브라우저에 가면 m2m 호스트를 직접 불러 질의 재작성을 우회한다.
+    - VD(T076 · T092 — 사용자 동석): 실제 m2m 앱이 서비스 토큰 요청 응답에 `Set-Cookie: CF_Authorization`을 싣는지와 수명을 한 번 잰다.
+    - 선택지 「엄격 서비스 토큰 인증」은 T084 · T092가 영향 범위와 함께 정한다.
+      - 조직 설정이다. 켜면 그 쿠키를 돌려주지 않고, 보낸 쿠키도 무시한다.
+      - 조직의 모든 Access 앱에 걸린다.
+      - 계약 규칙(응답 헤더 허용 목록)은 그 결과와 무관하게 유지한다.
+    - 인계(T089 시험 · T092 구현): 로컬 상류가 `Set-Cookie` · `Location` · 3xx를 돌려줘도 BFF 응답에는 둘 다 없고, 3xx는 503이다.
+  - **X4 W6 정정 — US6 값은 T044 sentinel을 덮어쓰고, 웹훅 비밀은 처음부터 실값이다**(B-2 · A-2): 〔편차 목록 T043 · T075 · T081 · T083 · 쓴 뒤 판정 보강 — 「T070 결과」 F3 · F10 / 안 1이 끝나는 지점 · KV patch · OpenFGA 서버 키 · 운영자 블록 — 인계 H1–H4〕
+    - data-model `kv/{env}/authentik/identity-admin` 행의 W6 문장을 바꾼다.
+      - US6 기동(T075) 전에 운영자 블록이 T044 sentinel을 덮어쓴다.
+      - `jwks_url` · `issuer`는 계약 값이다. US4에서도 그대로다. sentinel `jwks_url`이면 `check_settings()`가 기동에서 멈춘다(fail-closed).
+      - US4(T081 · T082)에서야 실값이 생기는 나가는 쪽 자격을 US6 동안 어떻게 둘지는 T075가 T044 게이트 1 · 2와 함께 정한다. 대상은 `client_id` · `client_secret` · `api_token` · `kv/{env}/openfga/{store_id,preshared}`다(`preshared`는 T044 런북의 US6 교체 규칙도 함께 본다).
+      - sentinel을 알아볼 수 없는 다른 고정 값으로 바꿔 게이트를 통과시키지 않는다.
+      - 근거 표기를 나눈다:
+        - `jwks_url` · `issuer` = `check_settings()`(V2 · 스킴)
+        - `api_token` · `store_id` · `preshared` · 웹훅 비밀 = T066 기동 검사(존재 · 비밀 비지 않음)
+        - `client_id` · `client_secret` = ESO 동기화(identity-admin 설정 없음)
+    - `kv/{env}/authentik/webhooks/<pod>` 행에 더한다: US6 플레이스홀더를 두지 않는다.
+      - T075가 identity-admin을 켜기 전에 운영자가 CSPRNG 32바이트 이상 실값으로 sentinel을 덮어쓴다.
+      - US4에서 바꾸지 않는다. T081 NotificationTransport가 같은 경로를 읽는다.
+      - 쓴 뒤 판정: sentinel 아님 · 길이 · 되읽기 해시. 값은 화면 · argv에 찍지 않는다.
+      - frozen T075 문면과의 편차다. T075는 「`kv/{env}/authentik/*`에 플레이스홀더를 투입하고 US4에서 실값으로 교체」라고 적는다. 웹훅 비밀만 US6부터 실값이고 US4 교체가 없다. report.md에 적는다.
+    - 런북 vault-unseal.md 게이트 2 줄에 범위 문장을 더한다.
+      - 웹훅 비밀 · `jwks_url` · `issuer`는 범위 안이다. US6 전에 덮어쓴다.
+      - US6 동안 sentinel을 둘 나가는 쪽 자격을 범위에서 뺄지는 T075가 T072와 함께 정한다.
+    - 인계(T075 · T072):
+      - 권고안(안 1): 나가는 쪽 자격은 sentinel 그대로 둔다.
+        - 그 자격의 consumer는 US4까지 켜지 않는다. `AUTHENTIK_WRITES_ENABLED=false`는 prod도 US4 전까지다. OpenFGA 호출 경로도 같다.
+        - 게이트 2(T072 템플릿 검증기)의 `PLACEHOLDER-` 기동 실패는 그 자격을 뺀 범위에 건다.
+        - 게이트 1은 키 단위로 판정한다. 경로 단위면 sentinel `api_token` 때문에 `kv/{env}/authentik/identity-admin`이 늘 hits ≥ 1이다.
+        - 그 자격의 게이트 1은 T081 · T082의 consumer 활성화 앞이다.
+      - 고르지 않는 안: sentinel을 다른 고정 임시 값으로 바꾼다(W6 원안). 게이트가 남은 값을 가르지 못한다.
+      - 안 1은 T066 기동 검사(비밀 빈 값 기동 실패)와 부딪히지 않는다. sentinel은 비지 않은 값이라 통과한다.
+  - **X5 리디렉션 규칙의 호출 목록과 3xx 결과**(B-3): 〔callback · logout 응답 열 · logout 실패 갈래 — 「T070 결과」 F2〕
+    - 목록:
+      - Authentik 토큰 엔드포인트 전부(callback 코드 교환 · refresh · 토큰 교환)
+      - Authentik revoke
+      - 폐기 확인
+      - `/api/health`
+      - `/sessions/revoke`
+      - 프록시
+    - 실을 자격에 refresh 토큰을 더한다. 307 · 308은 메서드와 본문도 그대로 다시 보낸다.
+    - 어느 호출이든 상류 3xx는 시간 초과와 같은 갈래(503 `upstream_unavailable`)다. 만료 · 폐기 갈래(401 · 쿠키 삭제)로 접지 않는다. 폐기 확인은 U11 그대로다.
+  - **X6 변형 판정은 핸들러 기준이다**(A-3 · B-4): 〔`Location` 꼴 · URL 파서가 접는 꼴 — 「T070 결과」 F8〕
+    - 프레임워크가 핸들러 앞에서 정규형 경로로 돌리는 리디렉션(Next.js 끝 슬래시 · 겹친 슬래시 308)은 상류 호출이 0이면 계약을 만족한다.
+    - 원문 검사의 입력은 `request.url`의 pathname이다. 디코딩된 캐치올 매개 변수가 아니다.
+    - 정적 맵은 자기 키로만 찾는다(`Map` 또는 `Object.hasOwn`). `constructor` · `__proto__` · `toString`은 404다.
+    - `IDENTITY_M2M_URL`은 경로 · 끝 슬래시 없는 origin이다. T092가 꼴을 검사한다.
+    - 인계(T089 · T092):
+      - 핸들러 단위 시험(원문 URL · 매개 변수를 직접 넣는다): W7 변형 6사례와 `constructor` · `__proto__`가 404 · 상류 0이다.
+      - 통합 단(`next start` · OpenNext preview): `/session/check/` · `//session/check`는 308 → 정규 경로이고, 상류 질의는 세션 값이다. T092가 실제 상태 코드와 상류 호출 0을 잰다.
+  - **X7 W4의 T072 인계를 넓힌다**(B-5): 〔실제 통제는 `ADMINS == []`의 조기 반환 · T071 (c) 문구 — 「T070 결과」 F9 · F4〕
+    - Django `ExceptionReporter`는 원문 값을 세 경로로 싣는다.
+      - 설정 덤프: `DRAGONFLY_URL` · `DATABASE_URL`(`hidden_settings`에 맞지 않는다)
+      - 요청 META: `HTTP_CF_ACCESS_JWT_ASSERTION` · `HTTP_X_FORWARDED_USER_SUB`(정리 정규식에 맞지 않는다)
+      - HTML 본문의 프레임 지역 변수
+    - 그래서 통제는 필터 보강이 아니라 미사용이다(`DEBUG=False` · `ADMINS` 빈 값 · AdminEmailHandler 없음). T072가 확인한다.
+    - T071 (c)는 Bearer `sub` · `sid`에도 감시 문자열을 심는다. 그 값을 쥐는 프레임 지역 변수는 `Denylist.lookup.sub` · `sid` · `_authenticate.bearer`다(B 실측). T071 설계 초안에 반영했다.
+  - **X8 기록**: 〔끝 공백은 `urlsplit` 몫이 아니다 — 「T070 결과」 F5〕
+    - V2 근거 문장의 「앞뒤 공백을 떼는 URL」을 넓힌다(pod-template 인증 행 · 규칙 §Auth): 「공백을 떼거나 지우는 URL(앞뒤 공백 · 자리와 무관한 탭 · CR · LF — `urlsplit`)」.
+    - ac-24h 시간 여유(0.27 s)는 CI test job 공백 인계(T072 · report.md)와 같은 줄에 flake 감시로 적는다.
+    - 지시문 r5의 「`fetch_data`가 `finally`에서 캐시를 채운다」는 컨트롤러 사실 오류였다. 빌더가 소스로 바로잡았고 결과에는 영향이 없다. 「T070 결과」 사고에 적는다.
+- **r6 범위**:
+  - 빌더: X1(시험) · X2(독스트링). 운영 코드 동작은 바뀌지 않는다.
+  - 컨트롤러가 이미 고친 것: X3–X8의 계약 · 규칙 · 런북 · kr 미러 · 이 절 · T071 초안(scratch).
+  - 변이: M125 · M126(X1). M123 · M124 · M115–M118은 r6 바이트로 다시 돌린다.
+  - 수렴 규칙:
+    - r6 리뷰에서 high · medium이 나오거나, 코드 변경이 필요한 low가 나오면 r7이다.
+    - 문서만 고치면 되는 low는 컨트롤러가 마감 때 고치고 이 절 아래에 기록한다. 회차를 더하지 않는다.
+
+### T070 결과(r1 → r6 · 마감 정정 · 2026-11-04..06) — D1–D14 · N · U · V · W · X의 정정은 뒤 절(r2 · r3 · r4 · r5 · r6)과 이 절이 우선한다(앞 절 줄 끝 〔…〕 표식)
+
+- **경과**: 조사 `wf_84149399-610`(1.41M · 약 34분) → r1 `wf_7acf8b9b-797`(1.67M · 약 2시간 10분) → r2 `wf_30612bb7-77c`(1.33M · 약 71분) → r3 `wf_8bc179c8-c5c`(1.52M · 약 110분) → r4 `wf_356ea59d-b81`(1.39M · 약 95분) → r5 `wf_81d70237-c68`(1.32M · 약 79분) → r6 `wf_ba44ad09-e2b`(1.19M · 약 68분). 빌드 · 리뷰 합계는 약 8.42M 토큰이다(조사 포함 9.83M).
+- **리뷰 회차별 지적**(높음 · 중간 · 낮음):
+  - r1: A 0 · 2 · 7 / B 0 · 0 · 4
+  - r2: A2 0 · 0 · 7 / B2 0 · 0 · 4
+  - r3: A3 0 · 0 · 4 / B3 0 · 0 · 2(A3-2 = B3-1 — 같은 한 건)
+  - r4: A4 0 · 0 · 5 / B4 0 · 0 · 4(A4-1 = B4-2 — 같은 한 건)
+  - r5: A5 0 · 0 · 4 / B5 0 · 2 · 4(A5-2 = B5-2 · A5-3 = B5-4 · A5-4 = B5-6 — 같은 세 건 · B5 medium 둘은 컨트롤러가 쓴 계약 문장 W6 · W7)
+  - r6: A6 0 · 0 · 8 / B6 0 · 0 · 9(A6-1 = B6-4 · A6-2 = B6-1 · A6-8 = B6-9 — 같은 세 건 · A6-3 · B6-6과 A6-5 · B6-2는 일부 겹침 · 범위 표기 T070 8 · 인계 9 · 코드 결함 0)
+  - 마감 확인(읽기 전용 1회 · 회차 아님): 0 · 0 · 7(C-1–C-7 — 문서만 · 코드 · 시험 변경 0)
+- **r6 결과**: 빌더 DONE.
+  - `auth.py` 880 → 882줄 — 독스트링만 바뀌었다(「PyJWT 결합」 줄에 잠금 범위 · X2). 독스트링을 뺀 AST 덤프는 r5와 같다(`07eef5c5f76a840b`).
+  - contract 438 → 447:
+    - ac-23e 8사례: 자유 꼴 6개는 `!`–`~` 94자, JWKS 루프백 URL과 `DRAGONFLY_URL` 비밀번호 자리는 URL 문장 부호 ``~!$&'()*+,;=``
+    - ac-5d 1사례: 요청 경로 200 + 94자 `common_name`. `~`를 뺀 대조는 403이다.
+  - M125(`!` 거부) · M126(`~` 거부)은 r5 시험 바이트로는 살아남고(438 passed) r6 바이트로 잡혔다(각 9 failed — ac-23e 8 · ac-5d 1 · 메시지에는 설정 이름만 있다).
+  - M123 · M124 · M115–M118은 r6 바이트로도 r5와 같은 수로 잡혔다.
+  - r5 코드 + r6 시험 = 447 passed다. 새 시험은 동작을 바꾸지 않는다.
+  - ac-24h 0.32 s.
+- **r6 리뷰 반영**(마감 정정 — 수렴 규칙대로 r7은 없다 · 컨트롤러가 문서만 고쳤다 · 사본 드라이런 → 적용 → cmp 같음 · 그 뒤 읽기 전용 독립 확인 1회가 low 7(C-1–C-7)을 찾아 F11–F14와 이 절의 문구로 닫았다):
+  - **F1**(A6-1 · B6-4) 프록시는 pod가 만든 응답만 상태 · 본문 · `content-type`을 중계한다 — 2xx · 4xx이면서 미디어 타입이 `application/json` · `application/problem+json`인 것.
+    - 3xx · 5xx · 그 밖의 `content-type`(엣지 530 · Traefik · Access 응답)은 503 `upstream_unavailable`(BFF problem+json · 쿠키 유지)이다 — FR-027 · 계약 머리말 「오류는 problem+json」 · frozen T089 「`denylist-unavailable` 503도 같은 코드로」와 맞춘다.
+    - 프록시 응답에 `x-content-type-options: nosniff`를 단다. 옮긴 pod 4xx 본문의 슬러그는 §오류 형식 BFF 슬러그 목록의 예외다.
+    - `/api/health`는 상류가 200 JSON이 아니면 503이다.
+    - 고친 곳: bff-api 프록시 · health 행 · 응답 열 · §오류 형식, web.md §BFF contract.
+  - **F2**(A6-2 · B6-1) callback · logout 응답 열에 503 `upstream_unavailable`을 더했다.
+    - callback: 코드 교환이 시간 초과 · 3xx · 5xx면 세션 쿠키를 만들지 않고 503이다.
+    - logout 실패 갈래: 세션 · CSRF 검사를 통과한 뒤에는 하류 결과와 무관하게 쿠키를 지운다(사용자의 뜻 — 공용 기기). `/sessions/revoke`가 실패해도 Authentik refresh revoke를 시도한다. 둘 중 하나라도 실패하면 쿠키를 지운 503이다.
+    - 「만료 · 폐기 갈래(401 · 쿠키 삭제)로 접지 않는다」는 refresh · `/api/session` · 프록시로 좁혔다. logout은 위 실패 갈래를 따른다.
+    - 타임아웃 표 Authentik 행에 「초과 → 503」을 적었다.
+    - 고친 곳: bff-api, web.md.
+  - **F3**(A6-3 · B6-6 일부) X4 편차는 frozen 문면 넷이다 — T043(절차 한 줄) · T075(플레이스홀더 절차) · T081(US6 플레이스홀더 교체 한 줄) · T083(투입).
+    - 대상 키는 셋이다: `kv/{env}/authentik/identity-admin`의 `jwks_url` · `issuer`(계약 값)와 `kv/{env}/authentik/webhooks/identity-admin`의 `secret`(CSPRNG 실값).
+    - `jwks_url` · `issuer`의 쓴 뒤 판정 = 계약 문자열과 글자 그대로 같다.
+    - 웹훅 쓴 뒤 판정에 dev 해시 ≠ prod 해시를 더했다. 값을 내지 않는 채널은 넷이다(화면 · 파일 · argv · 클립보드).
+    - T081 · T083은 웹훅 경로를 읽어 판정만 하고 쓰지 않는다.
+    - 고친 곳: data-model 두 행.
+  - **F4**(A6-7) T071 초안 (c): `_authenticate` 프레임이 쥔 것은 검증된 `_Bearer`(클레임 · `sub` · `sid`)이고 원문 토큰 문자열이 아니다. 원문 Authorization 값은 (a)가 맡는다(scratch 초안 — T071 설계 커밋 때 들어간다).
+  - **F5**(A6-8 · B6-9) URL 문구를 고쳤다(컨트롤러 실측 CPython 3.13.15).
+    - 앞 공백 · C0 제어 문자와 자리와 무관한 탭 · CR · LF = `urlsplit`
+    - 끝 공백 = 키 fetch의 `urllib.request.Request`(unwrap) · redis-py DB 번호의 `int()`
+    - 고친 곳: pod-template 인증 행 · 규칙 §Auth · kr 미러 대기 줄. 소스 · 시험 주석(auth.py:345 · 시험 :753 · :845 · :988)은 이미 맞아 그대로 둔다.
+  - **F6**(A6-4) 모든 라우트: BFF 응답 헤더는 BFF가 만든다. 하류(pod · Authentik) 응답 헤더는 어느 라우트에서도 옮기지 않는다(프록시의 `content-type`만 예외 · bff-api §하류 호출 규약 · web.md).
+  - **F7**(B6-5) 응답 쪽 자격 마스킹: `Set-Cookie` 값(BFF 자신 · 상류) · `CF_Authorization` 값 · 상류 응답 헤더를 로그 · 오류 `detail` · Sentry에 싣지 않는다(bff-api §로그 · 마스킹 · web.md).
+  - **F8**(B6-7) X6 만족 조건에 `Location` 꼴을 더했다 — 같은 origin의 경로이고, `//` · `/\`로 시작하지 않으며, 스킴 · 호스트가 없다.
+    - URL 파서가 핸들러 앞에서 접는 점 세그먼트(`..` · `%2e%2e` — 컨트롤러 Node 실측)와 엣지가 합칠 수 있는 `//`(미실측)는 핸들러에 정규 경로 요청으로 보인다.
+    - 응답이 정규 경로와 같고 클라이언트 질의가 상류에 닿지 않으면 만족이다(bff-api · web.md).
+  - **F9**(B6-8) X7 정정: Django 기본 LOGGING은 `django` 로거에 `mail_admins`(AdminEmailHandler)를 늘 붙인다. 보고서를 실제로 막는 것은 `ADMINS == []`일 때 emit의 조기 반환이다(utils/log.py — 컨트롤러 소스 확인). T071 초안 D14 인계에 반영했다.
+  - **F10**(B6-3 일부) data-model `kv/platform/openfga/preshared` 행에 표식을 달았다 — 서버의 들어오는 쪽 검증 키라 플레이스홀더 · 고정 값을 두지 않는다. 생성 규칙 · 게이트는 인계 H3이다.
+  - **F11**(확인 C-1) 「같은 origin 경로」를 한 정의로 모았다(`return_to` · 프레임워크 리디렉션 `Location` 공통 — bff-api 표 아래 문단 · login 행 · F8 괄호 · web.md).
+    - 퍼센트 디코딩한 값이 `/`로 시작하고 `//`로 시작하지 않으며, `\` · 공백 · C0 제어 문자(탭 · CR · LF) · DEL을 담지 않는다.
+    - 요청 origin 기준 WHATWG 해석의 origin이 요청 origin과 같다.
+    - 까닭: 기존 글자 접두 규칙(`/`로 시작 · `//` 아님 — FR-027 · T089 · T092 문면)은 `return_to=/%5Cevil.com`(디코딩 `/\evil.com`) · `/%09/evil.com`을 통과시킨다. 둘 다 WHATWG 해석으로 `https://evil.com`이다(컨트롤러 Node 실측) — 열린 리디렉션이다.
+    - 이것은 원래 있던 문면의 틈이고, frozen 문면보다 좁히는 쪽이라 부딪히지 않는다.
+  - **F12**(확인 C-2) `jt_csrf`에 `Max-Age=2592000`을 주고, `jt_session`과 같은 자리(callback · refresh)에서 싣는다. 브라우저 세션 쿠키면 재시작 뒤 `jt_session`만 남아, F2의 전제(CSRF 통과 뒤에만 지운다) 때문에 logout이 쿠키를 지우지 못한다(bff-api 쿠키 표 · web.md).
+  - **F13**(확인 C-3) 정적 맵 항목 = 경로 + 메서드(SP-1 두 경로 모두 GET). 맵에 없는 메서드는 404 `not_found`(상류 호출 없음)다. 까닭: Ninja 405는 `text/html`(컨트롤러 확인 — `HttpResponseNotAllowed`)이라 F1에서 503 「상류 장애」로 보고된다(bff-api 프록시 행 · web.md).
+  - **F14**(확인 C-4) 2xx는 `application/json`, 4xx는 `application/problem+json`일 때만 옮긴다. 옮긴 pod 4xx 본문(슬러그 · 필드 — `request_id` 없음)은 pod 계약 몫이고, `x-request-id` 헤더는 BFF 값이다(bff-api 프록시 행 · 응답 열 · §오류 형식 · web.md).
+  - r6 절 X3–X8 머리 줄에 이 절을 가리키는 〔…〕 표식을 달았다.
+- **최종 산출물**(`packages/django-common/` 아래):
+  - `src/django_common/auth.py` 882줄(`c5e7ef37a9a9…`)
+  - `src/django_common/__init__.py`(공개 API 독스트링 · 주석만 — HEAD와 독스트링을 뺀 AST가 같다)
+  - `tests/test_auth_contract.py` 2342줄 · 시험 함수 54 · 사례 447(`3eb04a64b527…`)
+  - `tests/_auth_fakes.py` 329줄(`0aa00fd18513…`)
+  - `tests/authcontractapp/` 4파일(`__init__` · middleware · urls · views)
+  - `pyproject.toml`(주석만 — tomllib 값이 같다)
+  - `tests/test_auth.py`(T062)는 바뀌지 않았다.
+- **컨트롤러 독립 검증**(2026-11-06 · Windows · 한 번에 하나 · 모두 exit 0 · 경고는 기존 `PytestConfigWarning`뿐):
+  - test_auth 32 passed ×2(**T062 PASS**) · test_auth_contract 447 passed
+  - fixtures jwks 3 · dragonfly 1(`-p no:django`)
+  - 회귀: tenancy 16 · tenancy_contract 65 · outbox 16 · outbox_contract 42 · event_patterns 52 · fixtures_pg 3
+  - 위생: hygiene.py 9파일 OK(pyproject · `__init__` 주석 전용 OK) · 문서 dochyg OK(커밋 문서 전부)
+  - gitleaks 파일별 23파일 · 누출 0(커밋하는 파일 전부)
+  - Docker dangling 볼륨 25 → 25 · 남은 testcontainers 0
+- **한계(남긴 것)**:
+  - 동치 변이:
+    - M22(알고리즘 목록 넓힘) · M23(원시 키 + HS256): PyJWK가 알고리즘을 키에 묶는다(api_jws.py:415–430).
+    - M83(`_base_url_parts` 원문 글자 범위 검사 삭제): 유일한 호출자가 V2를 거친 값만 넘긴다. 검사는 심층 방어로 남겼다(W8).
+  - PyJWT 2.15: 서명 키 후보 없는 키 집합이 200으로 오면 lifespan(1 h) 동안 503이 이어진다(fail-closed — 복구는 만료 또는 재시작).
+  - 잠금 대기: fetch 한 번이 도는 동안 같은 출처의 판정(캐시로 통과할 아는 kid 포함)이 PyJWT 2.15.1 잠금을 기다린다.
+    - 그 시간은 연결 · 읽기 소켓 동작마다 2 s이고, 연결은 해석된 주소마다 따로 걸린다.
+    - 실패하면 백오프 창이 계단을 끊는다(T085 R3이 클러스터에서 잰다).
+  - 중복 제거는 PyJWT 잠금 몫이다. PyJWT가 그 잠금을 없애면 빈 캐시 + 동시 요청 + 성공 fetch에서 fetch가 요청 수만큼 돈다. ac-24h가 PyJWT 갱신 때 드러낸다(W3 · 「PyJWT 결합」 줄 — X2).
+  - Access 단계는 다른 자격보다 먼저 돈다. 그래서 엣지를 거치지 않고 pod 포트에 닿는 클러스터 안 호출자가 자격 없이 키 fetch를 일으킬 수 있다(가용성 문제 · 우회 없음).
+  - Bearer 계층에 환경 경계가 없다(U12 — dev · prod pod가 Bearer 검증 조건을 공유한다) → T081 · report.md.
+  - 측정은 Windows 로컬뿐이다. CI는 django-common pytest를 돌리지 않는다(V4 인계). ac-24h 시간 단언의 여유는 0.27 s다 — CI에 넣으면 flake 감시 대상이다(X8).
+  - 프록시 응답 판별은 `content-type` 기준이다(F1 · F14). 엣지 · Access가 2xx `application/json`이나 4xx `application/problem+json`을 낸다면 그대로 옮겨진다(VD T092).
+- **문면과 다르게 한 것(report.md 후보)**:
+  - ① Ninja auth callable을 두지 않았다(D10 — 미들웨어가 모든 비면제 경로를 URL 해석 전에 판정 · Ninja `auth=`는 OR 의미 · 기본 401 본문은 RFC 9457 밖).
+  - ② 문면 밖 산출물 · 동작:
+    - 공개 `check_settings()`(U3)
+    - Access 전용 경로 `AUTH_ACCESS_ONLY_PATHS`(T066 계약)
+    - 키 fetch 실패 503 `auth_keys_unavailable` · 실패 백오프(U4)
+    - 팀 기준 URL 정규형 · LDH 호스트(N9 · U2 · V1)
+    - 인증 문자열 설정은 공백 없는 출력 가능 ASCII만(V2 — 동작하던 값 셋이 설정 오류가 된다: `AUTHENTIK_JWKS_URL` · `DRAGONFLY_URL` · `ACCESS_AUD_ADMIN` — W5)
+    - 요청 속성 지움 · 호스트 검사 선행
+    - `Denylist` 공개 API(T073 재사용) · 웹훅 도우미 `bytes` 본문만 · `WebhookEvent`
+  - ③ spec 인증 순서 두 곳(:421 · :430)이 계약 · 시험(Access 먼저)과 다르다 → 계약이 우선한다(사실 ⑧).
+  - ④ `ACCESS_EXPECTED_CN` = 서비스 토큰 Client ID(`<32 hex>.access`)다. ADR 0006 · tasks.md T075 본문의 「web-bff-<env>」 이름은 낡았다(사실 ⑧).
+  - ⑤ BFF(V5 · W7 · X3 · X5 · X6 · F1 · F2 · F6 · F8 — FR-027 허용 경로 문면은 유지하고 동작을 보강했다):
+    - `/session/check`는 세션 값으로만 질의한다. 그 밖의 클라이언트 질의는 상류로 가지 않는다.
+    - 허용 경로는 정확 일치이고, 상류 URL은 기준 URL + 허용 경로 상수다. 변형 판정은 핸들러 기준이다.
+    - 프록시는 pod가 만든 2xx · 4xx JSON만 상태 · 본문 · `content-type`을 중계한다. 3xx · 5xx · 비JSON은 503이다. 어느 라우트도 하류 응답 헤더를 옮기지 않는다.
+    - 자격을 싣는 하류 호출은 리디렉션을 따르지 않는다. 3xx는 시간 초과와 같은 갈래다.
+    - logout은 세션 · CSRF 검사를 통과한 뒤 하류 결과와 무관하게 쿠키를 지우고, 서버 쪽 폐기가 실패하면 503이다. `jt_csrf`는 `jt_session`과 같은 수명이다(F12).
+    - `return_to` · 프레임워크 리디렉션 `Location`은 「같은 origin 경로」 정의로 판정한다(F11 — FR-027 「`/`로 시작 · `//` 아님」보다 좁다). 정적 맵 항목은 경로 + 메서드다(F13).
+  - ⑥ US6 kv 값 셋은 플레이스홀더가 아니다(X4 · F3).
+    - 대상: `kv/{env}/authentik/identity-admin`의 `jwks_url` · `issuer`(계약 값)와 `kv/{env}/authentik/webhooks/identity-admin`의 `secret`(CSPRNG 실값)
+    - US6 기동 전에 T044 sentinel을 덮어쓰고, US4에서 다시 쓰지 않는다(T081 · T083은 판정만).
+    - 이는 frozen T043(절차 한 줄) · T075(플레이스홀더 절차) · T081(US6 플레이스홀더 교체 한 줄) · T083(웹훅 비밀 · `jwks_url` · `issuer` 투입)과의 편차다.
+    - 까닭: 웹훅 비밀은 들어오는 쪽 검증 키라 알려진 값이면 누구나 서명한다.
+- **실측으로 뒤집힌 가정(report.md 후보)**:
+  - 빈 캐시 · 만료 키 장애의 계단 대기는 공격자 없이 생긴다(r2 B 실측 0.4 → 2.0 s) → N10 보류를 뒤집어 U4.
+  - 연결 시간 초과는 해석된 주소마다 따로 걸린다(2.02 · 4.03 · 6.03 s).
+  - 팀 도메인 끝 점은 조용한 403, 빈 라벨 · 앞 점은 IDNA 오류 503이었다(U13) → 둘 다 설정 오류로.
+  - 마지막 라벨이 `0x` 16진 꼴이면 inet_aton · getaddrinfo가 이름 조회 없이 IP로 푼다(r3 B) → V1.
+  - `str.isprintable()`은 한글 채움 문자(U+3164) · 점자 빈칸(U+2800)을 출력 가능으로 본다(컨트롤러 확인) → V2를 ASCII 범위로.
+  - PyJWT 2.15.1에서 `_client_lock`을 쥐는 곳은 `get_signing_key`뿐이다 → 자기 잠금이면 교착이 없다. 그 잠금을 다시 쥐면 재진입 불가 잠금 판에서 멈춘다(V4).
+  - 자기 잠금은 실패 fetch만 하나로 줄인다. PyJWT 잠금이 없는 판에서 성공 fetch는 요청 수만큼 돈다(r4 B 실측 fetch 5 · 0.3 … 1.5 s) → W3.
+  - PyJWT 2.15.1 `fetch_data`는 `finally`가 아니라 성공 경로 끝(:185–186)에서만 캐시를 채운다(r5 빌더가 소스로 확인 — 지시문 전제 정정).
+  - V2가 연 새 500 경로는 프레임 지역 변수에 비밀번호 URL을 남긴다. structlog 기본 `dict_tracebacks`는 그것을 JSON으로 렌더한다(r4 B 실측) → W4(렌더러가 통제 지점). Django `ExceptionReporter`는 설정 덤프 · 요청 META(`HTTP_CF_ACCESS_JWT_ASSERTION`) · HTML 프레임 지역 변수로 원문을 싣는다(r5 B 실측) → X7(통제는 미사용).
+  - Django 기본 LOGGING은 `django` 로거에 `mail_admins`를 붙인다. 「AdminEmailHandler 없음」은 기본 상태가 아니고, 보고서를 막는 것은 `ADMINS == []`의 조기 반환이다(r6 B · 컨트롤러 소스 확인) → F9.
+  - US6 kv 8경로의 라이브 값은 모든 키가 T044 sentinel이다. W6의 「`jwks_url` · `issuer`는 처음부터 계약 값」은 틀렸다(r5 B 런북 대조) → X4.
+  - `urlsplit`은 앞 공백 · C0 제어 문자만 떼고 끝 공백은 남긴다. 끝을 떼는 것은 `urllib.request.Request`(unwrap)와 redis-py DB 번호 `int()`다(r6 A · B · 컨트롤러 실측) → F5.
+  - WHATWG URL 파서는 점 세그먼트(`..` · `%2e%2e`)를 핸들러 앞에서 접고 `//`는 남긴다. 계약 표의 `.`/`..` 404는 그 꼴이 핸들러에 그대로 닿을 때만 해당한다(r6 B · 컨트롤러 Node 실측) → F8.
+  - Windows에서는 닫힌 포트도 연결 재시도로 약 2 s가 걸린다(r1 VD).
+  - WHATWG 해석은 `\`를 `/`로 바꾸고 탭 · 줄바꿈을 지운다. 그래서 글자 접두 규칙 「`/`로 시작 · `//` 아님」은 `/\evil.com` · `/<탭>/evil.com`(다른 origin)을 통과시킨다(확인 C-1 · 컨트롤러 Node 실측) → F11.
+  - Ninja의 405(`HttpResponseNotAllowed`)는 `text/html`이다(확인 C-3 · 컨트롤러 확인) → F13.
+- **문서로 뒤집힌 가정(미실측 · report.md 후보 — 실측 묶음과 따로 둔다)**:
+  - Access는 엄격 서비스 토큰 인증이 꺼진 조직에서 서비스 토큰 응답에 앱 범위 `CF_Authorization` 쿠키를 실을 수 있다(Cloudflare 문서 — 엄격 모드는 조직 설정 · 2026-10-05 이후 조직만 기본 on) → X3 · VD T076 · T092.
+- **사고**:
+  - r2 리뷰 B와 r3 빌더의 넓은 검색(`grep -r` · `find /`)이 명령 상한 120 s를 넘어 배경 작업이 됐다(저장소 변경 0 · 스스로 보고). r4 지시문에 「넓은 검색 금지 · 라이브러리 소스 경로 명시」를 넣었다.
+  - r4 결과를 받은 직후 컨트롤러도 scratch 전체에 `grep -r`를 돌려 120 s를 넘겼다(배경 작업 → 바로 중단 · 변경 0). 하위 에이전트에게 금지한 일을 컨트롤러가 했다.
+  - r3 보고 ⑧-5(「ac-23c가 순서를 고정한다」)가 사실과 달랐다(A3-3) → V3.
+  - r1 빌더가 빨강 뒤 시험을 다섯 군데 고쳤다(보고에 시각과 함께 · ac-5c는 빨강을 보지 못해 변이로 판별력을 보였다).
+  - 컨트롤러가 처음 쓴 r4 V2 규칙(isprintable)에 빈틈이 있었다 → 빌더를 띄우기 전에 계약 · 규칙 · 이 절을 다시 고쳤다.
+  - r5 지시문에 컨트롤러 사실 오류가 있었다(「`fetch_data`가 `finally`에서 캐시를 채운다」) — 빌더가 소스로 바로잡았고 시험 설계는 영향이 없다.
+  - r5에서 컨트롤러가 쓴 W6 문장이 T044 런북 게이트 · 라이브 sentinel과 어긋났고 웹훅 비밀을 빠뜨렸다(r5 B-2 medium) → X4. 계약 문장을 쓰기 전에 그 kv 경로의 라이브 기록(런북)을 대조하지 않았다.
+  - r6에서도 컨트롤러가 쓴 문장 넷이 근거와 어긋났다.
+    - X4 편차 목록: T075만 적어 T043 · T081 · T083과 `jwks_url` · `issuer`가 빠졌다.
+    - X7 「AdminEmailHandler 없음」: Django 기본과 다르다.
+    - X8 URL 문구: 끝 공백을 `urlsplit` 몫으로 적었다.
+    - T071 초안 (c) 「`_authenticate` 프레임에 원문 Bearer」: 실측은 검증된 `_Bearer`다. X7 본문(`_authenticate.bearer`)은 맞았고, 초안으로 옮기면서 틀렸다.
+    - 넷 다 frozen 문면 · 라이브러리 소스 · 실측을 끝까지 대조하지 않은 탓이다(r6 low · 마감 F3 · F9 · F5 · F4).
+  - 마감 정정 뒤 독립 확인이 원래 있던 BFF 계약 문면의 틈 둘을 찾았다 — `return_to` 글자 접두 규칙의 열린 리디렉션(C-1 → F11) · `jt_csrf` 세션 쿠키 수명(C-2 → F12). 둘 다 설계 때 컨트롤러가 쓴 문면이고 구현(T092) 전에 닫았다.
+  - 마감 정정 초안의 logout 「어느 갈래에서든 쿠키를 지운다」는 CSRF 검사 실패 갈래까지 덮어, 위조 요청으로 남을 로그아웃시킬 수 있는 문장이었다. 적용 전 사본 검수에서 찾아 「세션 · CSRF 검사를 통과한 뒤」로 좁혔다.
+  - r5 빌더의 편집 도구가 기존 줄의 공백 하나를 지웠다(빌더가 diff로 찾아 고치고 변이 · 시험을 최종 바이트로 다시 돌렸다).
+  - r3 동안 남의 컨테이너 `cc-managed-…` 하나가, r6 동안 `cc-fe-it-…` 하나가 사라졌다(우리 명령은 조회뿐 · 무접촉 · 원인 미상).
+- **VD 잔여(라이브)**:
+  - VD-T070-1 · VD-T070-2(`aud` = pod 이름) · VD-5 · certs egress: T081 · T076 · T085.
+  - T085 R3(U5): 실제 certs 호스트의 주소 수 · egress drop 때 fetch 1회 시간 · 빈 캐시 + 블랙홀 + 동시 요청(계단이 없는지) · 그동안 `/healthz` 프로브 지연(gthread).
+  - T081(U10): 교환 토큰의 `sid`는 없거나 비지 않은 str · `tenant_id`는 없거나 소문자 정규형 UUID.
+  - T092(W7 · X6 · F1 · F8): Workers 런타임 fetch의 `redirect` 동작(사용자 정의 헤더가 `Location`으로 가는지) · 경로 변형의 실제 상태 코드(Next 308) · `Location` 꼴 · 상류 호출 0 · 프록시가 받는 엣지 530 · Traefik · Access 응답의 실제 `content-type`.
+  - T076 · T092(X3 — 사용자 동석): m2m 앱의 서비스 토큰 응답에 `Set-Cookie: CF_Authorization`이 실리는지 · 수명. 엄격 서비스 토큰 인증(조직 설정 · 모든 Access 앱에 걸린다)은 T084 · T092가 영향 범위와 함께 정한다.
+- **인계(최종)**:
+  - **T071**:
+    - 두 경로 SENTINEL Sentry 시험(U7)에 (c) `DRAGONFLY_URL` 비밀번호 경로를 더해 세 경로로 하고, 세 경로 모두 JSON 로그 줄(`request_failed` · `django.request`)도 단언한다(W4).
+    - (c)는 Bearer `sub` · `sid`에도 SENTINEL을 심는다(X7). `_authenticate` 프레임이 쥔 것은 검증된 `_Bearer`이고, 원문 토큰은 (a)가 맡는다(F4).
+    - 예외는 `format_exc_info`로만 렌더한다. 규칙 §Logging의 frame locals 문장은 준비된 문서 스크립트가 넣는다(W4).
+    - 요청 로그 `problem` 슬러그(V6) · 마스킹 `cf-access-` · `sub_hash`는 `request.auth_claims["sub"]`에서.
+    - WARNING 두 줄 꼴 고정(`error=` 값에 `backoff` · `url_query`) · `denylist_lookup_seconds`는 auth import 때 등록 · `/health` Dragonfly 0.2 s · 재시도 0 · 쿼리 거부.
+  - **T072**:
+    - 기동 검사에서 `check_settings()`를 부른다(U3). 실패 출력(stderr · 로그 · Sentry)에 값이 없음을 단언한다(W4).
+    - ExceptionReporter 통제(W4 · X7 · F9): `DEBUG=False` 고정 · `ADMINS == []`.
+      - 기본 LOGGING은 `django` 로거에 `mail_admins`를 붙인다. 실제로 막는 것은 `ADMINS == []`일 때 emit의 조기 반환이다.
+      - (a) LOGGING에서 `django` 로거 handlers를 다시 정의해 `mail_admins`를 떼거나, (b) `ADMINS == []` · `DEBUG is False`를 기동 단언으로 고정한다(T071 D14와 같이 정한다).
+      - `ExceptionReporter`는 설정 덤프 · 요청 META · HTML 프레임 지역 변수로 원문을 싣는다. 필터 보강으로는 닫히지 않는다.
+    - 게이트 2(`PLACEHOLDER-` 기동 실패)의 범위를 T075와 함께 정한다(X4 — 웹훅 비밀 · `jwks_url` · `issuer`는 범위 안 · 제외 장치의 꼴은 아래 H1).
+    - ConfigMap · ESO 값에 블록 스칼라 `|`를 쓰지 않는다(V2).
+    - 그 밖: prod · dev `ACCESS_TEAM_DOMAIN` https만 · `AUTHENTIK_JWKS_URL` 공개 도메인 금지(FR-046) · `AUTHENTIK_WEBHOOK_SECRET` 비지 않음 · 백오프 상태는 worker 프로세스마다 따로다 · 프로브 Host.
+    - 이미지 Python ≥ 3.13.2(V6 · W8 확인). CI test job에 django-common pytest를 넣을지(V4 — ac-24h flake 감시 · X8). 생성 pod `uv.lock`의 PyJWT 판(W8).
+  - **T073**: 계약 시험 둘(U8 — 빈 `sub=` · `sid=` → 400 · 새 Dragonfly 연결 0 / CommonMiddleware · OTel 없이 바깥 Host 웹훅 → 400 `invalid_host`, 서명이 틀려도) · `Denylist` 모듈 수준 하나 재사용 · `AUTH_ACCESS_ONLY_PATHS = ("/session/check",)` · `TENANT_CONTEXT_EXEMPT_PATHS`.
+  - **T075 · T043 운영자 블록**(X4 · F3 — data-model 두 행 · 런북 게이트 2 줄):
+    - US6 기동 전에 T044 sentinel을 덮어쓴다.
+      - `jwks_url` · `issuer` = 계약 값(쓴 뒤 판정 = 계약 문자열과 글자 그대로 같다)
+      - 웹훅 `secret` = CSPRNG 32바이트 이상 실값
+    - **H4**(B6-6) 블록 꼴:
+      - 판정 블록과 쓰기 블록을 나누고, 그 사이에 Read-Host를 둔다.
+      - 판정 블록은 읽기 전용이다. 경로별 현재 버전을 읽고, 값이 정확히 sentinel인지 해시로 대조해 세 갈래로 낸다(덮어쓰기 · 이미 실값이라 중단 · 그 밖은 중단).
+      - 쓰기는 JSON stdin + `-cas=<판정 버전>`이다(런북 T045 입력 규칙 — `key=-`는 stdin 끝 개행이 값에 든다).
+      - env마다 따로 만든다(CSPRNG 32바이트 → base64url 43자 또는 hex 64자 — 판정 길이는 그 글자 수).
+      - 쓴 뒤 판정: sentinel 아님 · 길이 · 되읽기 해시 · dev 해시 ≠ prod 해시. 값은 화면 · 파일 · argv · 클립보드에 내지 않는다.
+    - **H2**(A6-6 · 확인 C-6) KV v2: `vault kv put`은 그 경로의 새 버전을 준 키만으로 만든다.
+      - 다섯 키 경로(`kv/{env}/authentik/identity-admin`)의 일부만 바꿀 때는 `vault kv patch`(JSON stdin · `-cas=<판정 버전>`)를 쓴다(또는 다섯 키를 다 담은 JSON put). 명령 꼴은 T075가 dev에서 실측한다.
+      - 해당하는 쓰기는 둘이다: US6 `jwks_url` · `issuer`(T075)와 US4 `client_id` · `client_secret` · `api_token`(T081 · T083).
+      - 쓴 뒤 판정에 「키 집합 = 계약 키 5개」를 더한다.
+      - 런북 :310의 「키당 1회 호출」(`key=-`)을 :342 T045 입력 규칙(JSON stdin만 — `key=-`는 stdin 끝 개행이 값에 든다)과 맞춘다.
+    - 나가는 쪽 자격(`client_id` · `client_secret` · `api_token` · `kv/{env}/openfga/*`)은 T044 게이트 1 · 2와 함께 정한다.
+      - 권고 안 1: sentinel 유지 · consumer 끔 · 게이트 2 범위에서 뺀다 · 게이트 1은 키 단위로 T081 · T082 활성화 앞.
+      - 다른 고정 값으로 바꾸지 않는다.
+    - **H1**(A6-5 · B6-2) 안 1을 고르면 함께 정할 것:
+      - 읽기 경로: `reconcile_authentik_sessions`(일 1회) · `seed_tenant` 사용자 조회는 쓰기 플래그와 무관하게 sentinel `api_token`으로 Authentik을 부른다. beat 일정 · 플래그로 끄거나, Authentik이 생긴 뒤 교체 전까지 일 1회 실패를 받아들인다고 적는다.
+      - prod `AUTHENTIK_WRITES_ENABLED=false`는 identity-admin-api 설정 표(prod `true`) · frozen T073(dev만 비활성)과의 편차다(report.md).
+        - 켜는 자리는 T083이다(`api_token` 실값 · 키 단위 게이트 1과 같은 변경).
+        - 꺼진 채 두면 관리자 · `all_devices` 폐기가 거부 목록 창(330 s) 뒤 풀린다. T085의 ≤ 2 s 측정은 그것을 잡지 못한다 → T085 단언(아래).
+      - 게이트 2 제외 장치:
+        - US6 overlay에만 둔다.
+        - 나가는 쪽 자격 이름의 닫힌 목록으로 둔다.
+        - 들어오는 쪽 비밀(웹훅 비밀)을 넣으면 검증기가 거부한다.
+        - T081 · T082 게이트 1과 같은 자리에서 거둔다.
+        - 끝 상태 단언(`PLACEHOLDER-` 0)은 T085 또는 T077 tester에 둔다(frozen T077 문면에는 없다).
+      - 런북 게이트 1 블록 · PASS 기준(`read=8/8 hits=0`) · 불변식 문구를 키 단위로 바꾼다. 지금 그대로면 안 1에서 T075 게이트 1이 자기 기준으로 FAIL이다.
+  - **T081**: U10(`sid` · `tenant_id` 꼴 실측) · U12(환경별 audience 또는 VD-1 옵션 A) · VD-T070-2 · 웹훅 비밀 · `jwks_url` · `issuer`는 US6 값 그대로 읽고 판정만 한다(X4 · F3 — 교체 없음). 같은 경로에 나가는 쪽 자격만 쓸 때는 H2(일부 키 쓰기 = `patch`)를 따른다.
+  - **T082**(H3 — B6-3): `kv/platform/openfga/preshared`(서버 `authn.preshared`)는 들어오는 쪽 검증 키다. 키 하나가 dev · prod store를 다 연다(ADR 0006 위험 수용).
+    - 플레이스홀더 · 고정 값을 두지 않는다. CSPRNG 32바이트 이상으로 만든다.
+    - 방향은 platform 값이 먼저이고, env 사본(`kv/{env}/openfga/preshared`)이 그 값을 복사한다.
+    - 쓴 뒤 판정: sentinel 아님 · 길이 · env 사본 해시 = platform 해시. 값은 화면 · 파일 · argv · 클립보드에 내지 않는다.
+    - 서버 기동 앞 게이트에 이 경로를 넣는다(게이트 1 목록을 넓히거나 T082 자체 게이트).
+    - 「env 사본은 US6에서 platform 값으로 교체」 문구를 안 1과 맞춘다(안 1이면 「T082에서」). 이 문구는 런북 vault-unseal.md:309와 bootstrap.md:887 두 곳에 있다.
+  - **T083**: 안 1이면 prod `AUTHENTIK_WRITES_ENABLED=true`를 켜는 자리다(H1). 웹훅 경로 · `jwks_url` · `issuer`는 판정만 한다(F3). 나가는 쪽 자격을 쓸 때는 H2(일부 키 쓰기 = `patch`)를 따른다.
+  - **T085**: U5(R3 확장).
+    - 안 1이면 prod 체인에 「폐기가 유지되는지」 단언을 더한다: 관리자 · `all_devices` 폐기 뒤 대상 세션 사본의 refresh가 401(Authentik invalid_grant)이거나, Authentik 세션 API에 그 세션이 없다(H1).
+    - 끝 상태 `PLACEHOLDER-` 0.
+  - **T089 · T092**:
+    - U11(판정에 쓰는 상류 응답은 200 + boolean `active`뿐 — 그 밖은 503 `upstream_unavailable`)
+    - V5(프록시 `/session/check` 질의는 세션 값으로만)
+    - W7(경로 변형 6꼴 404 · 상류 호출 0 · 3xx 비추종 · Workers fetch redirect 실측)
+    - X3 · F6 · F7:
+      - 로컬 상류가 `Set-Cookie` · `Location` · 3xx를 돌려줘도 BFF 응답에는 상류가 준 값이 실리지 않는다. BFF 자신의 쿠키 설정 · 삭제(callback · refresh · logout)와 callback 302 `Location`은 BFF 값으로 따로 단언한다. 3xx는 503이다. 라우트마다 단언한다(확인 C-5).
+      - 클라이언트 `cookie` · `cf-access-token`은 하류로 가지 않는다.
+      - 로그에 `Set-Cookie` · `CF_Authorization` 값이 없다.
+    - F1 · F14: 로컬 상류가 530 `text/html` · 403 `text/html` · 4xx `application/json`(problem+json 아님) · 5xx problem+json을 돌려주면 BFF는 503 problem+json(쿠키 유지)이다. 2xx JSON · 4xx problem+json만 상태 · 본문 · `content-type`을 옮긴다. `nosniff`를 단다. `/api/health`는 200 JSON이 아니면 503이다.
+    - F11: `return_to` = `/\evil.com`(`/%5Cevil.com`) · `/%09/evil.com` · `/%0A/evil.com` · `//evil.com` · `https://evil.com` → 400 `invalid_return_to`. callback 재검증도 같다. 프레임워크 리디렉션 `Location`도 같은 정의로 본다.
+    - F12: callback · refresh가 `jt_csrf`를 `jt_session`과 같은 Max-Age로 싣는다. `jt_session`만 있고 `jt_csrf`가 없는 logout의 응답은 아래 H5다.
+    - F13: POST · PUT · DELETE · HEAD `/api/proxy/identity-admin/tenants/me` → 404 `not_found` · 상류 호출 0(pod 405 `text/html`에 닿지 않는다).
+    - F2: callback 코드 교환이 시간 초과 · 3xx · 5xx면 503(세션 쿠키 없음)이다. logout은 상류 3xx · 시간 초과에서 쿠키 삭제 · Authentik revoke 시도 · 503이다.
+    - X5(리디렉션 목록 — Authentik 토큰 엔드포인트 전부 · revoke · 3xx = 시간 초과 갈래)
+    - X6 · F8:
+      - 핸들러 단위: 404 · 상류 0 + `constructor` · `__proto__`
+      - 통합 단: 상태 · `Location` 꼴 · 상류 호출 수 · 상류 질의를 함께 잰다 — 기대는 셋 모두 허용(308 → 정규 · 조용한 정규화 · 핸들러 404)
+      - 그 밖: `request.url` pathname · `Map`/`Object.hasOwn` · `IDENTITY_M2M_URL` origin 꼴 검사
+    - **H5**(A6-2 · B6-1 나머지 · 확인 C-2): callback 코드 교환 4xx의 응답 슬러그 · logout에서 refresh가 이미 만료 · 폐기돼 교환할 수 없을 때(`all_devices` 포함)의 응답 · `jt_session`만 있고 `jt_csrf`가 없을 때(쿠키 일부 삭제)의 logout 응답.
+    - **H6**(컨트롤러): 프록시가 옮기는 pod 403 `access_required`(서비스 토큰 · Access 층 문제 — 사용자 탓이 아니다)를 그대로 둘지, `/api/session`(T070 r3)처럼 503으로 접을지 정한다.
+  - **PyJWT 갱신 절차**: test_auth_contract ac-24a–h를 돌린다. ac-24h가 실패하면 PyJWT가 중복 제거를 그만둔 것이다 → W3 (a)를 다시 정한다.
+  - **report.md**: U12 환경 경계 · V4 CI 공백(+ W8 생성 pod uv.lock · X8 ac-24h 여유) · W5 행동 변화 셋 · 위 「문면과 다르게 한 것」(⑥ X4 편차 = T043 · T075 · T081 · T083) · 「실측으로 뒤집힌 가정」 · 안 1을 고르면 prod 쓰기 플래그 편차(H1).
+- **학습 로그**: `content/tmp/003-t070/2026-11-05.md` · `2026-11-06.md`.
