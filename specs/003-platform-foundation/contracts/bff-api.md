@@ -1,6 +1,6 @@
 # Contract: BFF (apps/web Route Handlers)
 
-Workers에서 실행되는 유일한 서버 코드. 브라우저는 BFF만 호출하고, BFF가 Authentik 토큰 교환과 pod 호출을 맡는다(청사진의 "게이트웨이"). 모든 응답은 `x-request-id`(BFF 생성, `traceparent`와 함께 하류 전파)를 갖고, 오류는 RFC 9457 `application/problem+json`이다.
+Workers에서 실행되는 유일한 서버 코드. 브라우저는 BFF만 호출하고, BFF가 Authentik 토큰 교환과 pod 호출을 맡는다(청사진의 "게이트웨이"). 모든 응답은 `x-request-id`(BFF 생성 — pod 수락 꼴 `^[A-Za-z0-9._:-]{1,128}$` 안의 값(예: `crypto.randomUUID()`) · 꼴 밖이면 pod가 새 값으로 바꿔 BFF ↔ pod 로그 상관이 끊긴다 · T071 r2, `traceparent`와 함께 하류 전파)를 갖고, 오류는 RFC 9457 `application/problem+json`이다.
 
 ## Worker · 환경
 
@@ -41,7 +41,7 @@ access 토큰은 쿠키에 넣지 않는다. BFF isolate 메모리 캐시 `Map<s
 
 ## 하류 호출 규약
 
-- 헤더: `Authorization: Bearer <exchanged access>`, `CF-Access-Client-Id`, `CF-Access-Client-Secret`, `x-request-id`, `traceparent`, `x-forwarded-user-sub`(정보용, 신뢰하지 않음 — pod는 이 헤더와 `CF-Access-*` · `Authorization`을 로그에서 지우고 Sentry에 보내지 않는다 · T071 보정 2026-11-05). 이 목록 밖의 클라이언트 요청 헤더(`cookie` · `cf-access-token` · `authorization` 포함)는 하류로 옮기지 않는다(T070 r6).
+- 헤더: `Authorization: Bearer <exchanged access>`, `CF-Access-Client-Id`, `CF-Access-Client-Secret`, `x-request-id`, `traceparent`(BFF가 자기 span으로 만든 값 — 브라우저가 보낸 `traceparent` · `tracestate`는 옮기지 않는다 · T071 r3 Z8 · r5), `x-forwarded-user-sub`(정보용, 신뢰하지 않음 — pod는 이 헤더와 `CF-Access-*` · `Authorization`을 로그에서 지우고 Sentry에 보내지 않는다 · T071 보정 2026-11-05). 이 목록 밖의 클라이언트 요청 헤더(`cookie` · `cf-access-token` · `authorization` 포함)는 하류로 옮기지 않는다(T070 r6).
 - 응답 헤더: BFF 응답의 헤더는 BFF가 만든다 — 어느 라우트에서도(`/api/session` · logout · callback · refresh 포함) 하류(pod · Authentik) 응답 헤더(`set-cookie` · `location` · `cf-*` 포함)를 옮기지 않는다. 예외는 프록시가 옮기는 `content-type` 하나다(T089가 상류 `Set-Cookie` · `Location` 비전달을 라우트마다 단언한다 · T070 r6 마감).
 - 토큰 교환(RFC 8693, Authentik 2026.8 OSS) — **기본은 impersonation**: `POST https://auth.joshuatech.dev/application/o/token/` `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`, `subject_token`=사용자 access(web-bff), `subject_token_type=urn:ietf:params:oauth:token-type:access_token`, `audience=<pod>`, `client_id/secret`=web-bff. **`actor_token`은 보내지 않는다**(OSS에는 authentik `Actor`를 만드는 지원 경로가 없어 client-credentials 토큰을 actor로 쓰면 `invalid_grant`). 호출자 식별은 **Access 서비스 토큰의 `common_name`**(서비스 토큰 `web-bff-<env>`의 Client ID `<32 hex>.access` — 토큰 이름이 아니다 · T070 정정)이 맡는다 — contracts/identity-admin-api.md §호출자 식별. 실패(400/403) → BFF 401 `exchange_denied`.
   - **VD-1(검증 후 결정)**: T081 착수 시 OSS에서 `Actor` 생성이 되면 `actor_token`(BFF client-credentials)을 붙인 delegation으로 바꾸고 pod는 `AUTH_ACTOR_SUB`로 `act.sub`를 검증한다(옵션 A). 안 되면 위 impersonation 그대로(옵션 B). BFF 코드는 `actor_token` 파라미터를 붙일지 여부만 달라진다.

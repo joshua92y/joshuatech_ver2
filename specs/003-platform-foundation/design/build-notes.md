@@ -3299,7 +3299,7 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
     - OTLP: research gRPC 4317 ↔ 계약 · 문면 http → http 4318(엔드포인트 값에 스킴 필요 — T098 문면 값에는 스킴이 없다).
     - 규칙 §Logging 「`DJANGO_STRUCTLOG_TRUST_UPSTREAM_REQUEST_ID = True` in pod settings」 ↔ D3(미들웨어가 설정과 무관하게 형식 검사 뒤 받는다) → 규칙 보정(C4).
   - ⑪ **소유 공백**: web `/metrics`(9100) 서버와 `http_requests_total{route,status}`를 맡는 태스크 줄이 없다(T071 · T072 문면 무언급 · 계약 · T098 · network-policy에는 있다).
-  - ⑫ **pod 핀 django-ninja 1.7.0** ↔ 워크스페이스 1.7.3(시험) — 1.7.3 전용 기능(`Status` · 라우터 재사용)에 기대지 않는다.
+  - ⑫ **pod 핀 django-ninja 1.7.0** ↔ 워크스페이스 1.7.3(시험) — 1.7.3 전용 기능(`Status` · 라우터 재사용)에 기대지 않는다. 〔r2 Y5 — 라우터 재사용은 1.7.0에도 있다 · VD-T071-1 oc-43〕
 - **계약 보정(컨트롤러 · 이 설계와 같은 커밋 · 「T071 보정 2026-11-05」 표식)**:
   - **C1** `contracts/pod-template.md` §런타임 계약 「로그」 행 · 「트레이스 · Sentry」 행 · §공개 API(`django_common.observability` · `django_common.health` 시그니처)를 D2–D8로 고친다.
   - **C2** `contracts/identity-admin-api.md` 헬스 표 3행(본문 꼴 · degraded · latency_ms · `/ready` 200 본문) · 타임아웃 표 `/health` 행(전체 마감 2.5 s · 진행 중 검사 상한) · §관측 로그 · 트레이스 · Sentry 줄을 같은 문장으로 맞춘다.
@@ -3314,10 +3314,10 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
     - 우리 핸들러에는 표식을 달고, 다시 부르면 그 핸들러만 바꾼다(중복 줄 0). 다른 핸들러(pytest caplog 등) · 다른 로거의 `level` · `propagate` · `disabled`는 건드리지 않는다(dictConfig를 쓰지 않는다). 루트 레벨 = `level`.
     - 예외는 `format_exc_info`(지역 변수 없음)로만 렌더한다. `dict_tracebacks` · `ExceptionDictTransformer(show_locals=True)`는 금지다.
     - JSON 폴백(repr 금지 — fail-closed): `uuid.UUID` → `str` · `datetime`/`date`/`time` → `isoformat()` · `Decimal` → `str` · 그 밖(bytes · HttpRequest · 설정 객체 등) → `"<타입 이름>"`. `ensure_ascii`는 기본(True — 외톨이 서로게이트도 안전하게 이스케이프된다).
-    - `mask_sensitive`(두 체인 모두 — structlog 체인에서 wrap 앞에 두어 원본 레코드의 msg도 마스킹된 상태가 된다 · Sentry LoggingIntegration을 쓰지 않아도 handleError 출력에 원문이 남지 않게):
-      - 키 정규화 = 소문자 · `_` → `-` · 앞의 `http-` 제거(META 키 `HTTP_AUTHORIZATION`).
-      - 키째 제거: `authorization` · `proxy-authorization` · `cookie` · `set-cookie` · `x-authentik-signature` · `x-forwarded-user-sub`(BFF 정보용 원문 sub — C5) · 접두 `cf-access-`(`cf-access-jwt-assertion` · `cf-access-client-id` · `cf-access-client-secret` — T070 D14).
-      - 재귀: `collections.abc.Mapping` 전체(dict로 바꾼다) · list · tuple(list로) · 깊이 상한 16(넘으면 `"<truncated>"`) · 순환은 `"<cycle>"`. 키가 str · int · float · bool · None이 아니면 `"<타입 이름>"` 키로 바꾼다. 어떤 값에도 예외를 내지 않는다.
+    - `mask_sensitive`(두 체인 모두 — structlog 체인에서 wrap 앞에 두어 원본 레코드의 msg도 마스킹된 상태가 된다 · Sentry LoggingIntegration을 쓰지 않아도 handleError 출력에 원문이 남지 않게): 〔r2 Y4 — 마스킹 키에만 맞다 · 값의 repr은 남았다(B-4) → handleError 고정 줄〕
+      - 키 정규화 = 소문자 · `_` → `-` · 앞의 `http-` 제거(META 키 `HTTP_AUTHORIZATION`). 〔r2 Y4 — `.`도 `-` · bytes 키도 판정〕
+      - 키째 제거: `authorization` · `proxy-authorization` · `cookie` · `set-cookie` · `x-authentik-signature` · `x-forwarded-user-sub`(BFF 정보용 원문 sub — C5) · 접두 `cf-access-`(`cf-access-jwt-assertion` · `cf-access-client-id` · `cf-access-client-secret` — T070 D14). 〔r2 Y4 — 쿠키 · META · 비밀 이름 · 접미 · 자격 URL · `sub`로 넓혔다〕 〔r3 Z4 — 목록 기준 · referer · OTel META 접두 · 쿠키 접두 · camelCase · memoryview · 접미 대칭〕
+      - 재귀: `collections.abc.Mapping` 전체(dict로 바꾼다) · list · tuple(list로) · 깊이 상한 16(넘으면 `"<truncated>"`) · 순환은 `"<cycle>"`. 키가 str · int · float · bool · None이 아니면 `"<타입 이름>"` 키로 바꾼다. 어떤 값에도 예외를 내지 않는다. 〔r2 Y4 — 첫 항목이 마스킹 이름인 쌍은 쌍째 뺀다〕
       - 값 안의 비밀(토큰이 든 문자열)은 잡지 않는다 — 호출자 규칙(비밀을 로그 필드로 넘기지 않는다 · T062 K12)이다.
     - `add_trace_ids`: 현재 span이 **기록 중(`is_recording()`)일 때만** `trace_id`(32 hex) · `span_id`(16 hex)를 단다 — 내보낸 span과 1:1(비샘플 요청의 유효하지만 기록 없는 span id는 Tempo에 없다 · 계약 「유효 span」을 이 뜻으로 고친다).
   - **D3 `RequestIdMiddleware`(django-structlog `RequestMiddleware` 하위 클래스)**:
@@ -3330,10 +3330,10 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
     - 수준은 django-structlog 기본(2xx INFO · 4xx WARNING · 5xx ERROR)이다. 헬스 요청도 로그를 남긴다(obs-12). DB 장애 동안 `/ready` 503마다 ERROR 두 줄(request_finished · django.request)이 쌓이는 것은 받아들인다(장애 신호 · 양은 Alloy 필터 T098).
   - **D4 sub_hash** = `django.utils.crypto.salted_hmac("django_common.observability.sub_hash", sub, algorithm="sha256").hexdigest()[:32]`(SECRET_KEY 파생 — 새 비밀 설정 0 · 같은 pod · 같은 키에서 결정적 · 키가 없으면 UUID 목록으로 역산할 수 없다). 로그와 span이 같은 함수를 쓴다. SECRET_KEY를 돌리면 값이 바뀌고, pod끼리 같은 사용자의 값은 다르다(교차 상관은 request_id · trace_id가 맡는다).
   - **D5 `configure_otel(*, span_exporter: SpanExporter | None = None, excluded_urls: str | None = None) -> TracerProvider`**(호출할 때만 동작 · import 부작용 0):
-    - env 검증(설정 오류는 이름만 실은 `ImproperlyConfigured` — 기동 실패가 조용한 열림보다 낫다): `OTEL_SEMCONV_STABILITY_OPT_IN`에 `http`가 있으면 거부(`url.query`를 지울 수 없다) · `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST`/`_RESPONSE`가 비지 않으면 거부 · `OTEL_PYTHON_DJANGO_MIDDLEWARE_POSITION`이 있으면 거부(가장 바깥이어야 request_started가 span 안이다) · `OTEL_PYTHON_DJANGO_INSTRUMENT`가 false면 거부.
+    - env 검증(설정 오류는 이름만 실은 `ImproperlyConfigured` — 기동 실패가 조용한 열림보다 낫다): `OTEL_SEMCONV_STABILITY_OPT_IN`에 `http`가 있으면 거부(`url.query`를 지울 수 없다) · `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST`/`_RESPONSE`가 비지 않으면 거부 · `OTEL_PYTHON_DJANGO_MIDDLEWARE_POSITION`이 있으면 거부(가장 바깥이어야 request_started가 span 안이다) · `OTEL_PYTHON_DJANGO_INSTRUMENT`가 false면 거부. 〔r2 Y1 — `TRACED_REQUEST_ATTRS` · `OTEL_SDK_DISABLED=true`를 더해 일곱 · import 때 굳은 값 확인〕 〔r3 Z1 — `OTEL_PROPAGATORS` · `CAPTURE_ALL_METHODS`를 더해 아홉 · 굳은 값 확인 셋 · Django 계측 지표 끔〕 〔r5 P5 — OTLP 헤더 둘을 더해 열하나〕 〔r6 G1 — 열일곱(mTLS 클라이언트 키 · 인증서 넷 · 닫힌 꼴 밖 엔드포인트 둘)〕
     - 샘플러: `OTEL_TRACES_SAMPLER`가 없으면 계약 기본 `ParentBased(TraceIdRatioBased(0.1))`. 있으면 SDK 이름 집합 안이어야 하고, 비율 샘플러면 `OTEL_TRACES_SAMPLER_ARG`가 [0, 1]의 수여야 한다 — 아니면 거부(SDK의 「경고 뒤 1.0」 fail-open을 막는다). 값은 부를 때마다 env에서 읽는다(obs-8).
     - Resource: `service.name` = `settings.OUTBOX_SOURCE`(pod 이름 · kebab 검사) · `service.version` = `settings.APP_VERSION`. `OTEL_SERVICE_NAME` · `OTEL_RESOURCE_ATTRIBUTES`가 있으면 SDK 규칙대로 그것이 이긴다.
-    - 내보내기: `span_exporter`가 있으면 `SimpleSpanProcessor`(시험 — 동기). 없으면 `OTEL_EXPORTER_OTLP_ENDPOINT`(또는 `_TRACES_ENDPOINT`)가 있을 때만 `BatchSpanProcessor(OTLPSpanExporter())` — 값은 `http://` · `https://`로 시작해야 한다(아니면 거부 · T098 문면 값에 스킴을 붙인다). 엔드포인트가 없으면 내보내기를 두지 않고 WARNING 한 줄(`otel_exporter_disabled` — 이름만)을 남긴다(localhost:4318 시도 · ERROR 반복 없음).
+    - 내보내기: `span_exporter`가 있으면 `SimpleSpanProcessor`(시험 — 동기). 없으면 `OTEL_EXPORTER_OTLP_ENDPOINT`(또는 `_TRACES_ENDPOINT`)가 있을 때만 `BatchSpanProcessor(OTLPSpanExporter())` — 값은 `http://` · `https://`로 시작해야 한다(아니면 거부 · T098 문면 값에 스킴을 붙인다). 엔드포인트가 없으면 내보내기를 두지 않고 WARNING 한 줄(`otel_exporter_disabled` — 이름만)을 남긴다(localhost:4318 시도 · ERROR 반복 없음). 〔r6 G1 — 비지 않은 엔드포인트 env 둘은 닫힌 꼴 `scheme://host[:port][/path]`만 받는다 · 검사는 `span_exporter`와 무관하게 OTel import 전〕
     - 계측: 이미 계측 중이면 `uninstrument()` 뒤 `instrument(tracer_provider=provider, response_hook=…, excluded_urls=excluded_urls or 기본)`. 기본 제외 = `^https?://[^/]+/healthz$,^https?://[^/]+/ready$,^https?://[^/]+/health$`(앵커 · 호스트 포함 · 쉼표 구분 — env `OTEL_PYTHON_DJANGO_EXCLUDED_URLS`는 인자가 있어 쓰이지 않는다).
     - 전역 provider는 아직 Proxy일 때만 `set_tracer_provider`(덮어쓰기 경고 0). 반환값은 새 provider.
     - `response_hook(span, request, response)`: `span.is_recording()`이 아니면 아무것도 하지 않는다. `http.url` · `http.target` · `url.full` 값이 있으면 `?` 앞까지로 덮어쓴다(get_host를 다시 부르지 않는다 · gunicorn RAW_URI 경로 포함). `tenant_id`(str) · `sub_hash`(D4)를 더한다. 예외를 내지 않는다.
@@ -3342,7 +3342,7 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
     - `/healthz`: `{"status": "ok", "version": APP_VERSION, "git_sha": APP_GIT_SHA}` — I/O 0. 설정이 str가 아니면 `"unknown"`(liveness는 설정 오류로 죽지 않는다 — 존재 검사는 T072 settings).
     - `/ready`: default 별칭 DB 검사 하나 → 200 `{"status": "ok"}` 또는 `problem_response("not_ready", 503)`(detail 없음).
     - `/health`: DB · Dragonfly · Kafka를 병렬로 검사 → 항상 200 `{"status": "ok" | "degraded", "version", "git_sha", "checks": {"db", "dragonfly", "kafka_producer"}}` · 항목 `{"status": "ok" | "fail", "latency_ms": float}`(fail에도 걸린 시간 — 마감이면 마감 값 · 사유 · 예외 문자열 없음).
-    - 실행: 검사마다 **새 데몬 스레드** 하나(풀 없음 — 상주 스레드가 DB 연결을 들고 있지 않게)와 마감(`/ready` · `/health` 모두 2.5 s — 전체 < 3 s). 마감을 넘긴 스레드는 버려 두되, 진행 중 검사 수 상한(모듈 `BoundedSemaphore(32)`)을 넘으면 새 스레드 없이 곧바로 fail이다(지속 정지에서 스레드가 쌓이지 않는다).
+    - 실행: 검사마다 **새 데몬 스레드** 하나(풀 없음 — 상주 스레드가 DB 연결을 들고 있지 않게)와 마감(`/ready` · `/health` 모두 2.5 s — 전체 < 3 s). 마감을 넘긴 스레드는 버려 두되, 진행 중 검사 수 상한(모듈 `BoundedSemaphore(32)`)을 넘으면 새 스레드 없이 곧바로 fail이다(지속 정지에서 스레드가 쌓이지 않는다). 〔r2 Y2 — 상한은 검사 칸마다 8 · `/ready` 칸은 따로〕 〔r3 Z3 — 스레드를 만들거나 시작하지 못해도 자리를 놓고 곧바로 fail〕 〔r5 P4 — 자리는 스레드가 시작되지 않았을 때만 그 자리에서 놓는다(시작됐으면 그 스레드가 끝날 때)〕
     - DB: 작업 스레드에서 `connections["default"]`(그 스레드의 새 연결 — 설정은 호출 시점 dict) → `ensure_connection()` → `SELECT 1` → `finally connections.close_all()`(그 스레드 것만). 시간 상한은 pod DB OPTIONS `connect_timeout`(계약 2 s — T072)과 마감이다.
     - Dragonfly: 요청 시점 `settings.DRAGONFLY_URL`(Secret이면 값)로 `Redis.from_url(url, socket_connect_timeout=0.2, socket_timeout=0.2, retry=Retry(NoBackoff(), 0))` → `ping()` → `close()`. URL에 쿼리가 있으면 시도 없이 fail(쿼리가 타임아웃을 덮는다 — T070 D7과 같은 규칙).
     - Kafka: `AdminClient({**client_config(), "log_level": 0})` → `list_topics(timeout=1.0)`. `client_config()`의 `ImproperlyConfigured`를 포함한 모든 예외가 fail이다. 헬스 클라이언트는 librdkafka 로그를 끈다(장애 신호는 relay 프로듀서 줄과 이 결과가 맡는다).
@@ -3350,10 +3350,10 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
   - **D7 `configure_sentry(*, transport: Transport | None = None) -> bool`**(초기화했으면 True — 호출할 때만 · `sentry_sdk` import는 함수 안):
     - `settings.SENTRY_DSN`(str 또는 Secret)이 비었거나 없으면 **init하지 않고** False(빈 DSN init은 패치 · 전파를 켠다). 있으면 `ENV` ∈ {dev, prod, test} · release 원천이 맞아야 한다(아니면 이름만 실은 `ImproperlyConfigured`). 무효 DSN도 `ImproperlyConfigured`(`from None`).
     - release = `f"{settings.OUTBOX_SOURCE}@{settings.APP_GIT_SHA}"`(git sha = 이미지 라벨 revision · 문면 「digest」는 빌드 뒤 정해져 이미지에 구울 수 없다 — C1 · report.md 편차 후보). environment = `settings.ENV`.
-    - init 인자: `include_local_variables=False` · `max_request_body_size="never"` · `max_breadcrumbs=0` · `trace_propagation_targets=[]` · `auto_session_tracking=False` · `spotlight=False` · `debug=False` · `auto_enabling_integrations=False` · `integrations=[DjangoIntegration(), LoggingIntegration(level=None, event_level=None)]` · `disabled_integrations=[StdlibIntegration]` · `before_send=…`. 넘기지 않는 것: `send_default_pii`(2.72+ 폐기 예고 — 생략 = False · 시험이 `should_send_default_pii() is False`를 단언 · C1 보정) · `traces_sample_rate` · `profiles_*` · `enable_tracing` · `enable_logs`(0이 아니라 미설정이어야 트레이싱이 꺼진다).
+    - init 인자: `include_local_variables=False` · `max_request_body_size="never"` · `max_breadcrumbs=0` · `trace_propagation_targets=[]` · `auto_session_tracking=False` · `spotlight=False` · `debug=False` · `auto_enabling_integrations=False` · `integrations=[DjangoIntegration(), LoggingIntegration(level=None, event_level=None)]` · `disabled_integrations=[StdlibIntegration]` · `before_send=…`. 넘기지 않는 것: `send_default_pii`(2.72+ 폐기 예고 — 생략 = False · 시험이 `should_send_default_pii() is False`를 단언 · C1 보정) · `traces_sample_rate` · `profiles_*` · `enable_tracing` · `enable_logs`(0이 아니라 미설정이어야 트레이싱이 꺼진다). 〔r2 Y3 — `sentry_logs_level=None`도 넘긴다〕
     - 「errors only」 = 예외 포착만이다(Django 통합의 got_request_exception · 5xx 응답 패치 · excepthook). 로그는 브레드크럼도 이벤트도 되지 않는다(쿼터 — DisallowedHost ERROR · 5xx request_finished ERROR · OTLP 실패 ERROR가 이벤트가 되지 않는다).
     - `before_send`(직렬화된 dict · 예외를 내면 SDK가 이벤트를 버린다 = fail-closed):
-      - `request.headers`는 허용 목록만 남긴다(소문자 비교): `host` · `user-agent` · `accept` · `content-type` · `content-length` · `x-request-id` · `traceparent`. 그 밖(Authorization · Cookie · CF-Access-* · X-Authentik-Signature · X-Forwarded-* · Cf-Connecting-Ip 등)은 키째 지운다.
+      - `request.headers`는 허용 목록만 남긴다(소문자 비교): `host` · `user-agent` · `accept` · `content-type` · `content-length` · `x-request-id` · `traceparent`. 그 밖(Authorization · Cookie · CF-Access-* · X-Authentik-Signature · X-Forwarded-* · Cf-Connecting-Ip 등)은 키째 지운다. 〔r2 Y3 — `x-request-id`를 뺐다 · `contexts.trace` · DSC 정리〕 〔r3 Z2 — `traceparent`도 뺐다〕
       - `request.query_string` · `cookies` · `data` · `env`(SERVER_NAME · SERVER_PORT 밖)와 `request.url`의 `?` 뒤 · `user` · 그 경로의 `_meta`를 지운다. 프레임 `vars`를 지운다(심층 방어). 이벤트 전체에 D2의 키 마스킹을 한 번 더 건다.
       - 태그: `request_id`(structlog contextvars의 현재 값 — 포착은 요청 안에서 일어난다) · `trace_id`(현재 OTel span이 기록 중일 때 32 hex).
     - 호출 위치는 미들웨어 적재 전이다(Django 통합 수신자가 django-structlog보다 먼저 연결된다 — T072 인계).
@@ -3365,9 +3365,9 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
     - 로그: 확장 마스킹(cf-access-* · proxy-authorization · set-cookie · x-forwarded-user-sub · `HTTP_` META 키 · list/tuple · 비str 키 · 순환 · 깊이) · repr 폴백 금지(repr에 SENTINEL을 심은 객체) · UUID → str · 예외 렌더에 지역 변수 없음(지역 변수 SENTINEL) · configure_logging 두 번 = 줄 하나 · 다른 루트 핸들러 · 기존 로거 · 전파 유지.
     - 미들웨어: 500 경로의 응답 헤더 · `ip` 없음(X-Forwarded-For SENTINEL) · `request.user` 미접근 · `route` · `duration_ms` · 앞 요청 contextvars 차단 · `problem`(problem+json 응답 = 슬러그 · 다른 응답 · 꼴이 다른 본문 · 스트리밍 응답 = 키 없음 · 본문의 다른 값(detail에 심은 SENTINEL)은 실리지 않는다 · T070 r4 V6).
     - sub_hash: SECRET_KEY가 바뀌면 값이 바뀐다 · 로그와 span 값이 같다.
-    - OTel: env 거부 넷 · 샘플러 없음 = 0.1 · 무효 샘플러 · ARG 거부 · 스킴 없는 엔드포인트 거부 · 엔드포인트 없음 = 내보내기 0(BSP 스레드 0) · service.name · 전역 provider 1회 · gunicorn RAW_URI의 `http.target` 쿼리 제거 · 비샘플 요청 로그에 trace_id 없음.
+    - OTel: env 거부 넷〔r2 Y1 — 일곱〕〔r3 Z1 — 아홉〕〔r5 P5 — 열하나〕〔r6 G1 — 열일곱〕 · 샘플러 없음 = 0.1 · 무효 샘플러 · ARG 거부 · 스킴 없는 엔드포인트 거부〔r6 G1 — 닫힌 꼴 밖 엔드포인트 거부 · `span_exporter`와 무관〕 · 엔드포인트 없음 = 내보내기 0(BSP 스레드 0) · service.name · 전역 provider 1회 · gunicorn RAW_URI의 `http.target` 쿼리 제거 · 비샘플 요청 로그에 trace_id 없음.
     - Sentry(가로채는 Transport · 실제 `WSGIHandler()(environ, start_response)` 경로 · 시험마다 isolation scope · 정리 = `get_client().close()` → `get_global_scope().set_client(None)` · `with sentry_sdk.init()` 금지): 빈 DSN = init 없음(`is_active()` False) · 뷰 예외 → 이벤트 1 · 허용 목록 밖 헤더 · 쿼리 · 쿠키 · 본문 · user · 프레임 vars에 SENTINEL 없음 · 태그 request_id = 응답 X-Request-ID · sampled면 trace_id 태그 · 브레드크럼 0 · ERROR 로그 · DisallowedHost · 예외 없는 503 → 이벤트 0 · before_send 예외 → 이벤트 0 · Redis 통합 없음 · 나가는 http.client 요청에 sentry-trace · baggage 없음(로컬 HTTP 서버가 헤더를 기록) · environment · release 꼴 · `should_send_default_pii()` False · 세션 envelope 0 · **auth 설정 오류 500 세 경로**(T070 인계 N12 · r3 U7 · r5 W4 — SENTINEL을 `Authorization`과 `Cf-Access-Jwt-Assertion`에 함께 심는다: (a) `AUTHENTIK_AUDIENCE` 등을 비운 채 유효 Access + SENTINEL Bearer → Bearer 검증 프레임 지역 변수 `header`에 원문 Bearer / (b) `ACCESS_TEAM_DOMAIN`에 끝 줄바꿈 같은 꼴 오류 + SENTINEL Access JWT → `AccessJwtValidator.validate` 프레임 지역 변수 `token`에 원문 Access JWT / (c) `DRAGONFLY_URL`의 비밀번호 자리에 SENTINEL + 끝 줄바꿈(V2 위반) + 유효 Access · Bearer(`sub` · `sid` 클레임에도 SENTINEL — T070 r6 X7) → `_required` · `_printable_ascii` 프레임 지역 변수에 원문 URL · `Denylist.lookup` 프레임에 `sub` · `sid` · `_authenticate` 프레임에 검증된 Bearer `bearer`(`_Bearer` — 클레임 · `sub` · `sid` · 원문 토큰 문자열이 아니다 · 원문 Authorization 값은 (a)가 맡는다 · T070 r6 A-7)) → 경로마다 이벤트 1 · 이벤트 어디에도(프레임 vars · 예외 메시지 · 요청 헤더 · extra) SENTINEL 없음 · 같은 요청에서 수집한 JSON 로그 줄(`request_failed` · `django.request`) 어디에도 SENTINEL 없음.
-    - 헬스: 블랙홀 3종 `/health` < 3 s(OS 무관 병렬 고정 — T066 인계) · 진행 중 상한을 채우면 곧바로 fail · 요청 스레드에 열린 연결이 있어도 DB 다운을 본다 · Kafka `ImproperlyConfigured` = fail · 쿼리 붙은 DRAGONFLY_URL = fail(다이얼 0) · fail 항목에도 latency_ms · auth를 건 API에서도 헬스 200 · 응답 · 로그에 비밀 없음.
+    - 헬스: 블랙홀 3종 `/health` < 3 s(OS 무관 병렬 고정 — T066 인계) · 진행 중 상한을 채우면 곧바로 fail〔r2 Y2 — 칸마다〕 · 요청 스레드에 열린 연결이 있어도 DB 다운을 본다 · Kafka `ImproperlyConfigured` = fail · 쿼리 붙은 DRAGONFLY_URL = fail(다이얼 0) · fail 항목에도 latency_ms · auth를 건 API에서도 헬스 200 · 응답 · 로그에 비밀 없음.
     - import 부작용 0: observability · health import가 로깅 · structlog · OTel · Sentry 설정과 스레드 · 소켓 · 지표 등록(`prometheus_client.REGISTRY` 이름 집합 불변) · `django_common.outbox.metrics` import를 만들지 않는다.
     - 한 세션 묶음 실행: `pytest tests/test_observability.py tests/test_observability_contract.py tests/test_outbox.py tests/test_outbox_contract.py tests/test_tenancy.py tests/test_tenancy_contract.py tests/test_event_patterns.py tests/test_auth.py tests/test_auth_contract.py -q`(세션 전역 로깅 · Sentry 패치가 뒤 모듈을 깨지 않는다 — 사실 ⑧).
   - **D12 VD**:
@@ -3377,12 +3377,957 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
     - VD-T071-4: Sentry ingest 도착 · request_id 태그(T100 · T102).
   - **D13 문서 · 주석**: 모듈 독스트링에 계약 줄을 그대로 옮기지 말고 가리킨다(T069 A5-2 교훈 — 규칙을 되풀이하면 낡는다). 「T063 시험 독스트링의 낡은 빨강 설명」은 고치지 않고 이 절에 적어 둔다.
   - **D14 인계**:
-    - T072: 호출 위치(configure_logging = AppConfig.ready 첫머리 — 모든 프로세스 · configure_sentry · configure_otel = wsgi.py의 `get_wsgi_application()` 앞 — web만 · relay · migrate Job은 logging만) · `LOGGING_CONFIG` 경계(Django 기본 LOGGING 뒤에 우리 루트 핸들러 · DEBUG=True면 console 핸들러가 stderr에 평문 중복 · 기본 LOGGING은 `django` 로거에 `mail_admins`(AdminEmailHandler · require_debug_false)를 붙인다 — ExceptionReporter를 막는 것은 `ADMINS == []`일 때 emit의 조기 반환이다(Django 6.1 `utils/log.py`) → (a) LOGGING에서 `django` 로거 handlers를 다시 정의해 `mail_admins`를 떼거나 (b) `ADMINS == []` · `DEBUG is False`를 기동 단언으로 고정한다 · T070 r6 B-8) · settings 필수값(`APP_VERSION` · `APP_GIT_SHA`(Dockerfile build-arg → ENV) · `SENTRY_DSN`(빈 값 허용 = 끔) · `ENV` · `OUTBOX_SOURCE`) · DB OPTIONS `connect_timeout=2`(+ 단일 주소 HOST) · OTEL env 값(`OTEL_EXPORTER_OTLP_ENDPOINT=http://<alloy>.monitoring.svc:4318` 스킴 포함 · 금지 env 넷) · 프로브 Host(VD-T071-3) · web 9100 · `http_requests_total`(D10) · Celery pod의 `CeleryIntegration`과 worker 루트 로거 가로채기 · `SSL_CERT_FILE` · `REQUESTS_CA_BUNDLE`을 내부 CA로 두지 않는다(Sentry TLS) · 생성물 lock에 sentry-sdk가 더해진다.
-    - T073: US7 AC3 「의도적 예외」 경로(관리 명령 또는 내부 전용 경로)를 둘지 정한다.
-    - T075: `kv/{env}/sentry/identity-admin` 키가 없으면 ESO 동기화가 실패한다 — 빈 dsn 플레이스홀더(빈 값 = 끔).
-    - T092: BFF가 보내는 traceparent 플래그 정책(항상 01이면 pod의 0.1은 루트 요청에만 적용) · `x-forwarded-user-sub`는 pod 로그 · Sentry에 남지 않는다.
-    - T098: OTLP 엔드포인트에 스킴 · Alloy가 비JSON 줄(librdkafka)을 원문으로 받는다.
-    - T100: before_send = 허용 목록(T100 문면 3종을 포함) · LoggingIntegration 끔.
+    - T072: 호출 위치(configure_logging = AppConfig.ready 첫머리 — 모든 프로세스 · configure_sentry · configure_otel = wsgi.py의 `get_wsgi_application()` 앞 — web만 · relay · migrate Job은 logging만) · `LOGGING_CONFIG` 경계(Django 기본 LOGGING 뒤에 우리 루트 핸들러 · DEBUG=True면 console 핸들러가 stderr에 평문 중복 · 기본 LOGGING은 `django` 로거에 `mail_admins`(AdminEmailHandler · require_debug_false)를 붙인다 — ExceptionReporter를 막는 것은 `ADMINS == []`일 때 emit의 조기 반환이다(Django 6.1 `utils/log.py`) → (a) LOGGING에서 `django` 로거 handlers를 다시 정의해 `mail_admins`를 떼거나 (b) `ADMINS == []` · `DEBUG is False`를 기동 단언으로 고정한다 · T070 r6 B-8) · settings 필수값(`APP_VERSION` · `APP_GIT_SHA`(Dockerfile build-arg → ENV) · `SENTRY_DSN`(빈 값 허용 = 끔) · `ENV` · `OUTBOX_SOURCE`) · DB OPTIONS `connect_timeout=2`(+ 단일 주소 HOST) · OTEL env 값(`OTEL_EXPORTER_OTLP_ENDPOINT=http://<alloy>.monitoring.svc:4318` 스킴 포함 · 금지 env 넷) · 프로브 Host(VD-T071-3) · web 9100 · `http_requests_total`(D10) · Celery pod의 `CeleryIntegration`과 worker 루트 로거 가로채기 · `SSL_CERT_FILE` · `REQUESTS_CA_BUNDLE`을 내부 CA로 두지 않는다(Sentry TLS) · 생성물 lock에 sentry-sdk가 더해진다. 〔r2 Y7 보강〕 〔r3 Z8 — 금지 env는 아홉(계약 「트레이스 · Sentry」 행)〕 〔r5 P5 — 열하나〕 〔r6 G1 — 열일곱(mTLS 클라이언트 키 · 인증서 넷 · 닫힌 꼴 밖 엔드포인트 둘)〕 〔r7 S4 — pod env · 이미지에 `NETRC` · `SSLKEYLOGFILE` · 프록시 env(소문자 꼴 포함) · `.netrc`를 두지 않는다(렌더 · 이미지 단언)〕 〔r8 L3 — `.netrc` · `_netrc` 둘 다 · sentry-sdk가 스스로 읽는 `CLIENT_CERT_FILE` · `CLIENT_KEY_FILE`도 · 배포 매니페스트는 T075 lint가 덮는다〕 〔r10 I5 — 생성 pod pyproject addopts와 T065 하네스 명령에 `--show-capture=no`를 둘지 정한다 · configure_sentry는 except 블록 밖에서 부른다 · ci.yml test 자리를 채우는 과제(US 단계)는 django-common pytest를 패키지 ini로 돌리고 `-O` · `PYTHONOPTIMIZE`와 실패 출력을 넓히는 옵션을 쓰지 않는다〕
+    - T073: US7 AC3 「의도적 예외」 경로(관리 명령 또는 내부 전용 경로)를 둘지 정한다. 〔r2 Y7 보강〕
+    - T075: `kv/{env}/sentry/identity-admin` 키가 없으면 ESO 동기화가 실패한다 — 빈 dsn 플레이스홀더(빈 값 = 끔). 〔r2 Y7 보강〕 〔r8 L3 — gitops 렌더 lint: container env · envFrom ConfigMap data · ExternalSecret 키에 `NETRC` · `SSLKEYLOGFILE` · 프록시 env(소문자 꼴 포함) · `CLIENT_CERT_FILE` · `CLIENT_KEY_FILE`이 없다 · ExternalSecret은 `data`로 키를 명시하고 `dataFrom`을 쓰지 않는다〕 〔r9 K5 — 실효 env 이름(`env[].name` ∪ envFrom prefix + 키) · 대소문자 무시 대조 · ExternalSecret 키는 `target.template.data` 키(없으면 `data[].secretKey`) · 렌더 밖 객체를 가리키는 envFrom은 FAIL 또는 허용 목록 · `SSL_CERT_FILE` · `REQUESTS_CA_BUNDLE`도〕 〔r10 I4 — ExternalSecret 키 = `target.template.data` 키 ∪ (템플릿이 없거나 `mergePolicy: Merge`면 `data[].secretKey`) · `templateFrom`은 `dataFrom`처럼 FAIL 또는 허용 목록〕
+    - T084 · T085: admin 호스트 경로(브라우저 → Access → pod)의 클라이언트 `traceparent`를 지울지 받아들일지 T084가 정해 계약 §관측 신뢰 경계에 적고, T085가 관찰 수단(flag 01 traceparent를 보낸 요청의 pod 로그 `trace_id` 대조 · 가장자리에서 지우면 그 설정의 렌더 · API 단언)으로 검증한다. 〔r6 G6 · r7 S3 · T071 마감 F6〕
+    - T092: BFF가 보내는 traceparent 플래그 정책(항상 01이면 pod의 0.1은 루트 요청에만 적용) · `x-forwarded-user-sub`는 pod 로그 · Sentry에 남지 않는다. 〔r2 Y7 보강〕 〔r3 Z8 — 브라우저가 보낸 traceparent는 하류로 넘기지 않는다〕
+    - T098: OTLP 엔드포인트에 스킴 · Alloy가 비JSON 줄(librdkafka)을 원문으로 받는다. 〔r2 Y7 보강〕 〔r7 S4 · r8 L3 — 엔드포인트는 닫힌 꼴의 상수 · 프록시를 들이면 `NO_PROXY`가 `.svc` · `.cluster.local`을 덮고 사용자 정보 없는 프록시만 쓴다〕
+    - T100: before_send = 허용 목록(T100 문면 3종을 포함) · LoggingIntegration 끔. 〔r2 Y7 보강〕
     - T114: librdkafka FAIL · FATAL · GETPID 줄은 원문 stderr 꼴(D9)이다.
     - T070에서 받은 것(build-notes 「T070 r1 결과 · r2 결정」 N7 · N11 · N12 · 「T070 r2 결과 · r3 결정」 U3 · U4 · U7): 마스킹은 `cf-access-` 접두로 `cf-access-jwt-assertion`을 덮는다 · `sub_hash`는 `request.auth_claims["sub"]`에서 만든다(실패 · 면제 경로에는 속성이 없다) · `auth.keys_unavailable` · `auth.denylist_unavailable` WARNING 줄 형식은 고정이다 · `denylist_lookup_seconds`는 `django_common.auth` import 때 기본 REGISTRY에 등록된다(import 부작용 0 단언은 observability · health 모듈 import만 본다) · `/health` Dragonfly 검사도 0.2 s(소켓 동작마다) · 재시도 0 · URL 쿼리 거부를 따른다 · Django `DisallowedHost` 로그 줄에는 Host 값이 실린다(비밀 아님 · JSON 렌더가 제어 문자를 이스케이프한다) · `auth.keys_unavailable`의 `error=` 값에 `backoff`가 더해졌다(키 fetch 실패 백오프 창 안 — 예외 클래스 이름이 아니다 · U4) · 인증 설정의 기동 검사는 `django_common.auth.check_settings()`다(T072가 부른다 · U3 · r4 V2 — 인증 문자열 설정은 공백 없는 출력 가능 ASCII만 · 끝 줄바꿈 값은 요청 때도 설정 오류 500) · 요청 로그 `problem` 슬러그(r4 V6 — D3) · 설정 오류 500 (c) 경로와 JSON 로그 줄 단언(r5 W4 — V2 위반 500의 프레임 지역 변수에 `DRAGONFLY_URL` 비밀번호가 남는다 · structlog 기본 `dict_tracebacks`는 `show_locals=True`) — T071 시험의 auth 설정 오류 500은 기동 검사를 거치지 않은 요청 때 경로라 그대로 둔다(U7).
   - **D15 판정 순서 · 경계 요약**: 미들웨어 순서 = OTel(instrument가 index 0) → RequestIdMiddleware → … → JwtAuth → TenantContext. 헬스 경로는 JwtAuth · TenantContext 면제(정확 일치)이고, OTel 층의 Host 검사만 남는다(D5).
+
+### T071 r1 결과 · r2 결정(리뷰 r1 반영 · Y1–Y7 · 2026-11-06) — D2의 마스킹 이름 · 정규화 · handleError 문장, D5의 거부 env, D6의 진행 중 상한, D7의 통합 인자 · 헤더 허용 목록, D11의 해당 사례, D14 인계, 사실 ⑫는 이 절의 Y4 · Y1 · Y2 · Y3 · Y7 · Y5가 고친다(앞 절 줄 끝 〔…〕 표식)
+
+- **r1 결과**(워크플로 `wf_c09020d9-a4d` · 1.65M 토큰 · 약 2시간 36분 · 빌더 DONE_WITH_CONCERNS):
+  - 새 파일: `observability.py` 656 · `health.py` 213 · 시험 `test_observability_contract.py` 1857(oc-1..46) · `_obs_fakes.py` 193 · `obscontractapp/` 4파일(`__init__` · `middleware` · `urls` · `views`).
+  - 바뀐 파일: pyproject +7/−3(`sentry-sdk>=2.73,<3` · 정당화 주석 · 머리 주석) · `__init__.py` +4/−2(독스트링만 — 독스트링을 뺀 AST가 HEAD와 같다) · `uv.lock` +15/−0.
+  - 빨강(17:41): 계약 시험은 `ImportError: cannot import name 'health' from 'django_common'`, T063은 `ModuleNotFoundError: No module named 'django_common.observability'`다(둘 다 수집 단계 · exit 2).
+  - 빨강 뒤 시험 수정 3건(구현은 그대로 · 셋 다 변이로 판별력을 보였다):
+    - oc-3: 루트의 다른 핸들러가 받는 원본 `record.msg`도 마스킹됐는지 보는 단언을 더했다(M14 생존 → N03).
+    - oc-46 신설: `/health` AdminClient 설정 = `client_config()` + `log_level 0`(M60 생존 → N04).
+    - oc-37 공허 결함 수정: `log_lines()` 호출 없이 `.raw`를 읽고 있었다(N02가 드러냈다).
+  - 초록(최종 바이트): T063 21 ×2(**T063 PASS**) · 계약 46 · 회귀 파일별(auth 32 · auth_contract 447 · tenancy 16 · 65 · outbox 16 · 42 · patterns 52 · fixtures pg 3 · kafka 1 · jwks 3 · dragonfly 1) · 한 세션 묶음 737(9파일 합과 같다).
+  - 변이: 1차 83개 중 81개를 잡았다. 살아남은 M14 · M60은 시험을 보강한 뒤 N03 · N04로 잡혔고, N01(지역 변수 두 겹 복합) · N02도 잡혔다(killers.txt 87줄).
+  - 의존성:
+    - 그냥 `uv lock`은 sentry-sdk 2.74.0(2026-11-05T14:50Z 업로드 — 약 17시간 · 숙성 3일 미달)을 골랐다. 그래서 `uv lock --upgrade-package sentry-sdk==2.73.0`으로 고정했다(범위 `>=2.73,<3`은 그대로).
+    - 2.73.0: wheel 2026-10-22T09:08:47Z 업로드 · 해시 = PyPI(조사 F01) · lock 변화 = sentry-sdk 블록 하나 + django-common의 `dependencies` · `requires-dist` 각 한 줄(지시문의 「한 줄」은 uv.lock 꼴로는 두 줄이다).
+    - D7의 전제는 설치 소스와 탐침으로 전부 맞았다. 덧붙임: `disabled_integrations`는 같은 프로세스에서 앞서 설치된 통합에는 듣지 않는다(`_installed_integrations`가 프로세스 전역 — 운영은 init을 한 번만 한다).
+  - VD:
+    - VD-T071-1 PASS: django-ninja 1.7.0 overlay에서 T063 21 · 계약 45(최종 46)가 통과했다. 라우터 하나를 API 둘에 붙이는 oc-43도 포함이다. lock · venv 지문은 전후 같다.
+    - VD-T071-3 로컬 재현: Host가 pod IP일 때 OTel이 없으면 200, 계측하면 400, `ALLOWED_HOSTS`에 그 IP를 넣으면 200이다.
+    - VD-T071-2 · 4는 로컬에서 잴 수 없다(Cloudflare · Sentry 수신).
+  - 빌더 세부 결정(보고 ⑧ — 계약과 충돌 없음): 처리는 Y6.
+  - 실행기 사고 1건: M22의 원문 조각을 찾지 못해 건너뛰는 메시지를 출력하다가 cp949 출력 오류로 멈췄다(`-I`가 `PYTHONIOENCODING`을 무시한다). 변이를 적용하기 전이었고, 표식 없음 · cmp 같음을 확인한 뒤 이어 돌렸다.
+- **리뷰 r1**: A approve_with_fixes(medium 2 · low 7) · B approve_with_fixes(medium 2 · low 7).
+  - 두 렌즈 모두 빌더 보고의 수치(줄 수 · diff · 해시 · 로그 · 변이표 · 묶음 합)가 증거와 맞는다고 확인했다.
+  - B는 기본 설정에서 비밀이 새는 경로를 찾지 못했다(우회 시도 21종).
+  - medium:
+    - A-1 = B-1(T071): `configure_otel`이 `OTEL_PYTHON_DJANGO_TRACED_REQUEST_ATTRS`를 거부하지 않는다. 두 렌즈의 메모리 탐침에서 env 하나(`META,headers,COOKIES` · `headers,GET,COOKIES`)로 Authorization · Cookie · 쿼리의 표식 값이 span 속성에 실렸다.
+    - A-2(인계): `sub_hash`의 키인 `SECRET_KEY`의 출처와 안정성이 어느 계약에도 없다(env.example 20키 · T072 · T075 문면 · data-model kv 표).
+    - B-2(T071): `/ready`와 `/health`가 진행 중 상한 32를 같이 쓴다.
+      - 버려진 `/health` 스레드와 동시 호출이 칸을 채우면 `/ready`가 곧바로 503이다(readiness = DB만과 어긋난다 · 지금 gthread 2 × 4에서는 잠복).
+      - 인증 없는 BFF `/api/health` 중계로 익명 호출마다 PG · Kafka SCRAM이 한 번씩 돈다.
+  - low(T071):
+    - A-3: `OTEL_SDK_DISABLED=true`를 거부하지 않는다.
+    - A-4 = B-5: 마스킹이 bytes 키 · (이름, 값) 쌍 목록 · 헤더 밖 비밀 이름을 놓친다.
+    - A-5: oc-32에 양성 대조가 없다.
+    - A-9: 시험 파일 1행 범위와 사실 ⑫가 틀렸다.
+    - B-3: Sentry Logs 처리기가 잠복해 있다(`sentry_logs_level` 기본 INFO).
+    - B-4: `handleError`가 `repr(record.msg)`를 stderr에 쓴다.
+    - B-6: Sentry 이벤트에 상류 X-Request-ID 원문과 위조 가능한 trace 문맥 · DSC가 실린다.
+  - low(인계):
+    - A-6: report.md 편차 후보 표시 · T100.
+    - A-7: wsgi 호출 순서 · 프로브 timeoutSeconds.
+    - A-8: BFF x-request-id 꼴.
+    - B-7: `/api/health` 캐시 · rate limit.
+    - B-8: gunicorn access log · Python warnings.
+    - B-9: DB 예외의 DETAIL.
+- **r2 결정 Y1–Y7(컨트롤러)**: 계약(pod-template 「로그」 · 「트레이스 · Sentry」 행 · §공개 API · identity-admin-api 헬스 표 · 타임아웃 표 · §관측 · bff-api 머리 문단)과 규칙 §Logging은 이 절과 같은 변경에서 「T071 r2」 표식으로 고쳤다.
+  - **Y1 OTel 거부 env**(A-1 · B-1 · A-3 — D5 정정):
+    - `_check_otel_env`에 둘을 더한다. 오류는 이름만 실은 `ImproperlyConfigured`이고, 값은 메시지에 싣지 않는다.
+      - `OTEL_PYTHON_DJANGO_TRACED_REQUEST_ATTRS`가 비지 않으면(strip) 거부한다. 요청 객체 속성(`META` · `headers` · `COOKIES` · `GET` · `body` 등)을 `str()`로 span 속성에 싣기 때문이다(0.66b2 `otel_middleware.py:117`의 클래스 속성은 import 때 env로 굳는다 · `:209` · `instrumentation/utils.py:41-51`).
+      - `OTEL_SDK_DISABLED`가 SDK의 끔 값(`strip().lower() == "true"` — `sdk/trace/__init__.py:1278-1279`)이면 거부한다. `get_tracer`가 NoOpTracer를 줘서 span 0 · 로그 `trace_id` 0이 기동 신호 없이 이어진다(`OTEL_PYTHON_DJANGO_INSTRUMENT=false`와 같은 원칙 — 샘플링을 끄려면 `OTEL_TRACES_SAMPLER=always_off`).
+    - 심층 방어: `instrument()` 뒤 `_DjangoMiddleware._traced_request_attrs`(import 때 굳은 값)가 빈 list가 아니거나 그 속성이 없으면(판 올림) uninstrument · `provider.shutdown()` 뒤 `ImproperlyConfigured`다. 자리는 미들웨어 삽입 확인과 같다. 〔r3 Z1 — 공백 항목만인 list는 빈 것 · 굳은 값 확인 셋(propagator · semconv를 더한다)〕
+    - 열거를 닫는다(설치 소스 0.66b2 · SDK 1.45 — Django 계측 · util-http · wsgi · `_semconv` · SDK가 읽는 env): 〔r3 Z1 — API 패키지(propagate)를 빠뜨렸다 · 범위 = 설치된 opentelemetry-* 전부〕
+      - span 내용이나 계측 여부를 바꾸는 env는 일곱이고 모두 거부한다: `OTEL_SEMCONV_STABILITY_OPT_IN`(http) · 서버 헤더 캡처 2 · `TRACED_REQUEST_ATTRS` · `MIDDLEWARE_POSITION` · `INSTRUMENT` · `SDK_DISABLED`. 〔r3 Z1 — 기준을 고쳐 아홉: `OTEL_PROPAGATORS` · `CAPTURE_ALL_METHODS`를 더한다〕 〔r5 P5 — 열하나: OTLP 헤더 둘〕 〔r6 G1 — 열일곱(mTLS 클라이언트 키 · 인증서 넷 · 닫힌 꼴 밖 엔드포인트 둘)〕
+      - 나머지는 거부하지 않는다:
+        - 샘플러 2는 D5가 검증하고, OTLP 엔드포인트는 스킴을 검증한다. 〔r6 G1 — 엔드포인트는 닫힌 꼴(사용자 정보 · 쿼리 등 거부) · mTLS 클라이언트 키 · 인증서 env 넷은 거부〕
+        - `OTEL_SERVICE_NAME` · `OTEL_RESOURCE_ATTRIBUTES`는 SDK 자원 규칙을 따른다.
+        - `OTEL_PYTHON_DJANGO_EXCLUDED_URLS` · `OTEL_PYTHON_EXCLUDED_URLS`는 인자가 이긴다(`django/__init__.py:408-409`).
+        - 헤더 캡처 `_SANITIZE_FIELDS`는 캡처가 꺼져 있어 무효다. 클라이언트 헤더 캡처 2는 클라이언트 계측이 없어 무효다.
+        - `OTEL_PYTHON_INSTRUMENTATION_HTTP_CAPTURE_ALL_METHODS`는 메서드 이름만 바꾼다. 한도 env(`OTEL_ATTRIBUTE_*` · `OTEL_SPAN_*`)는 값을 드러내지 않는다. 〔r3 Z1 — CAPTURE_ALL_METHODS는 클라이언트 메서드 원문을 싣는다 · 거부〕
+    - 시험:
+      - oc-15에 두 env 사례를 더한다(값에 SENTINEL — 오류 메시지에 값 없음).
+      - 굳은 값 사례: 시험 안에서 클래스 속성을 바꾼 뒤 configure_otel → 거부, 그다음 원복한다.
+      - 변이: 두 거부를 각각 지우기 · 굳은 값 검사 지우기.
+  - **Y2 헬스 진행 중 상한 = 검사 칸마다**(B-2 — D6 정정):
+    - 칸은 넷이다: `/ready`의 DB · `/health`의 `db` · `dragonfly` · `kafka_producer`.
+      - 칸마다 살아 있는 검사 스레드는 8까지다. 마감을 넘겨 버려진 것과 결과를 알린 뒤 정리 중인 것도 센다.
+      - 넘으면 그 검사만 새 스레드 없이 곧바로 fail(latency_ms 0.0)이다. 〔r3 Z3 — 스레드를 만들거나 시작하지 못해도 자리를 놓고 곧바로 fail〕 〔r5 P4 — 자리는 스레드가 시작되지 않았을 때만 그 자리에서 놓는다(시작됐으면 그 스레드가 끝날 때)〕
+      - 모듈 상한 32 하나는 없앤다(합은 같다).
+    - 효과:
+      - `/health`의 부하와 버려진 스레드가 `/ready`를 바꾸지 않는다(readiness = DB만 · identity-admin-api 헬스 표).
+      - 한 의존의 정지(예: Kafka DNS 정지)가 `/health`의 다른 항목을 fail로 만들지 않는다. r1은 공유 칸이 차면 살아 있는 DB도 fail이었다.
+    - 결과 공유(single-flight)와 직전 결과 재사용 창은 두지 않는다.
+      - 마감을 넘긴 검사에 합류하면 정지한 실행의 낡은 결과를 받고, 그 실행이 끝날 때까지 칸이 묶인다.
+      - 재사용 창은 고정 시험의 순서(obs-16 degraded → obs-17 ok · api-52 `/health` → `/ready`)와 「호출 시점 설정」 원칙을 깬다.
+      - 동시 검사 수는 프로세스의 요청 스레드 수가 묶는다(research gthread 4 — 칸 상한 8 안). 익명 증폭은 BFF 캐시 · rate limit으로 막는다(T092 인계 — Y7).
+    - 시험:
+      - (1) `/health` 세 칸을 상한까지 채운 상태에서 DB가 살아 있으면 `/ready`는 200이다.
+      - (2) Kafka 칸만 채우면 `/health`의 kafka_producer는 fail(latency_ms 0.0)이고, db · dragonfly는 그대로 판정한다.
+      - (3) `/ready` 칸을 채우면 `/ready`는 곧바로 503이고, `/health`의 db는 그대로 판정한다.
+      - (4) 칸을 채운 스레드가 끝나면 다음 호출은 새 검사다. 상한은 정리 중 스레드까지 센다.
+      - 시험이 채운 칸은 그 시험 안에서 비운다(스레드가 끝날 때까지 기다린다 — 뒤 시험 · 묶음 실행에 남지 않게).
+      - 기존 상한 시험(oc-39)은 이 꼴로 바꾼다.
+      - 변이: 칸 공유(세마포어 하나) · 칸 상한 지우기 · 정리 중 스레드를 세지 않기.
+  - **Y3 Sentry 정리 보강**(B-3 · B-6 — D7 정정):
+    - `LoggingIntegration(level=None, event_level=None, sentry_logs_level=None)`으로 Sentry Logs 처리기를 만들지 않는다.
+      - 근거(2.73.0 `integrations/logging.py`): `:125` 기본값이 INFO이고, `:137-138`이 처리기를 만든다. 보낼지는 `enable_logs` 등 셋으로만 정한다.
+      - 켜지면 레코드 extra · args의 safe_repr이 마스킹과 before_send 없이 나간다. 지금은 `enable_logs` 기본값 하나가 막고 있다.
+    - 요청 헤더 허용 목록에서 `x-request-id`를 뺀다. 검증된 값은 태그 `request_id`가 싣고, 꼴 밖이라 버린 상류 값은 이벤트에 남지 않는다(T063 사실 ③ 「버린 값은 어디에도 없음」). 〔r3 Z2 — `traceparent`도 뺀다〕
+    - `contexts.trace`:
+      - `dynamic_sampling_context`는 언제나 지운다. SDK는 before_send 뒤 이벤트에서 그것을 꺼내 envelope 머리 `trace`로 보낸다(`client.py:1202-1211` — 클라이언트 `baggage`의 public_key · release를 그대로 옮긴다).
+      - 기록 중 OTel span이면 `trace_id` · `span_id`를 그 값(32 · 16 hex)으로 바꾸고 `parent_span_id`는 지운다. 아니면 `contexts.trace`를 통째로 지운다.
+      - 근거: SentryWsgiMiddleware가 클라이언트 `sentry-trace`로 `continue_trace`한다(`integrations/wsgi.py:181` · `strict_trace_continuation` 기본 False).
+    - 시험:
+      - `call_wsgi`에 꼴 밖 `X-Request-ID`(SENTINEL) · 위조 `sentry-trace`(SENTINEL trace id) · `baggage`(`sentry-public_key` · `sentry-release`에 SENTINEL)를 넣는다. 이벤트 본문과 envelope 머리(CaptureTransport가 envelope headers도 기록한다) 어디에도 SENTINEL이 없어야 한다.
+      - sampled traceparent 사례에서 `contexts.trace.trace_id`는 OTel 값이다.
+      - oc-25에 Sentry Logs 처리기가 없다는 단언을 더한다.
+      - 변이: `sentry_logs_level` 기본값 복원 · `x-request-id` 허용 · DSC 남기기 · trace 문맥 그대로 두기.
+  - **Y4 로그 마스킹 · 쓰기 실패**(A-4 · B-5 · B-4 — D2 정정):
+    - 정규화 = 소문자 · `_` · `.` → `-` · 앞의 `http-` 하나 제거. bytes · bytearray 키는 latin-1(`errors="replace"`)로 풀어 같은 판정을 한다. 지우지 않는 bytes 키는 지금처럼 `"<bytes>"` 키로 남긴다. 〔r3 Z4 — 쿠키 접두 떼기 · camelCase 꼴 · memoryview 키〕
+    - 이름 목록(닫힌 집합 — 정규화 뒤 정확히 같거나 접미가 맞는 이름): 〔r3 Z4 — 목록 기준 · 이름 · 접미 · 접두 보강〕
+      - 헤더: `authorization` · `proxy-authorization` · `cookie` · `set-cookie` · `x-authentik-signature` · `x-forwarded-user-sub` · `x-csrftoken`(Django CSRF 헤더) · 접두 `cf-access-`.
+      - 쿠키: `cf-authorization`(Access JWT 쿠키 `CF_Authorization` — admin 호스트의 브라우저 요청) · `sessionid` · `csrftoken`(Django admin) · `jt-session` · `jt-csrf`(BFF 쿠키 이름).
+      - META · WSGI environ: `csrf-cookie`(Django가 META에 둔 CSRF 비밀) · `query-string` · `raw-uri` · `request-uri`(쿼리를 담는다).
+      - 비밀 이름: `password` · `passwd` · `secret` · `token` · `api-key` · `apikey` · `private-key` · `secret-key` · `preshared-key`.
+        - 접미 `-password` · `-secret` · `-token` · `-api-key` · `-private-key` · `-secret-key` · `-preshared-key`도 지운다.
+        - 예: `sasl.password` · `ssl.key.password` · `AUTHENTIK_API_TOKEN` · `AUTHENTIK_WEBHOOK_SECRET` · `OPENFGA_PRESHARED_KEY` · `SECRET_KEY` · `x-csrf-token` · `x-api-key`.
+      - 자격 URL 설정: `database-url` · `database-owner-url` · `dragonfly-url`.
+      - 원문 주체: `sub`. 로그는 `sub_hash`만 싣는다 — 클레임 dict를 통째로 넘긴 사고를 막는다.
+      - 넓히지 않는 것:
+        - `-key` · `-url` 일반 접미: `partition-key` · `idempotency-key` 같은 상관 값을 지우지 않는다.
+        - `sid`: 세션 식별자이고 자격이 아니다.
+        - 값 안의 비밀: 호출자 규칙이다(T062 K12).
+    - 쌍: 첫 항목이 마스킹 이름(str · bytes)인 길이 2 list · tuple은 쌍째 뺀다. WSGI 헤더 목록 · `list(response.items())` 꼴이다. 시퀀스의 원소면 원소째, Mapping의 값이면 키째 뺀다.
+    - 쓰기 실패: 표식 핸들러는 `logging.StreamHandler` 하위 클래스다.
+      - `handleError`는 레코드 값 없이 고정 JSON 한 줄을 `sys.stderr`에 쓴다: `ts` · `level` `"error"` · `logger` `"django_common.observability"` · `event` `"log_emit_failed"` · `error` = 예외 클래스 이름.
+      - 그 쓰기도 실패하면 버린다(재귀 0 · `logging.raiseExceptions`와 무관).
+      - 표준 `handleError`의 `Message: %r` · `Arguments:` · 트레이스백 출력은 없다. 이것이 repr 금지 우회를 막는다(B-4).
+    - 시험:
+      - oc-1 · oc-2: bytes 키 · 쌍 목록 · 이름 목록 사례마다 SENTINEL을 심고 이웃 값은 남는지 본다. `token_count` · `partition-key` · `sid` · `x-request-id`는 남는다(목록이 접미 규칙 밖으로 넓어지지 않았음을 가른다).
+      - 쓰기 실패 두 경로(쓰기에서 `OSError`를 내는 stream · 렌더 예외): stderr에 SENTINEL이 없고 고정 줄 하나만 있다.
+      - 변이: 정규화의 `.` 지우기 · bytes 판정 지우기 · 쌍 규칙 지우기 · 접미 규칙 지우기 · `handleError` 기본값 복원.
+  - **Y5 판별력 · 문서**(A-5 · A-9):
+    - oc-32: 복합 변이 M67 + M68(`trace_propagation_targets` 기본값 + StdlibIntegration 켬)을 한 번 돌려 oc-32가 잡는지 보인다. 독스트링에 적는다: 단일 방어(옵션 값)는 oc-25가 고정하고, oc-32는 두 겹을 함께 없앤 경우를 가른다.
+    - 시험 파일 1행의 범위(「oc-1..45」)를 실제 함수 범위로 맞춘다.
+    - 사실 ⑫ 정정: 라우터 재사용은 django-ninja 1.7.0에도 있다(`router.py:35` `RouterMount` · `:619` — 리뷰 A가 캐시 소스로 확인 · VD-T071-1에서 oc-43 통과). T072는 1.7.0 핀 위에서 라우터를 여러 API에 붙일 수 있다.
+  - **Y6 빌더 세부 결정 채택 → 계약**(r1 보고 ⑧ — 계약 행 · §공개 API에 적었다):
+    - `configure_logging`: `level`이 logging 수준 이름이 아니면(대소문자 무시) 핸들러를 바꾸기 전에 `ValueError`다.
+    - `sub_hash`: str가 아니면 `TypeError`, 빈 값이면 `ValueError`다.
+    - `problem`: 본문이 64 KiB를 넘으면 읽지 않는다(키 없음).
+    - `configure_otel`:
+      - 빈 env 값은 없는 것과 같다(샘플러 · 엔드포인트). 〔r3 Z1 — CAPTURE_ALL_METHODS는 공백뿐인 값도 거부〕
+      - semconv 판정은 대소문자를 무시하고 `http/dup`까지 거부한다. `MIDDLEWARE_POSITION`은 값이 비어도 있으면 거부한다.
+      - `APP_VERSION`은 비지 않은 str, `OUTBOX_SOURCE`는 kebab-case여야 한다.
+      - 계측 미들웨어가 `MIDDLEWARE`에 들어가지 않으면(의존성 충돌로 `instrument()`가 조용히 끝나면) `ImproperlyConfigured`다.
+    - `configure_sentry`:
+      - `SENTRY_DSN`은 str이고, 빈 값 · 없음 = 끔이다.
+      - DSN 꼴은 `sentry_sdk.utils.Dsn`으로 본다(가로채는 Transport를 넘기면 SDK가 DSN을 해석하지 않는다).
+      - DSN이 있으면 `ENV` ∈ {dev, prod, test} · `APP_GIT_SHA` 소문자 hex 7–64 · `OUTBOX_SOURCE` kebab-case여야 한다. 어기면 이름만 실은 `ImproperlyConfigured`다.
+      - `request`는 `url`(`?` · `#` 앞까지) · `method` · `headers`(허용 목록) · `env`(`SERVER_NAME` · `SERVER_PORT`)만 남긴다. D7이 지우라는 키보다 엄격하다(SDK가 뒤에 더할 키도 남지 않는다).
+  - **Y7 인계 보강**(A-2 · A-6 · A-7 · A-8 · B-7 · B-8 · B-9 · 빌더 ⑨ — D14에 더한다):
+    - T072:
+      - `SECRET_KEY` = `<pod>-env`의 필수 비밀이다.
+        - 없음 · 빈 값이면 기동 실패(이름만)다. 프로세스마다 난수로 채우지 않는다 — 다중 worker · 재시작마다 `sub_hash` · admin 세션 · CSRF 서명이 갈린다.
+        - env.example에 더한다(gen-3은 상위 집합을 허용한다).
+        - 회전하면 `sub_hash` 값이 바뀌고 세션이 끊긴다(런북 · A-2).
+      - wsgi.py 순서 = `django.setup(set_prefix=False)`(AppConfig.ready → `configure_logging`) → `configure_otel()` → `configure_sentry()` → `WSGIHandler()`.
+        - `get_wsgi_application()` 앞에서 configure_otel을 부르면 `otel_exporter_disabled` 경고가 루트 핸들러보다 먼저 난다. 그러면 lastResort 평문 stderr로 나간다(dev는 엔드포인트가 없어 기동마다 · A-7 a).
+        - `configure_sentry`는 미들웨어 적재(WSGIHandler) 전이어야 한다. 그 뒤에 적재되는 미들웨어를 SentryWrappingMiddleware로 감싸기 때문이다(빌더 ⑨).
+      - 프로브 `timeoutSeconds`: readiness · startup은 3 이상으로 둔다.
+        - 마감이 2.5 s라서, 기본 1 s면 kubelet이 먼저 실패로 판정하고 시간 초과된 프로브가 요청 스레드를 2.5 s 붙든다.
+        - 렌더 단언(gen-12)에 넣을지 정한다(A-7 b · B-7).
+      - 동시성 · 연결:
+        - gunicorn threads가 8을 넘으면 헬스 칸 상한(Y2)을 다시 본다.
+        - app role 연결 한도에 헬스 연결 몫을 남긴다(B-7).
+      - DB OPTIONS: `connect_timeout=2`에 더해 반쯤 열린 연결을 끊는 `tcp_user_timeout`(또는 keepalives)을 둘지 실측으로 정한다. 연결 뒤 `SELECT 1`에는 시간 상한이 없어 칸을 TCP 재전송 시간까지 붙들 수 있다(Y2).
+      - gunicorn · warnings(B-8 · 리뷰 A §7):
+        - accesslog를 두지 않는다. 기본 꼴은 쿼리가 든 요청 줄 · Referer · 주소를 싣는다(요청 로그는 RequestIdMiddleware가 맡는다).
+        - gunicorn 자체 로거(propagate False · 평문 stderr)는 루트 핸들러로 보내거나 「한 줄 = 객체 하나」의 예외로 적는다.
+        - AppConfig.ready에서 `configure_logging` 뒤 `logging.captureWarnings(True)`를 부른다. Python warnings(예: TenantContext 스트리밍 RuntimeWarning)가 평문 stderr로 나가지 않게 한다.
+      - settings 꼴(Y6): `APP_VERSION` 비지 않은 str(web) · `APP_GIT_SHA` 소문자 hex 7–64 · `ENV` ∈ {dev, prod, test} · `OUTBOX_SOURCE` kebab-case.
+      - 루트에 건 NinjaAPI는 `/docs` · `/openapi.json`을 공개한다. api-50의 `/api/openapi.json`과 함께 정한다(빌더 ⑨).
+      - ArgvIntegration이 `sys.argv`를 이벤트 extra에 싣는다. 명령줄에 비밀을 두지 않는다(빌더 ⑨).
+      - 생성 pod lock에서 sentry-sdk 숙성을 다시 확인한다(2026-11-06 최신 2.74.0 = 11-05 업로드 · 빌더 ⑨).
+    - T073: 고유 제약 위반 같은 DB 오류는 뷰에서 409 등으로 바꿔 500으로 새지 않게 한다. psycopg 예외 메시지에 「DETAIL: Key (col)=(value)」(행 값)가 남아 Sentry value · 로그 · span 예외에 실리기 때문이다(B-9). 〔r3 Z8 — 409는 계약에 없다: 계약 상태로 바꾸거나 계약을 고친다〕
+    - T075: `SECRET_KEY`의 kv 경로(예: `kv/{env}/django/<pod>` 키 `secret_key`)와 `<pod>-env` ES 매핑을 정하고 data-model kv 표에 더한다. 운영자 시드는 CSPRNG · dev ≠ prod · H4 블록 꼴이다(A-2).
+    - T092:
+      - `x-request-id`는 pod 수락 꼴(`^[A-Za-z0-9._:-]{1,128}$`) 안에서 만든다(예: `crypto.randomUUID()`). 꼴 밖이면 pod가 새 uuid4로 바꿔 BFF ↔ pod 상관이 조용히 끊긴다. T092 · T076 시험이 pod 로그 `request_id` = BFF 헤더 값을 단언한다(A-8 · bff-api 머리 문단 보정).
+      - `/api/health`는 결과를 몇 초 캐시하거나(Workers Cache API) rate limit을 건다. 방문자마다 상류를 부르지 않는다 — pod `/health` 한 번 = PG · Kafka SCRAM 한 번씩이다(B-7). 〔r3 Z8 — 캐시를 두면 계약 행 · 타임아웃 표에 TTL · 적중 때 upstream_ms · 실패 캐시를 적는다〕
+    - T098: gunicorn error log 줄도 librdkafka 줄(D9)처럼 원문으로 받는다(B-8).
+    - T100:
+      - `send_default_pii`를 넘기지 않는다(생략 = False · 넘기면 DeprecationWarning). `should_send_default_pii() is False`로 단언한다(oc-25 · A-6).
+      - DB 예외 value의 `DETAIL:` 줄을 before_send에서 지울지 정한다. 로그 · span 렌더에도 같은 결정을 적용한다(B-9).
+      - 헤더 허용 목록에 `x-request-id`가 없다(Y3).
+    - report.md 편차 후보(결과 절에 표시 — A-6): 〔r3 Z8 — `SECRET_KEY` 필수 비밀 · kv 경로를 더한다〕
+      - `/ready` = `SELECT 1`(⑩) · release = `<pod>@<git sha>`(⑩).
+      - `send_default_pii` 생략 · Sentry 헤더 거부 목록 → 허용 목록(D7).
+      - web 9100 · `http_requests_total` 소유(T072 — ⑪ · D10).
+      - T098 엔드포인트 스킴(⑩).
+  - **손대지 않는 것**: A-2 · A-6 · A-7 · A-8 · B-7 · B-8 · B-9는 코드 변경이 없다(인계 · 계약). D3 · D4 · D8 · D9 · D10 · D12 · D13 · D15는 그대로다.
+
+### T071 r2 결과 · r3 결정(리뷰 r2 반영 · Z1–Z8 · 2026-11-06) — Y1의 열거 문장 · CAPTURE_ALL_METHODS 근거 · 굳은 값 확인 · 빈 env 문장, Y2의 곧바로 fail, Y3의 헤더 허용 목록, Y4의 정규화 · 이름 목록, Y7의 T073 · T092 · report.md 후보, D14 T072의 「금지 env 넷」 · T092 줄은 이 절의 Z1 · Z3 · Z2 · Z4 · Z8이 고친다(앞 절 줄 끝 〔r3 …〕 표식)
+
+- **r2 결과**(워크플로 `wf_5a350cf4-69e` · 1.64M 토큰 · 약 2시간 49분 · 빌더 DONE_WITH_CONCERNS):
+  - 바뀐 파일(r1 대비):
+    - `observability.py` 656 → 796(+165/−25) · `health.py` 213 → 242(+47/−18).
+    - 시험 `test_observability_contract.py` 1857 → 2572(+783/−68 · oc-1..55) · `_obs_fakes.py` 193 → 203 · `obscontractapp/views.py` 90 → 97.
+    - pyproject · `__init__.py` · `uv.lock`은 r1과 바이트가 같다(의존성 변화 0).
+  - 빨강(20:34 · 20:36 — 최종 시험 바이트): `13 failed, 42 passed`. 빨강 뒤 시험 수정은 1건이다(oc-52 실패 출력에 위조 trace id 원문이 찍혀 비교를 bool 튜플로 접었다 — 단언 의미는 같다).
+  - 초록(최종 바이트): T063 21 ×2 · 계약 55 · 회귀 파일별 · 한 세션 묶음 746(9파일 합과 같다).
+  - 변이: 103개 중 102개를 잡았다. M65(Sentry `query_string` 남김)는 겹 방어(요청 키 허용 목록 + 마스킹 이름 `query-string`)라 혼자서는 드러날 행동이 없고, 두 겹을 함께 없앤 N05는 잡혔다.
+  - VD-T071-1 PASS: ninja 1.7.0 overlay에서 T063 21 · 계약 55가 통과했고, 지문은 전후 같으며 r1과도 같다.
+  - 빌더 세부(보고 ⑧ — 계약과 충돌 없음):
+    - oc-53의 렌더 예외는 in-process에서는 isoformat이 예외를 내는 datetime으로, 4300자리 int는 새 프로세스로 본다. pytest `LogCaptureHandler`가 형식화 실패를 다시 올리기 때문이다(`_pytest/logging.py:416-422`).
+    - bytearray 첫 항목 쌍도 덮는다(fail-closed). 굳은 값 검사는 정확히 빈 list만 통과시켰다(→ Z1 (a)).
+    - 작업 스레드 이름은 `django-common-health-<칸>`이다. `handleError`에 현재 예외가 없으면 `error` = `"unknown"`이다.
+- **리뷰 r2**: A approve_with_fixes(low 9 — T071 6 · 인계 3) · B approve_with_fixes(medium 1 · low 6 — T071 4 · 인계 2).
+  - 두 렌즈 모두 빌더 수치(줄 수 · diff · sha 6단계 · 빨강 · 초록 · 묶음 합 · 변이 정의 · VD 지문 · gitleaks · 바이트)가 증거와 맞는다고 확인했다. r1 지적 18건은 모두 코드 · 시험 · 계약 · 인계 중 한 곳으로 닫혔다.
+  - medium B-1(T071): 열거가 닫히지 않았다. opentelemetry-api가 import 때 읽는 `OTEL_PROPAGATORS`가 빠졌다.
+    - `none`이면 propagator가 비어(`propagate/__init__.py:130-132`) extract가 None을 돌려준다. 계측이 그 문맥을 attach해, 그 요청과 같은 스레드의 뒤 요청(`/healthz` 포함)이 AttributeError로 500이다(탐침 — liveness 재시작 루프 · Sentry 이벤트 0).
+    - `baggage`뿐이면 상류 traceparent를 조용히 버린다(identity-admin-api §관측 「상류 traceparent 이어받음」).
+    - 덧붙임: `OTEL_PYTHON_INSTRUMENTATION_HTTP_CAPTURE_ALL_METHODS`는 클라이언트가 고른 메서드 문자열을 span 이름 · `http.method`에 싣는다. Y1의 「메서드 이름만 바꾼다」는 틀렸다.
+  - low(T071):
+    - A-1 = B-3: Sentry 헤더 허용 목록의 `traceparent`가, OTel이 꼴 밖이라 버린 값의 원문을 이벤트에 남긴다. Y3이 x-request-id를 뺀 이유와 같다.
+    - A-2 · B-4 · B-5: 닫힌 마스킹 목록이 놓치는 것이 있다.
+      - 같은 비밀의 다른 철자: `csrfmiddlewaretoken` · `session_key` · camelCase · 쿠키 접두 `__Host-` · `__Secure-`.
+      - 접미 비대칭: 정확한 이름 `passwd` · `apikey`는 지우는데 `-passwd` · `-apikey` 접미는 없다.
+      - 쿼리 운반자 둘: OTel이 `request.META`에 두는 요청 속성 dict(`opentelemetry-instrumentor-django.duration_attr_key` — `http.url` · `http.target`)와 `Referer`.
+      - memoryview 키.
+    - A-3: 공백뿐인 `TRACED_REQUEST_ATTRS`를 env 검사는 받고 굳은 값 검사는 거부한다. OTel은 `[""]`로 굳히고 `getattr(request, "")`는 None이라 싣는 것이 없는데, 운영 경로(env가 import 전에 있다)는 기동 실패가 된다.
+    - A-4: 넓히지 않는다는 `-url` 접미가 시험에 고정되지 않았다.
+    - A-5: 계약의 「이 일곱이 전부다」가 실제보다 넓게 말한다.
+    - A-6: 모듈 독스트링이 Y6로 계약에 들어간 내용을 「계약 행이 말하지 않는 것」으로 되풀이한다(D13).
+    - B-2: 헬스 `_start`가 `RuntimeError`만 잡는다. 다른 예외(MemoryError 등)면 칸 자리가 영구히 새고 500이다. 8번 쌓이면 `/ready` 칸이 영구히 찬다(NotReady 고착 — `/healthz`는 200이라 재시작도 없다).
+  - low(인계):
+    - A-7: D14 T072 「금지 env 넷」이 낡았다 · report.md 후보에 `SECRET_KEY`가 없다 · T073 「409」는 계약에 없다.
+    - A-8: OTel 비공개 속성 결합이 pod CI에서 보이지 않는다. 범위가 `<1`이라 생성 pod lock이 검증 안 된 베타를 고를 수 있다.
+    - A-9: T092 `/api/health` 캐시 인계가 bff-api 행에 없다(「Workers Cache API」 ≠ wrangler `[cache]`).
+    - B-6: 전역 MeterProvider가 생기면 Django 계측의 `http.server.duration`에 `http.target`이 실린다(`otel_middleware.py:358-369`). 뷰에 닿지 않은 요청 · 404는 쿼리 · 원문 sub · sid가 든 RAW_URI다.
+    - B-7: 클라이언트 traceparent가 trace_id를 정하고 0.1 샘플링을 무시하게 한다(신뢰 경계).
+  - 컨트롤러 확인(설치 소스 직접 대조):
+    - `propagate/__init__.py:107-152`: import 때 한 번 읽는다. `none`이면 빈 Composite이고, 모르는 이름이면 import가 그 이름을 실은 ValueError다(`OTEL_PROPAGATORS=b3x` 실측).
+    - `util/http/__init__.py:189`: CAPTURE_ALL_METHODS는 부를 때마다 원문의 참/거짓으로 읽는다(공백도 켠다).
+    - `django/__init__.py:391-405`: `meter_provider` 인자를 받는다. `otel_middleware.py:110-116`: META 키 접두는 `opentelemetry-instrumentor-django.`다. 함께 `:206` · `:358-369` · `_semconv.py:209-217`(프로세스에 한 번)을 대조했다.
+    - `opentelemetry.instrumentation.django` import가 `opentelemetry.propagate`와 계측 미들웨어 모듈을 함께 올린다(실측 — observability import만으로는 올리지 않는다).
+  - 컨트롤러가 더 찾은 것: 계약 「트레이스 · Sentry」 행의 `service.name` = `OUTBOX_SOURCE`는 D5(「`OTEL_SERVICE_NAME` · `OTEL_RESOURCE_ATTRIBUTES`가 있으면 SDK 규칙대로 그것이 이긴다」)보다 좁게 말한다. 계약 문장만 고친다(Z8).
+- **r3 결정 Z1–Z8(컨트롤러)**: 계약(pod-template 「로그」 · 「트레이스 · Sentry」 행 · identity-admin-api 타임아웃 표 `/health` 행 · §관측)과 규칙 §Logging은 이 절과 같은 변경에서 「T071 r3」 표식으로 고쳤다.
+  - **Z1 OTel env · 굳은 값 · 지표**(B-1 · A-3 · A-5 · B-6 — Y1 정정):
+    - `_check_otel_env`에 둘을 더한다(모두 아홉 · 오류는 이름만 실은 `ImproperlyConfigured`). 〔r5 P5 — 열하나〕 〔r6 G1 — 열일곱(mTLS 클라이언트 키 · 인증서 넷 · 닫힌 꼴 밖 엔드포인트 둘)〕
+      - `OTEL_PROPAGATORS`: 비지 않으면(strip) 쉼표로 나눈 토큰(strip · 소문자)이 모두 `tracecontext` · `baggage` 가운데 하나여야 하고 `tracecontext`가 있어야 한다. `none` · 빈 토큰 · 그 밖의 이름은 거부한다. 〔r4 Q1 — 빈 값만 기본 · 토큰은 앞뒤 공백만 떼고 대소문자 그대로 · 공백뿐인 값 거부〕 〔r5 P1 — 떼는 것은 `str.strip`이 떼는 공백 전부(탭 · 유니코드 공백 포함)〕
+      - `OTEL_PYTHON_INSTRUMENTATION_HTTP_CAPTURE_ALL_METHODS`: 원문이 비지 않으면 거부한다. strip하지 않는다 — OTel이 원문의 참/거짓으로 읽어 공백도 켠다. 「빈 값은 없음과 같다」는 그대로다.
+    - `_check_otel_env()`는 configure_otel 안의 OTel import보다 먼저 부른다. 모르는 propagator 이름이 OTel import의 값 실은 ValueError보다 먼저 이름만 실은 `ImproperlyConfigured`가 되게 한다.
+    - 굳은 값 확인: instrument() 뒤, 삽입 확인과 같은 자리에서 본다. 실패하면 uninstrument · `provider.shutdown()` 뒤 이름만 실은 `ImproperlyConfigured`다.
+      - (a) `_DjangoMiddleware._traced_request_attrs`: 모든 항목이 공백뿐인 str인 list(빈 list 포함)면 통과한다. 공백 아닌 항목이 있거나, list가 아니거나, 속성이 없으면(판 올림) 거부한다. env 검사와 같은 판정이다(A-3).
+      - (b) propagator: `opentelemetry.propagate.get_global_textmap().fields`(공개 API · import 때 env로 굳는다)에 `traceparent`가 있어야 한다. 읽다가 예외가 나도 거부한다.
+      - (c) semconv: `_DjangoMiddleware._sem_conv_opt_in_mode`가 `_StabilityMode.DEFAULT`여야 한다. instrument()가 프로세스에 한 번 굳는 semconv 상태를 옮겨 둔 값이다. 속성이나 이름이 없으면 거부한다. 〔r4 Q3 — 이름이 없어도 AttributeError가 아니라 거부 · helper 직접 시험〕
+    - 지표: `instrument(..., meter_provider=NoOpMeterProvider())`로 Django 계측의 OTel 지표를 끈다. web 지표는 prometheus_client다(D10). 전역 MeterProvider(T072 · T098)가 생겨도 `http.target` 원문이 지표 라벨에 실리지 않는다(B-6).
+    - 열거(A-5 · B-1):
+      - 거부 기준 = 요청 값(헤더 · 요청 객체 속성 · 쿼리 · 클라이언트 메서드 원문)을 span에 싣거나, 계측 · SDK를 끄거나, 상류 traceparent 이어받기를 끄는 env. 〔r5 P5 — 다섯 절: 계측 미들웨어 위치를 바꾸는 env · 이 프로세스가 읽는 자격 값을 꼴이 틀릴 때 OTel이 원문 그대로 경고 로그에 싣는 env를 더한다〕
+      - 설치된 opentelemetry-* 배포 12개(api · sdk · proto · semantic-conventions · instrumentation · instrumentation-django · instrumentation-wsgi · util-http · exporter-otlp-proto-http · exporter-otlp-proto-common · exporter-otlp-common · exporter-http-transport — 판은 1.45.2 · 0.66b2)의 env 읽기를 다시 셌다. 기준에 드는 것은 아홉이다. 〔r5 P5 — 열하나〕 〔r6 G1 — 열일곱(mTLS 클라이언트 키 · 인증서 넷 · 닫힌 꼴 밖 엔드포인트 둘)〕
+      - 나머지는 받는다: 〔r4 Q2 — SDK 자체 지표 · 자격 provider 2 · `OTEL_LOGRECORD_ATTRIBUTE_*` · 신호별 PROTOCOL · `PYTHONPATH`를 더한다〕
+        - 샘플러 2는 D5가 검증하고, OTLP 엔드포인트 2는 스킴을 검증한다. 그 밖의 `OTEL_EXPORTER_OTLP_*`(헤더 · 시간 제한 · 압축 · 인증서)와 `OTEL_BSP_*`는 전송 설정이다. 〔r5 P5 — 헤더 둘(일반 · TRACES)은 거부로 옮긴다 · METRICS · LOGS 헤더는 이 프로세스가 읽지 않아 받는다〕 〔r6 G1 — 클라이언트 키 · 인증서 넷은 거부 · 엔드포인트는 닫힌 꼴 · CA 인증서 · 시간 제한 · 압축은 받는다〕
+        - `OTEL_SERVICE_NAME` · `OTEL_RESOURCE_ATTRIBUTES` · `OTEL_EXPERIMENTAL_RESOURCE_DETECTORS`는 자원(운영자 상수)이다. `service.name`은 env가 이긴다(D5). `process` 탐지기는 argv를 싣는다 — 명령줄에 비밀을 두지 않는다(T072 · Y7 ArgvIntegration과 같은 규칙).
+        - `OTEL_PYTHON_DJANGO_EXCLUDED_URLS` · `OTEL_PYTHON_EXCLUDED_URLS`는 인자가 이긴다. 헤더 캡처 `_SANITIZE_FIELDS` · 클라이언트 캡처 2는 무효다.
+        - 한도(`OTEL_ATTRIBUTE_*` · `OTEL_SPAN_*` · `OTEL_EVENT_*` · `OTEL_LINK_*`)는 자르거나 버리기만 한다. 응답 훅이 그 뒤에 URL 속성을 바꾼다.
+        - `OTEL_PYTHON_CONTEXT`는 모르는 이름이면 contextvars다. `OTEL_PYTHON_TRACER_PROVIDER` · `OTEL_PYTHON_METER_PROVIDER` · `_OTEL_PYTHON_LOGGER_PROVIDER`는 받는다 — Django 계측은 명시 provider를 쓴다(tracer = configure_otel의 것 · meter = NoOp). 〔r4 Q2 — env 이름은 `OTEL_PYTHON_LOGGER_PROVIDER`〕
+        - 지표 · 로그 SDK 설정(`OTEL_METRIC_*` · `OTEL_METRICS_EXEMPLAR_FILTER` · `OTEL_BLRP_*` · exporter-otlp-common 집계 env)은 쓰지 않는다.
+        - 자동 계측 · 배포판 전용 env는 `opentelemetry-instrument` 실행기와 `sdk/_configuration`만 읽는다. pod는 그 실행기를 쓰지 않는다(T072 wsgi). 대상: `OTEL_PYTHON_DISTRO` · `OTEL_PYTHON_CONFIGURATOR` · `OTEL_PYTHON_DISABLED_INSTRUMENTATIONS` · `OTEL_PYTHON_ID_GENERATOR` · `OTEL_PYTHON_*_CONFIGURATOR` · `OTEL_*_EXPORTER` · `OTEL_EXPORTER_OTLP_PROTOCOL` · `OTEL_CONFIG_FILE` · 로깅 자동 계측 · gevent 패치.
+      - 빌더는 이 열거를 설치 소스로 다시 센다(env 이름 → 읽는 곳 → 처분 표). 이 목록 밖의 env가 나오면 고치지 말고 NEEDS_CONTEXT로 보고한다. 〔r4 Q2 — r3 빌더가 열거 밖 둘(SDK 자체 지표 · 자격 provider)을 보고했다 · 받음〕
+    - 시험:
+      - oc-15에 사례를 더한다. 메시지에는 값이 없어야 한다.
+        - `OTEL_PROPAGATORS` 거부: `none` · ` None ` · `tracecontext,none` · `baggage` · `tracecontext,,baggage` · 감시 토큰 이름. 〔r4 Q1 — 공백뿐 · 대소문자 · 빈 토큰을 더한다〕
+        - `OTEL_PROPAGATORS` 받음: `tracecontext` · ` TraceContext , baggage ` · `baggage,tracecontext` · 빈 값 · 공백. 〔r4 Q1 — ` TraceContext , baggage ` · 공백은 거부로 옮긴다〕
+        - `CAPTURE_ALL_METHODS`: `1` · 공백뿐은 거부, 빈 값은 받음.
+      - 새 프로세스(`_run_child` — env를 import 전에 둔 운영 경로):
+        - 감시 토큰 이름의 `OTEL_PROPAGATORS` → 이름만 실은 `ImproperlyConfigured`다(ValueError 아님 · 감시 값 없음).
+        - 공백뿐인 `TRACED_REQUEST_ATTRS` → 통과한다.
+        - 지표: 전역 SDK MeterProvider + InMemoryMetricReader를 둔 채, 쿼리에 감시 값을 넣은 404 요청과 미들웨어가 단락하는 요청을 보낸다 → Django 계측 지표 data point 0 · 직렬화한 지표 어디에도 감시 값 없음.
+      - 굳은 값 (b) · (c): 시험 안에서 전역 textmap · semconv 상태를 바꾸고 원복한다(거부 · 계측 0 · provider shutdown).
+      - 변이: 두 거부 각각 지우기 · `tracecontext` 필수 지우기 · CAPTURE_ALL_METHODS를 strip으로 판정 · env 검사를 import 뒤로 옮기기 · (a)를 엄격한 빈 list로 되돌리기 · (b) 지우기 · (c) 지우기 · `meter_provider` 인자 지우기.
+  - **Z2 Sentry 헤더 허용 목록에서 `traceparent`를 뺀다**(A-1 · B-3 — Y3 보강):
+    - 허용 목록 = `host` · `user-agent` · `accept` · `content-type` · `content-length`.
+    - 근거: 검증된 trace 문맥은 `contexts.trace`와 태그 `trace_id`가 기록 중 span일 때만 싣는다. 헤더 원문은 OTel이 버린 값과 비샘플 요청의 클라이언트 id까지 남긴다.
+    - 시험: oc-52에 꼴 밖 `traceparent`(감시 값)를 더한다 → 이벤트 본문 · envelope 머리 어디에도 없다. oc-31 기대 헤더 목록에서 `Traceparent`를 뺀다(계약 변경 Z2 — 더 엄격). 변이: `traceparent` 다시 넣기.
+  - **Z3 헬스 스레드 시작 실패**(B-2 — Y2 보강):
+    - `_start`: 칸 자리를 얻은 뒤 결과 칸 · 스레드를 만들고 시작하는 구간에서 `Exception`이 나면 칸 자리를 놓고 None을 돌려준다. 그 검사만 곧바로 fail(latency_ms 0.0)이고 500은 없다(D6 「의존 예외는 모두 fail」). 〔r5 P4 — 자리는 스레드가 시작되지 않았을 때만 그 자리에서 놓는다(시작됐으면 그 스레드가 끝날 때)〕
+    - `Exception`이 아닌 `BaseException`이면 스레드가 시작되지 않았을 때만 자리를 놓고 다시 올린다. 〔r4 Q4 — 계약 타임아웃 행 · 규칙 문면을 맞춘다 · `worker.ident` 한계〕
+    - 한 번 얻은 자리는 정확히 한 번 놓는다. 작업 스레드의 finally와 실패 경로가 둘 다 놓지 않는다.
+    - 시험:
+      - 스레드 시작이 `RuntimeError` · `MemoryError`를 낼 때(스레드 생성자가 낼 때도): `/ready` → 503 `not_ready`. `/health` → 200이고 그 항목만 fail(latency_ms 0.0)이며 다른 항목은 그대로 판정한다. 호출 뒤 칸 여유가 8로 돌아온다.
+      - `BaseException` 하위 형: 그대로 올라오고 칸 여유가 8로 돌아온다.
+    - 변이: except를 `RuntimeError`로 좁히기 · Exception 경로의 놓기 지우기 · BaseException 경로의 놓기 지우기.
+  - **Z4 마스킹 목록 보강**(A-2 · B-4 · B-5 · A-4 — Y4 정정):
+    - 목록 기준(계약에 적는다):
+      - (1) 이 플랫폼 스택(Django · gunicorn · OTel · librdkafka · BFF)이 헤더 · 쿠키 · META/environ · settings · Kafka 설정에 실제로 두는 비밀 이름.
+      - (2) 일반 비밀 낱말과 그 구분자 · camelCase · 접미 변형.
+      - 값은 보지 않는다(호출자 규칙 — T062 K12). 기준 밖의 이름은 지적 대상이 아니다.
+    - 정규화: 지금 꼴(소문자 · `_` · `.` → `-` · 앞 `http-` 하나 제거) 뒤에, 앞의 `--host-` 또는 `--secure-` 하나를 뗀다(쿠키 접두 `__Host-` · `__Secure-`).
+    - camelCase: 원문의 소문자 · 숫자 → 대문자 경계에 `-`를 넣은 꼴도 같은 정규화로 판정한다. 두 꼴 가운데 하나라도 맞으면 지운다. 〔r5 P3 — 머리글자 끝 경계도 넣는다 · r6 G2 — 첫 경계만 넣은 꼴과 두 경계를 넣은 꼴을 따로 판정한다(원래 꼴까지 세 꼴)〕
+      - 예: `accessToken` → `access-token` · `clientSecret` · `sessionKey` · `privateKey`.
+      - `sessionId`는 지금처럼 원래 꼴 `sessionid`로 지워진다.
+    - 키 형: memoryview 키(와 쌍의 memoryview 첫 항목)도 bytes처럼 latin-1로 풀어 판정한다. 풀 수 없으면 판정 밖이다(예외를 내지 않는다).
+    - 더하는 이름:
+      - 정확한 이름:
+        - `referer` · `referrer`: 앞 페이지 URL의 쿼리를 싣는다(OAuth `code` 등).
+        - `csrfmiddlewaretoken`: Django 폼의 CSRF 토큰.
+        - `session-key`: `request.session.session_key` = `sessionid` 값.
+        - `passphrase` · `pgpassword`(libpq env).
+      - 접미:
+        - `-passwd` · `-apikey`: 정확한 이름과 대칭.
+        - `-access-key`: `AWS_SECRET_ACCESS_KEY`.
+        - `-passphrase`.
+        - `-key-pem`: librdkafka `ssl.key.pem` · `private_key_pem`. 인증서 PEM은 남는다.
+      - 접두: `opentelemetry-instrumentor-`. OTel이 `request.META`에 두는 항목 전부(요청 속성 dict · span · 토큰)다.
+    - 넓히지 않는 것(남는다 — 시험이 고정한다):
+      - 일반 `-key` · `-url` 접미: `partition-key` · `partitionKey` · `idempotency_key` · `AUTHENTIK_JWKS_URL` · `identity_m2m_url`.
+      - `sid` · `token_count` · `tokenCount` · `x-request-id`.
+      - 식별자 `AWS_ACCESS_KEY_ID` · 인증서 PEM(`ssl.ca.pem` · `ssl.certificate.pem`).
+    - 자격 URL 설정을 더 둘 때(`REDIS_URL` · Celery broker · result 등)는 그 settings를 만드는 과제가 이름을 목록에 더한다(T072 인계 — Z8).
+    - 시험:
+      - oc-1에 사례를 더한다: 더한 이름 · 접미 · 접두 · 쿠키 접두 · camelCase · memoryview(감시 값)와 남는 이웃.
+      - 실제 sink 사례: configure_logging + configure_otel 아래 뷰가 `request.META` · `request.headers`를 로그로 넘긴다(쿼리 · Referer에 감시 값). 그 줄에 감시 값이 없다.
+    - 변이(한 번에 하나씩 넣는다):
+      - 지우기: 정확한 이름 셋(`referer` · `csrfmiddlewaretoken` · `session-key`) · 접미 셋(`-passwd` · `-access-key` · `-key-pem`) · 접두 · 쿠키 접두 떼기 · camelCase 판정 · memoryview 판정.
+      - 더하기: 접미 `-url`(남는 사례가 잡는다 — A-4) · 접미 `-key`.
+  - **Z5 독스트링**(A-6 — D13):
+    - 모듈 독스트링의 「구현 메모(계약 행이 말하지 않는 것)」에는 계약이 말하지 않는 구현 세부만 남긴다. 예: exc_info 통과 · 깊이 세는 법 · 기반 형 메서드 판정 · 신호 · 스트리밍 전달 · 스레드 이름 · 마스킹 판정 순서.
+    - Y6 · r3로 계약에 들어간 항목은 지우거나 계약 행을 가리키는 한 줄로 바꾼다. 대상: level `ValueError` · problem 64 KiB · 삽입 확인 · 빈 env · 요청 키 허용 목록 · Dsn 꼴 · 칸 자리를 놓는 때 · 곧바로 fail.
+  - **Z6 의존 범위**(A-8): pyproject를 `opentelemetry-instrumentation-django>=0.66b2,<0.67`로 좁힌다.
+    - 이유: configure_otel이 계측 미들웨어 클래스의 비공개 속성(`_traced_request_attrs` · `_sem_conv_opt_in_mode`)과 `_StabilityMode`를 읽는다.
+      - 판 올림은 django-common의 의도한 변경이어야 하고, 계약 시험이 확인한다.
+      - 생성 pod lock이 검증 안 된 베타를 고르지 못한다.
+      - 계측 패키지들은 같은 판으로 서로 묶여 있다(instrumentation · wsgi · util-http · semantic-conventions가 같은 판).
+    - pyproject 주석에 이유를 적는다.
+    - `uv lock`(먼저 `--offline`)의 변화는 django-common `requires-dist`의 그 지정자 한 줄뿐이어야 한다. 판 변화는 0이고 `uv lock --check`가 통과해야 한다.
+  - **Z7 시험 안정**(빌더 r2 ⑨): oc-51의 50 ms 가정을 없앤다. 대역 probe에 들어온 스레드 수가 상한(8)이 될 때까지 기다린 뒤(시간 제한 HANG_LIMIT_S) 살아 있는 수를 센다.
+  - **Z8 계약 · 인계**(A-5 · A-7 · A-9 · B-7 · 컨트롤러 — 문서만):
+    - 계약 「트레이스 · Sentry」 행:
+      - 거부 env 아홉과 그 기준 · CAPTURE_ALL_METHODS 공백 규칙 · OTel import 전 검사. 〔r5 P5 — 열하나 · 기준 다섯 절 · 빈 값 일반 규칙의 MIDDLEWARE_POSITION 예외〕 〔r6 G1 — 열일곱(mTLS 클라이언트 키 · 인증서 넷 · 닫힌 꼴 밖 엔드포인트 둘)〕
+      - 굳은 값 확인 셋 · Django 계측 지표 끔.
+      - `service.name`은 env가 이긴다(D5).
+      - 헤더 허용 목록에서 `traceparent`를 뺀다.
+    - 계약 「로그」 행: 목록 기준 · 더한 이름 · 접미 · 접두 · 쿠키 접두 · camelCase · memoryview · 남는 이름.
+    - identity-admin-api:
+      - 타임아웃 표 `/health` 행: 스레드를 만들거나 시작하지 못해도 그 검사만 곧바로 fail이고, 자리는 바로 놓는다. 〔r5 P4 — 자리는 스레드가 시작되지 않았을 때만 바로 놓는다(시작됐으면 그 스레드가 끝날 때)〕
+      - §관측: 헤더 목록에 `referer` · 트레이스 신뢰 경계 · `OTEL_PROPAGATORS` · 지표 끔 · Sentry 헤더에서 `traceparent`를 뺀다.
+    - 규칙 §Logging(영어 · kr 번역 대기 줄).
+    - 인계:
+      - T072:
+        - pod env · ConfigMap에 거부 env 아홉을 두지 않는다. `OTEL_SDK_DISABLED=true`와 `tracecontext[,baggage]` 밖의 `OTEL_PROPAGATORS`도 포함이다(기동 실패). D14의 「금지 env 넷」을 대신한다. 〔r4 Q1 · Q5 — 소문자 정확 일치 · 공백뿐인 값 거부 · OTLP 헤더 자격 · 자격 provider env 금지〕 〔r5 P5 · P1 — 열하나(OTLP 헤더 둘은 기동 실패) · `sentry`도 거부〕 〔r6 G1 — 열일곱(mTLS 클라이언트 키 · 인증서 넷 · 닫힌 꼴 밖 엔드포인트 둘)〕
+        - 자격을 담는 URL 설정을 새로 두면(`REDIS_URL` · Celery broker · result 등) 그 이름을 django-common 마스킹 목록에 더한다(Z4).
+        - 생성물 기본 시험에 스모크를 둘지 정한다: configure_otel(InMemorySpanExporter) · configure_sentry(가짜 DSN · 가로채는 transport). 1차 방어는 범위 핀(Z6)이다.
+        - pod에 OTel MeterProvider를 둘 필요가 없다(Django 계측 지표는 끈다 — Z1). T098이 OTel 지표를 켜도 Django 계측 지표를 다시 켜지 않는다. 〔r6 G7 — pod에 지표 · 로그 OTLP exporter를 두는 과제는 그 신호의 OTLP env를 거부 env에 더한다〕
+      - T073: DB 무결성 오류(유일성 위반 등)를 500으로 흘리지 않는다. 계약에 있는 상태(400 `validation_error` 등)로 바꾸거나, 계약을 고쳐 409를 더한다(T073 설계 결정 · Y7의 「409 등」을 대신한다).
+      - T092:
+        - BFF는 브라우저가 보낸 `traceparent` · `tracestate`를 하류로 넘기지 않고 자기 span으로 새로 만든다(B-7 — 플래그 정책은 D14). 〔r5 P6 — bff-api 하류 호출 규약 헤더 줄에 적었다〕
+        - `/api/health` 캐시를 두면 bff-api `/api/health` 행 · 타임아웃 표에 적는다: TTL(isolate 메모리 — `/session/check` 2 s와 같은 꼴 권장) · 적중 때 `upstream_ms`의 뜻 · 실패(503) 캐시 여부.
+        - Workers Cache API는 wrangler `[cache]`(비활성 유지 — bff-api)와 다른 기능임을 한 줄로 밝힌다.
+        - rate limit을 고르면 그 꼴과 응답(429 problem+json 등)을 계약에 적는다(A-9).
+      - T076 · T072: admin 호스트 경로(브라우저 → Access → pod)의 클라이언트 `traceparent`를 지울지(Cloudflare Transform Rule 등) 받아들일지 정하고, 계약 §관측 신뢰 경계에 적는다(B-7). 〔r5 P6 — 결정 · 계약 기록은 T084(admin 호스트 경로를 만드는 과제) · T076은 검증만〕 〔r6 G6 — 검증은 T085(US4 E2E) · T076은 T084보다 먼저 돈다〕
+      - T100: Sentry `query_string`은 요청 키 허용 목록과 마스킹 이름 `query-string`이 겹으로 막는다(M65). 하나를 바꿀 때 다른 하나를 남긴다. 헤더 허용 목록에는 `x-request-id` · `traceparent`가 없다.
+      - report.md 편차 후보에 더한다: `SECRET_KEY` = `<pod>-env` 필수 비밀 · kv 경로 추가(T072 · T075 문면 밖 — A-7).
+  - **손대지 않는 것**: Y5 · Y6의 결과 · D3 · D4 · D8 · D9 · D10 · D12 · D13 · D15 · RequestIdMiddleware · sub_hash · 헬스 칸 구조(Y2) · 결과 공유 없음.
+
+### T071 r3 결과 · r4 결정(빌더 r3 NEEDS_CONTEXT 반영 · Q1–Q6 · 2026-11-07) — Z1의 `OTEL_PROPAGATORS` 토큰 규칙 · 받음 사례 · 받는 env 목록 · `_OTEL_PYTHON_LOGGER_PROVIDER` 이름 · (c) 판 올림 경로, Z3 줄의 계약 문면, Z8 T072 줄은 이 절의 Q1 · Q2 · Q3 · Q4 · Q5가 고친다(앞 절 줄 끝 〔r4 …〕 표식)
+
+- **r3 결과**(워크플로 `wf_cf8c8de0-0e4` · 68만 토큰 · 약 1시간 58분 · 빌더 NEEDS_CONTEXT — 리뷰 둘은 돌지 않았다):
+  - 바뀐 파일(r2 대비):
+    - `observability.py` 796 → 907(+148/−37) · `health.py` 242 → 267(+45/−20).
+    - 시험 `test_observability_contract.py` 2572 → 3148(+602/−26 · oc-1..62) · `obscontractapp/` middleware 34 → 50(`ShortCircuitMiddleware`) · urls 51 → 52 · views 97 → 104(`oc/dump`).
+    - pyproject 69 → 73(Z6 지정자 한 줄 + 주석). `uv.lock`은 r2 사본과 django-common requires-dist 지정자 한 줄(`<1` → `<0.67`)만 다르다 — 판 변화 0 · `uv lock --offline`이 성공해 온라인 실행 0 · `uv lock --check --offline` exit 0(두 번).
+    - `_obs_fakes.py` · `__init__.py`는 바이트가 같다.
+    - 시험에서 지운 26줄: 독스트링 20 · 계약 변경 Z2(허용 목록 상수 · oc-31 기대 헤더) · oc-31 입력을 감시 값으로 바꾼 강화 · oc-51 Z7 단언 추가. 지우거나 약해진 단언은 0이다(빌더 보고).
+  - 빨강(23:38 · 23:39 — 최종 시험 바이트 · `--show-capture=no`): `11 failed, 51 passed`. 빨강 뒤 시험 수정은 1건이다(oc-60이 첫 단언에서 멈춰 (b) · (c) 사례가 보이지 않아 모든 사례를 모아 한 번에 견주게 했다 — 단언 의미는 같다).
+  - 초록(최종 바이트 · sha step3 = step4 = step5): T063 21 ×2 · 계약 62 · 회귀 파일별 · 한 세션 묶음 753(9파일 합과 같다).
+  - 변이: 84개 중 83개를 잡았다(Z1 9 + 1 · Z2 1 · Z3 3 + 1 · Z4 12 + 2 · 바뀐 함수의 r2 변이 55 재실행). 생존은 M65(겹 방어 — r2와 같다).
+  - VD-T071-1 PASS(ninja 1.7.0 overlay · T063 21 · 계약 62 · 지문은 전후 같고 r1 · r2와도 같다).
+  - 위생: compileall · 바이트 검사 11파일 · gitleaks 파일별 11번 exit 0 · Docker dangling 볼륨 25 → 25 · uv는 `--offline` · 시험과 탐침은 루프백만.
+    - 첫 빨강 로그 하나(`red-contract-1.log`)의 pytest 「Captured log call」 칸에 무작위 감시 문자열 3개가 찍혔다(r2 마스킹 아래의 oc-56 — 비밀 아님). 그 뒤 빨강 · 변이는 `--show-capture=no`로 돌렸다.
+  - NEEDS_CONTEXT(빌더 ④ · ⑨): Z1 열거를 설치 소스로 다시 세니 열거 밖 env가 나왔다.
+    - `OTEL_PYTHON_SDK_INTERNAL_METRICS_ENABLED`(sdk `trace/__init__.py:1094` · `trace/export:107` · `:197` · otlp-http 내보내기 셋).
+    - `OTEL_PYTHON_EXPORTER_OTLP_HTTP_CREDENTIAL_PROVIDER` · `OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER`(otlp-http `_common:75` ← `trace_exporter:150`).
+    - 범주로는 덮였지만 이름이 없던 것: `OTEL_LOGRECORD_ATTRIBUTE_*` · `OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_PROTOCOL` · `PYTHONPATH`(실행기).
+    - Z1의 `_OTEL_PYTHON_LOGGER_PROVIDER`는 상수 이름이다. env 이름은 `OTEL_PYTHON_LOGGER_PROVIDER`다.
+  - 빌더 ⑧(설계 · 계약과 다르거나 문면이 모자란 곳 — 코드는 결정 그대로):
+    - ⑧-1: Z1 결정대로 env 검사는 공백뿐인 `OTEL_PROPAGATORS`와 대소문자가 다른 토큰을 받는다. 그런데 새 프로세스에서는 OTel import가 ValueError(「Propagator  not found」 · 「Propagator TraceContext not found」)로 기동을 끝낸다. oc-15의 「받음」 사례는 수집 때 propagate가 이미 올라와 있어서만 통과한다.
+    - ⑧-2: identity-admin-api 타임아웃 행의 「예외 종류와 무관」이 Z3의 BaseException 다시 올림과 어긋난다.
+    - ⑧-3: (c)의 「속성 없음」 경로는 instrument()가 그 속성을 늘 다시 써서 configure_otel을 거쳐서는 시험할 수 없다(코드로만 확인 · 변이 없음).
+    - ⑧-4: 「시작되지 않음」은 `worker.ident is None`으로 판정한다. start() 도중의 BaseException이면 자리를 일찍 놓을 수 있지만, 1회용 놓기라 두 번 놓지는 않는다.
+    - ⑧-5: 지표 시험의 단락 요청은 시험 미들웨어 `ShortCircuitMiddleware`가 만든다. 결정 밖으로 보강했다(시작 뒤 예외 사례 · 변이 Z1-10x · Z3-4x · Z4-13x · Z4-14x).
+  - 컨트롤러 확인(설치 소스 직접 대조 · 2026-11-07):
+    - `opentelemetry/propagate/__init__.py:107-151`(`_load_propagators`):
+      - `environ.get`이 비면(빈 값 · 없음) 기본 `tracecontext,baggage`다. 공백뿐인 값은 비지 않은 값이라 토큰 `""`가 된다.
+      - 토큰은 앞뒤 공백만 떼고(`str.strip`) entry point 이름과 대소문자까지 정확히 대조한다. 없으면 그 토큰을 실은 ValueError다. 〔r5 P1 — 떼는 것은 `str.strip`이 떼는 공백 전부(탭 · 유니코드 공백 포함)〕
+      - `none`만 대소문자를 가리지 않는다. 그 자리에서 빈 Composite로 끝낸다(앞 토큰도 버린다).
+    - 설치된 `opentelemetry_propagator` entry point는 `tracecontext` · `baggage` 둘뿐이다(opentelemetry-api). 〔r5 P1 — 틀렸다: 셋이다 · sentry-sdk 2.73.0이 `sentry`(`SentryPropagator`)를 등록한다〕
+    - SDK 자체 지표(`_tracer_metrics.py` · exporter-otlp-common `_exporter_metrics.py`):
+      - span 지표는 `otel.span.parent.origin` · `otel.span.sampling_result`만 싣는다. 내보내기 지표는 구성 요소 형 · 이름 · 엔드포인트 host · port · `error.type`만 싣는다.
+      - MeterProvider 인자가 없으면 전역(`get_meter_provider()`)으로 간다. SP-1 pod는 전역 MeterProvider를 두지 않는다. `OTEL_PYTHON_METER_PROVIDER`로 SDK MeterProvider가 생겨도 reader가 없다.
+    - 자격 provider: `opentelemetry_otlp_credential_provider` entry point는 설치돼 있지 않다(0개). 값이 있으면 OTLPSpanExporter 생성이 그 값(entry point 이름 — 비밀 아님)을 실은 RuntimeError로 기동을 끝낸다(fail-closed).
+    - OTLP 헤더 env: `parse_env_headers(..., liberal=True)`(`opentelemetry/util/re.py`)가 꼴이 틀린 쌍을 원문 그대로 WARNING 로그에 싣는다. 그 로그는 configure_logging 아래 stdout JSON으로 나간다(마스킹은 값을 보지 않는다).
+    - 헤더 캡처 env(재확인): 공백뿐인 값은 OTel이 `[""]`로 읽고, 빈 정규식의 `fullmatch`는 빈 헤더 이름만 맞으므로 캡처하는 헤더가 없다(`util/http/__init__.py:92-100` · `:211-215`). 지금 판정(strip 뒤 비면 받음)은 그대로 둔다.
+- **r4 결정 Q1–Q6(컨트롤러)**: 계약(pod-template 「트레이스 · Sentry」 행 · identity-admin-api 타임아웃 표 `/health` 행 · §관측)과 규칙 §Logging은 이 절과 같은 변경에서 「T071 r4」 표식으로 고쳤다.
+  - **Q1 `OTEL_PROPAGATORS` 판정을 OTel 해석과 똑같이 한다**(빌더 ⑧-1 — Z1 정정 · 컨트롤러 결정 오류): 〔r5 P1 — 해석 규칙만 같다 · 받는 이름은 더 좁다(OTel이 받는 `none` · `sentry`도 거부)〕
+    - 규칙:
+      - 값이 빈 문자열이거나 없으면 받는다(OTel 기본).
+      - 그 밖에는 쉼표로 나눈 토큰마다 앞뒤 공백만 떼고(`str.strip`) 대소문자 그대로 `tracecontext` 또는 `baggage`와 같아야 하고, `tracecontext`가 하나 이상 있어야 한다. 〔r5 P1 — 떼는 것은 `str.strip`이 떼는 공백 전부(탭 · 유니코드 공백 포함)〕
+      - 토큰이 겹치거나 순서가 바뀌어도 받는다.
+    - 거부로 옮기는 것: 공백뿐인 값(빈 토큰) · 대소문자가 다른 토큰(` TraceContext `) · 빈 토큰(`tracecontext,` · `,tracecontext`). OTel import는 이 값들로 그 값을 실은 ValueError를 낸다. 우리 검사가 그보다 먼저 이름만 실은 `ImproperlyConfigured`로 끝낸다.
+    - 코드(`_check_otel_env`):
+      - 전체 값의 `.strip()` 판정을 원문의 참/거짓으로 바꾼다.
+      - 토큰의 `.strip().lower()`를 `.strip()`으로 바꾼다.
+      - 메시지는 그대로다(이름만).
+    - 시험:
+      - oc-15:
+        - 「받음」의 ` TraceContext , baggage ` · 공백을 「거부」로 옮긴다(계약 변경 r4 Q1).
+        - 거부를 더한다: `TRACECONTEXT` · `tracecontext,` · `,tracecontext` · 탭뿐 · `tracecontext baggage`(쉼표 없음) · ` tracecontext ,BAGGAGE`.
+        - 받음을 더한다: ` tracecontext , baggage ` · `tracecontext,tracecontext` · `baggage, tracecontext,baggage`.
+      - 대조 시험(새 oc):
+        - 후보 값(oc-15의 `OTEL_PROPAGATORS` 값 전부 + 없음)마다 판정이 같아야 한다. 한쪽은 「우리 env 검사(`_check_otel_env`)가 받는다」다.
+        - 다른 쪽은 「`opentelemetry.propagate._load_propagators()`가 예외 없이 끝나고 그 `fields`에 `traceparent`가 있다」다. 이 함수는 OTel이 import 때 쓰는 함수이고, 부를 때 env를 읽는다.
+        - 후보에는 받는 값과 거부하는 값이 둘 다 있어야 한다(공허한 대조 금지). 감시 값은 넣지 않는다(oc-15 · oc-57이 본다). 실패 출력에 후보 원문 대신 이름표를 쓴다.
+        - 비공개 함수가 없어지면 시험이 실패한다. 판 올림 때 다시 확인하라는 신호라고 독스트링에 적는다.
+      - 새 프로세스(운영 경로 — env가 OTel import 전에 있다):
+        - 대소문자가 다른 토큰(`TraceContext`): 이름만 실은 `ImproperlyConfigured`다. ValueError가 아니고, `opentelemetry.propagate`는 올라오지 않는다.
+        - 기본이 아닌 받음 값(` baggage , tracecontext `): configure_otel이 성공하고, 전역 textmap `fields`에 `traceparent` · `baggage`가 있다.
+    - 변이: 토큰 `.lower()` 되살리기 · 전체 값 `.strip()` 판정 되살리기 · 토큰 `.strip()` 지우기.
+  - **Q2 열거 밖 env는 받는다**(빌더 ⑨ NEEDS_CONTEXT · 문서만):
+    - `OTEL_PYTHON_SDK_INTERNAL_METRICS_ENABLED`: SDK 자체 지표(span 시작 · 살아 있는 span 수 · 내보내기 수 · 시간)를 켠다.
+      - 라벨은 표본 결과 · 부모 출처 · 구성 요소 · 엔드포인트 host · port · `error.type`뿐이다. 요청 값이 없다.
+      - span · 계측 · propagation을 바꾸지 않는다.
+      - 지표는 전역 MeterProvider로 가는데, SP-1 pod는 그것을 두지 않는다.
+    - `OTEL_PYTHON_EXPORTER_OTLP_HTTP_CREDENTIAL_PROVIDER` · `…_TRACES_CREDENTIAL_PROVIDER`: 내보내기 전송 Session을 entry point로 고른다(전송 설정). 이 이미지에는 provider가 없어, 값이 있으면 기동이 실패한다(fail-closed · 메시지의 값은 entry point 이름).
+    - 범주로 덮였던 이름을 Z1 「나머지는 받는다」에 더한다: `OTEL_LOGRECORD_ATTRIBUTE_*`(로그 SDK — 쓰지 않는다) · `OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_PROTOCOL`(`_configuration` 전용) · `PYTHONPATH`(실행기 전용).
+    - Z1의 `_OTEL_PYTHON_LOGGER_PROVIDER`는 env `OTEL_PYTHON_LOGGER_PROVIDER`로 읽는다.
+    - 거부 env는 아홉 그대로다. 계약의 「이 아홉이 전부다」 근거에 이 절을 더한다. 〔r5 P5 — 열하나〕 〔r6 G1 — 열일곱(mTLS 클라이언트 키 · 인증서 넷 · 닫힌 꼴 밖 엔드포인트 둘)〕
+  - **Q3 굳은 값 (c)의 판 올림 경로**(빌더 ⑧-3):
+    - `_semconv_mode_default`: `_StabilityMode`에 `DEFAULT` 이름이 없어도 AttributeError가 아니라 False(거부)를 돌려준다(`getattr`). 모듈 · 속성 · 이름 가운데 하나라도 없으면 모두 False다.
+    - 시험(굳은 값 helper를 직접 부른다 — configure_otel을 거치면 instrument()가 속성을 다시 쓴다):
+      - (c): `_sem_conv_opt_in_mode`를 지운 클래스 → False · `DEFAULT`가 없는 `_StabilityMode` 대역 → False(예외 없음) · `_semconv` 모듈 import 실패 → False.
+      - (a): 계측 미들웨어 모듈 import 실패 → True(거부).
+      - 원복은 monkeypatch가 한다(`sys.modules` 항목 포함).
+    - 변이: (c) 속성이 없으면 DEFAULT로 보기 · (c) import 실패를 통과로 보기 · (a) import 실패를 통과로 보기 · `getattr`을 직접 속성 접근으로 되돌리기.
+  - **Q4 헬스 시작 실패 문면**(빌더 ⑧-2 · ⑧-4 · 문서만):
+    - identity-admin-api 타임아웃 표 `/health` 행과 규칙 §Logging:
+      - `Exception`이면 종류와 무관하게 그 검사만 곧바로 fail이고, 자리를 바로 놓는다. 〔r5 P4 — 자리는 스레드가 시작되지 않았을 때만 바로 놓는다(시작됐으면 그 스레드가 끝날 때)〕
+      - `KeyboardInterrupt` · `SystemExit` 같은 `BaseException`은 스레드가 시작되지 않았으면 자리를 놓고 그대로 올린다.
+    - 한계(코드 변경 없음 · 기록): 〔r5 P4 — 코드를 바꾼다: Exception 갈래도 같은 ident 판정〕
+      - 「시작되지 않음」 = `worker.ident is None`이다.
+      - start() 안의 BaseException이 새 스레드의 ident 설정보다 먼저 오면 자리를 일찍 놓을 수 있다. 그동안 그 칸의 살아 있는 스레드가 9가 될 수 있다. 〔r5 P4 — Exception 갈래도 같다〕 〔r6 G3 — 8을 넘을 수 있다(일찍 놓인 채 살아 있는 스레드 수만큼)〕
+      - 1회용 놓기라 두 번 놓지는 않는다. 그 BaseException은 프로세스 종료 신호라 받아들인다.
+  - **Q5 인계 보강**(문서만):
+    - T072 · T098: pod env에 OTLP 헤더 env(`OTEL_EXPORTER_OTLP_HEADERS` · `OTEL_EXPORTER_OTLP_TRACES_HEADERS`)로 자격을 두지 않는다. 〔r5 P5 — 이제 두 env는 기동 실패다(거부 env)〕 〔r6 G1 — mTLS 클라이언트 키 · 인증서 env 넷과 닫힌 꼴 밖 엔드포인트(사용자 정보 · 쿼리 등)도 기동 실패다〕
+      - 꼴이 틀린 쌍은 OTel이 원문을 WARNING 로그에 싣는다. 마스킹은 값을 보지 않는다.
+      - 자격은 수집기가 갖는다(Alloy · `grafana-cloud-credentials` — T098 문면은 pod → Alloy 4318).
+    - T072:
+      - 자격 provider env 둘을 두지 않는다(provider가 없어 기동이 실패한다).
+      - Z8의 「`tracecontext[,baggage]` 밖의 `OTEL_PROPAGATORS`」는 Q1 규칙(소문자 정확 일치 · 공백뿐인 값 거부)으로 읽는다. 〔r5 P1 — `sentry`(sentry-sdk가 등록)도 거부된다〕
+  - **Q6 받아들인 것**(빌더 ⑧-5): `ShortCircuitMiddleware`(시험 전용 앱 obscontractapp)와 결정 밖으로 보강한 시험 · 변이는 그대로 둔다.
+  - **손대지 않는 것**: Z2 · Z3 코드 · Z4 · Z5 · Z6 · Z7 · Z8(Q5가 보강하는 줄 밖) · D3 · D4 · D8 · D9 · D10 · D12 · D13 · D15 · RequestIdMiddleware · sub_hash · 헬스 칸 구조 · 헤더 캡처 env 판정.
+
+### T071 r4 결과 · r5 결정(리뷰 r4 반영 · P1–P6 · 2026-11-07) — Q1의 제목 · entry point 사실 줄 · 「앞뒤 공백만」, Q4의 Exception 갈래 · 한계, Q5의 T072 줄, Z1 · Z8의 거부 env 수 · 기준 문장 · 받는 OTLP 헤더, Z8의 T092 · T076 줄은 이 절의 P1 · P4 · P5 · P6이 고친다(앞 절 줄 끝 〔r5 …〕 표식)
+
+- **r4 결과**(워크플로 `wf_8c9174f9-1e2` · 145만 토큰 · 약 1시간 31분 · 빌더 DONE_WITH_CONCERNS · 리뷰 A · B 둘 다 approve_with_fixes — low 4씩 · high · medium 0):
+  - 바뀐 파일(r3 대비):
+    - `observability.py` 907 → 915(+15/−7) · 시험 `test_observability_contract.py` 3148 → 3364(+242/−26 · oc-1..65).
+    - 나머지 9파일은 r3 사본과 바이트가 같다(`health.py` · `__init__.py` · pyproject · `uv.lock` · `_obs_fakes.py` · obscontractapp 넷).
+    - 시험에서 지운 26줄: 독스트링 · 주석 16 · oc-15의 `OTEL_PROPAGATORS` 리터럴 10. 리터럴은 모듈 상수 `PROPAGATORS_REJECTED`(13) · `PROPAGATORS_ACCEPTED`(6)로 옮겨 oc-63과 함께 쓴다(받음 둘은 거부로 — 계약 변경 r4 Q1). 지우거나 약해진 단언은 0이다(기계 대조 — r3 assert 331줄이 r4에 모두 있다).
+  - 빨강(01:33 · `--show-capture=no`): `4 failed, 61 passed`(oc-15 · oc-63 · oc-64 cased · oc-65).
+    - 빨강 뒤 시험 수정은 1건이다. oc-65에 `c-both-missing`을 더했다(None 가드 변이를 잡으려고).
+    - 최종 시험 바이트로 r3 구현을 다시 돌려도 `4 failed`다.
+  - 초록(sha step06 = 07 = 08): T063 21 ×2 · 계약 65 · 회귀 파일별 · 한 세션 묶음 756(9파일 합과 같다).
+  - 대조(oc-63 · 후보 20): 우리 판정과 OTel `_load_propagators`가 모두 같다. r3 구현은 5개가 어긋났다.
+  - 변이 38개를 모두 잡았다(Q1 3 + 1 · Q3 4 + 1 · 바뀐 함수의 앞 변이 28 재실행 · 생존 0).
+  - VD-T071-1 PASS · `uv lock --check --offline` exit 0 · 위생(compileall · 바이트 · gitleaks 11 · Docker dangling 볼륨 25 → 25 · 루프백만).
+  - 빌더 ⑧:
+    - ⑧-1: 컨트롤러 사실 오류. sentry-sdk 2.73.0이 propagator entry point `sentry`를 등록한다. `tracecontext,sentry`는 우리가 거부하고 OTel은 받는다.
+    - ⑧-2: 「앞뒤 공백만」은 실제(`str.strip` — 유니코드 공백까지 뗀다)보다 좁게 말한다.
+    - ⑧-3: 결정 밖 보강 — oc-65 사례 둘 · 후보 상수 공유 · 변이 Q1-4x · Q3-5x.
+  - 리뷰 A(계약 · 문면 · 판별력 — r3 + r4 누적):
+    - Z1–Z7 · Q1 · Q3이 구현 · 시험 · 변이와 1:1이다. 공허한 단언이 없고, 빨강 · 수치가 증거와 맞는다.
+    - r2 지적 16건과 빌더 r3 ⑧ · ⑨는 모두 코드 · 시험 · 계약 · 인계 중 한 곳으로 닫혔다.
+    - low 4:
+      - A-1: entry point 사실 오류 · 「OTel 해석과 같다」의 과장 · `sentry` 거부가 시험에 고정되지 않음.
+      - A-2: Django 인증 폼 비밀번호 필드가 마스킹 목록 밖이다.
+      - A-3: 거부 env 문면 셋 — 빈 값 일반 규칙과 MIDDLEWARE_POSITION · 기준 문장과 MIDDLEWARE_POSITION · 「앞뒤 공백만」.
+      - A-4(인계): bff-api 하류 헤더 줄 · admin 호스트 결정의 소유(T076은 tester 과제).
+  - 리뷰 B(누출 · 실패 처리 · 부작용 — r3 + r4 누적):
+    - 열거를 다시 셌다(opentelemetry-* 12배포 AST · `os.environ` 직접 86곳 · entry point 그룹 14). 기준에 드는 것은 아홉이고, Q2 근거는 소스와 맞다.
+    - 53후보 대조에서 어긋나는 값은 `tracecontext,sentry` 둘뿐이다(의도된 좁힘).
+    - Sentry · 로그 · 헬스(시작 실패 11경로 · 동시 64건) 회귀는 0이다.
+    - low 4:
+      - B-1: camelCase 머리글자 경계 공백(`APIToken` 등 12꼴이 남는다).
+      - B-2: A-2와 같다.
+      - B-3: 헬스 `_start`의 Exception 갈래가 이미 시작된 스레드의 자리도 놓는다. 칸 상한을 하나 넘을 수 있고, Q4 기록 밖이다.
+      - B-4(인계): OTLP 헤더 env의 꼴이 틀린 쌍을 OTel이 원문 WARNING으로 남긴다. Q5는 문서뿐이라 강제 지점이 필요하다.
+  - 컨트롤러 확인(설치 소스 직접 대조 · 2026-11-07):
+    - `sentry_sdk-2.73.0.dist-info/entry_points.txt`에 `[opentelemetry_propagator] sentry = sentry_sdk.integrations.opentelemetry:SentryPropagator`가 있다. propagator entry point를 둔 배포는 opentelemetry-api와 sentry-sdk 둘이다.
+    - Django 6.1.2 `contrib/auth/forms.py`:
+      - `password1` · `password2`: `create_password_fields`(:90 · :97)가 만든다. `BaseUserCreationForm`(:222) · `AdminPasswordChangeForm`이 쓴다.
+      - `new_password1` · `new_password2`: `SetPasswordForm`(:497 — `PasswordChangeForm`의 부모)이 쓴다.
+      - Django 자신이 `@sensitive_variables("password1", "password2")`(:106 · :165)로 표시한다.
+    - `health._start`(:135-141): `except Exception`은 무조건 `release()`다. `except BaseException`만 `worker is None or worker.ident is None`일 때 놓는다.
+    - OTLP 헤더: `_common._resolve_headers`(:137-143)가 `OTEL_EXPORTER_OTLP_TRACES_HEADERS`(비면 `OTEL_EXPORTER_OTLP_HEADERS`)를 `parse_env_headers(liberal=True)`로 읽는다. 읽는 때는 OTLPSpanExporter 생성 때(엔드포인트가 있을 때)뿐이다. 지표 · 로그 OTLP exporter는 이 프로세스가 만들지 않는다.
+    - camelCase 둘째 경계(P3) 메모리 탐침: 지금 목록의 이름 · 접두 · 접미로 만든 camelCase 변형 1393개에서, 지금 지우는데 둘째 경계를 더하면 남게 되는 것은 0이고 새로 지우는 것은 332다. 남는 이웃(`AWSAccessKeyID` · `XRequestID` · `IDTokenType` · `partitionKey` · `MaxTokens` · `HTTPSProxy` · `APIVersion` 등)은 그대로 남는다. 〔r6 G2 — 틀렸다: 변형에 「머리글자 + 소문자 낱말」 꼴이 없었다 · `myAPIkey` · `xCSRFtoken` 등 10꼴이 남게 된다(리뷰 r5 B-2 · 컨트롤러 재현)〕
+- **r5 결정 P1–P6(컨트롤러)**: 계약(pod-template 「로그」 · 「트레이스 · Sentry」 행 · identity-admin-api 타임아웃 표 `/health` 행 · §관측 · bff-api 하류 호출 규약)과 규칙 §Logging은 이 절과 같은 변경에서 「T071 r5」 표식으로 고쳤다.
+  - **P1 `OTEL_PROPAGATORS` — 해석 규칙만 OTel과 같고, 받는 이름은 더 좁다**(A-1 · 빌더 r4 ⑧-1 · ⑧-2 · A-3 (iii) — 컨트롤러 사실 오류 정정):
+    - 사실 정정: 설치된 `opentelemetry_propagator` entry point는 셋이다 — `tracecontext` · `baggage`(opentelemetry-api)와 `sentry`(sentry-sdk 2.73.0 `SentryPropagator`). r4 절의 「둘뿐」 줄은 틀렸다.
+    - 문면 정정:
+      - Q1의 「OTel 해석과 똑같이」는 해석 규칙(쉼표 · `str.strip` · 대소문자 · 빈 토큰)에 한한다.
+      - 받는 이름 집합은 일부러 더 좁다: `tracecontext` · `baggage`만 받고, `tracecontext`가 있어야 한다. OTel이 받는 `none` · `sentry`도 거부한다.
+    - `sentry`를 거부하는 이유:
+      - `SentryPropagator.extract`는 클라이언트 `sentry-trace` 헤더로 원격 부모 span 문맥과 sampled 플래그를 정한다(리뷰 r4 B 탐침 — 강제 SAMPLED 원격 부모).
+      - inject는 나가는 요청에 `sentry-trace` · `baggage`를 싣는다. `trace_propagation_targets=[]`의 취지와 어긋난다.
+    - 공백: 토큰 앞뒤에서 떼는 것은 Python `str.strip`이 떼는 공백 전부다(탭 · NBSP · U+3000 같은 유니코드 공백 포함 — OTel도 같은 함수를 쓴다). 계약 · 규칙의 「앞뒤 공백만」을 이렇게 고친다.
+    - 코드: 독스트링만 고친다(`_check_otel_env` · 시험 모듈 머리 · oc-15 · oc-63). 「판정 = OTel 해석」을 「해석 규칙은 OTel과 같고 받는 이름은 더 좁다」로 바꾼다.
+    - 시험:
+      - 모듈 상수 `PROPAGATORS_NARROWED = (("sentry-pair", "tracecontext,sentry"),)`를 둔다.
+      - oc-15는 이 후보를 거부로 펼친다(이름만 실은 `ImproperlyConfigured`).
+      - oc-63은 이 후보마다 「우리는 거부」와 「OTel `_load_propagators`는 예외 없이 끝나고 `fields`에 `traceparent`가 있다(받음)」를 함께 단언한다. 의도된 좁힘을 고정하는 것이다. sentry-sdk가 그 entry point를 거두면 실패해 계약 문장을 다시 보게 한다.
+      - oc-63의 같음 대조는 `PROPAGATORS_ACCEPTED` · `PROPAGATORS_REJECTED`(+ 없음) 그대로다.
+      - `_load_propagators()`가 `sentry_sdk.integrations.opentelemetry`를 import해도 전역 textmap · Sentry 전역 상태가 바뀌지 않음을 확인한다(바뀌면 원복하고 단언한다).
+    - 변이: `_PROPAGATOR_NAMES`에 `sentry`를 더한다.
+  - **P2 Django 인증 폼 비밀번호 필드**(A-2 · B-2):
+    - 「쿠키 · 폼」 묶음에 정확한 이름 넷을 더한다(정규화 꼴): `password1` · `password2` · `new-password1` · `new-password2`.
+      - Django `UserCreationForm` · `AdminUserCreationForm` · `AdminPasswordChangeForm`의 `password1` · `password2`, `SetPasswordForm` · `PasswordChangeForm`의 `new_password1` · `new_password2`다.
+      - `old_password`는 이미 `-password` 접미로 지운다.
+    - 일반 규칙(이름 끝 숫자 떼기)은 고르지 않는다. 닫힌 목록이 모든 비밀 낱말 + 숫자로 넓어지기 때문이다.
+    - 시험:
+      - oc-1 지움에 넷을 더한다(감시 값 · camelCase `newPassword1` 꼴 포함).
+      - `request.POST` 꼴 QueryDict 사례를 더한다: `csrfmiddlewaretoken` · `password1` · `password2` · `old_password` · `new_password1` · `new_password2` · `username` 가운데 `username`만 남는다.
+      - 남는 이웃: `PASSWORD_RESET_TIMEOUT` · `PASSWORD_HASHERS` · `AUTH_PASSWORD_VALIDATORS`.
+    - 변이: 이름마다 하나씩 지운다(넷).
+  - **P3 camelCase 머리글자 경계**(B-1):
+    - `_CAMEL_BOUNDARY`에 둘째 경계를 더한다: 대문자 뒤 「대문자 + 소문자」 앞(`(?<=[A-Z])(?=[A-Z][a-z])`). `APIToken` → `API-Token`, `AWSSecretKey` → `AWS-Secret-Key`가 된다.
+    - 판정은 그대로 두 꼴(원래 꼴 · 경계에 `-`를 넣은 꼴)이고, 하나라도 맞으면 지운다.
+    - 지금 지우는 이름이 둘째 경계 때문에 남게 되는 일은 없다(컨트롤러 탐침 — 변형 1393개 중 0). 기존 oc-1 지움 사례가 모두 그대로 지워지는 것으로 다시 보인다. 〔r6 G2 — 틀렸다: 두 경계를 한 꼴에만 넣으면 `myAPIkey`가 `my-AP-Ikey`로 갈려 남는다 · 세 꼴 판정으로 고친다〕
+    - 시험:
+      - oc-1 지움에 더한다(감시 값): `APIToken` · `myAPIToken` · `XAPIToken` · `IDToken` · `JWTSecret` · `AWSSecretKey` · `DBPassword` · `XApiKey`.
+      - 남는 이웃에 더한다: `AWSAccessKeyID` · `XRequestID` · `IDTokenType`.
+    - 변이: 둘째 경계를 지운다.
+  - **P4 헬스 시작 실패 — 자리는 스레드가 시작되지 않았을 때만 그 자리에서 놓는다**(B-3 · Q4 정정):
+    - `_start`의 `except Exception`도 `except BaseException`과 같은 판정을 쓴다. `worker is None or worker.ident is None`일 때만 `release()`하고, 그다음 `return None`이다.
+    - 그 검사는 그대로 곧바로 fail이다(latency_ms 0.0). 이미 시작된 스레드의 자리는 그 스레드의 finally가 놓는다(1회용 놓기 · 두 번 놓지 않는다).
+    - 까닭: CPython 3.13 `Thread.start()`는 OS 스레드를 띄운 뒤 `self._started.wait()`에서도 예외를 낼 수 있다(메모리 압박의 MemoryError — 리뷰 r2 B-2가 문제 삼은 그 종류). 무조건 놓으면 살아 있는 스레드가 칸 상한 8을 하나 넘는다.
+    - 한계(Q4 기록을 두 갈래로 넓힌다):
+      - 「시작되지 않음」 = `worker.ident is None`이다. start() 안의 예외(Exception · BaseException)가 새 스레드의 ident 설정보다 먼저 오면 자리를 일찍 놓을 수 있다. 그동안 그 칸의 살아 있는 스레드가 9가 될 수 있다. 1회용 놓기라 두 번 놓지는 않는다. 〔r6 G3 — 「9」가 아니라 8을 넘을 수 있다(일찍 놓인 채 살아 있는 스레드 수만큼)〕
+      - 새 스레드가 ident를 둔 뒤 `run()`에 닿기 전에 죽으면(인터프리터 내부 실패) 그 자리는 돌아오지 않는다. start()가 정상으로 끝나든 예외를 내든 같다(r4까지의 정상 경로와 같다 · 받아들인다). 〔r6 G3 — 좁다: `_started.set()` 전에 죽으면 start()가 돌아오지 않는다(요청 스레드가 멈추고 자리도 돌아오지 않는다)〕
+    - 시험:
+      - oc-61의 「started」 사례(시작 뒤 RuntimeError)에 「작업 스레드가 살아 있는 동안 그 칸 여유 = 7」 단언을 더한다. 끝난 뒤 8은 그대로다.
+      - oc-62에 같은 꼴의 BaseException 「started」 사례를 더한다(시작 뒤 `_StartAborted` — 올라온다 · 살아 있는 동안 7 · 끝난 뒤 8).
+    - 변이: Exception 갈래의 ident 판정 지우기(무조건 놓기 — r4 코드로 되돌리기) · BaseException 갈래의 ident 판정 지우기.
+    - 계약 · 규칙 문면: 스레드를 만들거나 시작하다 예외가 나면, `Exception`(종류와 무관)이면 그 검사만 곧바로 fail이고 `BaseException`이면 그대로 올린다. 칸 자리는 스레드가 시작되지 않았을 때만 그 자리에서 놓고, 시작됐으면 그 스레드가 끝날 때 놓는다.
+  - **P5 OTLP 헤더 env 거부**(B-4 — Q5의 강제 지점 · A-3 (i) · (ii)):
+    - 거부 env에 둘을 더한다: `OTEL_EXPORTER_OTLP_HEADERS` · `OTEL_EXPORTER_OTLP_TRACES_HEADERS`.
+      - 값이 빈 문자열이 아니면(공백뿐인 값 포함) 이름만 실은 `ImproperlyConfigured`다. CAPTURE_ALL_METHODS와 같은 원문 참/거짓 판정이다.
+      - OTel import 전 검사(`_check_otel_env`)에 둔다. 거부 env는 모두 열하나가 된다. 〔r6 G1 — 열일곱(mTLS 클라이언트 키 · 인증서 넷 · 닫힌 꼴 밖 엔드포인트 둘)〕
+    - 까닭:
+      - pod는 자격 없이 클러스터 안 수집기(Alloy)로 보내고, 자격은 수집기가 갖는다(T098).
+      - 헤더는 pod에 자격을 두는 통로다. 꼴이 틀린 쌍(콜론 꼴 `Authorization: Bearer …` · 따옴표 · 세미콜론 · 비ASCII)은 OTel `parse_env_headers(liberal=True)`가 원문을 WARNING으로 남긴다. 그 줄은 configure_logging sink(stdout JSON → Loki)에 실린다(리뷰 r4 B-4 탐침 · 마스킹은 값을 보지 않는다).
+    - 거부 밖(받는다):
+      - `OTEL_EXPORTER_OTLP_METRICS_HEADERS` · `…_LOGS_HEADERS`: 이 프로세스가 읽지 않는다(지표 · 로그 OTLP exporter를 만들지 않는다). 〔r6 G7 — 조건부 근거다 · 그 exporter를 두는 과제가 거부 env에 더한다(T072 · T098 인계)〕
+      - 엔드포인트 URL의 사용자 정보: OTel 로그 · 지표 라벨에 실리지 않는다(host · port · path만 — 리뷰 r4 B-4 탐침). 〔r6 G1 — 틀렸다: requests가 Basic 인증으로 보내고, 빈 호스트면 URL째 ERROR 로그에 실린다 · 쿼리도 장애 때 WARNING에 실린다 → 닫힌 꼴 밖 엔드포인트는 거부〕
+      - `OTEL_EXPORTER_OTLP_*CLIENT_KEY` · `*CLIENT_CERTIFICATE` · `*CERTIFICATE`: 파일 경로다. 〔r6 G1 — 틀렸다: 경로 아닌 값은 requests 오류 원문으로 ERROR 로그에 실리고, 인증서만으로도 키를 함께 담은 PEM을 쓴다 → 클라이언트 키 · 인증서 넷은 거부 · CA 인증서는 받는다〕
+      - pod에 OTLP 자격을 두지 않는 것은 Q5 인계 그대로다(T072 · T098).
+    - 기준 문장 · 수(A-3 (ii)): 계약 「트레이스 · Sentry」 행의 기준을 다섯 절로 고친다.
+      - 요청 값을 span에 싣는 env.
+      - 계측 · SDK를 끄는 env.
+      - 상류 traceparent 이어받기를 끄는 env.
+      - 계측 미들웨어 위치를 바꾸는 env(D5 — 가장 바깥이어야 요청 로그 · 단락 응답이 span 안이다 · `OTEL_PYTHON_DJANGO_MIDDLEWARE_POSITION`).
+      - 이 프로세스가 읽는 자격 값을, 꼴이 틀릴 때 OTel이 원문 그대로 경고 로그에 싣는 env(OTLP 헤더 둘). 〔r6 G1 — 「이 프로세스의 span 내보내기에 OTLP 자격을 싣는 env(헤더 · mTLS 클라이언트 키 · 인증서 · 엔드포인트의 사용자 정보 · 쿼리)」로 넓힌다〕
+      - 이 기준에 드는 것은 열하나가 전부다(Z1 · Q2 열거 + 이 절). 〔r6 G1 — 열일곱(mTLS 클라이언트 키 · 인증서 넷 · 닫힌 꼴 밖 엔드포인트 둘)〕
+    - 빈 값 일반 규칙(A-3 (i)): 「빈 값은 없음과 같다 — `OTEL_PYTHON_DJANGO_MIDDLEWARE_POSITION`만 있으면 빈 값이어도 거부한다」로 고친다.
+    - 시험:
+      - oc-15 거부에 두 env를 더한다: 감시 값을 담은 값(콜론 꼴 `Authorization: Bearer <감시 값>` 포함) · 공백뿐인 값.
+      - oc-15 받음에 두 env의 빈 값을 더한다.
+      - 거부 메시지와 연쇄 예외에 값 · 감시 값이 없다. OTLPSpanExporter를 만들기 전에 끝나므로 OTel 로거의 WARNING도 없다(caplog로 단언한다).
+    - 변이: 두 env를 각각 검사에서 빼기 · 판정을 `.strip()` 판정으로 바꾸기(공백뿐인 값을 받게 된다).
+  - **P6 인계 · 계약 문면**(A-4 · 문서만):
+    - bff-api 하류 호출 규약 헤더 줄에 적는다: `traceparent`는 BFF가 자기 span으로 만든다. 브라우저가 보낸 `traceparent` · `tracestate`는 하류로 옮기지 않는다(Z8 T092 · r5).
+    - Z8의 admin 호스트 줄 소유를 고친다:
+      - 결정과 계약 기록(identity-admin-api §관측 신뢰 경계)은 T084가 맡는다. T084가 admin 호스트 경로(Access + Authentik forward-auth Middleware)를 만드는 과제다. Traefik `headers` 미들웨어나 Cloudflare Transform Rule로 지울 수 있다. 〔r6 G6 — 정확히는 admin 호스트 인증 미들웨어 사슬(Access + forward-auth)을 만드는 과제다 · Ingress는 T075〕
+      - T076은 검증만 한다(tester 과제 — 시험 경로만 쓴다). 〔r6 G6 — T076은 T084보다 먼저 돈다 · 검증은 T085(US4 E2E)〕
+      - identity-admin-api §관측 문장도 같이 고친다.
+    - Q5의 T072 줄에 더한다: `sentry`(sentry-sdk가 등록)도 거부되고(P1), OTLP 헤더 env 둘은 기동 실패다(P5). 〔r6 G1 — mTLS 클라이언트 키 · 인증서 env 넷과 닫힌 꼴 밖 엔드포인트도 기동 실패다〕
+  - **손대지 않는 것**: Z2 · Z5 · Z6 · Z7 · Q2(P5가 헤더 둘을 거부로 옮기는 것 밖) · Q3 · D3 · D4 · D8 · D9 · D10 · D12 · D13 · D15 · RequestIdMiddleware · sub_hash · 헬스 칸 구조(P4의 판정 밖) · 헤더 캡처 env 판정 · 쿠키 접두 · memoryview 판정 · 의존성.
+
+### T071 r5 결과 · r6 결정(리뷰 r5 반영 · G1–G8 · 2026-11-07) — r4 결과의 P3 탐침 줄, P3의 「남게 되는 일은 없다」, P4의 한계, P5의 「거부 밖」 · 기준 다섯째 절 · 수, P6의 T084 · T076 줄, Z8의 T072 · T076 줄은 이 절의 G1 · G2 · G3 · G6 · G7이 고친다(앞 절 줄 끝 〔r6 …〕 표식). r5가 대신했는데 표식이 빠진 D6 · D14 · Y2 · Z1 · Z3 · Z4 · Z8 줄에는 〔r5 …〕 표식을 더했다(G5)
+
+- **r5 결과**(워크플로 `wf_ac330432-677` · 137만 토큰 · 약 3시간 9분 · 빌더 DONE_WITH_CONCERNS · 리뷰 A approve_with_fixes — low 4 · 리뷰 B approve_with_fixes — medium 1 · low 2):
+  - 바뀐 파일(r4 대비):
+    - `observability.py` 915 → 932(+25/−8) · `health.py` 267 → 272(+10/−5) · 시험 `test_observability_contract.py` 3364 → 3691(+346/−19 · oc-1..65 그대로).
+    - 나머지 8파일은 r4 사본과 바이트가 같다(`__init__.py` · pyproject · `uv.lock` · `_obs_fakes.py` · obscontractapp 넷).
+    - 시험에서 지운 19줄은 독스트링 17 · 시그니처 2(인자 `caplog` · `monkeypatch`를 더하며 줄을 나눴다)다. r4의 assert 문 315개가 r5의 같은 함수에 모두 있다(r5 331 · 리뷰 A의 AST 셈으로는 338 → 354).
+  - 빨강(03:28 · `--show-capture=no`): `3 failed, 62 passed`(oc-1 · oc-15 · oc-61).
+    - 빨강 뒤 시험 수정은 2건이다. oc-1 독스트링 낱말 하나 · oc-61 경합 대역 사례(⑧-3).
+    - 최종 시험 바이트로 r4 구현을 다시 돌려도 oc-1 · oc-15 · oc-61이 빨강이다.
+  - 초록(최종 바이트): T063 21 ×2 · 계약 65 · 회귀 파일별 · 한 세션 묶음 756(9파일 합과 같다).
+  - P1 좁힘 대조: 후보 23개 중 22개는 우리 판정과 OTel `_load_propagators`가 같다. 다른 하나는 `tracecontext,sentry`(의도된 좁힘)다. `sentry_sdk.integrations.opentelemetry` import 뒤 전역 textmap · Sentry scope 셋과 클라이언트 · 전역 이벤트 처리기가 바뀌지 않는다(새 프로세스 탐침).
+  - P4 「살아 있는 동안」 칸 여유: oc-61 · oc-62 started 모두 7(r4 구현 · P4 변이에서는 8) · 끝난 뒤 8 · 초과 해제 0.
+  - P5 caplog: 거부 6사례 모두 이름만 · 감시 값 0 · OTel 기록 0. 대조 조각이 WARNING 1건으로 잡혀 받기 경로가 살아 있음을 보였다. r4 구현은 콜론 꼴 WARNING에 감시 값을 실었다(새 프로세스 탐침).
+  - 변이: 1차 63개 중 62개(Z3-4x 생존 — ⑧-3) → 시험 보강 뒤 최종 바이트로 63개 모두 · extra 4개 모두. 새 변이 11개(P1 1 · P2 4 · P3 1 · P4 2 · P5 3) · 바뀐 함수의 앞 변이 재실행.
+  - VD-T071-1 PASS · `uv lock --check --offline` exit 0 · 위생(compileall · 바이트 · gitleaks 11 · Docker dangling 볼륨 25 → 25 · 루프백만).
+  - 빌더 ⑧:
+    - ⑧-1 · ⑧-2: P5 caplog 처리기를 `opentelemetry` 로거에 직접 달고 그 블록 동안 전파를 껐다(실패 때 pytest 「Captured log」에 헤더 원문이 찍히지 않게). P5 사례는 oc-15 끝의 별도 블록이다(일반 거부 튜플은 내보내기 대역을 써서 exporter를 만들지 않는다).
+    - ⑧-3: 결정 밖 보강 — oc-61 경합 대역 사례(`_hidden_ident`로 그 스레드의 ident를 None으로 보이게 · `threading.Thread.ident` property 패치). P4 뒤로 두 놓기 경로가 겹치지 않아 「1회용 놓기」를 보는 시험이 없어졌기 때문이다(Z3-4x를 잡는다).
+    - ⑧-4 · ⑧-5 · ⑧-6: oc-1 진단 단언 · extra 변이 4 · P1 「Sentry 전역 상태」 범위(scope 셋 · 클라이언트 · 전역 이벤트 처리기) · 모듈 독스트링 문면도 고쳤다.
+  - 빌더 ⑨:
+    - ⑨-1: 기존 단언 4개(r1–r3에서 만든 oc-1 · oc-3 · oc-31)가 변이로 실패하면 pytest 단언 설명에 감시 값을 찍는다(M01 · M02 · M03 · Y4-2 로그 — 실행 때 만든 값 · 비밀 아님 · scratch 로그에만).
+    - ⑨-2: `_hidden_ident`는 CPython 3.13의 `Thread.ident`가 property라는 데 기댄다. ⑨-3: oc-63은 sentry-sdk의 `sentry` entry point와 OTel 비공개 함수 `_load_propagators`에 기댄다. ⑨-4: T072 인계는 P6 그대로다.
+  - 리뷰 A(계약 · 문면 · 판별력 — r4 사본 대비 r5):
+    - P1–P5가 구현 · 시험 · 변이와 1:1이고, 손대지 않기로 한 것에 코드 변경이 없다. 새 변이 11개는 실제 코드 변경이고 모두 잡혔다. 다시 돌린 앞 변이 50개의 범위가 지시와 같다. 공허한 단언이 없다. 빨강 · 수치가 증거와 맞다.
+    - 리뷰 r4 A-1..A-4 · B-1..B-4 · 빌더 r4 ⑧ · ⑨는 모두 한 곳 이상으로 닫혔다.
+    - low 4:
+      - A-1: 규칙 §Logging에 빈 값 일반 규칙이 없다(「any … value, whitespace included」는 빈 값 거부로, 「a middleware position」은 빈 값 받음으로 읽힌다).
+      - A-2: r5가 대신한 앞 절 일곱 줄에 〔r5 …〕 표식이 없다.
+      - A-3: 「T076은 검증만」은 실행 순서와 어긋난다 — T076(US6 E2E)은 결정 과제 T084(US4)보다 먼저 돈다. 검증은 T085가 맡아야 한다.
+      - A-4(인계): 지표 · 로그 헤더 env를 받는 근거(「그 exporter를 만들지 않는다」)는 조건부인데 인계 줄이 없다.
+  - 리뷰 B(누출 · 실패 처리 · 부작용 — r4 사본 대비 r5):
+    - 빌더 보고가 증거와 맞다. 리뷰 r4 지적은 대부분 닫혔다(A-1 · A-2/B-2 · A-4 · B-3 닫힘 · A-3 문면 닫힘).
+    - medium 1:
+      - B-1: P5는 OTLP 헤더 env 둘만 막는다. 같은 프로세스가 읽는 다른 OTLP 자격 통로가 남는다 — 엔드포인트 URL의 사용자 정보(requests가 Basic 인증으로 보낸다 · 빈 호스트면 URL째 ERROR 로그) · 쿼리(수집기가 닿지 않을 때 WARNING 로그) · 클라이언트 키 env(경로 대신 내용을 넣으면 ERROR 로그). 계약의 「열하나가 전부다」와 P5의 받는 이유가 사실과 다르다.
+    - low 2:
+      - B-2: P3이 두 경계를 한 꼴에 함께 넣어서, r4가 지우던 「머리글자 + 소문자 낱말」 꼴(`myAPIkey` · `googleAPIkey` · `xCSRFtoken` 등)이 남는다. P3의 「남게 되는 일은 없다」는 성립하지 않는다.
+      - B-3: P4 한계 서술이 CPython 3.13 소스보다 좁다. 새 스레드가 `_started.set()` 전에 죽으면 start()가 돌아오지 않는다.
+  - 컨트롤러 확인(설치 소스 직접 대조 · 메모리 안 탐침 · 2026-11-07):
+    - otlp-proto-http 1.45.2 `trace_exporter/__init__.py:139-150`이 `_common/__init__.py`의 다음을 부른다.
+      - `_resolve_endpoint`(:125-134): TRACES 엔드포인트 env 원문, 없으면 일반 env + `/v1/traces`.
+      - `_build_transport`(:182-211): CA(`verify`) · 클라이언트 키 · 인증서 env. `cert = (인증서, 키) if 둘 다 else 인증서` — 키 env가 없으면 인증서 값만 requests `cert`로 넘긴다(키를 함께 담은 PEM 한 파일로 클라이언트 인증을 한다).
+      - `_load_session_from_envvar`(:72-108) · `_resolve_headers`(:137-149) · `_resolve_timeout`(:152-165 — 잘못된 값을 `%r`로 WARNING) · `_resolve_compression`(:168-179 — 잘못된 값을 WARNING).
+    - `exporter/otlp/common/http.py`: 재시도하지 않는 실패는 ERROR 「Failed to export %s batch code: %s, reason: %s」에 예외 문자열을 싣고, 재시도하는 실패는 WARNING 「Transient error %s …」에 싣는다.
+    - requests 2.34.2: `models.py:677-678`이 URL 사용자 정보를 Basic 인증으로 바꾼다 · `:520` 「Invalid URL %r: No host supplied」 · `adapters.py:348-` 인증서 · 키 경로 검사 오류가 값을 싣는다.
+    - 탐침(`scratchpad/t071/probe-r6.py` — 감시 값은 실행 때 만들고 출력은 bool만):
+      - 사용자 정보 URL → Authorization Basic에 감시 값: True.
+      - 빈 호스트 사용자 정보 URL → InvalidURL 문자열에 감시 값: True.
+      - 닫힌 루프백 포트 + 쿼리 → ConnectionError 문자열에 감시 값: True.
+      - 키 env 자리에 PEM 내용 → OSError 문자열에 감시 값: True(http URL이어도).
+      - 실제 OTLPSpanExporter + 빈 호스트 사용자 정보 엔드포인트 → `opentelemetry.exporter.otlp.proto.http.trace_exporter` ERROR 1건에 감시 값.
+      - camelCase 30이름: r5(두 경계를 한 꼴에)는 r4(첫 경계만)가 지우던 10개를 남긴다(`myAPIkey` · `googleAPIkey` · `stripeAPIkey` · `userAPIkey` · `xAPIkey` · `dbAPIkey` · `xCSRFtoken` · `myPASSwd` · `myPASSphrase` · `myPREsharedKey`). 세 꼴 판정은 비밀 꼴 14개를 모두 지우고 이웃 16개(`AWSAccessKeyID` · `XRequestID` · `IDTokenType` · `PASSWORD_HASHERS` 등)를 모두 남긴다.
+    - CPython 3.13 `Lib/threading.py`: start() :976 `_start_joinable_thread` · :982 `self._started.wait()`(시간 제한 없음). `_bootstrap_inner` :1030 `_set_ident` · :1032 `_set_native_id` · :1033 `_started.set()` · :1044 `run()`.
+    - 엔드포인트 닫힌 꼴 정규식(G1)을 받을 값 5 · 거부할 값 21로 대조했다(전부 의도대로).
+- **r6 결정 G1–G8(컨트롤러)**: 계약(pod-template 「로그」 · 「트레이스 · Sentry」 행 · identity-admin-api §관측)과 규칙 §Logging · kr 미러 대기 줄은 이 절과 같은 변경에서 「T071 r6」 표식으로 고쳤다.
+  - **G1 OTLP 자격 통로 — mTLS 클라이언트 키 · 인증서 env 거부 · 엔드포인트 닫힌 꼴**(B-1 · P5 정정):
+    - 원칙: pod는 자격 없이 클러스터 안 수집기로 보내고, 자격은 수집기가 갖는다(P5 · T098).
+      - 이 프로세스가 만드는 내보내기는 OTLPSpanExporter 하나다. 그 생성자가 읽는 자격 통로는 헤더 · 엔드포인트의 사용자 정보 · 쿼리 · mTLS 클라이언트 키 · 인증서 · 자격 provider다.
+      - 헤더는 P5가 막았다. 이 절이 나머지를 막는다. 자격 provider는 Q2대로 받는다(provider가 설치돼 있지 않아 값이 있으면 OTLPSpanExporter 생성이 기동을 끝낸다 — 자격을 싣지 못한다).
+    - 거부 env 넷을 더한다: `OTEL_EXPORTER_OTLP_CLIENT_KEY` · `OTEL_EXPORTER_OTLP_TRACES_CLIENT_KEY` · `OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE` · `OTEL_EXPORTER_OTLP_TRACES_CLIENT_CERTIFICATE`.
+      - 판정은 원문 참/거짓(공백뿐인 값 포함)이다. 이름만 실은 `ImproperlyConfigured`이고, 이유는 「mTLS 자격 — 자격은 수집기가 갖는다」 꼴로 짧게 쓴다.
+      - 인증서 env도 거부하는 까닭: 키 env가 없으면 OTel이 인증서 값만 requests `cert`로 넘기므로, 키를 함께 담은 PEM 한 파일이 자격이 된다. 경로가 아닌 값(PEM 내용)은 requests 경로 검사 오류 원문이 내보내기 ERROR 로그에 실린다(http 엔드포인트여도).
+    - 엔드포인트 env 둘(`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` · `OTEL_EXPORTER_OTLP_ENDPOINT`)은 비지 않으면 닫힌 꼴만 받는다.
+      - `re.fullmatch`로 `scheme://host[:port][/path]`를 본다. scheme은 `http` · `https`(대소문자 무시)다. host는 `[A-Za-z0-9.-]+`다. port는 `:` 뒤 ASCII 십진 1–5자리이고 값이 1–65535다. path는 `/`로 시작하는 `[A-Za-z0-9._~/-]*`다. 〔r7 S1 — 스킴의 대소문자 무시도 ASCII로(`(?ai:https?)` — `(?i:)`는 유니코드 접기로 `ſ`(U+017F)를 `s`로 받는다)〕
+      - 글자 부류는 ASCII로 적는다(`\d` · `\w`는 유니코드 숫자 · 글자를 받는다). 끝 줄바꿈은 `fullmatch`라 받지 않는다.
+      - 그 밖은 이름만 실은 `ImproperlyConfigured`다: 사용자 정보(`@`) · 쿼리(`?`) · 조각(`#`) · 퍼센트 인코딩 · 공백 · 역슬래시 · IPv6 리터럴 · 빈 호스트 · 빈 · 비숫자 · 범위 밖 포트 · 스킴 없음 · 다른 스킴.
+      - 빈 값은 없음과 같다(지금처럼 — 둘 다 없으면 내보내기를 끄고 WARNING 한 줄). 공백뿐인 값은 꼴 밖이라 거부다.
+      - 검사 자리는 `_check_otel_env`다(OTel import 전 · `span_exporter` 인자와 무관 — 계약 변경: 전에는 `span_exporter`가 있으면 엔드포인트를 보지 않았다). `_otlp_endpoint`는 비지 않은 첫 값만 돌려준다(스킴 검사는 이 검사로 옮긴다 — 둘 다 두면 겹 방어라 한쪽을 지운 변이가 살아남는다).
+      - 까닭(리뷰 r5 B-1 · 컨트롤러 재현): 사용자 정보는 requests가 Basic 인증 헤더로 보낸다(헤더 거부의 우회다). 빈 호스트 · 범위 밖 포트면 OTel이 내보낼 때마다 「Invalid URL '<URL 전체>'」를 ERROR로 싣는다. 쿼리는 수집기 정지 · DNS 실패 같은 평범한 장애에서 WARNING 「Transient error … url: <경로?쿼리>」로 실린다.
+      - 한계: IPv6 리터럴 엔드포인트는 받지 않는다(클러스터 안 수집기는 서비스 DNS 이름이다).
+    - 받는다(이유):
+      - CA `OTEL_EXPORTER_OTLP_CERTIFICATE` · `…_TRACES_CERTIFICATE`: 서버 검증용 CA 묶음(공개)이다. 경로가 아니면 그 값이 ERROR에 실리지만 자격이 아니다.
+      - `OTEL_EXPORTER_OTLP_*TIMEOUT` · `*COMPRESSION`: 잘못된 값을 WARNING에 원문으로 싣지만 자격이 아니다.
+      - 자격 provider 둘: Q2 그대로다.
+      - 지표 · 로그 신호의 OTLP env(`OTEL_EXPORTER_OTLP_METRICS_*` · `…_LOGS_*`의 헤더 · 엔드포인트 · 클라이언트 키 · 인증서): 이 프로세스가 읽지 않는다(G7 인계).
+    - 기준 다섯째 절을 고친다: 「이 프로세스의 span 내보내기에 OTLP 자격을 싣는 env(헤더 · mTLS 클라이언트 키 · 인증서 · 엔드포인트의 사용자 정보 · 쿼리)」. 그 기준에 드는 것은 열일곱이다(열하나 + 클라이언트 키 · 인증서 넷 + 닫힌 꼴 밖 엔드포인트 둘).
+    - 시험(oc-15 · oc-18 — P5 블록처럼 caplog를 `opentelemetry` 로거에 달고, 엔드포인트를 둔 채 단언한다):
+      - 거부(env마다 · 이름만 · 메시지와 연쇄 예외에 값 · 감시 값 0 · OTel 로거 기록 0 · BSP 스레드 0):
+        - 클라이언트 키 · 인증서 넷: PEM 꼴 감시 값(`-----BEGIN PRIVATE KEY----- <감시 값>` 꼴) · 공백뿐인 값.
+        - 엔드포인트 둘 각각: 사용자 정보(`http://otel-user:<감시 값>@127.0.0.1:<닫힌 포트>/v1/traces`) · 빈 호스트 사용자 정보(`http://u:<감시 값>@:4318/v1/traces`) · 쿼리(`…/v1/traces?api_key=<감시 값>`) · 조각(`…#<감시 값>`) · 퍼센트 인코딩 · 역슬래시 · 공백뿐 · 끝 줄바꿈 · 포트 0 · 65536 · 빈 포트 · 비숫자 포트 · 전각 숫자 포트 · IPv6 리터럴 · 빈 호스트(사용자 정보 없음).
+        - `or` 대체: TRACES 빈 값 + 일반 env 꼴 밖 → 거부(일반 env 이름).
+        - `span_exporter`를 넘겨도 꼴 밖 엔드포인트는 거부다(계약 변경 r6 G1).
+      - 받음: `http://127.0.0.1:<닫힌 포트>` · `https://alloy.monitoring.svc.cluster.local:4318` · `http://alloy.monitoring.svc:4318/v1/traces` · `HTTP://Alloy.monitoring.svc:4318/` · 새 env 넷과 엔드포인트 둘의 빈 값 · CA `OTEL_EXPORTER_OTLP_CERTIFICATE` 경로.
+      - oc-18의 기존 거부 셋(스킴 없음 · grpc)은 그대로 거부다(메시지에 이름 · 값 없음).
+    - 변이: 키 · 인증서 env를 하나씩 빼기(4) · 엔드포인트 검사 지우기 · 사용자 정보 받기 · 쿼리 받기 · 포트 범위 검사 지우기 · `[0-9]`를 `\d`로 · `fullmatch`를 `match`로 · 일반 env 검사 빼기 · `span_exporter`가 있으면 검사 건너뛰기.
+  - **G2 camelCase 세 꼴 판정**(B-2 · P3 정정):
+    - `_is_masked`는 세 꼴을 판정한다: 원래 꼴 · 첫 경계(소문자 · 숫자 → 대문자)에만 `-`를 넣은 꼴 · 두 경계를 모두 넣은 꼴(r5 꼴). 하나라도 맞으면 지운다. 정규식은 둘로 나눈다(첫 경계만 · 두 경계).
+    - 단조성: 세 꼴 판정은 r4 판정(원래 · 첫 경계)과 r5 판정(원래 · 두 경계)의 합집합이다. r4 · r5가 지우던 이름은 모두 지우고, 둘 다 남기던 이름은 그대로 남긴다(지금 남는 이웃 28개 포함).
+    - 시험(oc-1): 지움에 더한다(감시 값) — `myAPIkey` · `googleAPIkey` · `xAPIkey` · `xCSRFtoken` · `myPASSwd` · `myPASSphrase` · `myPREsharedKey`. 남는 이웃은 그대로다.
+    - 변이: 첫 경계 꼴 판정 지우기(r5로 되돌리기) · 두 경계 꼴 판정 지우기(r4로 되돌리기).
+  - **G3 헬스 시작 실패 한계 문면**(B-3 · 문서만 — P4 한계 두 줄을 대신한다):
+    - 「시작되지 않음」 = `worker.ident is None`이다. start() 안의 예외가 새 스레드의 ident 설정보다 먼저 오면 자리를 일찍 놓는다. 그런 스레드가 살아 있는 동안 같은 경합이 또 나면, 그 칸의 살아 있는 스레드는 8을 넘을 수 있다(일찍 놓인 채 살아 있는 스레드 수만큼). 1회용 놓기라 두 번 놓지는 않는다.
+    - 새 스레드가 `_started.set()`(:1033) 전에 죽으면(ident를 두기 전이든 뒤든 — `_set_ident` · `_set_native_id`의 인터프리터 내부 실패) start()가 :982에서 돌아오지 않는다. 그 요청 스레드가 멈추고(2.5 s 마감은 `_start` 뒤에 잰다) 자리도 돌아오지 않는다.
+    - `_started.set()` 뒤 `run()` 전에 죽으면 자리만 돌아오지 않는다.
+    - 둘 다 CPython 성질이고 메모리 압박 급이라 받아들인다. 코드 · 계약은 바꾸지 않는다.
+  - **G4 규칙 §Logging 빈 값 일반 규칙**(A-1 · 문서만): 규칙 문장에 「non-empty」를 적고, 「an empty value counts as unset everywhere except `OTEL_PYTHON_DJANGO_MIDDLEWARE_POSITION`」을 더했다. 「a middleware position」은 `OTEL_PYTHON_DJANGO_MIDDLEWARE_POSITION`(빈 값이어도)으로 고쳤다. kr 미러 대기 줄에 r6 항목을 더했다.
+  - **G5 표식**(A-2 · 문서만):
+    - r5가 대신했는데 표식이 빠진 일곱 줄에 〔r5 …〕 표식을 더했다: D6 실행 줄 · D14 T072 줄 · Y2 칸 줄 · Z1 `OTEL_PROPAGATORS` 줄 · Z3 `_start` 줄 · Z4 camelCase 줄 · Z8 타임아웃 표 줄.
+    - 시험 독스트링의 〔r3 Z1〕 「아홉」 이력 문단은 바로 뒤 〔r5 P5〕 문단이 대신하므로 그대로 둔다(r2 「일곱」 관례).
+  - **G6 admin 호스트 traceparent 검증 자리**(A-3 · 문서만):
+    - 결정과 계약 기록은 T084가 맡는다. T084는 admin 호스트 인증 미들웨어 사슬(Access + Authentik forward-auth)을 만드는 과제다(Ingress는 T075).
+    - 검증은 T085(US4 E2E — admin 호스트 Access 단언과 같은 자리)가 한다. T076(US6 E2E)은 T084보다 먼저 돈다(tasks.md 순서 US6 → US4).
+    - T085 인계: 브라우저가 보낸 `traceparent`가 admin 경로에서 T084 결정대로 지워지거나 받아들여짐을 본다. 〔r7 S3 — 관찰 수단: pod까지 넘기면 pod 로그 `trace_id` 대조 · 가장자리에서 지우면 그 설정의 렌더 · API 단언 · 신원과 로그 읽기 권한은 T085 설계〕
+    - identity-admin-api §관측 · P6 · Z8 표식을 고쳤다.
+  - **G7 지표 · 로그 신호 OTLP env 인계**(A-4 · 문서만): T072 · T098 — pod에 지표 · 로그 OTLP exporter를 두는 과제는 그 신호의 OTLP env(`OTEL_EXPORTER_OTLP_METRICS_*` · `…_LOGS_*`의 헤더 · 클라이언트 키 · 인증서 · 엔드포인트)를 django-common 거부 env에 더하고, 계약 「트레이스 · Sentry」 행의 수와 기준 다섯째 절(「이 프로세스의 … 내보내기」)을 고친다.
+  - **G8 감시 값을 찍는 기존 단언 접기**(빌더 r5 ⑨-1 · 시험만):
+    - 변이 로그에 감시 값을 찍은 기존 단언을 같은 비교를 bool로 접은 단언으로 바꾼다: `same = <같은 식>` 다음 `assert same, "<이름표>"`. 대상은 oc-1 `out["bytes_maps"] ==` · oc-3 `isdisjoint(originals[0])` · oc-31 `out["extra"] ==` 등이다(r2 · r3 · r5 로그의 M01 · M02 · M03 · Y4-2 꼴).
+    - 비교 식 자체는 바꾸지 않는다(약해지지 않는다).
+    - r6 변이 로그 전체에서 감시 값 꼴이 0건임을 보고에 적는다. 남으면 같은 방식으로 접는다.
+  - **받아들인 것**(빌더 r5 ⑧): P5 caplog 처리기와 별도 블록 · `_hidden_ident` 경합 사례(⑨-2 — Python 판 올림 때 다시 확인) · oc-1 진단 단언 · extra 변이 · P1 「Sentry 전역 상태」 범위 · 모듈 독스트링 문면.
+  - **손대지 않는 것**: P1 · P2 · P4 코드 · P5의 헤더 판정 · Z2 · Z5 · Z6 · Z7 · Q2(자격 provider · SDK 자체 지표 등) · Q3 · D3 · D4 · D8 · D9 · D10 · D12 · D13 · D15 · RequestIdMiddleware · sub_hash · 헬스 칸 구조 · 헤더 캡처 env 판정 · 쿠키 접두 · memoryview 판정 · 의존성.
+
+### T071 r6 결과 · r7 결정(리뷰 r6 반영 · S1–S6 · 2026-11-07) — G1의 스킴 대소문자 무시, G6의 T085 인계 줄, D14의 T072 줄은 이 절의 S1 · S3 · S4가 고친다(앞 절 줄 끝 〔r7 …〕 표식)
+
+- **r6 결과**(워크플로 `wf_5b7e00bd-eff` · 128만 토큰 · 약 2시간 34분 · 빌더 DONE_WITH_CONCERNS · 리뷰 A approve_with_fixes — low 3 · 리뷰 B approve_with_fixes — low 2 · high · medium 0):
+  - 바뀐 파일(r5 대비):
+    - `observability.py` 932 → 974(+63/−21) · 시험 `test_observability_contract.py` 3691 → 3963(+300/−28 · oc-1..65 그대로).
+    - 나머지 9파일은 r5 사본과 바이트가 같다(`health.py` · `__init__.py` · pyproject · `uv.lock` · `_obs_fakes.py` · obscontractapp 넷).
+    - r5의 assert 331개가 r6의 같은 함수에 모두 있다(그대로이거나 접기 꼴 · r6 336). oc-1 지움 93 → 100(상위 집합) · 남는 이웃 28 그대로.
+    - 지운 28줄: 독스트링 15(oc-18 첫 문장의 「span_exporter가 없을 때」 지움 — 계약 변경 r6 G1) · 시그니처 2 · 접은 assert 11.
+  - 빨강(06:55 · `--show-capture=no`): `3 failed, 62 passed`(oc-1 · oc-15 · oc-18). 빨강 뒤 시험 수정은 1건이다(oc-18 `backslash-path` — 역슬래시가 포트 바로 뒤인 사례로는 path 부류에 역슬래시를 받는 변이를 잡지 못한다). 최종 시험 바이트로도 r5 구현은 oc-1 · oc-15 · oc-18이 빨강이다.
+  - 초록(최종 바이트): T063 21 ×2 · 계약 65 · 회귀 파일별 · 한 세션 묶음 756(9파일 합과 같다).
+  - G1 새 프로세스 탐침(출력은 bool): r5는 (a) 빈 호스트 사용자 정보 ERROR · (b) 닫힌 포트 + 쿼리 WARNING(Windows는 닫힌 루프백 포트 거부에 약 2 s가 걸려 12 s 창에서 보였다) · (c) 키 env의 PEM 꼴 값 ERROR에 감시 값이 실렸다. r6은 셋 다 이름만 실은 거부이고 OTel 기록 0 · 거부 중 새로 올라온 `opentelemetry.*` 모듈 0이다.
+  - G2: r6 판정 = r4 판정 ∪ r5 판정(빌더 30이름 · 리뷰 A 후보 152,766 · 리뷰 B 13,010 — 불일치 0).
+  - 변이 93개를 모두 잡았다: 새 24(G1 12 + extra 9 + 겹 방어 확인 M38-r6 + G2 2) · 다시 돌린 앞 변이 68(잡은 시험이 앞 라운드와 같다 — G8로 접은 단언의 변이 포함). 변이 로그 186개에서 감시 값 꼴 0건.
+  - VD-T071-1 PASS · `uv lock --check --offline` exit 0 · 위생(compileall · 바이트 · gitleaks 11 · Docker dangling 볼륨 25 → 25 · 루프백만 · 받음 사례의 이름 조회 0 — `getaddrinfo` 대역).
+  - 빌더 ⑧:
+    - ⑧-1: G8 접기를 지시문이 꼽은 3개 밖으로 넓혔다 — r2 · r3 변이 로그에서 감시 값을 실제로 찍은 단언 8개까지 모두 11개(식은 AST가 같다 · 앞 변이 13개 재실행으로 같은 시험이 잡고 이름표만 찍음을 보였다).
+    - ⑧-2: 같은 부류 안에서 사례를 더했다 — `userinfo-token`(값만 있는 사용자 정보) · `backslash-path` · `traces-valid`(유효한 TRACES + 꼴 밖 일반 env) · 기존 거부 셋의 대역 모드.
+    - ⑧-3–⑧-9: 받음 사례의 클러스터 이름은 내보내기 0이라 그대로 두고 `getaddrinfo` 대역으로 조회 0을 단언했다 · PEM 꼴 값은 `_pem_like()`로 실행 때 만든다(gitleaks private-key 규칙) · 엔드포인트 거부 메시지가 길다(값 없음) · 검사 순서 헤더 → mTLS → 엔드포인트 · 탐침 (b)는 12 s 창 · `opentelemetry.trace`는 r1부터 모듈 import 때 올라온다(판정 범위는 SDK · exporter · instrumentation · propagate와 「거부 중 새 모듈 0」) · host 부류는 `..` · `-x` 같은 이상한 DNS 꼴도 받고, 앞에 0이 붙은 포트(`00080`)는 값 80으로 받는다(결정 그대로 · 자격 통로 아님).
+  - 빌더 ⑨: T072 · T098 인계(키 · 인증서 env 없음 · 닫힌 꼴 엔드포인트 · 렌더 단언 권고) · 아직 드러나지 않은 잠재 단언 8개(실패하면 감시 값을 찍을 수 있다 — oc-1 `out["meta"] ==` · `out["items"] ==` · `out["headers"] ==` · `"top_pair" not in out` · oc-3 `probe.get("meta") ==` · oc-31 `request["url"] ==` · `unrecorded/out["contexts"] ==` · oc-27 `"?" not in str(...)`) · `_name_lookups`는 클러스터 이름에 `alloy`가 든다는 데 기댄다 · r5 ⑨-2 · ⑨-3 의존은 그대로. 〔r8 L4 — 「아직 드러나지 않은」은 틀렸다: r1 M03 · r2 · r3 Y4-8x가 그 자리에서 실패했다(빌더 r7 ⑧-2) · 8항목은 단언 9줄이다〕
+  - 리뷰 A(계약 · 문면 · 판별력 — r5 사본 대비 r6):
+    - G1 · G2 · G8이 구현 · 시험 · 변이와 1:1이고 손대지 않기로 한 것의 변경은 0이다. 계약 ↔ 구현이 열일곱 · 다섯째 절 · `span_exporter`와 무관 · env마다 따로 · `or` 대체 · 빈 값 · 공백뿐인 값 · 포트 · path 글자까지 맞는다(설치 소스 대조 — OTLPSpanExporter가 읽는 env는 열일곱과 받는 것뿐이다).
+    - 새 변이 24개는 실제 코드 변경이고 모두 잡혔다. 공허한 단언이 없다(거부 사례는 그 env 하나만 둔다). 시험은 더하기만(접기 11개는 비교 식의 `ast.dump`가 같다). 빨강 · 빌더 수치가 증거와 맞다. 리뷰 r5 지적 · 빌더 r5 ⑧ · ⑨는 모두 닫혔다.
+    - low 3:
+      - A-1: 스킴 `(?i:https?)`가 유니코드 대소문자 접기로 `ſ`(U+017F)를 `s`로 받는다 — `httpſ://…`가 기동을 통과하고 내보낼 때마다 ERROR(자격은 실리지 않는다).
+      - A-2: 다시 돌린 앞 변이에서 r2 Y6-E2(`_otlp_endpoint`의 빈 값 처리)가 빠졌다(읽기로는 oc-19가 잡는다).
+      - A-3(인계): G6의 T085 인계 줄이 관찰 수단을 정하지 않았다 — T085 때는 OTLP 내보내기 · Tempo가 없고(T098), admin 사슬을 지날 신원도 정해지지 않았다.
+  - 리뷰 B(누출 · 실패 처리 · 부작용 — r5 사본 대비 r6):
+    - 빌더 보고가 증거와 맞다. 리뷰 r5 지적은 모두 닫혔다(G1 — 38사례 × `span_exporter` 없음/있음 76번 모두 이름만 실은 거부 · 새 모듈 · 스레드 · tracer provider · env 변화 0 / G2 — 13,010이름 회귀 0 / G3 — CPython 3.13.15 줄과 맞다 / G8 — r6 로그 297파일 감시 값 0).
+    - 엔드포인트 우회(탭 · CR · LF · NBSP · 전각 · IDNA · `http:/` · 역슬래시 · 끝 점 · 8진 · 16진 · 10진 IPv4 · 대문자 스킴 · 긴 host · `..` path)는 자격 · 감시 값을 전송 헤더 · OTel 로그에 싣지 못했다.
+    - low 2:
+      - B-1: A-1과 같다.
+      - B-2(인계): OTLP 내보내기의 requests · urllib3가 스스로 읽는 env · 파일(`NETRC` · `~/.netrc` · `*_PROXY` 사용자 정보 · `SSLKEYLOGFILE`)은 G1 기준 밖이다. netrc는 수집기에 Basic 자격을 보내고, 포트가 틀린 프록시 URL은 사용자 정보째 OTel ERROR에 실린다(지금 pod에는 이런 env가 없다).
+  - 컨트롤러 확인(2026-11-07):
+    - `(?i:[htps])`에 맞는 ASCII 밖 코드 포인트는 U+017F 하나다. `(?ai:https?)`로 바꾸면 `httpſ://` · `HTTPſ://`는 거부되고 `HtTpS://…`는 받는다(메모리 안 탐침).
+    - OTel `exporter/http/transport/_requests.py:76`은 세션을 받지 않으면 `requests.Session()`(`trust_env` 기본 True)을 만든다. requests 2.34.2 `sessions.py:537-538`이 netrc 자격을 읽고 `:763` · `:845`가 프록시 env를 푼다. urllib3 2.8.0 `util/ssl_.py:321`이 `SSLKEYLOGFILE`을 읽는다.
+- **r7 결정 S1–S6(컨트롤러)**: 계약(pod-template 「트레이스 · Sentry」 행 · identity-admin-api §관측)과 규칙 §Logging · kr 미러 대기 줄은 이 절과 같은 변경에서 「T071 r7」 표식으로 고쳤다.
+  - **S1 엔드포인트 스킴의 대소문자 무시는 ASCII로**(A-1 · B-1):
+    - `_OTLP_ENDPOINT`의 스킴을 `(?ai:https?)`로 쓴다(`a` = ASCII 대소문자만). host · port · path는 이미 명시 ASCII 부류라 그대로다.
+    - 주석: 「`(?i)`만 쓰면 유니코드 대소문자 접기로 `ſ`(U+017F)를 `s`로 받는다」.
+    - 시험(oc-18): 거부 사례에 `scheme-long-s`(`"http" + chr(0x17F) + "://127.0.0.1:<닫힌 포트>/v1/traces"`) · `scheme-long-s-upper`(`"HTTP" + chr(0x17F) + …`)를 env마다 · 두 모드(대역 없이 · 대역 넘김)로 더한다. 값은 `chr`로 만든다(역슬래시-u 금지). 받음의 대소문자 섞인 ASCII 스킴(`HTTP://…` 등)은 그대로 받는다.
+    - 변이: `(?ai:`를 `(?i:`로 되돌린다(oc-18이 잡아야 한다).
+    - 계약 · 규칙: 「대소문자 무시」를 「ASCII 대소문자 무시」로 고쳤다.
+  - **S2 Y6-E2 재실행**(A-2 · 절차): r2 Y6-E2를 r6 바이트에 다시 묶어 최종 바이트로 돌린다(`_otlp_endpoint`의 `if value:`를 `if name in os.environ:`으로). oc-19가 잡아야 한다.
+  - **S3 T085 인계 — 관찰 수단**(A-3 · 문서만):
+    - T084가 pod까지 넘기기로 정하면: flag 01 traceparent를 보낸 admin 요청의 pod 로그 `trace_id`가 보낸 trace-id와 같으면 받아들임, 다르거나 없으면 지움이다(T085 때는 OTLP 내보내기가 없어도 계측과 로그의 `trace_id`는 있다 — 엔드포인트가 없으면 내보내기만 끈다).
+    - 가장자리에서 지우기로 정하면: 그 Middleware · Transform Rule의 렌더 · API 단언으로 본다.
+    - admin 사슬(Access + forward-auth)을 지날 신원과 tester가 jt-prod pod 로그를 읽을 권한(agent-view)은 T085 설계가 정한다.
+    - identity-admin-api §관측 괄호와 G6 표식에 적었다.
+  - **S4 requests · urllib3가 스스로 읽는 env · 파일 인계**(B-2 · 문서만):
+    - T072(템플릿 렌더 · 이미지 단언 — gen-12 꼴): pod env · ConfigMap · Secret 참조에 `NETRC` · `SSLKEYLOGFILE` · `HTTP_PROXY` · `HTTPS_PROXY` · `ALL_PROXY`(소문자 꼴 포함)가 없다. 런타임 사용자 홈에 `.netrc` · `_netrc`가 없다. 〔r8 L3 — sentry-sdk의 `CLIENT_CERT_FILE` · `CLIENT_KEY_FILE`도 없다 · 배포 매니페스트는 T075 lint〕
+    - T098: OTLP 엔드포인트는 닫힌 꼴의 상수로 둔다. 프록시를 들이는 과제가 생기면 `NO_PROXY`가 `.svc` · `.cluster.local`을 덮고, 사용자 정보 없는 프록시만 쓴다.
+    - 고르지 않은 것: django-common이 OTLPSpanExporter에 `trust_env=False` 세션을 넘기는 방법.
+      - 이 env · 파일은 opentelemetry-* 배포가 아니라 requests · urllib3가 프로세스 전체에서 읽는다(Sentry도 같다). 거부 기준(설치된 opentelemetry-* 배포의 env 읽기)의 영역 밖이다. 〔r8 L3 — Sentry는 경로가 다르다: sentry-sdk가 `*_PROXY`를 init 때 stdlib `getproxies()`로 직접 읽는다(NETRC는 읽지 않는다 · `SSLKEYLOGFILE`은 urllib3) · 꼴이 틀린 사용자 정보 프록시 URL이 init 예외에 실리는 길은 L2가 닫는다〕
+      - 세션을 넘기면 OTel이 `_load_session_from_envvar`를 건너뛰어 자격 provider env 둘이 조용히 무시된다. Q2를 거부로 바꾸고 계약의 수도 바꿔야 한다.
+      - `SSLKEYLOGFILE`은 `trust_env`와 무관하게 urllib3가 읽어 남는다.
+      - pod env와 이미지는 템플릿이 정하므로 T072의 렌더 · 이미지 단언이 생성 pod 전부를 덮는다. 〔r8 L3 — 넓다: 템플릿 생성물만 덮는다 · 배포 매니페스트(gitops base 복사본 · overlay · ExternalSecret)는 T075 validate lint가 덮는다〕
+  - **S5 잠재 단언 접기**(빌더 r6 ⑨-2 · 시험만): 빌더가 꼽은 잠재 단언 8개를 G8과 같은 방식(`same = <같은 식>` · `assert same, "<이름표>"`)으로 접는다. 비교 식은 글자 그대로 둔다(AST 대조로 보인다). 다시 돌린 변이 로그의 감시 값 꼴 0건을 보고에 적는다.
+  - **S6 받아들인 것**(빌더 r6 ⑧ · ⑨): ⑧-1 G8 넓힌 접기 · ⑧-2 같은 부류 안의 사례 · ⑧-3–⑧-9 · ⑨-3 `_name_lookups`의 `alloy` 의존(한계).
+  - **손대지 않는 것**: G1의 그 밖 판정(키 · 인증서 env · host · port · path · 빈 값 · `span_exporter`와 무관 · 검사 순서) · G2 · P1 · P2 · P4 · P5 · `health.py` 전부 · Z2 · Z5 · Z6 · Z7 · Q2 · Q3 · D3 · D4 · D8 · D9 · D10 · D12 · D13 · D15 · RequestIdMiddleware · sub_hash · 헤더 캡처 env 판정 · 쿠키 접두 · memoryview 판정 · 의존성.
+
+### T071 r7 결과 · r8 결정(리뷰 r7 반영 · L1–L6 · 2026-11-07) — r6 결과의 빌더 ⑨ 줄, S4의 근거 두 줄과 T072 줄, D14의 T072 · T075 · T098 줄은 이 절의 L1 · L3 · L4가 고친다(앞 절 줄 끝 〔r8 …〕 표식)
+
+- **r7 결과**(워크플로 `wf_479658da-01f` · 116만 토큰 · 약 1시간 10분 · 빌더 DONE_WITH_CONCERNS · 리뷰 A approve_with_fixes — low 2 · 리뷰 B approve_with_fixes — low 2 · high · medium 0):
+  - 바뀐 파일(r6 대비): `observability.py` 974 → 975(+3/−2 — 스킴 `(?ai:https?)`와 주석 두 줄) · 시험 3963 → 3990(+47/−20). 나머지 9파일은 r6 사본과 바이트가 같다.
+  - 빨강(09:26 · `--show-capture=no`): `1 failed, 64 passed`(oc-18 — 다른 항목 8 = `ſ` 사례 2 × env 2 × 모드 2). 빨강 뒤 시험 코드 수정은 0이다(변이 뒤 모듈 독스트링 한 문장을 사실대로 고쳤다 — 독스트링을 뺀 AST가 같다).
+  - 초록(최종 바이트): T063 21 ×2 · 계약 65 · 회귀 파일별 · 한 세션 묶음 756.
+  - 변이 24개를 모두 잡았다: S1-1(`(?ai:` → `(?i:`) → oc-18 · Y6-E2-r6 → oc-19 · 다시 돌린 엔드포인트 변이 20(잡은 시험이 r6과 같다) · S5 자리에 닿는 앞 변이 M03 · Y4-8x.
+  - S5: 빌더 r6 ⑨-2의 8항목은 단언 9줄이었다(oc-31 contexts가 둘). 모두 접었다(식의 `ast.dump` 같음).
+  - VD-T071-1 PASS · `uv lock --check --offline` exit 0 · 위생(compileall · 바이트 · gitleaks 11 · Docker dangling 볼륨 25 → 25 · 루프백만).
+  - 빌더 ⑧-2: r6 ⑨-2의 「r2–r6 로그에 나타난 적이 없다」는 틀렸다. 앞 라운드 변이 로그 1190개를 다시 뒤지니, 접은 9줄에서 실패한 로그가 3개였다 — r1 M03(oc-3 probe meta · 단언 설명에 감시 값 1개) · r2 · r3 Y4-8x(oc-1 top_pair · 감시 값 0 — 출력이 dict를 줄였다).
+  - 빌더 ⑨-1 · ⑨-2: S5 목록 밖에도 잠재 단언이 있다 — r1 로그에 감시 값을 실제로 찍은 oc-4 `observed == {…}`(M08) · oc-3 `isdisjoint(probe)`(M01 · M02) · oc-22 `http.target`(M45) · oc-7 튜플(M19)과 읽기로만 본 자리 여럿. 감시 값 꼴 검사는 `oc-<이름>-<16 hex>`와 PEM 머리만 센다(oc-52의 위조 trace · span id와 oc-27의 forwarded IP는 그 꼴 밖).
+  - 리뷰 A(계약 · 문면 · 판별력 — r6 사본 대비 r7):
+    - S1 · S2 · S5가 1:1이다. 전 코드 포인트를 스킴 · host · port · path 자리에 넣어 r7이 받는 ASCII 밖 글자가 0임을 보였다. 「ASCII 대소문자 무시」가 계약 · 규칙 · 주석 · 독스트링에서 같다. S4가 인용한 소스 위치가 설치본과 맞다. 빨강 · 빌더 수치가 증거와 맞다.
+    - low 2:
+      - A-1: S5 밖에 감시 값을 찍을 수 있는 단언이 남는다(oc-4 · oc-7 · oc-22는 r1 로그에서 실제로 찍었고 앞 단언에 가려지지 않는다 · oc-3 :1308 · oc-27 :2393). r6 결과 줄의 「아직 드러나지 않은」은 틀렸다.
+      - A-2(인계): S4 인계가 S4보다 좁다 — D14 T072 표식에 `_netrc`가 빠졌다. 렌더 단언은 템플릿 base만 덮고, T075 · T098의 gitops overlay env와 ExternalSecret `dataFrom` 키는 밖이다.
+  - 리뷰 B(누출 · 실패 처리 · 부작용 — r6 사본 대비 r7):
+    - 빌더 보고가 증거와 맞다. S1은 전 코드 포인트 대조와 차등 퍼즈 40만으로 닫혔다(r7이 받는 집합은 r6의 진부분집합 · 섞인 대소문자 ASCII 스킴 48개는 둘 다 받는다). S2 · S3는 닫혔고, S4의 결론(`trust_env=False`를 고르지 않음)은 소스와 맞다.
+    - low 2:
+      - B-1(인계): S4 근거 둘이 소스보다 넓다. ① 배포 pod의 env는 T075 gitops base 복사본 · overlay · ExternalSecret 템플릿이 정한다(`copier update` 미지원). ② Sentry는 sentry-sdk가 `*_PROXY`를 init 때 stdlib `getproxies()`로 직접 읽고, 꼴이 틀린 사용자 정보 프록시 URL은 configure_sentry가 감싸지 않은 `sentry_sdk.init`의 예외(기동 traceback)에 실린다.
+      - B-2: A-1과 같다(r1 로그 근거 자리 4곳).
+  - 컨트롤러 확인(2026-11-07):
+    - sentry-sdk 2.73.0 `transport.py:14`(`getproxies`) · `:585-586`(`CLIENT_CERT_FILE` · `CLIENT_KEY_FILE` env) · `:602-611` · `:804-811`(프록시 고르기). 〔r9 K5 — 줄 번호 정정: `:585-586` · `:602-611`은 httpcore 전송 경로(쓰지 않음) · 기본 HttpTransport는 `:755-794`(인증서 env → urllib3 옵션 · 연결 때 읽는다) · `:796-837`(프록시)〕
+    - 탐침(메모리 안 · 이름 조회 · 연결 차단 · 감시 값은 bool로만): `HTTPS_PROXY` · `HTTP_PROXY` = 범위 밖 포트의 사용자 정보 프록시 URL로 `sentry_sdk.init`(https · http DSN 각각) → `LocationParseError`가 감시 값을 싣는다(True) · 그 뒤 클라이언트는 서지 않는다(`is_active()` False).
+    - pytest 9.2.0의 단언 재작성기는 모듈 독스트링의 `PYTEST_DONT_REWRITE` 표식을 지킨다(`_pytest/assertion/rewrite.py`).
+- **r8 결정 L1–L6(컨트롤러)**: 계약(pod-template 「트레이스 · Sentry」 행)과 규칙 §Logging · kr 미러 대기 줄은 이 절과 같은 변경에서 「T071 r8」 표식으로 고쳤다.
+  - **L1 계약 시험 모듈의 단언 재작성을 끈다**(A-1 · B-2 · 빌더 r7 ⑨-1 · ⑨-2 — 단언 하나씩 접기를 대신해 부류를 닫는다):
+    - `tests/test_observability_contract.py` 모듈 독스트링에 `PYTEST_DONT_REWRITE` 표식을 둔다(pytest 공식 방법). 그러면 이 모듈의 단언은 실패해도 피연산자 값을 설명에 싣지 않는다 — 실패 출력은 소스 줄과 단언 메시지(이름표)뿐이다. 지금의 잠재 자리와 앞으로 더할 단언이 함께 닫힌다. 〔r9 K2 — 단언 설명에 한해서다 · pytest 캡처 칸은 addopts `--show-capture=no`가 닫는다〕
+    - G8 · S5 접기는 그대로 둔다(이름표가 실패 자리를 알려 준다). 진단이 필요한 단언은 메시지에 시험이 정한 이름 목록만 싣는다(값은 싣지 않는다 — 바꾼 메시지는 보고에 적는다).
+    - 모듈 독스트링의 노출 단언 원칙 문장을 이 방식으로 고친다.
+    - 검증:
+      - r1 근거 변이 M01 · M02 · M08 · M09 · M19 · M45와 r6 Y3-4를 최종 바이트에 다시 묶어 돌린다(두 시험 파일 전체). 잡은 시험이 앞 기록과 같고, 실패 출력이 소스 줄 · 이름표뿐이어야 한다. 〔r9 K5 — 실패 출력 조건은 계약 모듈에 한한다 · T063 모듈은 재작성이 켜져 있다(받아들인 한계)〕
+      - 감시 값 꼴 검사를 이 모듈이 만드는 합성 값 전부로 넓힌다(`oc-<이름>-<16 hex>` · PEM 머리 · oc-52의 위조 trace · span id · oc-27의 forwarded IP · 그 밖의 위조 상수). 빨강 · 변이 로그에서 0건이어야 한다.
+    - 대가: 이 모듈의 단언 실패는 값 비교 설명을 보여 주지 않는다. 디버깅 때는 표식을 잠시 빼고 로컬에서만 돌린다(그 출력은 공유하지 않는다). 〔r9 K1 — 또 하나: 재작성되지 않은 assert는 `-O` · `PYTHONOPTIMIZE`에서 지워진다 → 가드로 수집을 실패시키고 oc-66이 표식을 지킨다〕
+  - **L2 `sentry_sdk.init` 실패는 이름만 실은 설정 오류**(B-1 ②):
+    - configure_sentry는 `sentry_sdk.init(...)`이 `Exception`을 내면, 예외 클래스 이름만 실은 `ImproperlyConfigured`를 except 블록 밖에서 올린다(`__cause__` · `__context__` 없음 — 메시지 · 연쇄 예외에 값이 없다). `BaseException`(`KeyboardInterrupt` 등)은 그대로 올린다.
+    - 까닭: §Settings의 「기동 실패는 설정 이름만 싣는다」. sentry-sdk가 init 때 스스로 읽는 프록시 env의 사용자 정보가 꼴이 틀리면 urllib3 예외 메시지째 기동 traceback(stderr → Loki)에 실린다(리뷰 r7 B-1 · 컨트롤러 재현). init 안의 다른 실패에도 같은 꼴을 쓴다.
+    - init이 예외를 내면 전역 클라이언트는 서지 않는다(탐침 — `is_active()` False). 감싼 뒤에도 전역 Sentry 상태가 바뀌지 않음을 시험으로 본다.
+    - 시험(configure_sentry 계약 시험에 더한다):
+      - 꼴이 틀린 사용자 정보 프록시 env(`HTTPS_PROXY` + https DSN · `HTTP_PROXY` + http DSN — 루프백 DSN · 범위 밖 포트 · 감시 값) → `ImproperlyConfigured` · 메시지에 예외 클래스 이름 · 메시지 · `__cause__` · `__context__`에 감시 값 0 · 연쇄 예외 없음 · 전역 클라이언트 비활성 · 네트워크 0.
+      - `sentry_sdk.init`을 `ValueError(<감시 값>)`을 내는 대역으로 바꾼 사례 → 같은 단언.
+      - `BaseException` 하위 형을 내는 대역 → 그 예외가 그대로 올라온다(같은 객체).
+    - 변이: 감싸기 지우기(r7로) · except 블록 안에서 올리기(`__context__`가 남는다) · `BaseException`까지 잡기 · 메시지에 예외 문자열 싣기.
+    - 계약 · 규칙: pod-template 「트레이스 · Sentry」 행과 규칙 §Logging의 Sentry 문장에 적었다.
+  - **L3 S4 인계 바로잡기**(A-2 · B-1 ① · 문서만):
+    - D14 T072 줄: `.netrc` · `_netrc`(requests는 Linux에서도 `~/.netrc` · `~/_netrc`를 둘 다 본다 — `utils.py:78` · `:243`)와 sentry-sdk가 스스로 읽는 `CLIENT_CERT_FILE` · `CLIENT_KEY_FILE`을 더한다.
+    - S4의 덮는 범위를 고친다: T072의 렌더 · 이미지 단언은 템플릿 생성물을 덮고, 배포 매니페스트(gitops base 복사본 · overlay · ExternalSecret)는 T075의 validate lint가 덮는다.
+    - T075 인계(D14 T075 줄): gitops 렌더 결과(`apps/<pod>/base` · overlays)의 container env · envFrom ConfigMap data 키 · ExternalSecret 키에 `NETRC` · `SSLKEYLOGFILE` · `HTTP_PROXY` · `HTTPS_PROXY` · `ALL_PROXY`(소문자 꼴 포함) · `CLIENT_CERT_FILE` · `CLIENT_KEY_FILE`이 없음을 lint로 본다. ExternalSecret은 키 목록을 명시(`data`)하고 `dataFrom`(키 이름이 Vault 값으로 정해지는 꼴)을 쓰지 않는다. 〔r9 K5 — lint 기준을 넓혔다: 실효 env 이름 · 대소문자 무시 · template.data 키 · 렌더 밖 envFrom · `SSL_CERT_FILE` · `REQUESTS_CA_BUNDLE`〕 〔r10 I4 — 키 = template.data 키 ∪ (템플릿 없음 · `mergePolicy: Merge`면 `data[].secretKey`) · `templateFrom`은 FAIL 또는 허용 목록〕
+    - S4 「(Sentry도 같다)」를 고친다: sentry-sdk는 `*_PROXY`를 init 때 stdlib `getproxies()`로 직접 읽는다(NETRC는 읽지 않는다 · `SSLKEYLOGFILE`은 urllib3를 거친다). 꼴이 틀린 사용자 정보 프록시 URL이 init 예외에 실리는 길은 L2가 닫는다. `trust_env=False`를 고르지 않은 결론은 그대로다(그 세션은 OTel 경로만 닫는다).
+    - D14 T098 줄에 S4의 T098 문장을 표식으로 단다.
+  - **L4 r6 결과 줄 정정**(빌더 r7 ⑧-2 · A-1의 기록 부분 · 문서만): r6 결과의 빌더 ⑨ 줄 「아직 드러나지 않은 잠재 단언 8개」는 틀렸다(r1 M03 · r2 · r3 Y4-8x가 그 자리에서 실패했다 · 단언은 9줄). 표식으로 고쳤다.
+  - **L5 받아들인 것**(빌더 r7 ⑧): ⑧-1 9줄 접기 · ⑧-3 S1 주석 첫 줄 낱말 · ⑧-4 대소문자 섞인 ASCII 스킴 받음은 탐침으로만 보였다(리뷰 B가 48개를 다시 보였다).
+  - **손대지 않는 것**: S1 · G1 · G2 · P1 · P2 · P4 · P5 판정 · `health.py` 전부 · configure_sentry의 init 인자 · `before_send` · Z2 · Z5 · Z6 · Z7 · Q2 · Q3 · D3 · D4 · D8 · D9 · D10 · D12 · D13 · D15 · RequestIdMiddleware · sub_hash · 헤더 캡처 env 판정 · 쿠키 접두 · memoryview 판정 · 의존성.
+
+### T071 r8 결과 · r9 결정(리뷰 r8 반영 · K1–K7 · 2026-11-07) — L1의 「실패 출력」 문장 · 대가 · 검증 줄, r8 컨트롤러 확인의 sentry-sdk 줄 번호, L3의 T075 줄, D14의 T075 줄은 이 절의 K1 · K2 · K5가 고친다(앞 절 줄 끝 〔r9 …〕 표식)
+
+- **r8 결과**(워크플로 `wf_eca8c3b3-408` · 135만 토큰 · 약 1시간 43분 · 빌더 DONE_WITH_CONCERNS · 리뷰 A approve_with_fixes — low 5 · 리뷰 B approve_with_fixes — low 5 · high · medium 0):
+  - 바뀐 파일(r7 대비): `observability.py` 975 → 990(+33/−18 — 최상위 노드 가운데 configure_sentry 하나만 다르다 · init 인자는 AST가 같다) · 시험 3990 → 4154(+210/−46). 나머지 9파일은 r7 사본과 바이트가 같다.
+  - 빨강(10:57 · `--show-capture=no`): `1 failed, 64 passed`(oc-26 — 이름표 `http-proxy` · `https-proxy` · `value-error`). 실패 출력은 소스 줄과 이름표뿐이었다. BaseException 사례는 r7에서도 통과한다(탐침으로 보였다).
+  - 초록(최종 바이트): T063 21 ×2 · 계약 65 · 회귀 파일별 · 한 세션 묶음 756.
+  - L2 기동 탐침(새 프로세스 · 프록시 env · configure_sentry를 잡지 않고 부름): r8은 rc 1 · 마지막 줄은 이름만 실은 `ImproperlyConfigured` · 감시 값 · 사용자 이름 · 연쇄 표지 0 · 소켓 시도 0. r7은 감시 값이 실렸다. 실패 뒤 스레드 · scope 클라이언트 · 통합 집합 · 전역 이벤트 처리기는 그대로다.
+  - 재작성 탐침(pytest 9.2.0): r8 시험 모듈은 재작성되지 않는다(`@py_assert` 0 · r7은 4800).
+  - 변이 28개를 모두 잡았다: L2-1..4 → oc-26 · r1 근거 변이 M01 · M02 · M08 · M09 · M19 · M45와 r6 Y3-4(잡은 시험이 앞 기록과 같고 실패 출력에 비교 설명 0) · configure_sentry · `_sentry_before_send`의 앞 변이 17.
+  - 넓힌 감시 값 꼴 9가지(감시 값 · PEM 머리 · 16자 이상 hex · 문서용 IP · JWT · 프록시 사용자 이름 · DRAGONFLY_URL 사용자 정보 · BEARER_SUB · TENANT_ID): 시험 · 탐침 로그 87개에서 0건.
+  - VD-T071-1 PASS · `uv lock --check --offline` exit 0 · 위생(compileall · 바이트 · gitleaks 11 · Docker dangling 볼륨 25 → 25 · 루프백만).
+  - 빌더 ⑧: 진단 메시지는 「시험이 정한 이름 집합의 부분 목록」을 내는 단언 32줄에만 더했다(`_leaks(…) == []` 25 · 이름 부분 목록 7 — 비교 식의 `ast.dump` 같음 · SUT 출력에서 오는 목록과 판정 dict 비교는 맨 단언) · 네트워크 0은 시험 안 socket 대역으로 본다 · 사례마다 `ALL_PROXY` · `NO_PROXY` · `REQUEST_METHOD`도 대소문자 둘 다 지운다 · raise에 `from None` · L2 사례는 oc-26에 두었다(계약 65 그대로) · `observability.py` 모듈 독스트링의 설계 목록에 r7 S1 · r8 L2가 없다.
+  - 빌더 ⑨: T072 기동 배선은 configure_sentry를 except 블록 밖에서 부른다 · T063 모듈은 재작성이 켜져 있어 그 고정 표식 `QS-MARK`가 비교 설명에 찍힌다 · oc-26은 urllib3 2.8.0의 `LocationParseError` 이름에 기댄다 · 인증서 env는 ValueError 대역이 대신한다.
+  - 리뷰 A(계약 · 문면 · 판별력 — r7 사본 대비 r8): L1 · L2가 1:1이고, 변이 · 빨강 · 빌더 수치가 증거와 맞다. low 5:
+    - A-1: 「실패 출력 = 소스 줄 + 이름표」는 `--show-capture=no` 실행에서만 맞다. 저장소 설정(addopts `--tb=short`뿐)으로 돌려 실패하면 pytest 「Captured log call」 칸에 감시 값이 실린다(탐침).
+    - A-2: 재작성을 끈 모듈의 assert는 `-O` · `PYTHONOPTIMIZE`에서 지워진다(364 → 0). 표식이 빠져도 알아챌 시험이 없다.
+    - A-3: 규칙 Sentry 문장에 `Exception`과 `BaseException`의 경계가 없다.
+    - A-4: 빌더 파일의 문면 잔여 — `observability.py` 설계 목록 · 시험 머리의 「메시지는 〔r8 Ln〕」.
+    - A-5(인계): T063 모듈은 재작성이 그대로 켜져 있다 — 처리를 정해 적어야 한다.
+  - 리뷰 B(누출 · 실패 처리 · 부작용 — r7 사본 대비 r8): 빌더 보고가 증거와 맞다. low 5:
+    - B-1: A-2와 같다(r7까지는 재작성된 단언이 `-O`에서도 남았다 — L1이 연 조건부 우회).
+    - B-2: A-1과 같다.
+    - B-3: L2 시험은 사용자 정보 가운데 비밀번호 자리만 감시 값으로 둔다. 비밀번호만 가린 프록시 URL을 메시지에 싣는 변이가 oc-26을 통과한다.
+    - B-4(인계): r8 컨트롤러 확인의 `transport.py:585-586` · `:602-611`은 쓰지 않는 httpcore 전송 경로다. 기본 HttpTransport에서 인증서 env는 연결 때에야 읽혀 init에서 실패하지 않는다 — L2 밖이고 기동 신호도 없다.
+    - B-5(인계): T075 lint가 키 이름만 대조하면 envFrom prefix 합성 이름 · 대소문자 섞인 이름 · ExternalSecret 템플릿 키 · 렌더 밖 참조가 빠진다.
+  - 컨트롤러 확인(2026-11-07): sentry-sdk 2.73.0 `transport.py` — `:553-591`은 `_get_httpcore_pool_options`(httpcore 전송)이고, 기본 `HttpTransport`(:751 · `make_transport` :1215-1216)는 `:755-794` `_get_pool_options`에서 `SSL_CERT_FILE` · `REQUESTS_CA_BUNDLE` · `CLIENT_CERT_FILE` · `CLIENT_KEY_FILE`을 urllib3 옵션으로 넘기고 `:796-837` `_make_pool`에서 프록시를 고른다. 리뷰 B-4와 맞다.
+- **r9 결정 K1–K7(컨트롤러)**: 규칙 §Logging · §Tests와 kr 미러 대기 줄은 이 절과 같은 변경에서 「T071 r9」 표식으로 고쳤다.
+  - **K1 `-O` 가드와 재작성 자기 점검**(A-2 · B-1):
+    - 시험 모듈 머리(`from __future__` 다음)에 가드를 둔다: `if not __debug__: raise RuntimeError("…")` — 메시지는 「이 모듈은 단언 재작성을 끈다(PYTEST_DONT_REWRITE) · `-O` · `PYTHONOPTIMIZE`에서는 assert가 지워지므로 돌리지 않는다」 꼴(값 없음). `-O`에서는 수집 오류로 끝나고, 보통 실행에서는 컴파일러가 이 블록을 지운다.
+    - 자기 점검 시험 oc-66을 더한다: 이 모듈의 시험 함수 가운데 단언 재작성을 거친 것이 없다(`__code__.co_varnames`에 `@py_assert`로 시작하는 이름이 없다). 표식이 빠지면 이 시험이 실패한다. 〔r10 I1 — 판정은 `@`로 시작하는 지역 이름 전부 · 모듈 독스트링의 표식 낱말도 단언한다〕
+    - 검증: 가드 문이 optimize 1 컴파일에는 남고 optimize 0에서는 사라짐을 AST · dis로 보인다(보고). 변이 「표식 낱말 지우기」를 oc-66이 잡아야 한다.
+  - **K2 django-common pytest 기본에 `--show-capture=no`**(A-1 · B-2 — 문면을 좁히는 대신 캡처 칸도 닫는다):
+    - `packages/django-common/pyproject.toml`의 pytest addopts에 `--show-capture=no`를 더하고, `--tb=short`(T063 r1)와 같은 꼴의 근거 주석을 단다: 실패한 시험의 Captured log 칸이 관측 계약 시험이 심은 합성 감시 값을 찍는다.
+    - 이 설정은 django-common의 모든 시험 모듈에 걸린다. 디버깅 때는 명령줄에 `--show-capture=all`을 주고 로컬에서만 돌린다(그 출력은 공유하지 않는다). `-rA` · `-rP`(통과 시험의 캡처 요약)도 쓰지 않는다. 〔r10 I2 — 금지는 실패 출력을 넓히는 옵션의 부류다(`-l`/`--showlocals` · `short`가 아닌 `--tb`(`long` · `auto`) · `--full-trace` · `no`가 아닌 `--show-capture` · `log_cli`/`--log-cli-level` · `--log-file`/`log_file` · `no`가 아닌 `junit_logging` · `-o`/`--override-ini`로 addopts 덮기 — 마감 F1) · `-rA` · `-rP`는 `--show-capture=no`에서 무해하다 · 공유 실행은 패키지 ini가 골라지게 돌린다 · `-O` 금지〕
+    - 의존성 변화는 없다(`uv.lock` 바이트 같음 · `uv lock --check --offline` 통과).
+    - 검증: M08(oc-4)을 추가 플래그 없이 한 번 돌려 실패 출력에 감시 값 꼴 0을 보인다.
+    - 규칙 §Tests에 적었다. T072 인계: 생성 pod의 pytest 설정에도 같은 기본을 둘지 정한다.
+  - **K3 L2 시험 강화**(B-3): 프록시 사용자 이름도 감시 값으로 둔다. 메시지는 기대 문자열 전체와 견준다(예외 클래스 이름만 바뀐다). 변이 L2-5(비밀번호만 가린 프록시 URL을 메시지에 싣기)를 oc-26이 잡아야 한다.
+  - **K4 빌더 파일 문면 잔여**(A-4 · 빌더 r8 ⑧-6): `observability.py` 모듈 독스트링의 설계 정본 목록에 「T071 r6 결과 · r7 결정」 S1과 「T071 r7 결과 · r8 결정」 L2를 더한다. 시험 모듈 머리의 표식 문구를 사실대로 고친다(사례는 〔r8 Ln〕 · 메시지 32줄은 모듈 독스트링 〔r8 L1〕 문단이 덮는다).
+  - **K5 문서 · 인계**(A-3 · A-5 · B-4 · B-5 · 문서만):
+    - 규칙 §Logging의 Sentry 문장에 경계를 적었다(`Exception`만 바꾸고 `BaseException`은 그대로 올린다).
+    - r8 컨트롤러 확인의 sentry-sdk 줄 번호를 표식으로 고쳤다. 기본 HttpTransport에서 인증서 env는 init 때 실패하지 않는다 — L2 밖이고 기동 신호도 없다. T072 렌더 · 이미지 단언과 T075 lint가 유일한 방어선이다.
+    - T075 lint 기준을 넓혔다(D14 T075 표식): 컨테이너마다 실효 env 이름(`env[].name` ∪ envFrom prefix + 키)을 셈한다 · 금지 목록은 대소문자 무시로 대조한다 · ExternalSecret 키는 `target.template.data` 키로 본다(없으면 `data[].secretKey`) · 렌더 밖 객체를 가리키는 envFrom은 FAIL로 두거나 허용 목록으로 둔다 · Sentry TLS 신뢰를 바꾸는 `SSL_CERT_FILE` · `REQUESTS_CA_BUNDLE`도 목록에 넣는다. 〔r10 I4 — 키 = template.data 키 ∪ (템플릿이 없거나 `mergePolicy: Merge`면 `data[].secretKey`) · `templateFrom`(KeysAndValues · literal 등)은 FAIL 또는 허용 목록 · T075가 ESO 2.10.0 소스로 Merge 동작을 대조한다(cluster.tests.ps1 ca-1 꼴)〕
+    - T063 모듈의 재작성(A-5 · 빌더 r8 ⑨-2)은 받아들인 한계로 둔다: 그 모듈의 needle은 고정 공개 표식(`QS-MARK`)이고 무작위 값은 trace id뿐이다. T063 산출물은 이 태스크가 바꾸지 않는다. L1 검증 문구는 계약 모듈에 한한다. K2의 `--show-capture=no`는 그 모듈의 캡처 칸에도 걸린다. 〔r10 I3 — 근거 정정: 비교 설명에 실릴 수 있는 것은 고정 공개 표식(`QS-MARK` · `MARK-*`)과 무작위 trace · span id(비밀 아님)뿐이다 · 무작위 비밀 needle(Dragonfly · PG app 비밀번호)은 `_assert_absent`가 Secret · 위치 목록으로 접는다 · 그 모듈에 단언을 더할 때도 이 접기를 지킨다〕
+  - **K6 받아들인 것**(빌더 r8 ⑧ · ⑨): ⑧-1 진단 메시지 32줄의 기준 · ⑧-2 socket 대역 · ⑧-3 프록시 관련 env를 대소문자 둘 다 지우기 · ⑧-4 `from None` · ⑧-5 L2 사례를 oc-26에 두기 · ⑨-1 T072 인계(configure_sentry를 except 블록 밖에서 부른다) · ⑨-3 `LocationParseError` 이름 의존(urllib3 판 올림 때 다시 본다).
+  - **손대지 않는 것**: L2의 감싸기 꼴 · S1 · G1 · G2 · P1 · P2 · P4 · P5 판정 · `health.py` 전부 · configure_sentry의 init 인자 · `before_send` · Z2 · Z5 · Z6 · Z7 · Q2 · Q3 · D3 · D4 · D8 · D9 · D10 · D12 · D13 · D15 · RequestIdMiddleware · sub_hash · 헤더 캡처 env 판정 · 쿠키 접두 · memoryview 판정 · 의존성.
+
+### T071 r9 결과 · r10 결정(리뷰 r9 반영 · I1–I6 · 2026-11-07) — K1의 oc-66 판정, K2의 금지 목록, K5의 T063 근거 · T075 키 규칙, L3의 T075 줄, D14의 T072 · T075 줄은 이 절의 I1 · I2 · I3 · I4 · I5가 고친다(앞 절 줄 끝 〔r10 …〕 표식)
+
+- **r9 결과**(워크플로 `wf_fc788a1b-169` · 104만 토큰 · 약 1시간 7분 · 빌더 DONE · 리뷰 A approve_with_fixes — low 4 · 리뷰 B approve_with_fixes — low 5 · high · medium 0):
+  - 바뀐 파일(r8 대비): 시험 4154 → 4198(+58/−14 — 가드 · oc-66 · oc-26 강화 · 머리 문구) · `pyproject.toml` 73 → 78(addopts에 `--show-capture=no` 한 항목과 주석 — 그 밖의 값은 TOML 대조로 같다) · `observability.py` 990 → 992(모듈 독스트링만 — 그 밖의 AST 같음). 나머지는 r8 사본과 바이트가 같다(`uv.lock` 포함).
+  - 빨강 없음(모두 강화): r8 구현 + r9 시험 = `66 passed`. 사전 확인으로 L2-5가 r8 시험에서 살아남음을 실행으로 보였다(리뷰 r8 B-3).
+  - 초록(최종 바이트): T063 21 ×2 · 계약 66 · 회귀 파일별 · 한 세션 묶음 757(9파일 합).
+  - K1: 가드는 `from __future__` 다음(본문 두 번째 문)이다. optimize 0에서는 가드가 지워지고(assert 적재 366), optimize 1에서는 RuntimeError를 올린다(assert 0). `python -O -B -m pytest`는 수집 오류(exit 2 · 값 없는 고정 문구)로 끝났다. 재작성 탐침: 최종본은 `@py_assert`를 가진 시험 함수 0/66, 표식을 지우면 63/66(도우미에 단언을 맡긴 oc-34..36 제외).
+  - K2: M08(oc-4)을 추가 플래그 없이 — r8 pyproject는 Captured log call 칸에 감시 값 꼴이 실렸고(True), r9 pyproject는 그 칸이 없고 감시 값 꼴 0이다.
+  - 변이 6개를 모두 잡았다: K1-1(표식 낱말 지우기) → oc-66 · L2-5 → oc-26(r8 시험에서는 생존) · L2-1..4 → oc-26. r9 로그 53개에서 감시 값 꼴 0건.
+  - VD-T071-1 PASS · `uv lock --check --offline` exit 0 · 위생(compileall · 바이트 · gitleaks 11 · Docker dangling 볼륨 25 → 25 · 루프백만).
+  - 빌더 ⑧: oc-66에 자기 존재 단언을 더했다(검사 대상이 비면 공허하다) · oc-26은 기존 `expected in message` 원소를 남기고 통째 비교 원소를 더했다 · 시험 독스트링에 〔r9 K1〕 · 〔r9 K2〕 문단 · 변이 실행기는 r9부터 K2 기본에 맡긴다 · 표식 낱말이 독스트링 · 가드 메시지 두 곳에 있다(pytest는 독스트링만 본다) · ruff 기본 규칙이면 가드 뒤 import가 E402다(저장소에 ruff 설정 없음).
+  - 빌더 ⑨: T072가 생성 pod에도 `--show-capture=no`를 둘지 정한다 · CI 배선 때 `-O` · `PYTHONOPTIMIZE` · `--show-capture=all` · `-rA` · `-rP` 금지 · `SENTRY_INIT_FAILURE`는 구현 고정 문구와 함께 바뀐다 · ruff 도입 때 E402.
+  - 리뷰 A(계약 · 문면 · 판별력 — r8 사본 대비 r9): K1–K4가 1:1이고 K1 · K2의 실효를 재현했다(pytest 9.2.0 `rewrite.py:774-775` 표식 · `:777-788` `@py_assert` 지역 이름). low 4:
+    - A-1: K2의 공유 실행 금지 목록이 과녁을 빗나간다 — `-rA` · `-rP`는 `--show-capture=no` 기본에서 캡처 내용을 찍지 않는다. 같은 로그 레코드를 내보내는 `log_cli`/`--log-cli-level` · `--log-file` · `junit_logging`이 빠졌다.
+    - A-2: K5가 적은 T063 한계의 전제가 좁다 — 무작위 span id와 무작위 비밀 needle(Dragonfly · PG app 비밀번호)도 있다. 결론은 T063 자체 설계(Secret · 위치 목록 접기) 덕에 성립한다.
+    - A-3(인계): T075 ExternalSecret 키 규칙에 `templateFrom` · `mergePolicy`가 빠졌다.
+    - A-4(인계): r9의 T072 인계 둘(생성 pod `--show-capture=no` · configure_sentry 호출 자리)이 D14 T072 줄에 표식으로 없다.
+  - 리뷰 B(누출 · 실패 처리 · 부작용 — r8 사본 대비 r9): K1 · K2 · K3이 실효가 있다(재작성이 다시 켜지는 길을 oc-66이 잡는다 · `--show-capture=no`이면 실패 · 오류 · -rP/-rA · teardown 캡처 칸이 모두 닫힌다 · 메시지 통째 비교는 어느 조각이 덧붙어도 잡는다). low 5:
+    - B-1: K2는 캡처 칸만 닫는다 — `-l/--showlocals` · `--full-trace` · `log_cli` · `--log-file` · `junit_logging`은 열려 있고, 패키지 ini가 골라져야 한다는 조건(루트에서 여러 패키지를 주면 addopts가 적용되지 않는다)이 규칙 · 주석 · CI 인계에 없다. pyproject 주석의 까닭 괄호도 고친다.
+    - B-2(인계): A-3과 같다.
+    - B-3(인계): A-4와 같고, CI 배선 조건이 놓일 줄이 없다.
+    - B-4: oc-66은 pytest 내부 임시 이름의 접두 `@py_assert`에 기댄다 — 이름이 바뀌면 조용히 통과한다(fail-open).
+    - B-5: A-2와 같다.
+- **r10 결정 I1–I6(컨트롤러)**: 규칙 §Tests와 kr 미러 대기 줄은 이 절과 같은 변경에서 「T071」 꼬리로 고쳤다.
+  - **I1 oc-66 판정 넓히기**(B-4): 시험 함수의 `__code__.co_varnames`에 `@`로 시작하는 이름이 하나라도 있으면 실패한다(파이썬 식별자는 `@`로 시작할 수 없으니 재작성기의 임시 이름만 걸린다). 모듈 독스트링에 `PYTEST_DONT_REWRITE`가 있음도 함께 단언한다(표식을 직접 본다).
+    - 변이: K1-1(표식 낱말 지우기)을 다시 돌리고, 두 절이 각각 따로 잡음을 보인다 — `@` 절을 끈 꼴 + K1-1 → 독스트링 절이 잡는다 · 독스트링 절을 지운 꼴 + K1-1 → `@` 절이 잡는다.
+  - **I2 공유 실행 규칙을 부류로**(A-1 · B-1):
+    - 규칙 §Tests 문장을 고쳤다: 공유 실행(CI 포함)은 패키지 자체 설정을 쓴다 — `packages/django-common`에서 돌리거나 그 안의 경로만 주어 그 `pyproject.toml`이 골라지게 한다 · `python -O` · `PYTHONOPTIMIZE`로 돌리지 않는다 · 실패 출력을 넓히는 옵션(`-l`/`--showlocals` · `--tb=long` · `--full-trace` · `no`가 아닌 `--show-capture` · `log_cli`/`--log-cli-level` · `--log-file`/`log_file` · `no`가 아닌 `junit_logging`)을 더하지 않는다 · 그런 옵션은 로컬에서만 쓰고 출력을 공유하지 않는다. `-rA` · `-rP`는 `--show-capture=no`에서 머리줄만 찍으므로 따로 금지하지 않는다. 〔마감 F1 — 목록에 `short`가 아닌 `--tb`(`auto` 포함)와 `-o`/`--override-ini`로 addopts 덮기를 더했다(규칙 §Tests) · pyproject 주석 · 시험 독스트링의 같은 목록은 다음 수정 때 맞춘다〕
+    - 빌더: `pyproject.toml` 주석과 시험 모듈 독스트링 〔r9 K2〕 문단을 같은 원칙으로 맞춘다(목록은 규칙을 가리켜도 된다). pyproject 주석의 까닭 괄호를 사실대로 고친다(실패한 시험의 Captured log 칸에는 마스킹하지 않은 키 값의 repr와 stdlib 메시지 인자가 실린다 — 우리 JSON 렌더러를 거치지 않는다).
+  - **I3 T063 한계 근거 정정**(A-2 · B-5 · 문서만): T063 모듈의 비교 설명에 실릴 수 있는 것은 고정 공개 표식(`QS-MARK` · `MARK-*`)과 무작위 trace · span id(비밀 아님)뿐이다. 무작위 비밀 needle(Dragonfly · PG app 비밀번호)은 `_assert_absent`가 Secret · 위치 목록으로 접어, 재작성이 켜진 실행에서도 실리지 않는다(T062 · T063 설계). 그 모듈에 단언을 더할 때도 이 접기를 지킨다.
+  - **I4 T075 ExternalSecret 키 규칙**(A-3 · B-2 · 문서만): ExternalSecret 키 = `target.template.data` 키 ∪ (템플릿이 없거나 `mergePolicy: Merge`면 `data[].secretKey`). `templateFrom`(templateAs KeysAndValues · literal 등)은 `dataFrom`처럼 FAIL로 두거나 허용 목록으로 둔다. T075가 ESO 2.10.0 소스로 Merge 동작을 한 번 대조한다(판정 꼴은 `tests/platform/cluster.tests.ps1` ca-1과 같게).
+  - **I5 D14 T072 인계 표식**(A-4 · B-3 · 문서만): 생성 pod pyproject addopts와 T065 하네스 명령에 `--show-capture=no`를 둘지 정한다 · configure_sentry는 except 블록 밖에서 부른다 · ci.yml의 test 자리를 채우는 과제(US 단계 — 아직 태스크 이름이 없다 · T072 설계가 맡을 곳을 정한다)는 django-common pytest를 패키지 ini로 돌리고 `-O` · `PYTHONOPTIMIZE`와 실패 출력을 넓히는 옵션을 쓰지 않는다.
+  - **I6 r10의 리뷰 꼴**: r10의 코드 변경은 oc-66 판정 한 곳과 주석 · 독스트링 문면뿐이다. 그래서 리뷰 두 렌즈를 따로 돌리지 않고, 커밋 전 읽기 전용 독립 확인 1회가 r10 변경과 T071 전체(계약 ↔ 코드 ↔ 시험 ↔ 규칙 ↔ build-notes 표식 · 위생 · r9 지적 닫힘)를 함께 본다. 그 확인이 문서만으로 닫을 지적만 내면 컨트롤러가 고치고 커밋한다. 코드가 필요한 지적이 나오면 라운드를 하나 더 연다.
+  - **받아들인 것**(빌더 r9 ⑧ · ⑨): ⑧-1 oc-66 자기 존재 단언 · ⑧-2 oc-26 원소 더하기 · ⑧-3 독스트링 문단 · ⑧-4 변이 실행기의 K2 기본 · ⑧-5 표식 낱말 두 곳 · ⑧-6 oc-34..36(도우미 단언)은 `@` 검사 밖 · ⑧-7과 ⑨-4 ruff E402(도입 때 처리) · ⑨-3 `SENTRY_INIT_FAILURE` 고정.
+  - **손대지 않는 것**: L2 · K1 가드 · K3 · S1 · G1 · G2 · P1 · P2 · P4 · P5 판정 · `health.py` 전부 · `observability.py` 전부 · configure_sentry · 그 밖의 앞 결정 전부 · 의존성.
+
+### T071 결과(r1 → r10 · 커밋 전 확인 · 2026-11-05..07) — D1–D15 · Y · Z · Q · P · G · S · L · K · I의 정정은 뒤 절과 이 절이 우선한다(앞 절 줄 끝 〔…〕 표식)
+
+- **경과**: 조사 `wf_4b472661-c84`(1.77M) → r1 `wf_c09020d9-a4d`(1.65M · 약 2시간 36분) → r2 `wf_5a350cf4-69e`(1.64M · 약 2시간 49분) → r3 `wf_cf8c8de0-0e4`(0.68M · 약 1시간 58분 · 빌더 NEEDS_CONTEXT — 리뷰 없음) → r4 `wf_8c9174f9-1e2`(1.45M · 약 1시간 31분) → r5 `wf_ac330432-677`(1.37M · 약 3시간 9분) → r6 `wf_5b7e00bd-eff`(1.28M · 약 2시간 34분) → r7 `wf_479658da-01f`(1.16M · 약 1시간 10분) → r8 `wf_eca8c3b3-408`(1.35M · 약 1시간 43분) → r9 `wf_fc788a1b-169`(1.04M · 약 1시간 7분) → r10 + 커밋 전 확인 `wf_8170e4bb-cb0`(0.77M · 약 55분). 빌드 · 리뷰 합계는 약 12.39M 토큰이다(조사 포함 약 14.16M).
+- **리뷰 회차별 지적**(높음 · 중간 · 낮음):
+  - r1: A 0 · 2 · 7 / B 0 · 2 · 7
+  - r2: A 0 · 0 · 9 / B 0 · 1 · 6
+  - r3: 리뷰 없음(빌더 NEEDS_CONTEXT — 열거 밖 env 둘 · `OTEL_PROPAGATORS` 결정 오류)
+  - r4: A 0 · 0 · 4 / B 0 · 0 · 4(A-2 = B-2)
+  - r5: A 0 · 0 · 4 / B 0 · 1 · 2(B-1 medium = OTLP 자격 통로가 헤더 밖에 남음)
+  - r6: A 0 · 0 · 3 / B 0 · 0 · 2(A-1 = B-1 — 스킴 `ſ`)
+  - r7: A 0 · 0 · 2 / B 0 · 0 · 2(A-1 = B-2)
+  - r8: A 0 · 0 · 5 / B 0 · 0 · 5(A-1 = B-2 · A-2 = B-1)
+  - r9: A 0 · 0 · 4 / B 0 · 0 · 5(A-1 ≈ B-1 · A-2 = B-5 · A-3 = B-2 · A-4 = B-3)
+  - 커밋 전 확인(r10과 함께 · 읽기 전용 1회): 0 · 0 · 7(C-1–C-7 — 「[코드]」 표시 둘(C-1 · C-7)은 주석 · 독스트링 문면뿐이라 동작이 그대로다 · 확인이 적은 문서 길로 닫았다 · r11 없음)
+- **r10 결과**(빌더 DONE):
+  - 시험 4198 → 4211(+23/−10 — oc-66 판정 `@py_assert` → `@` 접두 · 독스트링 표식 단언 `"oc-66 marker"` 추가 · 〔r9 K2〕 문단 · 머리 표식) · `pyproject.toml` 78 → 81(주석만 — TOML 값 전체 같음). 나머지는 r9 사본과 바이트가 같다.
+  - 빨강 없음(r9 구현 + r10 시험 = 66 passed). 초록: T063 21 ×2 · 계약 66 · 회귀 파일별 · 한 세션 묶음 757. VD-T071-1 PASS · `uv lock --check --offline` exit 0.
+  - 변이 3개를 모두 잡았다: K1-1(표식 낱말 지우기) → oc-66 `@` 절 · I1-1(`@` 절 끔 + K1-1) → 독스트링 절 · I1-2(독스트링 절 지움 + K1-1) → `@` 절.
+  - 탐침: 실패한 시험의 pytest 캡처 칸에는 마스킹하지 않은 키 값의 repr와 stdlib 메시지 인자가 실린다(우리 JSON 줄에서는 repr 탐침이 `<타입 이름>`이다 · 메시지 인자는 JSON 줄에도 실린다 — 값은 검사하지 않는다는 규칙 그대로) · 재작성기 임시 이름 접두가 바뀌면 r9 판정은 0/66으로 통과하고(fail-open) r10 `@` 절은 63/66을 잡는다 · 루트에서 두 패키지 경로를 함께 주면 루트 pyproject가 골라져 addopts가 빠진다.
+- **커밋 전 확인 반영**(마감 정정 — 컨트롤러가 문서만 고쳤다 · 사본 드라이런 → 적용 → cmp 같음):
+  - **F1**(C-1) 규칙 §Tests의 「실패 출력을 넓히는 옵션」 목록: `--tb=long`을 「`short`가 아닌 `--tb`(`long` · `auto`)」로 고쳤다(pytest 기본 auto는 첫 · 마지막 항목을 long으로 찍어 함수 인자를 싣는다 — `_pytest/python.py:1819-1840` · `_code/code.py:1100-1101`) · 「`-o`/`--override-ini`로 addopts를 덮지 않는다」를 더했다. 같은 목록을 옮긴 `pyproject.toml` 주석 · 시험 모듈 독스트링 〔r10 I2〕는 동작에 닿지 않는 미러 문면이라 그대로 두고, 다음에 그 파일을 고칠 때 규칙(정본)에 맞춘다(받아들인 잔여).
+  - **F2**(C-2) 커밋에 tasks.md T071 체크 · 학습 로그 `content/tmp/003-t071/` · 이 절을 함께 싣는다.
+  - **F3**(C-3) 표식: K1의 oc-66 판정 줄 · L3의 T075 줄에 〔r10 …〕 · K2 표식의 목록을 `--log-file`/`log_file`로 · r10 절 머리의 고치는 줄 목록에 K1 · L3을 더했다.
+  - **F4**(C-4) 계약 · 규칙 문면을 구현(모두 fail-closed 쪽)에 맞췄다 — pod-template 「로그」 · 「트레이스 · Sentry」 행 · identity-admin-api §관측 · 규칙 §Logging:
+    - `OTEL_SEMCONV_STABILITY_OPT_IN`: 쉼표 토큰을 앞뒤 공백을 떼고 대소문자를 무시해 `http`이거나 `http/`로 시작하면 거부한다.
+    - `problem`: 본문 `type`이 `https://joshuatech.dev/problems/<slug>`(slug = 소문자로 시작하는 소문자 · 숫자 · `-`) 꼴일 때만 그 slug — 그 밖의 type · 스트리밍 응답 · 64 KiB 초과는 키 없음.
+    - JSON 폴백: UUID · Decimal은 문자열 · date · datetime · time은 ISO 8601 · 그 밖은 `<타입 이름>`.
+    - 비율 샘플러: ARG가 [0, 1]의 수여야 한다(없음 · 빈 값 · 숫자 아님 · NaN도 거부).
+  - **F5**(C-5) `sentry_sdk.init` 실패 메시지의 「(프록시 · 인증서)」는 운영자가 볼 env 범위 안내이고 실패 원인 주장이 아니므로 그대로 둔다(기본 HttpTransport에서 인증서 env는 init 때 실패하지 않는다 — K5). 바꿀 때는 구현 문구와 시험 상수 `SENTRY_INIT_FAILURE`를 함께 바꾼다.
+  - **F6**(C-6) D14에 T084 · T085 줄을 더했다(admin 호스트 경로의 브라우저 traceparent — T084가 정해 계약 §관측에 적고 T085가 S3 관찰 수단으로 검증한다).
+  - **F7**(C-7) 시험 모듈 독스트링 「빨간 상태」 문단에 r10 문장이 없다(머리 표식 · oc-66 독스트링에는 있다) — 받아들인 잔여(다음에 그 파일을 고칠 때 한 문장을 더한다).
+- **최종 산출물**(`packages/django-common/` 아래 · 저장소 루트 `uv.lock`):
+  - `src/django_common/observability.py` 992줄(`d5d4e478f42d…`) · `src/django_common/health.py` 272줄(`d6b19c72c675…`) · `src/django_common/__init__.py` 11줄(`591348853825…`)
+  - `pyproject.toml` 81줄(`0a7b1497b466…`) · 루트 `uv.lock` 939줄(`fa2505e2e3db…`)
+  - `tests/test_observability_contract.py` 4211줄(`600f7374ea2a…` · oc-1..66) · `tests/_obs_fakes.py` 203줄(`4e5fe29d7d92…`) · `tests/obscontractapp/`(`__init__.py` · `middleware.py` · `urls.py` · `views.py`)
+  - T063 `tests/test_observability.py`(783줄 · `320bab1bc61c…`)는 바뀌지 않았다.
+- **컨트롤러 독립 검증**(커밋 전 · 2026-11-07):
+  - `uv run --offline --no-sync --directory packages/django-common pytest tests/test_observability.py -q` → `21 passed`(**T063 PASS**) · `tests/test_observability_contract.py -q` → `66 passed`.
+  - `uv lock --check --offline` → `Resolved 63 packages`.
+  - Docker dangling 볼륨 25 → 25 · 실행 중 컨테이너 목록 같음.
+  - 코드 산출물 12파일 바이트 위생 문제 0 · gitleaks 파일별 rc 0. 문서 5파일은 라운드마다 반영 직후 같은 검사(문제 0 · rc 0).
+- **한계**(받아들인 것):
+  - 헬스 시작 실패: 「시작되지 않음」 = `worker.ident is None`의 창 · 새 스레드가 `_started.set()` 전에 죽으면 start()가 돌아오지 않는다(CPython 성질 — G3).
+  - 엔드포인트 닫힌 꼴은 IPv6 리터럴을 받지 않는다 · host 부류는 `..` · `-x` 같은 이상한 DNS 꼴도 받는다 · 앞에 0이 붙은 포트는 값으로 받는다(자격 통로 아님 — G1 · r6 ⑧).
+  - requests · urllib3 · sentry-sdk가 프로세스 전체에서 스스로 읽는 env · 파일(`NETRC` · `.netrc` · `_netrc` · `*_PROXY` · `SSLKEYLOGFILE` · `SSL_CERT_FILE` · `REQUESTS_CA_BUNDLE` · `CLIENT_CERT_FILE` · `CLIENT_KEY_FILE`)은 django-common이 거부하지 않는다 — T072 렌더 · 이미지 단언과 T075 gitops lint가 방어선이다(S4 · L3 · K5 · I4). 기본 HttpTransport의 인증서 env는 init 때 실패하지 않아 기동 신호가 없다(K5).
+  - 마스킹은 값을 보지 않는다(비밀을 로그 필드로 넘기지 않는 것은 호출자 규칙 — D2 · Z4).
+  - 시험의 판 의존: oc-63은 sentry-sdk의 `sentry` entry point와 OTel 비공개 `_load_propagators`에 · `_hidden_ident`는 CPython 3.13 `Thread.ident` property에 · oc-26은 urllib3 `LocationParseError` 이름에 · oc-66은 pytest 재작성기의 `@` 임시 이름과 독스트링 표식에 · `_name_lookups`는 클러스터 이름의 `alloy`에 기댄다 — 판 올림 때 다시 본다.
+  - 계약 시험 모듈은 단언 재작성을 끈다(값 비교 설명 없음 · `-O`에서 수집 실패). T063 모듈은 재작성이 켜져 있다(그 비밀 needle은 `_assert_absent`가 접는다 — I3).
+  - 미러 문면 잔여: `pyproject.toml` 주석 · 시험 모듈 독스트링의 공유 실행 금지 목록(F1) · 「빨간 상태」 문단의 r10 문장(F7).
+  - 변이: r2 · r3의 M65(겹 방어 — 두 겹을 함께 없앤 변이는 잡혔다).
+- **문면과 다르게 한 것**(report.md 후보):
+  - `/ready` = `SELECT 1`(django-health-check 미채택 — 검사 테이블이 RLS 허용 목록을 깬다).
+  - Sentry release = `<pod>@<APP_GIT_SHA>`(문면 「digest」는 빌드 뒤 정해져 이미지에 구울 수 없다).
+  - `send_default_pii` 생략 · Sentry 헤더 거부 목록 → 허용 목록(D7).
+  - OTLP는 http 4318(research gRPC 4317과 다름 — 계약 · 문면 http) · 엔드포인트 env는 스킴을 포함한 닫힌 꼴(T098 문면 값에는 스킴이 없다).
+  - web 9100 · `http_requests_total` 소유는 T072(D10).
+  - `SECRET_KEY` = `<pod>-env` 필수 비밀 · kv 경로 추가(T072 · T075 문면 밖 — `sub_hash` 키).
+  - 문면에 없던 기동 거부: OTel env 열일곱(요청 값 · 계측 끄기 · traceparent 이어받기 · 미들웨어 위치 · OTLP 자격 — 기준은 계약 「트레이스 · Sentry」 행) · `sentry_sdk.init` 실패의 이름만 실은 오류(L2).
+  - django-common pytest 기본에 `--show-capture=no`(K2 — 규칙 §Tests).
+- **실측으로 뒤집힌 가정**(컨트롤러 결정 · 사실 오류 — 학습 로그 사고 · 오류 절):
+  - r3 Z1: `OTEL_PROPAGATORS`를 너그럽게(대소문자 무시 · 공백뿐 = 빈 값) 받기로 했다 → OTel import가 그 값으로 값 실은 오류를 낸다(빌더 실측 · r4 Q1).
+  - r4: 「설치된 propagator entry point는 둘뿐」 → sentry-sdk가 `sentry`를 등록한다(r5 P1).
+  - r4 P3 근거: camelCase 변형 1393개에서 회귀 0 → 생성기가 「머리글자 + 소문자 낱말」 꼴을 만들지 않았다(r6 G2).
+  - r5 P5 받음 근거: 엔드포인트 사용자 정보는 로그에 실리지 않는다 · 클라이언트 키는 파일 경로다 → requests가 Basic 인증으로 보내고, 꼴이 틀린 값과 평범한 장애 때 로그에 실린다(r6 G1).
+  - r6 G1: 「글자 부류는 ASCII」 → 스킴의 `(?i)`가 유니코드 접기로 `ſ`를 받았다(r7 S1).
+  - r6 · r7: 감시 값 단언을 목록으로만 접었다 → 목록 근거가 틀렸고 1차 전용 변이 자리가 빠졌다 → 부류를 닫았다(r8 L1) → 재작성 끄기가 `-O` 공허 통과를 열었다(r9 K1) → 자기 점검이 pytest 내부 이름에 기댔다(r10 I1).
+  - r7 S4 근거: 「(Sentry도 같다) · 템플릿이 pod env를 정한다」 → sentry-sdk는 `*_PROXY`를 스스로 읽고 init 예외에 싣는다 · 배포 env는 T075 gitops가 정한다(r8 L2 · L3).

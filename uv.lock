@@ -218,6 +218,7 @@ dependencies = [
     { name = "psycopg", extra = ["binary"] },
     { name = "pyjwt", extra = ["crypto"] },
     { name = "redis", extra = ["hiredis"] },
+    { name = "sentry-sdk" },
     { name = "structlog" },
 ]
 
@@ -236,12 +237,13 @@ requires-dist = [
     { name = "django-ninja", specifier = ">=1.7,<2" },
     { name = "django-structlog", specifier = ">=11,<12" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.45,<2" },
-    { name = "opentelemetry-instrumentation-django", specifier = ">=0.66b2,<1" },
+    { name = "opentelemetry-instrumentation-django", specifier = ">=0.66b2,<0.67" },
     { name = "opentelemetry-sdk", specifier = ">=1.45,<2" },
     { name = "prometheus-client", specifier = ">=0.23,<1" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3,<4" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.13,<3" },
     { name = "redis", extras = ["hiredis"], specifier = ">=8.1,<9" },
+    { name = "sentry-sdk", specifier = ">=2.73,<3" },
     { name = "structlog", specifier = ">=26.1,<27" },
 ]
 
@@ -828,6 +830,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/55/42/df3f7bbc3f7ab37a8a9db8d6c2ff2c985422899f1f7926afbf7ec3c0b8b4/rpds_py-2026.9.1-cp313-cp313-win32.whl", hash = "sha256:172e47169583f46ce118cbec68e6795d0da0f4606b488b6434f8276bca0a058c", size = 205293, upload-time = "2026-10-04T16:29:56.669Z" },
     { url = "https://files.pythonhosted.org/packages/31/9c/ba5a9569d719bfdd6ce863df4133ac6a1658cf1b07cc3534c31db729fbbc/rpds_py-2026.9.1-cp313-cp313-win_amd64.whl", hash = "sha256:3e93b2cd69a9830be33e03945cd7cda940a0a8bfcfbff41d6144f0cb0d3d8bd9", size = 222409, upload-time = "2026-10-04T16:29:58.049Z" },
     { url = "https://files.pythonhosted.org/packages/35/72/f28ca566f6c23c35bbf7445f65eb0364577b25a026305995e24f78b83d94/rpds_py-2026.9.1-cp313-cp313-win_arm64.whl", hash = "sha256:d151e148117294133bf8af7eeace085e7e87432db15ab6adf640330298a47f6f", size = 217681, upload-time = "2026-10-04T16:29:59.449Z" },
+]
+
+[[package]]
+name = "sentry-sdk"
+version = "2.73.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c5/3b/1e47acf2456781c26e12007379ecc154bf310b8f64d40390d78b791d55c3/sentry_sdk-2.73.0.tar.gz", hash = "sha256:4a2ab97b16e4693c325ab361c7bbbb346dbc7d0bc0150922d795a25bac8d5280", size = 1079078, upload-time = "2026-10-22T09:08:49.63Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b2/88/cabf98d017d7b940720e514e5f8ee02e3e6f7495caf93c30735a38387ec4/sentry_sdk-2.73.0-py3-none-any.whl", hash = "sha256:0bcfa6928ea5adbb89591858b514d27adac27c7a3cccc31b20ed10e0b09eda9e", size = 549011, upload-time = "2026-10-22T09:08:47.88Z" },
 ]
 
 [[package]]
