@@ -110,7 +110,7 @@ Dragonfly 키(파생 캐시, contracts/denylist.md가 정본):
 | 사용자 | `<pod>`(prod) · `dev-<pod>`(dev), SCRAM-SHA-512. 비밀번호 원천은 Vault `kv/{env}/kafka/<pod>` → ESO → `KafkaUser.spec.authentication.password.valueFrom.secretKeyRef`(kafka ns) + 앱 ns에도 같은 경로의 ExternalSecret; 클러스터 CA(`jt-kafka-cluster-ca-cert`)는 ESO kubernetes provider로 앱 ns에 미러 |
 | ACL | 자기 토픽 접두(prod `<pod>.` · dev `dev.<pod>.` — DLQ `<pod>.dlq`·`dev.<pod>.dlq` 포함 · `patternType: prefix`) `Read`·`Write`·`Describe`, 구독 토픽 `Read`·`Describe`(literal — 구독이 생기는 pod feature가 행을 더한다), 그룹 접두 prod `<pod>-` · dev `dev-<pod>-`(prefix) `Read`. cluster·transactionalId ACL은 두지 않는다(Kafka KIP-679 — 토픽 `Write`가 있으면 idempotent producer의 `InitProducerId`가 허용된다 · 트랜잭션은 쓰지 않는다). 자기 접두의 `Read`는 dev·prod 대칭으로 둔다(검사 Job 왕복 · DLQ 점검 — 자기가 낸 이벤트를 읽는 권한이라 새 데이터 노출이 아니다). 2026-10-16 T056 결정 D3로 정정(이전 문구: 「자기 토픽 `Write`·`Describe`, 구독 토픽 `Read`·`Describe`, 그룹 `<pod>-*` `Read`, DLQ `Write`」 — env별 그룹 접두가 없었다) |
 
-- 그룹 접두의 구분자 `-`는 pod 이름에도 쓰인다 — **어떤 두 pod 이름도 한쪽이 다른 쪽 + `-`로 시작하지 않는다**(예: `identity-admin`이 있으면 `identity-admin-x`도 `identity`도 금지 — 접두 일치는 짧은 쪽 그룹 ACL `<pod>-`가 긴 쪽 pod의 그룹까지 덮어 가입·오프셋 열람이 가능해진다 · T056 리뷰 K2 · r3 B2). **pod 이름은 `dev`가 아니고 `dev-`로 시작하지 않는다** — env 접두와 겹치면 prod ACL 접두(`<pod>.` · `<pod>-`)가 dev 토픽·그룹 전체(또는 다른 pod의 dev 그룹)를 덮는다(T056 리뷰 r2 K6). 이 두 규칙 아래에서만 토픽 접두(`.`로 끝남)가 교차를 막는다. 막는 장치는 아직 없다(copier `pod_name` 검증기 · validate KafkaUser 규칙 — 후속 후보).
+- 그룹 접두의 구분자 `-`는 pod 이름에도 쓰인다 — **어떤 두 pod 이름도 한쪽이 다른 쪽 + `-`로 시작하지 않는다**(예: `identity-admin`이 있으면 `identity-admin-x`도 `identity`도 금지 — 접두 일치는 짧은 쪽 그룹 ACL `<pod>-`가 긴 쪽 pod의 그룹까지 덮어 가입·오프셋 열람이 가능해진다 · T056 리뷰 K2 · r3 B2). **pod 이름은 `dev`가 아니고 `dev-`로 시작하지 않는다** — env 접두와 겹치면 prod ACL 접두(`<pod>.` · `<pod>-`)가 dev 토픽·그룹 전체(또는 다른 pod의 dev 그룹)를 덮는다(T056 리뷰 r2 K6). 이 두 규칙 아래에서만 토픽 접두(`.`로 끝남)가 교차를 막는다. `dev` · `dev-` 금지는 copier `pod_name` 검증기(T072 — 케밥 · 39자 이하 · `dev` · `dev-` 금지)가 생성 때 막는다. 접두 겹침(한 pod 이름이 다른 이름 + `-`로 시작)을 막는 장치는 아직 없다(validate KafkaUser 규칙 — 후속 후보 · T072 보정 2026-11-07).
 
 ## 7. Database / Role — 소유 platform-gitops (CNPG 선언, `platform/cnpg-databases/`)
 
@@ -169,6 +169,7 @@ CREATE POLICY tenant_isolation ON <t>
 | `kv/{env}/dragonfly/acl` | `users.acl`(파일 전문) | `vault-data` | Dragonfly Deployment(`data` ns, `--aclfile /etc/dragonfly/users.acl`) |
 | `kv/{env}/dragonfly/<user>` — `admin` · `identity-admin` · `<pod>` | `password`, `url` | `admin` = **—(운영자 직접, ESO 소비자 없음)** · `vault-{env}`(`<pod>-env`) | `DRAGONFLY_URL`; `admin`은 운영자 런북 전용 |
 | `kv/{env}/sentry/<pod>` | `dsn` | `vault-{env}` | `<pod>-env` |
+| `kv/{env}/django/<pod>` | `secret_key` | `vault-{env}` | `<pod>-env` `SECRET_KEY`(Django 서명 · 로그 `sub_hash` 키). 경로는 T072가 정하고(템플릿 base ES `data[7]`) 시드 · 판정은 T075다. 시드 규칙: CSPRNG로 50자 이상 · dev와 prod는 다른 값 · 값을 화면 · argv에 내지 않는다(기동 검사가 W009 기준 — 50자 이상 · 서로 다른 글자 5 이상 · `django-insecure-` 접두 아님 — 을 어기면 실패한다). 회전하면 `sub_hash`가 바뀌고 admin 세션이 무효가 된다. `eso-dev` · `eso-prod` 정책이 `kv/data/{env}/*` 전체라 정책 변경은 없다(infra/vault/policies.tf · T072 보정 2026-11-07) |
 | `kv/{env}/web/session` | `encryption_key` | ESO 밖 | BFF `SESSION_ENCRYPTION_KEY`(Worker마다 별도: prod Worker = prod, preview Worker = dev) |
 | `kv/{env}/openfga/store_id` · `kv/{env}/openfga/preshared` | `store_id` / `key` | `vault-{env}` | identity-admin `-env`. `preshared` 값은 `kv/platform/openfga/preshared`와 **같아야 하며** 회전 시 둘을 함께 바꾼다 |
 

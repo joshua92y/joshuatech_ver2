@@ -22,7 +22,7 @@ platform-gitops/
 │                                   # argocd/ 는 Argo CD 자기 관리 Application(bootstrap/argocd/ 를 소스로), system-upgrade/ 는 SUC + Plan
 │                                   # secret-stores/ 는 ClusterSecretStore 5개(ESO CRD·Vault 뒤 — T045), secrets/ 는 아래 `secrets/<ns>/` 를 base 로 묶어 클러스터에 적용하는 전용 컴포넌트(T045)
 ├── apps/<pod>/
-│   ├── base/{deployment,service,ingress,configmap,externalsecret-env,externalsecret-migrate,migrate-job,kustomization}.yaml   # Ingress host = PLACEHOLDER.joshuatech.dev
+│   ├── base/{deployment,deployment-celery,cronjob-outbox-purge,service,ingress,configmap,externalsecret-env,externalsecret-migrate,migrate-job,kustomization}.yaml   # Ingress host = PLACEHOLDER.joshuatech.dev · celery = has_celery · CronJob = has_celery=false · 모노레포 템플릿 생성물 `deploy/base`를 파일 이름 1:1로 복사(T072 보정 2026-11-07)
 │   └── overlays/{dev,prod}/kustomization.yaml   # namespace, images[].digest, Ingress host JSON6902, replicas, admin Ingress(prod)
 ├── secrets/<ns>/                   # 플랫폼 네임스페이스별 ExternalSecret(`platform/` 경로만, store `vault-platform`)
 │                                   #   적용 주체 = `platform/secrets/`(kustomization 이 `../../secrets/<ns>` 를 base 로 포함) → Application `platform-secrets` **하나뿐**이다.
@@ -108,12 +108,24 @@ kind: ExternalSecret
 metadata: { name: identity-admin-env, namespace: jt-prod }
 spec:
   refreshInterval: 5m
+  refreshPolicy: Periodic
   secretStoreRef: { kind: ClusterSecretStore, name: vault-prod }
-  target: { name: identity-admin-env, creationPolicy: Owner }
+  target:
+    name: identity-admin-env
+    creationPolicy: Owner
+    template:
+      engineVersion: v2
+      mergePolicy: Replace
+      data:
+        DATABASE_URL: 'postgresql://{{ .db_username }}:{{ .db_password }}@pg-main-rw.data.svc:5432/{{ .db_username | trimSuffix "_app" }}?sslmode=verify-full&sslrootcert=/etc/pg/ca.crt'
   data:
-    - secretKey: DATABASE_URL
-      remoteRef: { key: prod/db/identity_admin/app, property: url }
+    - secretKey: db_username
+      remoteRef: { key: prod/db/identity_admin/app, property: username }
+    - secretKey: db_password
+      remoteRef: { key: prod/db/identity_admin/app, property: password }
 ```
+
+위 예는 prod overlay를 렌더한 꼴이다(T072 보정 2026-11-07 — 앞 예시의 kv `url` 직접 매핑을 바꿨다). 모노레포 템플릿 base는 dev 값(store `vault-dev` · 키 `dev/…`)이고 prod overlay가 store와 `data[i].remoteRef.key`를 JSON6902로 바꾼다 — 인덱스 replace마다 앞에 `op: test` · `path: /spec/data/N/secretKey` · `value: <이름>`을 두어 base 순번이 바뀌면 렌더가 실패하게 한다(validate 3.2는 키 접두 · store만 본다). DB URL을 Secret 템플릿에서 조립하는 이유: TLS 매개변수(`sslmode=verify-full` · `sslrootcert`)를 kv 값이 아니라 매니페스트가 보장하고 렌더 검사가 볼 수 있게 한다(템플릿 하네스 가정 ③). DB 이름은 role 이름(`<db>_app`)에서 파생해 prod overlay가 URL 문자열을 패치하지 않는다(ESO v2 `trimSuffix` — T075 라이브 확인).
 
 ### ClusterSecretStore 5개
 
@@ -157,8 +169,8 @@ Authentik·OpenFGA는 pod가 아니라 환경 공유 컴포넌트이므로 env �
 - `target.creationPolicy` 기본은 위 예시의 `Owner`다. **예외 — 운영자가 수동으로 만든 기존 Secret을 인수하는 ExternalSecret은 `creationPolicy: Orphan` + `deletionPolicy: Retain`**(T045: `cert-manager/cloudflare-dns-token` · `cloudflared/cloudflared-tunnel`). `Owner`는 Secret에 controller ownerReference를 심어 ExternalSecret이 지워지면 Secret이 가비지 컬렉션되고, `Retain`은 그 GC를 막지 못한다 — 소비자 중단이 운영자 잠금(터널)이나 조용한 갱신 실패(DNS-01)로 이어지는 Secret에는 쓰지 않는다. `Retain`·`Orphan`은 **잘못된 값의 덮어쓰기는 막지 않는다** — 값 동일성은 시드·되읽기·인수 전후 비교로 지킨다. Secret이 지워졌을 때의 재생성은 ESO·Vault가 정상일 때 다음 성공한 갱신에서 일어난다.
 - 인수형 ExternalSecret은 `target.template.metadata: {}`를 선언한다(선언이 없으면 ESO가 ExternalSecret의 라벨·어노테이션 — Argo CD tracking 포함 — 을 Secret으로 복사한다). ExternalSecret에 붙이는 `argocd.argoproj.io/sync-options: Delete=false,Prune=false`는 **Argo CD의 삭제·prune만** 막는다(kubectl 삭제·ESO 동작과 무관).
 - 인수 해제 절차(플랫폼 Application은 `prune: false`라 파일 revert만으로는 해제되지 않는다): revert PR 머지 → Git 제거가 Argo에 반영됐는지 확인 → `kubectl delete externalsecret` → Secret 잔존·UID·값 확인. 정본은 런북 `bootstrap.md` §3 T045 절.
-- pod마다 ExternalSecret 2개: **`<pod>-env`**(app DB · kafka · dragonfly · authentik · openfga · sentry — Deployment·celery `envFrom`) / **`<pod>-migrate`**(owner DB만 — PreSync migrate Job 전용). Deployment `envFrom`에 `-migrate`가 있으면 validate 실패(T033).
-- 비밀이 아닌 값(`ACCESS_AUD_M2M`·`ACCESS_AUD_ADMIN`·`ADMIN_HOST`·`ALLOWED_HOSTS`·`IDENTITY_M2M_URL` 류)은 ConfigMap.
+- pod마다 ExternalSecret 2개: **`<pod>-env`**(app DB · kafka · dragonfly · authentik · openfga · sentry — Deployment·celery `envFrom`) / **`<pod>-migrate`**(owner DB만 — PreSync migrate Job 전용 · 자신도 PreSync hook(wave -1 · `BeforeHookCreation`)이라 첫 배포에 Job보다 먼저 Secret이 생긴다 · T072 보정 2026-11-07). Deployment `envFrom`에 `-migrate`가 있으면 validate 실패(T033).
+- 비밀이 아닌 값(`ENV`·`ACCESS_*`·`ADMIN_HOST`·`ALLOWED_HOSTS`·`KAFKA_BOOTSTRAP`·`KAFKA_USERNAME`·`OTEL_*` 류 — 키 목록은 contracts/pod-template.md §설정 · `IDENTITY_M2M_URL`은 BFF 변수라 pod에 없다 · T072 보정 2026-11-07)은 ConfigMap.
 - **CA 미러**(`k8s-data-ca`): `pg-main-ca`(CNPG CA)는 `identity`·`jt-dev`·`jt-prod`에, `jt-kafka-cluster-ca-cert`(Strimzi CA)는 `jt-dev`·`jt-prod`에 복제한다(`identity`에는 Kafka 소비자가 없다 — tasks.md T056 문면 · 2026-10-16 정정; 값은 Vault를 거치지 않는다). 미러 Secret 이름 = 원본 이름(`pg-main-ca` · `jt-kafka-cluster-ca-cert`) — 검사 Job(`platform/policies/tests/`)과 하네스 `ca-1`이 그 이름으로 마운트·판정한다. 소유 디렉터리는 `platform/kafka-topics/`(§sync-wave 40번 행 · T056). CNPG의 `<cluster>-ca` Secret에는 **`ca.key`가 함께 들어 있으므로** ExternalSecret은 `remoteRef.property: ca.crt`만 쓰고 `dataFrom`(전체 복사)을 쓰지 않는다. 미러된 Secret에 `ca.key`가 있으면 T031 FAIL — CA 개인키가 앱 ns에 있으면 서버 인증서와 `streaming_replica` 인증서를 위조할 수 있어 `sslmode=verify-full`이 무력화된다.
 
 ### validate.yml ExternalSecret 검사 (T033)

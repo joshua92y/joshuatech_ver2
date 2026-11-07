@@ -4331,3 +4331,18 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
   - r6 G1: 「글자 부류는 ASCII」 → 스킴의 `(?i)`가 유니코드 접기로 `ſ`를 받았다(r7 S1).
   - r6 · r7: 감시 값 단언을 목록으로만 접었다 → 목록 근거가 틀렸고 1차 전용 변이 자리가 빠졌다 → 부류를 닫았다(r8 L1) → 재작성 끄기가 `-O` 공허 통과를 열었다(r9 K1) → 자기 점검이 pytest 내부 이름에 기댔다(r10 I1).
   - r7 S4 근거: 「(Sentry도 같다) · 템플릿이 pod env를 정한다」 → sentry-sdk는 `*_PROXY`를 스스로 읽고 init 예외에 싣는다 · 배포 env는 T075 gitops가 정한다(r8 L2 · L3).
+
+## T072 (2026-11-07 설계 확정 — US6 구현 · `templates/django-pod` 완성 → T065 PASS · 세션 모델 Opus 5.5)
+
+- **과제 문면(tasks.md T072 · :189)**: `copier.yml`(질문 · `_tasks: uv lock` · `_min_copier_version 9.17`) + 생성 트리(pydantic-settings settings · urls · Ninja api · core 예 · events · management · Celery beat = outbox dead purge) + `pyproject.toml.jinja` + `Dockerfile`(uv 0.12.8 빌더 → `python:3.13-slim-trixie@sha256:…`) + `compose.dev.yml` + `env.example` + `tests/`(6종 + `makemigrations --check` + migration linter) + `deploy/base/` → T065 PASS.
+- **설계 정본 = `design/t072-design.md`**(2026-11-07 확정 · 1,363줄): 문면과 정본의 어긋남 A1–A15(report.md 후보 R1–R17) · 하네스 · 계약 · gitops 어긋남 G1–G8 · 소스로 확인한 사실 ①–㉟ · 결정 D1–D22 · 계약 · 규칙 보정 C1–C31 · 빌드 조각 ①–④ · VD(T072 안 19 · 라이브 L1–L18) · 인계 · 사용자 결정 UD-0–UD-2 · 위험 · 설계 비판 반영표 X1–X33(X33 = 설계 커밋 전 gitleaks 실측 — 숫자가 든 자리값을 generic-api-key가 잡는다). 빌드 라운드의 결과와 정정은 이 절에 이어 적는다(설계 문서는 태스크가 닫히면 고치지 않는다).
+- **경과**
+  - 조사 `wf_2688d649-760`(리더 5 — 하네스 · 명세 · 라이브러리 · 도구 · 배포 모양 · 발견 252 · 열린 질문 62 · 보고 `.superpowers/t072/research/*.json`).
+  - 설계 초안 `wf_0ccb979c-612`(설계자 1 + 비판 2렌즈 — A 계약 · 하네스 · 인계 approve_with_fixes medium 6 · low 12 / B 보안 · 운영 · gitops approve_with_fixes medium 3 · low 13 · 보고 `.superpowers/t072/design-draft.md` · `design-criticA.json` · `design-criticB.json`).
+  - 컨트롤러 반영(X1–X33): 기각 0. 다른 방법으로 닫은 셋 — X8(base ConfigMap 자리값 대신 `POD_NAMESPACE` 클러스터 교차 규칙) · X13(ENV=test를 래퍼로 옮기지 않고 X8이 클러스터 안 ENV=test를 거부) · X24(래퍼가 셸 env에서 실패하는 대신 덮어쓰기 — T066 자식 기동과 호환).
+- **설계 커밋의 계약 · 규칙 보정**(「T072 보정 2026-11-07」 표식): contracts/pod-template.md 45곳(C1–C31) · data-model.md 2곳(§6 C29 · §8 C27 `kv/{env}/django/<pod>`) · contracts/gitops-repo.md 4곳(C28 — base 파일 목록 · ES 예시 template.data 조립 · `-migrate` hook · ConfigMap 키) · 규칙 `.claude/rules/django-pod.md` 8곳(§Template · §Auth · §Settings 둘 · §Tests · §Migrations · §Dragonfly · §Logging) · kr 미러 translation-pending 줄.
+- **사용자 결정**
+  - UD-0 독립 uv 프로젝트(T065 사용자 확인 항목) = 종결 — 2026-11-03 고지 · 이의 없음(설계 ㉙).
+  - **UD-1 uv 판**(0.12.8 유지 + 완화 vs 0.13.x 올림 — GHSA-hq85 High · 로컬 uv 0.12.6) — 대기, 조각 ③ 전에 받는다.
+  - **UD-2 Python 숙성 창**(생성 pod `exclude-newer = "3 days"` vs 하한 · 제외 핀만) — 대기, 조각 ② 전에 받는다.
+- **다음**: 조각 ① 하네스 test-first(빨강 만들기 — D21) 빌드 → 리뷰 2렌즈(A 완전성 · B 실패 양상).
