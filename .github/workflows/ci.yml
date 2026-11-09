@@ -309,11 +309,12 @@ jobs:
           cache: pnpm
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
-          # uv 버전 핀(plan Technical Context: uv 0.12.8). Renovate가 이 version 입력을
-          # 추적해 astral-sh/uv 릴리스 기준 bump PR을 연다(automerge 전역 off).
-          # 그 PR을 머지할 때는 plan Technical Context의 uv 핀과 uv Docker 이미지 태그
-          # (uv:<ver>-python3.13-trixie-slim)를 같은 변경에서 함께 올려 desync를 막는다.
-          version: "0.12.8"
+          # uv 버전 핀 0.13.7 — T072 UD-1(2026-11-09 사용자 결정)로 plan Technical Context의
+          # 0.12.8에서 올렸다(0.12.x는 GHSA-hq85 High에 걸린다 · 0.13.4 수정 · plan.md는 승인 뒤
+          # 고정이라 편차는 report.md 후보). Renovate가 이 version 입력을 추적해 astral-sh/uv 릴리스
+          # 기준 bump PR을 연다(automerge 전역 off). 그 PR을 머지할 때는 템플릿 Dockerfile의 uv 빌더
+          # 이미지 태그 · digest(uv:<ver>-python3.13-trixie-slim)와 로컬 uv를 같은 변경에서 함께 올린다.
+          version: "0.13.7"
       - name: 의존성 설치(잠금파일 고정 · 스크립트 실행 금지)
         run: |
           pnpm install --frozen-lockfile --ignore-scripts
@@ -332,11 +333,12 @@ jobs:
           cache: pnpm
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
-          # uv 버전 핀(plan Technical Context: uv 0.12.8). Renovate가 이 version 입력을
-          # 추적해 astral-sh/uv 릴리스 기준 bump PR을 연다(automerge 전역 off).
-          # 그 PR을 머지할 때는 plan Technical Context의 uv 핀과 uv Docker 이미지 태그
-          # (uv:<ver>-python3.13-trixie-slim)를 같은 변경에서 함께 올려 desync를 막는다.
-          version: "0.12.8"
+          # uv 버전 핀 0.13.7 — T072 UD-1(2026-11-09 사용자 결정)로 plan Technical Context의
+          # 0.12.8에서 올렸다(0.12.x는 GHSA-hq85 High에 걸린다 · 0.13.4 수정 · plan.md는 승인 뒤
+          # 고정이라 편차는 report.md 후보). Renovate가 이 version 입력을 추적해 astral-sh/uv 릴리스
+          # 기준 bump PR을 연다(automerge 전역 off). 그 PR을 머지할 때는 템플릿 Dockerfile의 uv 빌더
+          # 이미지 태그 · digest(uv:<ver>-python3.13-trixie-slim)와 로컬 uv를 같은 변경에서 함께 올린다.
+          version: "0.13.7"
       - name: 의존성 설치(잠금파일 고정 · 스크립트 실행 금지)
         run: |
           pnpm install --frozen-lockfile --ignore-scripts
