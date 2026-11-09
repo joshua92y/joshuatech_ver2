@@ -1,0 +1,422 @@
+"""기동 하위 프로세스 도우미(T072 D5 · D7 · D17 — identity-admin tests/test_api.py의 `_boot` · `_assert_boot_hygiene`(T066 가정 ⑥)
+꼴을 이 pod 이름으로 옮겼다). test_auth_middleware(기동 위생 · 클러스터 교차 규칙)와 test_outbox(dev 모양 Kafka 설정)가 쓴다.
+Django를 모듈 수준에서 import하지 않는다.
+
+- boot(overrides, remove) → BootResult: pod 설정({{ pod_snake }}.settings — 시험 래퍼가 아니다)으로 새 프로세스를 띄운다. 자식은 이름
+  조회 가드(socket getaddrinfo · gethostbyname · gethostbyname_ex · gethostbyaddr를 감싸 모든 조회를 기록하고 공개 도메인 이름은
+  막는다 — 가드 자기검사 포함) 안에서 django.setup() + ROOT_URLCONF(있으면 ADMIN_URLCONF도) import를 하고, 가드 기록을 finally에서
+  DNS_MARK 줄로(실패 기동에도 남는다), 성공이면 설정 사실을 BOOT_MARK 줄로 싣는다(비밀이 아닌 값과 꼴만 — Kafka 비밀번호 · 자격
+  URL · SECRET_KEY는 싣지 않는다). env = 이 프로세스의 os.environ(시험 래퍼가 덮어쓴 설정 env) − OTEL_* · 프록시 · SSLKEYLOGFILE
+  (결과가 개발자 셸에 기대지 않게) + DJANGO_SETTINGS_MODULE · 비밀은 새 난수(fresh_secrets — overrides · remove의 이름은 제외) +
+  overrides − remove · cwd = pod 루트 · shell 없음 · 시간 상한(넘으면 유한한 실패).
+- assert_boot_hygiene(result, network_zero=False): 공개 이름 조회 0(network_zero면 이름 조회 자체 0 — 「네트워크 0」) · 기동
+  출력(stdout + stderr)에 심은 비밀(새 난수 · overrides의 비밀 값 · URL 비밀번호)의 전체와 12자 조각이 없다(pydantic 입력 값
+  표현은 긴 값을 앞뒤만 남기고 잘라도 조각을 싣는다 — 자격 URL은 전체 값만 본다: 사용자 · 호스트는 비밀이 아니라 설정 사실에
+  나온다) · pydantic `input_value=` 표식 0. 단언은 bool · 위치 번호로 접는다(단언 재작성이 출력 본문을 실패 메시지에 싣지 않게).
+- refused_names(result): conf의 ImproperlyConfigured("설정 오류: <이름들>")로 멈췄으면 그 이름(정렬) · 아니면 None.
+  assert_refused(result, *names): 종료 0 아님 · 위생 · 이름 집합이 정확히 names다(다른 규칙이 함께 걸리지 않았다).
+- dev_shape_env(): dev 모양 런타임 env — deploy/base/configmap.yaml의 data 그대로(T072 마지막 라운드 N3 · 조각 ④ 리뷰 A-2: base 값이
+  클러스터 교차 규칙을 그대로 통과하는지 시험한다 — ENV=dev · KAFKA_USERNAME=dev-<pod> · ALLOWED_HOSTS <pod>.jt-dev.svc · https 팀 도메인 ·
+  Kafka svc 부트스트랩) + 자리값 둘(ACCESS_AUD_M2M · ACCESS_EXPECTED_CN — 게이트 2가 overlay 누락을 막는 값)만 시험 값으로 + downward API
+  POD_NAMESPACE=jt-dev + <pod>-env가 줄 비밀의 꼴(DB 사용자 dev_<pod_snake>_app + verify-full · svc 이름 — 비밀은 새 난수).
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import secrets
+import subprocess
+import sys
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlsplit, urlunsplit
+
+import pytest
+import yaml
+
+from tests._secret import Secret
+
+POD_ROOT = Path(__file__).resolve().parents[1]
+POD_NAME = "{{ pod_name }}"
+POD_SNAKE = "{{ pod_snake }}"
+POD_SETTINGS = f"{POD_SNAKE}.settings"
+BOOT_TIMEOUT_S = 120
+BOOT_MARK = "JT-BOOT "
+DNS_MARK = "JT-DNS "
+PUBLIC_DOMAIN = "joshuatech.dev"
+# 잘린 표현의 조각을 잡는 길이(우연 일치 확률 64^-12 — T066 r2 검증 꼴)
+SECRET_WINDOW = 12
+# pydantic 문자열 표현의 값 표식 — 산문 · 식별자와 우연히 맞지 않게 `=`까지 본다
+PYDANTIC_INPUT_MARK = "input_value="
+# 실패 요약에서 값을 가릴 env 이름 표식 · 자식에게 새 난수로 넣는 env 이름 표식
+SENSITIVE_ENV_MARKERS = ("PASSWORD", "SECRET", "TOKEN", "KEY", "URL", "DSN")
+SECRET_NAME_MARKERS = ("PASSWORD", "SECRET", "TOKEN", "KEY")
+FRESH_SECRET_BYTES = 48  # 64자 — SECRET_KEY 강도 규칙(50자 · 서로 다른 글자 5)을 늘 통과한다
+# 새 난수로 바꾸지 않는 env 이름: GIT_CONFIG_* 묶음 · 경로형(SSLKEYLOGFILE처럼 이름에 KEY가 든 경로)
+_FRESH_SKIP_PREFIXES = ("GIT_CONFIG_",)
+_FRESH_SKIP_SUFFIXES = ("FILE", "PATH", "DIR")
+_DROPPED_ENV = frozenset({"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "SSLKEYLOGFILE"})
+_REFUSED_RE = re.compile(r"ImproperlyConfigured: 설정 오류: ([A-Z0-9_, ]+)$")
+PG_CA_FILE = "/etc/pg/ca.crt"
+# migrate 프로필이 정의하지 않는 런타임 설정(설정 사실 runtime_settings — 읽는 코드는 runtime 분기 안이다)
+RUNTIME_ONLY_SETTINGS = ("DRAGONFLY_URL", "KAFKA_CLIENT_CONFIG", "AUTHENTIK_JWKS_URL", "ACCESS_TEAM_DOMAIN")
+
+# 자식 프로세스 본문(앞에 BOOT_MARK · DNS_MARK · PUBLIC_DOMAIN 대입 줄이 붙는다).
+_BOOT_BODY = """
+import json
+import socket
+import sys
+import threading
+from importlib import import_module
+
+lookups = []
+_lock = threading.Lock()
+
+
+def _name(host):
+    if host is None:
+        return ""
+    text = host.decode("ascii", "replace") if isinstance(host, bytes) else str(host)
+    return text.strip().lower().rstrip(".")
+
+
+def _public(name):
+    return name == PUBLIC_DOMAIN or name.endswith("." + PUBLIC_DOMAIN)
+
+
+def _guarded(original):
+    def wrapper(host, *args, **kwargs):
+        name = _name(host)
+        with _lock:
+            lookups.append(name)
+        if _public(name):
+            raise socket.gaierror(socket.EAI_NONAME, "test guard blocked a public name lookup")
+        return original(host, *args, **kwargs)
+
+    return wrapper
+
+
+for _attr in ("getaddrinfo", "gethostbyname", "gethostbyname_ex", "gethostbyaddr"):
+    setattr(socket, _attr, _guarded(getattr(socket, _attr)))
+
+guard_ok = False
+try:
+    socket.getaddrinfo("guard-selftest." + PUBLIC_DOMAIN, 443)
+except socket.gaierror:
+    guard_ok = lookups == ["guard-selftest." + PUBLIC_DOMAIN]
+lookups.clear()
+
+try:
+    import django
+    from django.conf import settings
+    from django.urls import get_script_prefix
+
+    django.setup()
+    import_module(settings.ROOT_URLCONF)
+    if getattr(settings, "ADMIN_URLCONF", None):
+        import_module(settings.ADMIN_URLCONF)
+    prefix = get_script_prefix()
+finally:
+    print(DNS_MARK + json.dumps({"guard_ok": guard_ok, "lookups": lookups}), flush=True)
+kafka = getattr(settings, "KAFKA_CLIENT_CONFIG", None) or {}
+facts = {
+    "profile": settings.SETTINGS_PROFILE,
+    "env": getattr(settings, "ENV", None),
+    "allowed_hosts": list(getattr(settings, "ALLOWED_HOSTS", ())),
+    "admin_host": getattr(settings, "ADMIN_HOST", None),
+    "admin_script_name": getattr(settings, "ADMIN_SCRIPT_NAME", None),
+    "force_script_name": settings.FORCE_SCRIPT_NAME,
+    "script_prefix": prefix,
+    "static_url": getattr(settings, "STATIC_URL", None),
+    "csrf_trusted_origins": list(getattr(settings, "CSRF_TRUSTED_ORIGINS", ())),
+    "kafka_keys": sorted(kafka),
+    "kafka_security_protocol": kafka.get("security.protocol"),
+    "kafka_sasl_mechanism": kafka.get("sasl.mechanism"),
+    "kafka_sasl_username": kafka.get("sasl.username"),
+    "kafka_ca_location": kafka.get("ssl.ca.location"),
+    "outbox_source": getattr(settings, "OUTBOX_SOURCE", None),
+    "outbox_topic_prefix": getattr(settings, "OUTBOX_TOPIC_PREFIX", None),
+    "db_user": settings.DATABASES["default"]["USER"],
+    "runtime_settings": sorted(name for name in RUNTIME_ONLY if hasattr(settings, name)),
+    "celery_imported": "celery" in sys.modules,
+}
+print(BOOT_MARK + json.dumps(facts), flush=True)
+"""
+BOOT_SCRIPT = (
+    f"BOOT_MARK = {BOOT_MARK!r}\nDNS_MARK = {DNS_MARK!r}\nPUBLIC_DOMAIN = {PUBLIC_DOMAIN!r}\n"
+    f"RUNTIME_ONLY = {RUNTIME_ONLY_SETTINGS!r}\n" + _BOOT_BODY
+)
+
+
+# --- 비밀 다루기 -----------------------------------------------------------------------------------------------------------
+
+
+def _public(name: str) -> bool:
+    return name == PUBLIC_DOMAIN or name.endswith("." + PUBLIC_DOMAIN)
+
+
+def url_password(value: str) -> str | None:
+    """value가 비밀번호가 든 URL이면 그 비밀번호(아니면 None — URL이 아닌 값도 None)."""
+    try:
+        return urlsplit(value).password or None
+    except ValueError:
+        return None
+
+
+def _with_password(value: str, password: str) -> str:
+    """URL value의 비밀번호만 password로 바꾼다(스킴 · 사용자 · 호스트 · 경로 · 질의는 그대로)."""
+    parts = urlsplit(value)
+    userinfo, _, hostport = parts.netloc.rpartition("@")
+    user = userinfo.split(":", 1)[0]
+    return urlunsplit(parts._replace(netloc=f"{user}:{password}@{hostport}"))
+
+
+def fresh_secrets(env: dict[str, str], keep: frozenset[str]) -> tuple[str, ...]:
+    """env의 비밀을 새 난수(URL-safe 64자)로 바꿔 넣고 넣은 값들을 준다(keep의 이름은 그대로 둔다).
+
+    대상: 이름에 PASSWORD · SECRET · TOKEN · KEY가 든 비어 있지 않은 값(값 전체) · 비밀번호가 든 URL 값(비밀번호 부분만 — URL
+    모양은 유지한다). 건너뛰는 이름: GIT_CONFIG_* · 끝이 FILE · PATH · DIR인 경로형 이름. 이름에 표식이 든 셸 env 값(개발자의 실제
+    토큰 등)은 자식에게 가지 않는다 — 기동 출력에 이 값들이 없음을 assert_boot_hygiene가 본다."""
+    inserted: list[str] = []
+    for name, value in list(env.items()):
+        upper = name.upper()
+        if name in keep or not value or upper.startswith(_FRESH_SKIP_PREFIXES) or upper.endswith(_FRESH_SKIP_SUFFIXES):
+            continue
+        if any(marker in upper for marker in SECRET_NAME_MARKERS):
+            env[name] = fresh = secrets.token_urlsafe(FRESH_SECRET_BYTES)
+        elif url_password(value) is not None:
+            fresh = secrets.token_urlsafe(FRESH_SECRET_BYTES)
+            env[name] = _with_password(value, fresh)
+        else:
+            continue
+        inserted.append(fresh)
+    return tuple(inserted)
+
+
+def planted_values(overrides: Mapping[str, str]) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """overrides 가운데 기동 출력에 나오면 안 되는 값 → (전체 값 needles, 12자 조각까지 볼 비밀). 이름에 비밀 표식이 든 값은
+    둘 다 · 비밀번호가 든 URL은 URL 전체(전체 값만 — 사용자 · 호스트 같은 비밀 아닌 부분은 설정 사실에 나올 수 있다)와 그
+    비밀번호(둘 다)."""
+    full: list[str] = []
+    windowed: list[str] = []
+    for name, value in overrides.items():
+        if not value:
+            continue
+        if any(marker in name.upper() for marker in SECRET_NAME_MARKERS):
+            full.append(value)
+            windowed.append(value)
+        password = url_password(value)
+        if password is not None:
+            full.extend((value, password))
+            windowed.append(password)
+    return tuple(full), tuple(windowed)
+
+
+def windows(values: Iterable[str], size: int = SECRET_WINDOW) -> tuple[str, ...]:
+    """values 중 길이가 size 이상인 값 각각의 모든 size자 조각(중복 제거 · 순서 유지) — 잘린 표현에 실린 비밀 조각을 찾는다."""
+    pieces = (
+        value[start : start + size] for value in values if len(value) >= size for start in range(len(value) - size + 1)
+    )
+    return tuple(dict.fromkeys(pieces))
+
+
+def redact(text: str, env: Mapping[str, str], extra: Iterable[str] = ()) -> str:
+    """text에서 비밀처럼 보이는 env 값(이름에 PASSWORD · SECRET · TOKEN · KEY · URL · DSN)과 extra 값을 가린다(긴 값부터)."""
+    values = {
+        value
+        for name, value in env.items()
+        if value and len(value) >= 4 and any(marker in name.upper() for marker in SENSITIVE_ENV_MARKERS)
+    }
+    values.update(value for value in extra if value and len(value) >= 4)
+    for value in sorted(values, key=len, reverse=True):
+        text = text.replace(value, "***")
+    return text
+
+
+def assert_absent(where: str, text: str, *needles: str) -> None:
+    """needles가 text 어디에도 없다 — 인자를 Secret으로 다시 묶고(트레이스백 인자 repr) 위치 번호로 접는다(단언 재작성이 비교
+    피연산자를 찍지 않게)."""
+    text = Secret(text)
+    needles = tuple(Secret(needle) for needle in needles)
+    leaked = [index for index, needle in enumerate(needles) if needle and needle in text]
+    assert leaked == [], f"{where}에 민감 값이 있다(needles 위치 {leaked})"
+
+
+# --- 기동 ---------------------------------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class BootResult:
+    """기동 하위 프로세스 결과 — 출력 · env · 심은 비밀은 repr에서 뺀다(단언 실패 출력에 실리지 않게). planted = 출력에 전체 값이
+    나오면 안 되는 것 · windowed = 12자 조각까지 나오면 안 되는 비밀(새 난수 · 비밀 값 · URL 비밀번호)."""
+
+    returncode: int
+    stdout: str = field(repr=False)
+    stderr: str = field(repr=False)
+    env: dict[str, str] = field(repr=False)
+    planted: tuple[str, ...] = field(repr=False, default=())
+    windowed: tuple[str, ...] = field(repr=False, default=())
+
+    def summary(self) -> str:
+        """종료 코드 + stderr 줄 수 + 마지막 줄(env 비밀 값 · 심은 비밀 가림 · 300자)."""
+        lines = [line for line in self.stderr.splitlines() if line.strip()]
+        last = redact(lines[-1], self.env, self.planted)[:300] if lines else ""
+        return f"종료 코드 {self.returncode} · stderr {len(lines)}줄 · 마지막 줄: {last}"
+
+    def dns_report(self) -> dict[str, Any]:
+        """DNS_MARK 줄(정확히 하나) → {guard_ok, lookups}."""
+        lines = [line for line in self.stdout.splitlines() if line.startswith(DNS_MARK)]
+        assert len(lines) == 1, f"이름 조회 기록 줄 수 {len(lines)} · {self.summary()}"
+        report: dict[str, Any] = json.loads(lines[0][len(DNS_MARK) :])
+        return report
+
+    def facts(self) -> dict[str, Any]:
+        """종료 0 · BOOT_MARK 줄 정확히 하나 → 설정 사실."""
+        assert self.returncode == 0, self.summary()
+        lines = [line for line in self.stdout.splitlines() if line.startswith(BOOT_MARK)]
+        assert len(lines) == 1, f"설정 사실 줄 수 {len(lines)} · {self.summary()}"
+        facts: dict[str, Any] = json.loads(lines[0][len(BOOT_MARK) :])
+        return facts
+
+    def refused_line(self) -> str:
+        """stderr의 마지막 ImproperlyConfigured 줄(비밀 가림 · 300자 — 없으면 빈 문자열)."""
+        lines = [line.strip() for line in self.stderr.splitlines() if "ImproperlyConfigured" in line]
+        return redact(lines[-1], self.env, self.planted)[:300] if lines else ""
+
+
+def _dropped(name: str) -> bool:
+    upper = name.upper()
+    return upper.startswith("OTEL_") or upper in _DROPPED_ENV
+
+
+def boot(overrides: Mapping[str, str] | None = None, remove: Iterable[str] = ()) -> BootResult:
+    """pod 설정으로 새 프로세스를 띄운다(모듈 독스트링) — overrides는 덮어쓰고 remove는 지운다."""
+    overrides = dict(overrides or {})
+    removed = tuple(remove)
+    env = {name: value for name, value in os.environ.items() if not _dropped(name)}
+    env["DJANGO_SETTINGS_MODULE"] = POD_SETTINGS
+    env["PYTHONIOENCODING"] = "utf-8"
+    inserted = fresh_secrets(env, frozenset(overrides) | frozenset(removed))
+    env.update(overrides)
+    for name in removed:
+        env.pop(name, None)
+    completed: subprocess.CompletedProcess[str] | None
+    try:
+        completed = subprocess.run(  # noqa: S603 — 인자 고정 · shell 없음 · 이 프로세스의 인터프리터
+            [sys.executable, "-c", BOOT_SCRIPT],
+            cwd=POD_ROOT,
+            env=env,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=BOOT_TIMEOUT_S,
+            check=False,
+            shell=False,
+        )
+    except subprocess.TimeoutExpired:
+        completed = None  # 실패는 except 밖에서 낸다(명령 줄 · 부분 출력이 연쇄 예외로 실리지 않게)
+    if completed is None:
+        pytest.fail(f"기동이 {BOOT_TIMEOUT_S} s 안에 끝나지 않았다", pytrace=False)
+    full, windowed = planted_values(overrides)
+    return BootResult(
+        completed.returncode, completed.stdout, completed.stderr, env, inserted + full, inserted + windowed
+    )
+
+
+def assert_boot_hygiene(result: BootResult, *, network_zero: bool = False) -> None:
+    """기동 위생(모듈 독스트링) — 실패 기동에도 DNS 기록 줄이 있다."""
+    report = result.dns_report()
+    assert report.get("guard_ok") is True, "이름 조회 가드가 공개 이름을 막지 못했다(가드 자기검사)"
+    lookups = [str(name) for name in report.get("lookups") or []]
+    public = sorted({name for name in lookups if _public(name)})
+    assert public == [], f"기동 중 공개 이름 조회: {public}"
+    if network_zero:
+        assert lookups == [], f"기동 중 이름 조회(네트워크 0이어야 한다): {sorted(set(lookups))}"
+    output = result.stdout + result.stderr
+    assert_absent("기동 출력", output, *result.planted)
+    assert_absent("기동 출력(비밀 조각)", output, *windows(result.windowed))
+    leaked = PYDANTIC_INPUT_MARK in output
+    assert not leaked, "기동 출력에 pydantic `input_value=`(설정 값 되풀이)가 있다 — 이름만 싣고 from None으로 끊는다"
+
+
+def boot_facts(result: BootResult, *, network_zero: bool = False) -> dict[str, Any]:
+    """기동 성공(종료 0) · 위생 · 설정 사실."""
+    assert result.returncode == 0, result.summary()
+    assert_boot_hygiene(result, network_zero=network_zero)
+    return result.facts()
+
+
+def refused_names(result: BootResult) -> list[str] | None:
+    """conf의 ImproperlyConfigured("설정 오류: <이름들>")로 멈췄으면 그 이름(정렬) · 아니면 None."""
+    if result.returncode == 0:
+        return None
+    for line in reversed(result.stderr.splitlines()):
+        match = _REFUSED_RE.search(line.strip())
+        if match is not None:
+            return sorted(part.strip() for part in match.group(1).split(",") if part.strip())
+    return None
+
+
+def assert_refused(result: BootResult, *names: str) -> None:
+    """기동이 conf의 ImproperlyConfigured로 멈췄다 · 위생 · 거부 이름이 정확히 names다."""
+    assert result.returncode != 0, f"기동이 멈추지 않았다 — {result.summary()}"
+    assert_boot_hygiene(result)
+    actual = refused_names(result)
+    assert actual == sorted(names), f"거부 이름 {actual}(기대 {sorted(names)}) — {result.refused_line() or result.summary()}"
+
+
+# --- dev 모양 env -------------------------------------------------------------------------------------------------------
+
+
+def db_url(user: str, database: str, *, host: str, query: str, password: str | None = None) -> str:
+    """postgresql URL(비밀번호는 주지 않으면 새 난수)."""
+    secret = password if password is not None else secrets.token_urlsafe(24)
+    return f"postgresql://{user}:{secret}@{host}/{database}?{query}"
+
+
+CONFIGMAP_FILE = POD_ROOT / "deploy" / "base" / "configmap.yaml"
+PLACEHOLDER_MARK = "PLACEHOLDER-"
+# base ConfigMap의 자리값(게이트 2 — overlay가 채운다) 자리에 dev 모양 기동이 넣는 시험 값
+DEV_SHAPE_PLACEHOLDER_VALUES = {
+    "ACCESS_AUD_M2M": "dev-shape-access-audience",
+    "ACCESS_EXPECTED_CN": "dev-shape-expected-common-name",
+}
+
+
+def base_configmap_env() -> dict[str, str]:
+    """deploy/base/configmap.yaml(pyyaml)의 data — 문서 하나 · ConfigMap · 키와 값이 전부 문자열(env로 그대로 넣는다)."""
+    documents = [doc for doc in yaml.safe_load_all(CONFIGMAP_FILE.read_text(encoding="utf-8")) if doc is not None]
+    shape = [doc.get("kind") if isinstance(doc, dict) else type(doc).__name__ for doc in documents]
+    assert shape == ["ConfigMap"], f"{CONFIGMAP_FILE.name}: 문서 꼴 {shape}(기대 ConfigMap 하나)"
+    data = documents[0].get("data")
+    readable = isinstance(data, dict) and all(isinstance(key, str) and isinstance(value, str) for key, value in data.items())
+    assert readable, f"{CONFIGMAP_FILE.name}: data가 문자열 키 · 값 매핑이 아니다"
+    return dict(data)
+
+
+def dev_shape_env() -> dict[str, str]:
+    """dev 모양 런타임 env(모듈 독스트링) — base ConfigMap data 그대로 · 자리값 둘만 시험 값 · POD_NAMESPACE=jt-dev · 비밀 꼴(새 난수).
+    래퍼 env 위에 덮어쓴다. base ConfigMap의 자리값 이름이 정확히 DEV_SHAPE_PLACEHOLDER_VALUES가 아니면 실패한다(새 자리값은 게이트 2가
+    dev 모양 기동을 멈춘다 — 그 이름을 여기 더한다)."""
+    env = base_configmap_env()
+    placeholders = sorted(name for name, value in env.items() if PLACEHOLDER_MARK in value)
+    assert placeholders == sorted(DEV_SHAPE_PLACEHOLDER_VALUES), (
+        f"base ConfigMap 자리값 이름 {placeholders}(기대 {sorted(DEV_SHAPE_PLACEHOLDER_VALUES)})"
+    )
+    env.update(DEV_SHAPE_PLACEHOLDER_VALUES)
+    env.update(
+        POD_NAMESPACE="jt-dev",
+        DATABASE_URL=db_url(
+            f"dev_{POD_SNAKE}_app",
+            f"dev_{POD_SNAKE}",
+            host="pg-main-rw.data.svc:5432",
+            query=f"sslmode=verify-full&sslrootcert={PG_CA_FILE}",
+        ),
+        DRAGONFLY_URL=f"redis://{POD_NAME}:{secrets.token_urlsafe(24)}@dragonfly.data.svc:6379/0",
+        AUTHENTIK_JWKS_URL=f"http://authentik-server.identity.svc:9000/application/o/{POD_NAME}/jwks/",
+    )
+    return env

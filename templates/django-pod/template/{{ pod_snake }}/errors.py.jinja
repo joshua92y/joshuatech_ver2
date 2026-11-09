@@ -1,0 +1,40 @@
+"""{{ pod_name }} Django 오류 처리기(T072 D9) — Django 자체 오류 응답도 RFC 9457 problem+json이다(기본 HTML 금지).
+
+urlconf마다(urls.py{% if has_admin %} · urls_admin.py{% endif %}) handler400/403/404/500으로 단다 — Django는 요청의 urlconf에서 처리기를 찾는다.
+CSRF 실패는 handler403이 아니라 CSRF_FAILURE_VIEW로 간다(settings). detail에는 토큰 · 비밀 · 자격 URL을 싣지 않는다 — 여기서는
+detail을 아예 두지 않는다.
+"""
+
+from __future__ import annotations
+
+from django.core.exceptions import DisallowedHost
+from django.http import HttpRequest, HttpResponse
+from django_common.problem import problem_response
+
+
+def bad_request(request: HttpRequest, exception: Exception) -> HttpResponse:
+    """handler400 — ALLOWED_HOSTS 밖 호스트 → 400 invalid_host · 그 밖의 SuspiciousOperation · BadRequest(RequestDataTooBig ·
+    정적 경로 탈출 SuspiciousFileOperation 포함) → 400 validation_error."""
+    if isinstance(exception, DisallowedHost):
+        return problem_response("invalid_host", 400)
+    return problem_response("validation_error", 400)
+
+
+def permission_denied(request: HttpRequest, exception: Exception) -> HttpResponse:
+    """handler403 — PermissionDenied → 403 forbidden."""
+    return problem_response("forbidden", 403)
+
+
+def page_not_found(request: HttpRequest, exception: Exception) -> HttpResponse:
+    """handler404 — URL 없음(Http404) → 404 not_found."""
+    return problem_response("not_found", 404)
+
+
+def server_error(request: HttpRequest) -> HttpResponse:
+    """handler500 — 처리하지 못한 예외 → 500 internal_error(detail 없음)."""
+    return problem_response("internal_error", 500)
+
+
+def csrf_failure(request: HttpRequest, reason: str = "") -> HttpResponse:
+    """CSRF_FAILURE_VIEW — CSRF 검사 실패 → 403 forbidden(사유 문구는 싣지 않는다)."""
+    return problem_response("forbidden", 403)

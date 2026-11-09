@@ -1,8 +1,12 @@
-"""하네스의 경로 상수와 미니 저장소 배치(T065).
+"""하네스의 경로 상수와 미니 저장소 배치(T065 · T072).
 
 생성 위치 규칙(contracts/pod-template.md 머리): pod = <root>/apps/<pod>, django-common = 두 단계 위의 형제
 <root>/packages/django-common — 템플릿의 path 의존성 ../../packages/django-common이 이 배치 하나만 가정한다. 하네스는
 임시 미니 저장소에 같은 배치를 재현한다(django-common은 pyproject.toml과 src/만 복사 — tests · .venv · 캐시는 뺀다).
+
+T072 변형(design/t072-design.md D21 · 계약 머리 「렌더 · 검사 전용 생성」): has_celery=false 생성 두 벌(VARIANTS)은
+copier copy --skip-tasks --defaults로 <root>/variants/<이름>/apps/<pod>에 만든다 — 형제 django-common이 없는 렌더 · 검사
+전용 배치라 그 트리에서는 uv lock · uv sync를 하지 않고, 변형의 Python은 기본 pod의 venv(의존 상위 집합)로만 돈다.
 """
 
 from __future__ import annotations
@@ -11,7 +15,8 @@ import os
 import shutil
 import stat
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -124,18 +129,94 @@ def copy_django_common(root: Path) -> Path:
     return destination
 
 
-def copier_copy_argv(pod_name: str, destination: Path) -> list[str]:
-    """계약의 생성 명령(copier copy --trust --defaults --data pod_name=<pod>) — 하네스 venv의 copier로 돈다."""
+def copier_copy_argv(
+    pod_name: str,
+    destination: Path,
+    *,
+    extra_data: Sequence[str] = (),
+    skip_tasks: bool = False,
+    pretend: bool = False,
+) -> list[str]:
+    """계약의 생성 명령(copier copy --trust --defaults --data pod_name=<pod>) — 하네스 venv의 copier로 돈다.
+
+    선택 인자(T072): extra_data = 덧붙일 --data 값("k=v")들 · skip_tasks = 렌더 · 검사 전용 생성(--skip-tasks — _tasks:
+    uv lock을 돌리지 않으므로 --trust를 넣지 않는다) · pretend = --pretend(쓰지 않고 질문 · validator만 거친다 — gen-28).
+    선택 인자를 주지 않은 호출의 결과는 T065와 같다.
+    """
     return [
         sys.executable,
         "-m",
         "copier",
         "copy",
-        "--trust",
+        "--skip-tasks" if skip_tasks else "--trust",
         "--defaults",
+        *(["--pretend"] if pretend else []),
         "--quiet",
         "--data",
         f"pod_name={pod_name}",
+        *(part for item in extra_data for part in ("--data", item)),
         str(TEMPLATE_DIR),
         str(destination),
     ]
+
+
+# ---------- T072 변형 · venv(design/t072-design.md D21) ----------
+
+VARIANTS_DIR = "variants"
+
+
+@dataclass(frozen=True)
+class Variant:
+    """has_celery=false 렌더 전용 생성 한 벌 — data는 copier --data 값, 나머지는 그 값이 뜻하는 생성물 모양."""
+
+    name: str
+    data: tuple[str, ...]
+    has_celery: bool
+    has_admin: bool
+    owns_events: tuple[str, ...] = ()
+    consumes_events: tuple[str, ...] = ()
+
+    @property
+    def consumes(self) -> bool:
+        """consumes_events가 비지 않았다 → <pod_snake>/events/consumers.py가 생긴다(D13)."""
+        return bool(self.consumes_events)
+
+
+# D21 변형 두 벌(〔X10〕): no-celery = 계약:108의 변형 정의(has_admin 기본 true) + owns/consumes 주입(SP-2에 가장 흔할
+# 조합) · no-admin = has_celery=false + has_admin=false.
+VARIANTS: tuple[Variant, ...] = (
+    Variant(
+        name="no-celery",
+        data=("has_celery=false", "owns_events=[thing.created]", "consumes_events=[other-pod.thing.created]"),
+        has_celery=False,
+        has_admin=True,
+        owns_events=("thing.created",),
+        consumes_events=("other-pod.thing.created",),
+    ),
+    Variant(
+        name="no-admin",
+        data=("has_celery=false", "has_admin=false"),
+        has_celery=False,
+        has_admin=False,
+    ),
+)
+
+
+@dataclass(frozen=True)
+class VariantTree:
+    """variant_generated 픽스처의 결과 — 변형 정의와 생성 경로."""
+
+    variant: Variant
+    path: Path
+
+
+def variant_destination(root: Path, variant: Variant) -> Path:
+    """<root>/variants/<이름>/apps/<pod> — 형제 packages/django-common이 없는 렌더 · 검사 전용 배치."""
+    return root / VARIANTS_DIR / variant.name / "apps" / POD_NAME
+
+
+def venv_python(pod: Path) -> Path:
+    """uv가 pod 디렉터리에 만든 .venv의 python 실행 파일(Windows Scripts/python.exe · 그 밖 bin/python)."""
+    if os.name == "nt":
+        return pod / ".venv" / "Scripts" / "python.exe"
+    return pod / ".venv" / "bin" / "python"

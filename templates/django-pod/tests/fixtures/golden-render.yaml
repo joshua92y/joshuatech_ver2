@@ -1,10 +1,23 @@
-# 합성 렌더 골든(T065) — tests/_render.py의 검사 함수가 "계약을 그대로 만족하는 렌더"에서 위반 0을 내는지 보는 고정 입력.
-# 정본: specs/003-platform-foundation/contracts/pod-template.md §런타임 계약 · §기본 테스트 6.
-# kustomize build deploy/base 출력의 꼴을 흉내 낸 손 작성 파일이다 — 템플릿(T072)의 실제 매니페스트가 아니다.
-# 값은 전부 가짜 · 고정이다(비밀 없음 · 실제 호스트 없음 — pg-main-rw.data.svc는 계약의 svc DNS).
-# 마운트 두 꼴을 함께 쓴다: web · celery · migrate는 /etc/pg 디렉터리, relay는 /etc/pg/ca.crt(subPath ca.crt).
-# Ingress pathType은 검사 대상이 아니다(계약이 정하지 않음) — 여기서는 /health만 Exact, 나머지는 하위 경로(/session/check 등)가
-# 매치되도록 Prefix로 둔다(r1 A-1).
+# 합성 렌더 골든(T065 · T072 갱신) — tests/_render.py의 검사 함수가 "계약을 그대로 만족하는 렌더"에서 위반 0을 내는지 보는 고정 입력.
+# 정본: specs/003-platform-foundation/contracts/pod-template.md §런타임 계약 · §기본 테스트 6 · design/t072-design.md D20 · D21.
+# kustomize build deploy/base 출력의 꼴을 흉내 낸 손 작성 파일이다. T072 뒤에는 템플릿 deploy/base(조각 ④)가 이 꼴로 렌더된다 —
+# 기본 생성(has_celery · has_admin 기본 true). has_celery=false 변형은 fixtures/golden-cronjob.yaml이다.
+# 값은 전부 가짜 · 고정이다(비밀 없음 · 실제 호스트 없음 — pg-main-rw.data.svc는 계약의 svc DNS). 자리값은 숫자 없는 꼴이다
+# (gitleaks generic-api-key — 설계 X33).
+# 본보기가 아닌 곳(검사용 꼴)은 하나뿐이다 — relay의 pg-ca 마운트: web · init · celery · migrate는 /etc/pg 디렉터리,
+# relay는 /etc/pg/ca.crt(subPath ca.crt). relay의 subPath 꼴은 render-26 · 27 변이의 대상이라 남긴 검사용 꼴이다 — 템플릿
+# (D20)은 전부 /etc/pg로 마운트하고, check_db_tls는 두 꼴을 모두 받는다.
+# migrate Job 스크립트는 본보기다(T072 r2 E7 · D20 단계 1–4 — 템플릿 deploy/base가 이 스크립트를 바이트까지 그대로 쓴다: gen-14 · gen-31이
+# 단언한다 · 마지막 라운드 N2(1)): DATABASE_OWNER_URL 읽기 · 해석(db 이름) 실패는 stderr 한 줄 db_url_invalid <클래스> + 종료 1(urlsplit의
+# ValueError는 netloc 전체를 싣는다 — 메시지 없음 · N1) · 마감 env JT_DB_CONNECT_WAIT_SECONDS(정수 1–600 · 기본 120 · 아니면 stderr 한 줄
+# db_connect_wait_invalid + 종료 1) · 접속 재시도는 psycopg.OperationalError만 · CONNECT 경계 SQL은 같은 마감 안에서 OperationalError ·
+# UndefinedObject(첫 배포의 app role 지연 — N1)를 다시 접속해 재시도 · 재시도 줄은 stdout 한 줄 db_connect_retry · db_boundary_retry <클래스>
+# attempt=<n>(번호는 함께 센다) · 마감 · 그 밖의 예외는 stderr 한 줄 db_connect_failed · db_boundary_failed <클래스> + 종료 1(트레이스백 ·
+# 메시지 없음) · REVOKE 앞에 migrate 낱말 없음 · sql.SQL + Identifier · sys.exit(subprocess.call(… migrate --noinput)).
+# test_render_helpers.py가 가짜 psycopg로 실제로 돌린다.
+# Ingress pathType은 T072부터 검사 대상이다(/health만 Exact — Traefik 접두가 /healthz를 열지 않게, 나머지는 하위 경로가
+# 매치되도록 Prefix).
+# 컨테이너 이름(web · relay · celery · migrate · startup-check)은 test_render_helpers.py의 변이 도우미가 기대하는 이름이다.
 # test_render_helpers.py가 이 문서들을 깊은 복사해 변이를 하나씩 넣고, 그 변이를 맡은 검사만 위반을 내는지 본다.
 apiVersion: v1
 kind: ConfigMap
@@ -12,13 +25,24 @@ metadata:
   name: sample-pod-config
   labels:
     app.kubernetes.io/name: sample-pod
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 data:
-  ACCESS_AUD_ADMIN: placeholder-access-aud-admin
-  ACCESS_AUD_M2M: placeholder-access-aud-m2m
-  ACCESS_EXPECTED_CN: placeholder-client-id.access
+  ACCESS_AUD_ADMIN: ""
+  ACCESS_AUD_M2M: PLACEHOLDER-SET-IN-OVERLAY
+  ACCESS_EXPECTED_CN: PLACEHOLDER-SET-IN-OVERLAY
+  ACCESS_TEAM_DOMAIN: joshua-tech.cloudflareaccess.com
   ADMIN_HOST: ""
   ALLOWED_HOSTS: sample-pod.jt-dev.svc
   AUTH_ACTOR_SUB: ""
+  AUTHENTIK_AUDIENCE: sample-pod
+  ENV: dev
+  FORCE_SCRIPT_NAME: ""
+  KAFKA_BOOTSTRAP: jt-kafka-kafka-bootstrap.data.svc:9093
+  KAFKA_USERNAME: dev-sample-pod
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""
+  OTEL_TRACES_SAMPLER: parentbased_traceidratio
+  OTEL_TRACES_SAMPLER_ARG: "0.1"
 ---
 apiVersion: v1
 kind: Service
@@ -67,8 +91,11 @@ spec:
         k8s.grafana.com/scrape: "true"
     spec:
       automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 90
       securityContext:
         runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
       affinity:
@@ -81,9 +108,43 @@ spec:
                     operator: In
                     values:
                       - platform
+      initContainers:
+        - name: startup-check
+          image: ghcr.io/joshua92y/sample-pod
+          command:
+            - python
+            - manage.py
+            - startup_check
+          envFrom:
+            - configMapRef:
+                name: sample-pod-config
+            - secretRef:
+                name: sample-pod-env
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: pg-ca
+              mountPath: /etc/pg
+              readOnly: true
       containers:
         - name: web
-          image: ghcr.io/joshua92y/sample-pod:placeholder
+          image: ghcr.io/joshua92y/sample-pod
           ports:
             - name: http
               containerPort: 8000
@@ -96,25 +157,40 @@ spec:
                 name: sample-pod-config
             - secretRef:
                 name: sample-pod-env
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           livenessProbe:
             httpGet:
               path: /healthz
               port: http
             periodSeconds: 20
+            timeoutSeconds: 3
           readinessProbe:
             httpGet:
               path: /ready
               port: http
             periodSeconds: 5
+            timeoutSeconds: 3
           startupProbe:
             httpGet:
               path: /ready
               port: http
             failureThreshold: 30
             periodSeconds: 5
+            timeoutSeconds: 3
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
           resources:
             requests:
-              cpu: 50m
               memory: 256Mi
             limits:
               memory: 512Mi
@@ -130,8 +206,11 @@ spec:
             - name: pg-ca
               mountPath: /etc/pg
               readOnly: true
+            - name: kafka-ca
+              mountPath: /etc/kafka
+              readOnly: true
         - name: relay
-          image: ghcr.io/joshua92y/sample-pod:placeholder
+          image: ghcr.io/joshua92y/sample-pod
           command:
             - python
             - manage.py
@@ -145,13 +224,18 @@ spec:
                 name: sample-pod-config
             - secretRef:
                 name: sample-pod-env
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           livenessProbe:
             tcpSocket:
               port: metrics
             periodSeconds: 20
+            timeoutSeconds: 3
           resources:
             requests:
-              cpu: 10m
               memory: 96Mi
             limits:
               memory: 192Mi
@@ -168,12 +252,18 @@ spec:
               mountPath: /etc/pg/ca.crt
               subPath: ca.crt
               readOnly: true
+            - name: kafka-ca
+              mountPath: /etc/kafka
+              readOnly: true
       volumes:
         - name: tmp
           emptyDir: {}
         - name: pg-ca
           secret:
             secretName: pg-main-ca
+        - name: kafka-ca
+          secret:
+            secretName: jt-kafka-cluster-ca-cert
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -205,6 +295,8 @@ spec:
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
       affinity:
@@ -219,26 +311,37 @@ spec:
                       - platform
       containers:
         - name: celery
-          image: ghcr.io/joshua92y/sample-pod:placeholder
+          image: ghcr.io/joshua92y/sample-pod
           command:
             - celery
             - --app
             - sample_pod
             - worker
+            - --pool
+            - solo
             - --beat
             - --schedule
             - /tmp/celerybeat-schedule
+            - --without-gossip
+            - --without-mingle
+            - --without-heartbeat
+            - --loglevel
+            - INFO
           envFrom:
             - configMapRef:
                 name: sample-pod-config
             - secretRef:
                 name: sample-pod-env
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           resources:
             requests:
-              cpu: 25m
               memory: 192Mi
             limits:
-              memory: 384Mi
+              memory: 512Mi
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -268,8 +371,11 @@ metadata:
   annotations:
     argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "0"
 spec:
-  backoffLimit: 2
+  backoffLimit: 1
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 604800
   template:
     metadata:
       labels:
@@ -280,29 +386,70 @@ spec:
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: migrate
-          image: ghcr.io/joshua92y/sample-pod:placeholder
+          image: ghcr.io/joshua92y/sample-pod
           command:
             - python
             - -c
             - |
-              import os, subprocess, sys
+              import os, subprocess, sys, time
+              from urllib.parse import unquote, urlsplit
               import psycopg
-              with psycopg.connect(os.environ["DATABASE_OWNER_URL"], autocommit=True) as conn:
-                  conn.execute("REVOKE CONNECT ON DATABASE sample_pod FROM PUBLIC")
-                  conn.execute("GRANT CONNECT ON DATABASE sample_pod TO sample_pod_app, sample_pod_owner")
+              from psycopg import errors, sql
+              try:
+                  url = os.environ["DATABASE_OWNER_URL"]
+                  db = unquote(urlsplit(url).path.lstrip("/"))
+              except Exception as exc:
+                  print("db_url_invalid", type(exc).__name__, file=sys.stderr)
+                  sys.exit(1)
+              raw = os.environ.get("JT_DB_CONNECT_WAIT_SECONDS", "120")
+              wait = int(raw) if raw.isascii() and raw.isdigit() else 0
+              if not 1 <= wait <= 600:
+                  print("db_connect_wait_invalid", file=sys.stderr)
+                  sys.exit(1)
+              revoke = sql.SQL("REVOKE CONNECT ON DATABASE {} FROM PUBLIC").format(sql.Identifier(db))
+              grant = sql.SQL("GRANT CONNECT ON DATABASE {} TO {}, {}").format(sql.Identifier(db), sql.Identifier(db + "_app"), sql.Identifier(db + "_owner"))
+              deadline = time.monotonic() + wait
+              attempt = 0
+              delay = 1
+              while True:
+                  attempt += 1
+                  step = "connect"
+                  try:
+                      conn = psycopg.connect(url, autocommit=True, connect_timeout=5)
+                      step = "boundary"
+                      with conn:
+                          conn.execute(revoke)
+                          conn.execute(grant)
+                      break
+                  except Exception as exc:
+                      error = type(exc).__name__
+                      if step == "connect":
+                          retry = isinstance(exc, psycopg.OperationalError)
+                          failed, retrying = "db_connect_failed", "db_connect_retry"
+                      else:
+                          retry = isinstance(exc, (psycopg.OperationalError, errors.UndefinedObject))
+                          failed, retrying = "db_boundary_failed", "db_boundary_retry"
+                      if not retry or time.monotonic() + delay > deadline:
+                          print(failed, error, file=sys.stderr)
+                          sys.exit(1)
+                  print(retrying, error, "attempt=%d" % attempt, flush=True)
+                  time.sleep(delay)
+                  delay = min(delay * 2, 10)
               sys.exit(subprocess.call([sys.executable, "manage.py", "migrate", "--noinput"]))
           envFrom:
-            - configMapRef:
-                name: sample-pod-config
             - secretRef:
                 name: sample-pod-migrate
+          env:
+            - name: JT_SETTINGS_PROFILE
+              value: migrate
           resources:
             requests:
-              cpu: 50m
               memory: 256Mi
             limits:
               memory: 512Mi
@@ -331,10 +478,13 @@ metadata:
   name: sample-pod
   labels:
     app.kubernetes.io/name: sample-pod
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
 spec:
   ingressClassName: traefik
   rules:
-    - host: sample-pod.placeholder.invalid
+    - host: PLACEHOLDER.joshuatech.dev
       http:
         paths:
           - path: /api
@@ -377,56 +527,94 @@ apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: sample-pod-env
+  labels:
+    app.kubernetes.io/name: sample-pod
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   refreshInterval: 5m
+  refreshPolicy: Periodic
   secretStoreRef:
     kind: ClusterSecretStore
-    name: placeholder-store
+    name: vault-dev
   target:
     name: sample-pod-env
+    creationPolicy: Owner
     template:
       engineVersion: v2
+      mergePolicy: Replace
       data:
-        DATABASE_URL: "postgresql://{{ .username }}:{{ .password }}@pg-main-rw.data.svc:5432/{{ .database }}?sslmode=verify-full&sslrootcert=/etc/pg/ca.crt"
+        DATABASE_URL: 'postgresql://{{ .db_username }}:{{ .db_password }}@pg-main-rw.data.svc:5432/{{ .db_username | trimSuffix "_app" }}?sslmode=verify-full&sslrootcert=/etc/pg/ca.crt'
+        KAFKA_PASSWORD: '{{ .kafka_password }}'
+        DRAGONFLY_URL: '{{ .dragonfly_url }}'
+        AUTHENTIK_ISSUER: '{{ .authentik_issuer }}'
+        AUTHENTIK_JWKS_URL: '{{ .authentik_jwks_url }}'
+        SENTRY_DSN: '{{ .sentry_dsn }}'
+        SECRET_KEY: '{{ .secret_key }}'
   data:
-    - secretKey: username
+    - secretKey: db_username
       remoteRef:
-        key: placeholder/sample-pod/db-app
+        key: dev/db/dev_sample_pod/app
         property: username
-    - secretKey: password
+    - secretKey: db_password
       remoteRef:
-        key: placeholder/sample-pod/db-app
+        key: dev/db/dev_sample_pod/app
         property: password
-    - secretKey: database
+    - secretKey: kafka_password
       remoteRef:
-        key: placeholder/sample-pod/db-app
-        property: database
+        key: dev/kafka/sample-pod
+        property: password
+    - secretKey: dragonfly_url
+      remoteRef:
+        key: dev/dragonfly/sample-pod
+        property: url
+    - secretKey: authentik_issuer
+      remoteRef:
+        key: dev/authentik/sample-pod
+        property: issuer
+    - secretKey: authentik_jwks_url
+      remoteRef:
+        key: dev/authentik/sample-pod
+        property: jwks_url
+    - secretKey: sentry_dsn
+      remoteRef:
+        key: dev/sentry/sample-pod
+        property: dsn
+    - secretKey: secret_key
+      remoteRef:
+        key: dev/django/sample-pod
+        property: secret_key
 ---
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: sample-pod-migrate
+  labels:
+    app.kubernetes.io/name: sample-pod
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   refreshInterval: 5m
+  refreshPolicy: Periodic
   secretStoreRef:
     kind: ClusterSecretStore
-    name: placeholder-store
+    name: vault-dev
   target:
     name: sample-pod-migrate
+    creationPolicy: Owner
     template:
       engineVersion: v2
+      mergePolicy: Replace
       data:
-        DATABASE_OWNER_URL: "postgresql://{{ .username }}:{{ .password }}@pg-main-rw.data.svc:5432/{{ .database }}?sslmode=verify-full&sslrootcert=/etc/pg/ca.crt"
+        DATABASE_OWNER_URL: 'postgresql://{{ .db_username }}:{{ .db_password }}@pg-main-rw.data.svc:5432/{{ .db_username | trimSuffix "_owner" }}?sslmode=verify-full&sslrootcert=/etc/pg/ca.crt'
   data:
-    - secretKey: username
+    - secretKey: db_username
       remoteRef:
-        key: placeholder/sample-pod/db-owner
+        key: dev/db/dev_sample_pod/owner
         property: username
-    - secretKey: password
+    - secretKey: db_password
       remoteRef:
-        key: placeholder/sample-pod/db-owner
+        key: dev/db/dev_sample_pod/owner
         property: password
-    - secretKey: database
-      remoteRef:
-        key: placeholder/sample-pod/db-owner
-        property: database

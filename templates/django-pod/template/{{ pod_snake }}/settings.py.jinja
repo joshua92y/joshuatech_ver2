@@ -1,0 +1,152 @@
+"""{{ pod_name }} Django 설정(T072 D6) — 값은 {{ pod_snake }}.conf.load()가 env에서 읽고 검증한다.
+
+검증이 실패하면 설정 이름만 실은 ImproperlyConfigured로 기동이 멈춘다(값 · 연쇄 예외 없음 — conf 모듈 독스트링). 코드는 설정을
+호출 시점에 django.conf.settings로 읽는다(import 시점 상수 금지 — 규칙 django-pod.md §Settings). 이 모듈의 소문자 이름(_loaded ·
+_runtime)은 Django 설정이 아니다(대문자 이름만 설정이 된다).
+
+- 메일은 MAILERS만 쓴다(빈 dict — 메일 발송은 실패로 드러난다 · EMAIL_*는 Django가 금지한다). mail.W001(빈 MAILERS)은 끈다.
+- LOGGING_CONFIG = None — Django 기본 dictConfig · mail_admins · console 중복을 돌리지 않는다(로깅은 PodConfig.ready()의
+  configure_logging이 소유한다).
+- Django 전역 FORCE_SCRIPT_NAME은 두지 않는다 — admin 경로 접두는 AdminHostMiddleware가 ADMIN_HOST 요청에만 적용한다.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from {{ pod_snake }} import conf as _conf
+
+_loaded = _conf.load()
+
+SETTINGS_PROFILE = _loaded.profile
+
+DEBUG = False
+ADMINS: list[tuple[str, str]] = []
+MANAGERS: list[tuple[str, str]] = []
+MAILERS: dict[str, dict[str, Any]] = {}
+SILENCED_SYSTEM_CHECKS = ["mail.W001"]
+LOGGING_CONFIG = None
+
+INSTALLED_APPS = [
+{%- if has_admin %}
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+{%- endif %}
+    # pod 앱이 django_common보다 앞이다 — 재노출한 outbox_relay 명령이 이긴다(동작은 같다).
+    "{{ pod_snake }}",
+    "{{ pod_snake }}.core",
+    "django_common",
+]
+
+# 런타임(wsgi)에는 configure_otel이 OTel 미들웨어를 맨 앞에 넣는다. TenantContextMiddleware는 마지막(JwtAuth 바로 뒤)이다.
+MIDDLEWARE = [
+    "django_common.observability.RequestIdMiddleware",
+    "{{ pod_snake }}.middleware.HttpMetricsMiddleware",
+    "django.middleware.security.SecurityMiddleware",
+    "django.middleware.common.CommonMiddleware",
+{%- if has_admin %}
+    "{{ pod_snake }}.middleware.AdminHostMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+{%- endif %}
+    "django.middleware.csrf.CsrfViewMiddleware",
+{%- if has_admin %}
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+{%- endif %}
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "django_common.auth.JwtAuthMiddleware",
+    "django_common.tenancy.TenantContextMiddleware",
+]
+
+ROOT_URLCONF = "{{ pod_snake }}.urls"
+{%- if has_admin %}
+# AdminHostMiddleware가 요청마다 읽는다(ADMIN_HOST 요청만 이 urlconf로 라우팅 — 시험은 이 값을 바꿔 probe urlconf를 넣는다).
+ADMIN_URLCONF = "{{ pod_snake }}.urls_admin"
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    },
+]
+# 정적 자산은 admin 페이지만 쓴다 — ADMIN_SCRIPT_NAME이 있으면 아래에서 절대 경로 <접두>/static/로 바꾼다.
+STATIC_URL = "static/"
+{%- endif %}
+WSGI_APPLICATION = "{{ pod_snake }}.wsgi.application"
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+USE_TZ = True
+TIME_ZONE = "UTC"
+
+# default 하나 — runtime = DATABASE_URL(app role) · migrate = DATABASE_OWNER_URL(owner role). 풀 · assume_role ·
+# ATOMIC_REQUESTS는 쓰지 않는다(계약 「DB 연결」 행).
+DATABASES = {"default": _loaded.database.django()}
+
+CSRF_FAILURE_VIEW = "{{ pod_snake }}.errors.csrf_failure"
+CSRF_TRUSTED_ORIGINS: list[str] = []
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+
+# outbox(contracts/events.md · T069) — 접두는 runtime에서 ENV로 정한다.
+OUTBOX_SOURCE = _conf.POD_NAME
+OUTBOX_MAX_ATTEMPTS = 10
+
+# 인증 · 테넌트 면제 경로(정확 일치) — 웹훅 · Access 전용 경로를 받는 pod가 더한다(TENANT 목록에도 함께).
+AUTH_EXEMPT_PATHS = ("/healthz", "/ready", "/health")
+TENANT_CONTEXT_EXEMPT_PATHS = ("/healthz", "/ready", "/health")
+AUTH_ACCESS_ONLY_PATHS: tuple[str, ...] = ()
+
+if _loaded.runtime is not None:
+    _runtime = _loaded.runtime
+    ENV = _runtime.ENV
+    SECRET_KEY = _runtime.SECRET_KEY
+    ALLOWED_HOSTS = _conf.allowed_hosts(_runtime)
+    ADMIN_HOST = _runtime.ADMIN_HOST
+    CSRF_TRUSTED_ORIGINS = [f"https://{ADMIN_HOST}"] if ADMIN_HOST else []
+    APP_VERSION = _runtime.APP_VERSION
+    APP_GIT_SHA = _runtime.APP_GIT_SHA
+    SENTRY_DSN = _runtime.SENTRY_DSN
+    # 인증(django_common.auth — 요청마다 읽는다)
+    AUTHENTIK_ISSUER = _runtime.AUTHENTIK_ISSUER
+    AUTHENTIK_JWKS_URL = _runtime.AUTHENTIK_JWKS_URL
+    AUTHENTIK_AUDIENCE = _runtime.AUTHENTIK_AUDIENCE
+    ACCESS_TEAM_DOMAIN = _runtime.ACCESS_TEAM_DOMAIN
+    ACCESS_AUD_M2M = _runtime.ACCESS_AUD_M2M
+    ACCESS_AUD_ADMIN = _runtime.ACCESS_AUD_ADMIN
+    ACCESS_EXPECTED_CN = _runtime.ACCESS_EXPECTED_CN
+    AUTH_ACTOR_SUB = _runtime.AUTH_ACTOR_SUB
+    DRAGONFLY_URL = _runtime.DRAGONFLY_URL
+    # Kafka(django_common.kafka.client_config가 검증한다 — 타임아웃 · 멱등 프로듀서 값은 라이브러리 소유)
+    KAFKA_BOOTSTRAP_SERVERS = _runtime.KAFKA_BOOTSTRAP
+    KAFKA_CLIENT_CONFIG: dict[str, Any] = (
+        # ENV=test는 클러스터 밖 전용(생성물 시험 · 로컬 compose) — 클러스터 안에서는 conf의 POD_NAMESPACE 교차 규칙이 막는다.
+        {"security.protocol": "PLAINTEXT"}
+        if ENV == "test"
+        else {
+            "security.protocol": "SASL_SSL",
+            "sasl.mechanism": "SCRAM-SHA-512",
+            "sasl.username": _runtime.KAFKA_USERNAME,
+            "sasl.password": _runtime.KAFKA_PASSWORD,
+            "ssl.ca.location": _conf.KAFKA_CA_FILE,
+        }
+    )
+    OUTBOX_TOPIC_PREFIX = "" if ENV == "prod" else "dev."
+{%- if has_admin %}
+    # admin 경로 접두(env FORCE_SCRIPT_NAME=/<pod> · 선택) — ADMIN_HOST 요청에만 적용한다(AdminHostMiddleware).
+    ADMIN_SCRIPT_NAME = _runtime.FORCE_SCRIPT_NAME
+    if ADMIN_SCRIPT_NAME:
+        STATIC_URL = f"{ADMIN_SCRIPT_NAME}/static/"
+{%- endif %}
+elif _loaded.env is not None:
+    ENV = _loaded.env

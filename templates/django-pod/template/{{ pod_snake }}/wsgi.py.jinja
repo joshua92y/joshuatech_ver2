@@ -1,0 +1,23 @@
+"""{{ pod_name }} WSGI 진입점(T072 D7 · D11) — web(gunicorn)만 쓴다. relay · celery · CronJob · migrate는 logging만이다(PodConfig.ready).
+
+순서: 설정 모듈 기본값 → django.setup(set_prefix=False)(ready → configure_logging · 기동 단언) → configure_otel()(OTel 미들웨어를
+MIDDLEWARE 맨 앞에 넣는다 — 그 WARNING도 JSON으로 나간다) → configure_sentry()(SENTRY_DSN 빈 값 = 끔 · 실패는 이름만 실은
+ImproperlyConfigured — try/except로 감싸지 않는다) → WSGIHandler(). gunicorn 명령: gunicorn --config
+python:{{ pod_snake }}.gunicorn_conf --no-control-socket {{ pod_snake }}.wsgi:application
+"""
+
+import os
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "{{ pod_snake }}.settings")
+
+import django  # noqa: E402
+
+django.setup(set_prefix=False)
+
+from django.core.handlers.wsgi import WSGIHandler  # noqa: E402
+from django_common.observability import configure_otel, configure_sentry  # noqa: E402
+
+configure_otel()
+configure_sentry()
+
+application = WSGIHandler()

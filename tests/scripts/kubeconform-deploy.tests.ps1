@@ -12,16 +12,29 @@
 #   네트워크가 필요하다: kubeconform이 스키마를 내려받고, CRD의 "스키마 없음"(404)은 캐시되지 않아 매번 묻는다.
 # 환경 변수:
 #   KUBECONFORM_DEPLOY_SCRIPT  시험할 스크립트(기본 scripts/ci/kubeconform-deploy.sh) — 변이 시험에서 사본을 가리킬 때 쓴다.
+#   KUBECONFORM_DEPLOY_CI      정적 단언이 읽는 워크플로(기본 .github/workflows/ci.yml) — 변이 시험에서 깨진 사본을 가리킬 때 쓴다(T072).
+#   KUBECONFORM_DEPLOY_PROC    static-16이 POD_PYTEST_ENV를 읽는 하네스 파일(기본 templates/django-pod/tests/_proc.py) — 변이 시험에서 깨진
+#                              사본을 가리킬 때 쓴다(T072 마감 라운드 Z1).
 #   KUBECONFORM_CACHE          kubeconform 스키마 캐시 — 주면 모든 실행에 그대로 넘기고 지우지 않는다. 없으면 이번 실행
 #                              전용 임시 캐시를 만들고 끝에 지운다.
 # 단언 이름의 번호 1–15는 지시서(T047 M1)의 실행 단언 번호다. d-*는 대상을 조용히 놓치는 경로(파일 이름 · 대소문자 ·
 #   심볼릭 링크 · 공백 · 중복), t-*는 경보선의 변형(걸려야 할 것 · 걸리지 않아야 할 것), n-*는 스키마 판정의 보강(전부 건너뜀 ·
 #   네트워크 실패 · 요약 줄 없음 — 가짜 kubeconform), r-1은 실제 저장소다.
+# T072(design/t072-design.md D22): static-6은 생성물 세 벌을 넘기는 run 줄 정확 일치, static-11..14는 job kubeconform의 생성 스텝
+#   (렌더 · 검사 전용 copier --skip-tasks)과 그 세 경로 = --generated · job test와 job kubeconform의 kustomize/kubeconform 핀 · setup-uv
+#   핀이 같음을 본다. r-1은 템플릿에 deploy/base가 생긴 실제 저장소 루트를 --generated 없이 검사하면 경보선 FAIL 한 줄로 끝나는지 본다.
+#   마지막 라운드: static-14는 setup-uv 스텝을 checksum: 줄까지 견준다(N11 — uv 릴리스 자산 sha256) · static-15는 job test 배선(django-common ·
+#   하네스 pytest 줄 정확히 하나씩 · persist-credentials · timeout 60 · 하네스 env · 단계 기록 artifact — N8) · r-1은 대상 수를 고정하지
+#   않는다(N9 — T073이 apps/identity-admin/deploy/base를 더한다).
+#   마감 라운드 Z1(마지막 리뷰 A-1): static-16은 하네스 POD_PYTEST_ENV(templates/django-pod/tests/_proc.py — 그 튜플에서 읽는다)의 이름이
+#   ci.yml 어디에도 env 키로 없고 워크플로 최상위 · job test의 주석 밖 줄에 나오지 않음을 · static-17은 단계 기록 업로드 스텝의
+#   스텝 수준 if:가 정확히 always()임을 본다(static-15의 run 줄 정확 일치를 env 경로 · 실패 업로드가 비켜 가지 않게).
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $scriptPath = if (-not [string]::IsNullOrEmpty($env:KUBECONFORM_DEPLOY_SCRIPT)) { $env:KUBECONFORM_DEPLOY_SCRIPT } else { Join-Path $repo 'scripts/ci/kubeconform-deploy.sh' }
-$ciPath = Join-Path $repo '.github/workflows/ci.yml'
+$ciPath = if (-not [string]::IsNullOrEmpty($env:KUBECONFORM_DEPLOY_CI)) { $env:KUBECONFORM_DEPLOY_CI } else { Join-Path $repo '.github/workflows/ci.yml' }
+$procPath = if (-not [string]::IsNullOrEmpty($env:KUBECONFORM_DEPLOY_PROC)) { $env:KUBECONFORM_DEPLOY_PROC } else { Join-Path $repo 'templates/django-pod/tests/_proc.py' }
 $script:pass = 0
 $script:fail = 0
 $script:fixtures = @()
@@ -193,6 +206,98 @@ function Get-RunBodies([string[]]$block) {
     return ,$bodies.ToArray()
 }
 
+# job 블록에서 env 키 하나(<이름>: <값>)의 값들 — 한 줄 하나씩(들여쓴 키 줄만)
+function Get-KeyValues([string[]]$block, [string]$name) {
+    return ,@($block | ForEach-Object { [regex]::Match($_, '^\s+' + [regex]::Escape($name) + ':\s*(\S+)\s*$') } | Where-Object { $_.Success } | ForEach-Object { $_.Groups[1].Value })
+}
+
+# job 블록의 setup-uv 스텝 — "uses: astral-sh/setup-uv@" 줄부터 첫 "checksum:" 줄까지(주석 포함 · 원문 그대로 — T072 마지막 라운드 N11:
+# version 다음의 checksum 줄과 그 주석까지 비교 범위다). checksum: 없이 스텝이 끝나면 다음 스텝 머리 앞까지. 스텝 수만큼 돌려준다.
+function Get-SetupUvSteps([string[]]$block) {
+    $steps = [Collections.Generic.List[string]]::new()
+    for ($i = 0; $i -lt $block.Count; $i++) {
+        if ($block[$i] -notmatch '^\s*(-\s+)?uses:\s*astral-sh/setup-uv@') { continue }
+        $sb = [Text.StringBuilder]::new()
+        for ($j = $i; $j -lt $block.Count; $j++) {
+            if ($j -gt $i -and $block[$j] -match '^\s*-\s') { break }   # 다음 스텝 머리 — checksum: 없이 스텝이 끝났다
+            [void]$sb.Append($block[$j] + "`n")
+            if ($block[$j] -match '^\s+checksum:') { break }
+        }
+        $steps.Add($sb.ToString())
+    }
+    return ,$steps.ToArray()
+}
+
+# job 블록에서 키 하나(<이름>: <값 — 공백 포함 가능>)의 값들 — 들여쓴 키 줄만 · 줄 끝 공백 제외
+function Get-KeyValuesLoose([string[]]$block, [string]$name) {
+    return ,@($block | ForEach-Object { [regex]::Match($_, '^\s+' + [regex]::Escape($name) + ':\s*(.*?)\s*$') } | Where-Object { $_.Success } | ForEach-Object { $_.Groups[1].Value })
+}
+
+# ---------- T072 마감 라운드 Z1(static-16 · static-17) 도우미 ----------
+# jobs: 아래 job 하나의 줄 번호(0부터 — Get-JobBlock과 같은 범위). 없으면 빈 배열. 부르는 쪽은 결과를 변수에 받은 뒤 쓴다(@(함수)는 겹친다).
+function Get-JobLineIndexes([string[]]$lines, [string]$job) {
+    $inJobs = $false; $start = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^jobs:\s*$') { $inJobs = $true; continue }
+        if ($inJobs -and $lines[$i] -match ('^  ' + [regex]::Escape($job) + ':\s*$')) { $start = $i + 1; break }
+    }
+    $idx = [Collections.Generic.List[int]]::new()
+    if ($start -lt 0) { return ,$idx.ToArray() }
+    for ($i = $start; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^ {0,2}\S') { break }
+        $idx.Add($i)
+    }
+    return ,$idx.ToArray()
+}
+
+# 워크플로 최상위(jobs: 밖)의 줄 번호 — 0열 키 줄(주석 아님)이 현재 최상위 키를 바꾸고, 그 키가 jobs가 아닌 동안의 줄(첫 키 앞 주석 포함)
+function Get-TopLevelLineIndexes([string[]]$lines) {
+    $idx = [Collections.Generic.List[int]]::new()
+    $top = ''
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $m = [regex]::Match($lines[$i], '^([^\s#][^:]*):')
+        if ($m.Success) { $top = $m.Groups[1].Value }
+        if (-not (Test-Same $top 'jobs')) { $idx.Add($i) }
+    }
+    return ,$idx.ToArray()
+}
+
+# job 블록의 스텝들 — steps: 다음 첫 '- ' 줄의 들여쓰기가 스텝 머리의 들여쓰기다. 스텝 = 머리 줄부터 다음 머리 줄(같은 들여쓰기의 '- ')이나
+# 더 얕은 줄(빈 줄 · 주석 제외) 앞까지. 하나마다 @{ indent = 머리 '-'의 열; lines = 스텝 줄 }
+function Get-Steps([string[]]$block) {
+    $steps = [Collections.Generic.List[object]]::new()
+    $s = -1
+    for ($i = 0; $i -lt $block.Count; $i++) { if ($block[$i] -match '^\s*steps:\s*$') { $s = $i; break } }
+    if ($s -lt 0) { return ,$steps.ToArray() }
+    $indent = -1; $cur = $null
+    for ($i = $s + 1; $i -lt $block.Count; $i++) {
+        $l = $block[$i]
+        $t = $l.TrimStart()
+        if ($t.Length -eq 0 -or $t.StartsWith('#')) { if ($null -ne $cur) { $cur.lines.Add($l) }; continue }
+        $ind = $l.Length - $t.Length
+        if ($indent -lt 0) { if ($t -match '^-\s') { $indent = $ind } else { break } }
+        if ($ind -lt $indent) { break }
+        if ($ind -eq $indent -and $t -match '^-\s') {
+            $cur = @{ indent = $indent; lines = [Collections.Generic.List[string]]::new() }
+            $steps.Add($cur)
+        }
+        if ($null -ne $cur) { $cur.lines.Add($l) }
+    }
+    return ,$steps.ToArray()
+}
+
+# 스텝 하나의 스텝 수준 키 값들 — 머리 줄 '- <키>:' 또는 들여쓰기가 정확히 (머리 '-' 열 + 2)인 '<키>:' 줄(with: 아래 같은 더 깊은 키는
+# 아니다). 끝 주석(공백 + #…)을 떼고 앞뒤 공백을 다듬는다 — 따옴표 · ${{ }}는 그대로 둔다(정확 일치 판정).
+function Get-StepKeyValues($step, [string]$key) {
+    $rx = '^(?: {' + $step.indent + '}-\s+| {' + ($step.indent + 2) + '})' + [regex]::Escape($key) + ':(.*)$'
+    $values = [Collections.Generic.List[string]]::new()
+    foreach ($l in $step.lines) {
+        $m = [regex]::Match($l, $rx)
+        if ($m.Success) { $values.Add(([regex]::Replace($m.Groups[1].Value, '\s+#.*$', '')).Trim()) }
+    }
+    return ,$values.ToArray()
+}
+
 # ---------- 픽스처 조각 ----------
 $yDeploy = @'
 apiVersion: apps/v1
@@ -309,8 +414,13 @@ try {
         $verChecks = @($runLines | Where-Object { $_ -match 'KUSTOMIZE_VERSION' -and $_ -match '(\$bin/kustomize|kustomize)"? version' }).Count + @($runLines | Where-Object { $_ -match 'KUBECONFORM_VERSION' -and $_ -match 'kubeconform"? -v' }).Count
         Assert 'static-5: the install step downloads with the pinned curl flags, verifies sha256sum -c, installs into $RUNNER_TEMP/bin, checks both versions and adds $GITHUB_PATH' ($job.Count -gt 0 -and $missingInstall.Count -eq 0 -and $verChecks -ge 2) "missing: [$($missingInstall -join ' | ')]; version-check lines: $verChecks"
 
-        Assert 'static-6: job kubeconform runs exactly "bash scripts/ci/kubeconform-deploy.sh" (not wrapped) and has no continue-on-error' (
-            (Test-HasLine $runLines 'bash scripts/ci/kubeconform-deploy.sh') -and -not (Test-Has $jobText 'continue-on-error')
+        # T072(D22): 렌더 · 검사 전용 생성물 세 벌 — 이 경로들을 copier가 만들고 검사 run 줄이 --generated로 넘긴다
+        $genDirs = @('default', 'no-celery', 'no-admin')
+        $genPaths = @($genDirs | ForEach-Object { '"$RUNNER_TEMP/gen/' + $_ + '/apps/sample-pod"' })
+        $deployLine = 'bash scripts/ci/kubeconform-deploy.sh' + (($genPaths | ForEach-Object { ' --generated ' + $_ }) -join '')
+        $deployRuns = @($runLines | Where-Object { $_.Contains('scripts/ci/kubeconform-deploy.sh') })
+        Assert 'static-6: job kubeconform runs kubeconform-deploy.sh exactly once, on exactly the line bash scripts/ci/kubeconform-deploy.sh --generated "$RUNNER_TEMP/gen/default/apps/sample-pod" --generated "$RUNNER_TEMP/gen/no-celery/apps/sample-pod" --generated "$RUNNER_TEMP/gen/no-admin/apps/sample-pod" (not wrapped — T072), and has no continue-on-error' (
+            $deployRuns.Count -eq 1 -and (Test-Same $deployRuns[0] $deployLine) -and -not (Test-Has $jobText 'continue-on-error')
         ) "run lines: [$($runLines -join ' / ')]"
 
         $permIdx = @(for ($i = 0; $i -lt $ciLines.Count; $i++) { if ($ciLines[$i] -match '^permissions:') { $i } })
@@ -324,6 +434,128 @@ try {
         Assert 'static-9: job kubeconform: runs-on ubuntu-24.04-arm, timeout-minutes 10, checkout with persist-credentials: false, no secrets.*' (
             $jobText -match '(?m)^    runs-on: ubuntu-24\.04-arm\s*$' -and $jobText -match '(?m)^    timeout-minutes: 10(\s|$)' -and $jobText -match '(?m)^\s*(-\s+)?uses: actions/checkout@[0-9a-f]{40}' -and $jobText -match '(?m)^\s+persist-credentials: false\s*$' -and -not (Test-Has $jobText 'secrets.')
         ) "job block: [$jobText]"
+
+        # ---------- T072(D22): 생성 스텝 · 경로 결속 · job test와의 핀 정렬 ----------
+        $copierRuns = @($runLines | Where-Object { $_ -match '\bcopier\s+copy\b' })
+        $genWords = @(
+            'uv run --directory templates/django-pod --locked python -m copier copy ',
+            ' --defaults ',
+            ' --skip-tasks ',
+            ' --quiet ',
+            ' --data pod_name=sample-pod ',
+            ' "$GITHUB_WORKSPACE/templates/django-pod" '
+        )
+        $genMissing = @(foreach ($line in $copierRuns) { foreach ($w in $genWords) { if (-not (Test-Has $line $w)) { $w.Trim() } } })
+        $genTrust = @($copierRuns | Where-Object { $_ -match '(^|\s)--trust(\s|$)' })
+        Assert 'static-11: job kubeconform has exactly three copier generation run lines, each "uv run --directory templates/django-pod --locked python -m copier copy" with --defaults --skip-tasks --quiet --data pod_name=sample-pod and source "$GITHUB_WORKSPACE/templates/django-pod", none with --trust (render-only generation: _tasks uv lock is skipped — T072 D22)' (
+            $copierRuns.Count -eq 3 -and $genMissing.Count -eq 0 -and $genTrust.Count -eq 0
+        ) "copier run lines: $($copierRuns.Count); missing words: [$($genMissing -join ' | ')]; with --trust: $($genTrust.Count)"
+
+        $genDest = @($copierRuns | ForEach-Object { @($_ -split '\s+')[-1] })
+        $deployTokens = if ($deployRuns.Count -eq 1) { @($deployRuns[0] -split '\s+') } else { @() }
+        $generatedArgs = @(for ($i = 0; $i -lt $deployTokens.Count - 1; $i++) { if ($deployTokens[$i] -eq '--generated') { $deployTokens[$i + 1] } })
+        $expectedData = [ordered]@{}
+        $expectedData[$genPaths[0]] = 'pod_name=sample-pod'
+        $expectedData[$genPaths[1]] = 'pod_name=sample-pod has_celery=false'
+        $expectedData[$genPaths[2]] = 'pod_name=sample-pod has_celery=false has_admin=false'
+        $dataMismatch = @(foreach ($line in $copierRuns) {
+            $tokens = @($line -split '\s+')
+            $data = (@(for ($i = 0; $i -lt $tokens.Count - 1; $i++) { if ($tokens[$i] -eq '--data') { $tokens[$i + 1] } })) -join ' '
+            $dest = $tokens[-1]
+            if (-not $expectedData.Contains($dest) -or -not (Test-Same $data $expectedData[$dest])) { "$dest <- [$data]" }
+        })
+        Assert 'static-12: the three copier destinations, in step order, are exactly the three --generated paths of the check run line ("$RUNNER_TEMP/gen/<default|no-celery|no-admin>/apps/sample-pod"), and each gets its --data (default: pod_name only, no-celery: + has_celery=false, no-admin: + has_celery=false has_admin=false)' (
+            $genDest.Count -eq 3 -and $generatedArgs.Count -eq 3 -and (Test-Same ($genDest -join "`n") ($generatedArgs -join "`n")) -and (Test-Same ($genDest -join "`n") ($genPaths -join "`n")) -and $dataMismatch.Count -eq 0
+        ) "copier destinations: [$($genDest -join ' ')]; --generated: [$($generatedArgs -join ' ')]; data mismatch: [$($dataMismatch -join ' | ')]"
+
+        $testJob = Get-JobBlock $ciLines 'test'
+        $pinDiff = @(foreach ($n in @('KUSTOMIZE_VERSION', 'KUSTOMIZE_SHA256', 'KUBECONFORM_VERSION', 'KUBECONFORM_SHA256')) {
+            $a = Get-KeyValues $job $n
+            $b = Get-KeyValues $testJob $n
+            if ($a.Count -ne 1 -or $b.Count -ne 1 -or -not (Test-Same $a[0] $b[0])) { "$n kubeconform=[$($a -join ',')] test=[$($b -join ',')]" }
+        })
+        $installBody = @($runs | Where-Object { $_.Contains('sha256sum -c') })
+        $testInstall = @((Get-RunBodies $testJob) | Where-Object { $_.Contains('sha256sum -c') })
+        Assert 'static-13: job test installs kustomize and kubeconform with the same version and sha256 pins as job kubeconform (one line each in both jobs) and the same install script body, byte for byte (the harness finds them on PATH — T072 D22)' (
+            $testJob.Count -gt 0 -and $pinDiff.Count -eq 0 -and $installBody.Count -eq 1 -and $testInstall.Count -eq 1 -and (Test-Same $installBody[0] $testInstall[0])
+        ) "pin differences: [$($pinDiff -join ' | ')]; install bodies: kubeconform $($installBody.Count), test $($testInstall.Count)"
+
+        $uvSteps = [ordered]@{}
+        foreach ($n in @('lint', 'test', 'kubeconform')) { $uvSteps[$n] = Get-SetupUvSteps (Get-JobBlock $ciLines $n) }
+        $uvRef = if ($uvSteps['test'].Count -eq 1) { $uvSteps['test'][0] } else { '' }
+        $uvBad = @(foreach ($n in $uvSteps.Keys) { if ($uvSteps[$n].Count -ne 1 -or -not (Test-Same ($uvSteps[$n][0] -replace '^\s*-\s+', '') ($uvRef -replace '^\s*-\s+', ''))) { "$n($($uvSteps[$n].Count))" } })
+        $uvChecksums = @([regex]::Matches($uvRef, '(?m)^\s+checksum:\s*"([0-9a-f]{64})"\s*$') | ForEach-Object { $_.Groups[1].Value })
+        Assert 'static-14: jobs lint, test and kubeconform each have one setup-uv step and the three are identical from the uses: line to the checksum: line (same 40-hex pin, same comments, same uv version 0.13.7, same sha256 checksum of the uv release archive — setup-uv does not verify a version missing from its built-in table without it — T072 D22 · final round N11)' (
+            $uvRef.Length -gt 0 -and $uvRef -match 'version:\s*"0\.13\.7"' -and $uvChecksums.Count -eq 1 -and $uvBad.Count -eq 0
+        ) "setup-uv steps differing from job test: [$($uvBad -join ', ')]; checksum lines (64 lowercase hex) in job test: $($uvChecksums.Count)"
+
+        # ---------- T072 마지막 라운드 N8(조각 ④ 리뷰 A-3): job test 배선 ----------
+        $testRuns = Get-RunBodies $testJob
+        $testRunLines = @(($testRuns -join "`n") -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_.Length -gt 0 })
+        $pytestLines = @($testRunLines | Where-Object { $_ -match '\bpytest\b' })
+        $wantPytest = @('uv run --directory packages/django-common --locked pytest -q', 'uv run --directory templates/django-pod --locked pytest -q')
+        $testText = $testJob -join "`n"
+        $roots = Get-KeyValuesLoose $testJob 'JT_SAMPLE_POD_ROOT'
+        $budgets = Get-KeyValuesLoose $testJob 'JT_HARNESS_BUDGET_SECONDS'
+        $budget = if ($budgets.Count -eq 1) { $budgets[0].Trim('"') } else { '' }
+        $paths = Get-KeyValuesLoose $testJob 'path'
+        $noFiles = Get-KeyValuesLoose $testJob 'if-no-files-found'
+        $uploads = @($testJob | Where-Object { $_ -match '^\s*(-\s+)?uses:\s*actions/upload-artifact@[0-9a-f]{40}' })
+        $rootOk = $roots.Count -eq 1 -and $roots[0] -match '^\$\{\{ runner\.temp \}\}/[A-Za-z0-9._-]+$'
+        $pathOk = $paths.Count -eq 1 -and $rootOk -and (Test-Same $paths[0] ($roots[0] + '/harness-stages.log'))
+        Assert 'static-15: job test runs exactly two pytest lines, exactly "uv run --directory packages/django-common --locked pytest -q" then "uv run --directory templates/django-pod --locked pytest -q" (no added options), checks out with persist-credentials: false, sets timeout-minutes: 60, gives the harness JT_SAMPLE_POD_ROOT under ${{ runner.temp }} and a numeric JT_HARNESS_BUDGET_SECONDS of at most 1800, and uploads only <JT_SAMPLE_POD_ROOT>/harness-stages.log with if-no-files-found: ignore (T072 D22 · final round N8)' (
+            $testJob.Count -gt 0 -and $pytestLines.Count -eq 2 -and (Test-Same ($pytestLines -join "`n") ($wantPytest -join "`n")) -and
+            $testText -match '(?m)^\s+persist-credentials: false\s*$' -and $testText -match '(?m)^    timeout-minutes: 60\s*$' -and
+            $rootOk -and $budget -match '^[0-9]{1,4}$' -and [int]$budget -ge 1 -and [int]$budget -le 1800 -and
+            $uploads.Count -eq 1 -and $pathOk -and $noFiles.Count -eq 1 -and (Test-Same $noFiles[0] 'ignore')
+        ) "pytest lines: [$($pytestLines -join ' / ')]; JT_SAMPLE_POD_ROOT: [$($roots -join ' | ')]; budget: [$($budgets -join ' | ')]; upload steps: $($uploads.Count); path: [$($paths -join ' | ')]; if-no-files-found: [$($noFiles -join ' | ')]"
+
+        # ---------- T072 마감 라운드 Z1(마지막 리뷰 A-1): pytest를 비켜 가는 env 이름 · 실패해도 업로드 ----------
+        # static-15는 run 줄의 pytest 두 줄을 글자 그대로 본다. 그런데 pytest는 env PYTEST_ADDOPTS를 명령줄 앞에 붙인다 — run 줄을 건드리지
+        # 않고 워크플로 · job · 스텝 env:로 -l · --tb=long이 들어온다. 이름 집합 = 하네스 templates/django-pod/tests/_proc.py POD_PYTEST_ENV
+        # (생성물 pytest 자식이 물려받지 않는 이름 — 실패 출력 넓히기 · 플러그인 · 단언 지우기 · 대화 모드 · import 경로 · 설정 모듈)를 그
+        # 튜플에서 읽는다: CI의 pytest 둘(django-common · 하네스)에도 같은 뜻이고, 하네스가 이름을 더하면 여기도 넓어진다. 튜플을 읽지 못하거나
+        # (문자열 리터럴 밖의 것이 있다) 핵심 셋(PYTEST_ADDOPTS · PYTEST_PLUGINS · PYTHONOPTIMIZE)이 빠지면 FAIL이다(빈 집합으로 공허해지지 않게).
+        # static-16 판정 ①(결정 Z1): ci.yml 어디에도 줄 머리 env 키 꼴(^\s+<이름>: — 따옴표 키 포함 · 다른 job 포함) 0. 판정 ②(더 넓게): 워크플로
+        # 최상위(jobs: 밖)와 job test의 주석 밖 줄 어디에도 그 이름(낱말 경계 · 대소문자 구분) 0 — 같은 job의 pytest에 닿는 다른 길(run 본문의
+        # export · 인라인 대입 · $GITHUB_ENV 쓰기 · 흐름 꼴 env: {…})도 막는다. 다른 job의 run 본문은 job test에 닿지 않아 보지 않는다.
+        # 줄 단위 드리프트 검사다(sch-23과 같은 범위 — YAML 별칭 · 이스케이프 같은 일부러 꼰 꼴은 코드 소유자 리뷰 몫).
+        $procText = if (Test-Path -LiteralPath $procPath -PathType Leaf) { [IO.File]::ReadAllText($procPath) } else { '' }
+        $podEnvMatch = [regex]::Match($procText, '(?m)^POD_PYTEST_ENV: dict\[str, str \| None\] = dict\.fromkeys\(\s*\(([^()]*)\)\s*\)')
+        $podEnvBody = if ($podEnvMatch.Success) { $podEnvMatch.Groups[1].Value } else { '' }
+        $podEnv = @([regex]::Matches($podEnvBody, '"([A-Z][A-Z0-9_]*)"') | ForEach-Object { $_.Groups[1].Value })
+        $podEnvResidue = [regex]::Replace($podEnvBody, '"[A-Z][A-Z0-9_]*"|[\s,]', '')
+        $missingCore = @(@('PYTEST_ADDOPTS', 'PYTEST_PLUGINS', 'PYTHONOPTIMIZE') | Where-Object { $podEnv -cnotcontains $_ })
+        $podEnvUnique = [Collections.Generic.HashSet[string]]::new([string[]]$podEnv, [StringComparer]::Ordinal)
+        $podEnvOk = $podEnvMatch.Success -and $podEnvResidue.Length -eq 0 -and $missingCore.Count -eq 0 -and $podEnvUnique.Count -eq $podEnv.Count
+        $keyHits = @(); $mentionHits = @()
+        if ($podEnvOk) {
+            $nameAlt = @($podEnv | ForEach-Object { [regex]::Escape($_) }) -join '|'
+            $keyRx = '^\s+["'']?(' + $nameAlt + ')["'']?\s*:'
+            $wordRx = '(?<![A-Za-z0-9_])(' + $nameAlt + ')(?![A-Za-z0-9_])'
+            $keyHits = @(for ($i = 0; $i -lt $ciLines.Count; $i++) { if ($ciLines[$i] -cmatch $keyRx) { "$($i + 1): $($ciLines[$i].Trim())" } })
+            $topIdx = Get-TopLevelLineIndexes $ciLines
+            $testIdx = Get-JobLineIndexes $ciLines 'test'
+            $mentionHits = @(foreach ($i in (@($topIdx) + @($testIdx))) {
+                $l = $ciLines[$i]
+                if (-not $l.TrimStart().StartsWith('#') -and $l -cmatch $wordRx) { "$($i + 1): $($l.Trim())" }
+            })
+        }
+        Assert 'static-16: no env variable named in the harness POD_PYTEST_ENV (templates/django-pod/tests/_proc.py, read from that tuple; PYTEST_ADDOPTS, PYTEST_PLUGINS and PYTHONOPTIMIZE required) is an env key anywhere in ci.yml (workflow, job or step env:, other jobs included) or appears on a non-comment line of the workflow top level or job test (export, inline assignment, $GITHUB_ENV write, flow-style env) — pytest prepends PYTEST_ADDOPTS to its command line, so static-15''s exact run lines alone do not pin the options (T072 closing round Z1)' (
+            $podEnvOk -and $keyHits.Count -eq 0 -and $mentionHits.Count -eq 0
+        ) "POD_PYTEST_ENV read: [$($podEnv -join ', ')] (tuple found: $($podEnvMatch.Success); other text: [$podEnvResidue]; core missing: [$($missingCore -join ', ')]); env keys: [$($keyHits -join ' | ')]; top-level/test mentions: [$($mentionHits -join ' | ')]"
+
+        # static-17(결정 Z1 ②): 단계 기록 업로드는 하네스가 실패한 실행에서 올라가야 한다(그 경우가 올릴 이유가 있는 유일한 경우 — D22 · B-3).
+        # job test의 upload-artifact 스텝 하나에 스텝 수준 if:가 정확히 하나이고 값이 글자 그대로 always()다(${{ always() }} · success() ||
+        # failure() 같은 다른 꼴도 FAIL — 정확 일치).
+        $testSteps = Get-Steps $testJob
+        $uploadSteps = @($testSteps | Where-Object { @($_.lines | Where-Object { $_ -match '^\s*(-\s+)?uses:\s*actions/upload-artifact@' }).Count -gt 0 })
+        $ifValues = [string[]]@()
+        if ($uploadSteps.Count -eq 1) { $ifValues = Get-StepKeyValues $uploadSteps[0] 'if' }
+        $ifOk = $ifValues.Count -eq 1 -and (Test-Same ([string]$ifValues[0]) 'always()')
+        Assert 'static-17: job test has exactly one upload-artifact step and that step has exactly one step-level if: whose value is exactly always() — the stage log is uploaded when the harness fails, the one case it is for (T072 closing round Z1 · D22)' (
+            $testSteps.Count -gt 0 -and $uploadSteps.Count -eq 1 -and $ifOk
+        ) "steps in job test: $($testSteps.Count); upload-artifact steps: $($uploadSteps.Count); step-level if values: [$($ifValues -join ' | ')]"
 
         $bytes = if (Test-Path -LiteralPath $scriptPath -PathType Leaf) { [IO.File]::ReadAllBytes($scriptPath) } else { $null }
         $hasBom = $null -ne $bytes -and $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
@@ -668,12 +900,18 @@ try {
         ) ("run1: " + (Format-Result $r1) + " run2: " + (Format-Result $r2))
     }
 
-    # ---------- r: 실제 저장소 루트 — 지금은 대상 없음 ----------
-    # T072가 템플릿에 배포 매니페스트를 넣으면 이 단언은 경보선 때문에 깨진다(의도 — T072가 생성 단계를 연결하면서 이 단언도 고친다).
+    # ---------- r: 실제 저장소 루트 — --generated 없이는 경보선 ----------
+    # T072부터 템플릿(templates/django-pod/template/deploy/base)에 배포 매니페스트가 있다 — 생성 단계(CI job kubeconform)를 거치지 않은
+    # 검사는 경보선 FAIL 한 줄로 끝나야 한다(대상을 조용히 놓치지 않는다). 생성물을 넘긴 검사는 CI 명령(static-6 · static-11)이 본다.
+    # 대상 수는 고정하지 않는다(T072 마지막 라운드 N9 · 조각 ④ 리뷰 A-5): T073이 apps/identity-admin/deploy/base를 커밋하면 규칙 A 대상이
+    # 하나 늘어 요약의 「대상 N」이 바뀐다 — 경보선 FAIL 한 줄 · 그 밖의 FAIL 0 · 요약의 실패 1만 본다.
     Test-Group 'r: real repository root' {
         $r = Invoke-Deploy @('--root', (ConvertTo-BashPath $repo))
-        Assert 'r-1: the real repository root today -> exit 0, "대상 없음", summary "결과: PASS · 대상 0 · 실패 0"' (
-            $r.code -eq 0 -and (Test-HasLinePrefix $r.lines '대상 없음') -and (Test-HasLine $r.lines '결과: PASS · 대상 0 · 실패 0')
+        $fails = Get-LinesWithPrefix $r.lines '[FAIL] '
+        $tw = Get-LinesWithPrefix $r.lines '[FAIL] templates/django-pod/template — 경보선'
+        $summaries = @($r.lines | Where-Object { $_ -match '^결과: FAIL · 대상 [0-9]+ · 실패 1$' })
+        Assert 'r-1: the real repository root without --generated (the template holds deploy/base since T072) -> exit 1, exactly one FAIL line — the tripwire for templates/django-pod/template naming --generated, --skip-tasks and T072 — no other FAIL line, and a summary "결과: FAIL · 대상 N · 실패 1" (N not pinned — T073 adds apps/identity-admin/deploy/base · final round N9)' (
+            $r.code -eq 1 -and $fails.Count -eq 1 -and $tw.Count -eq 1 -and (Test-Has $tw[0] '--generated') -and (Test-Has $tw[0] '--skip-tasks') -and (Test-Has $tw[0] 'T072') -and $summaries.Count -eq 1
         ) (Format-Result $r)
     }
 

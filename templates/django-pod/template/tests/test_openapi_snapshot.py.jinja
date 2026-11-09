@@ -1,0 +1,111 @@
+"""{{ pod_name }} OpenAPI 스냅샷 시험(T072 D9 · D17 — 계약 §기본 테스트 5 · 규칙 django-pod.md §OpenAPI snapshot refresh).
+
+- 스냅샷: tests/snapshots/openapi.json = `{{ pod_snake }}.api.api.get_openapi_schema()`에서 info.title을 뺀 값(title은 따로 비교 —
+  description 질문이 바뀌어도 스냅샷이 흔들리지 않게). 어긋나면 경로별 차이(추가 · 삭제 · 변경 경로 · 그 밖 최상위 키)를 싣고
+  실패한다 — API를 일부러 바꿨거나 django-ninja 판을 올렸을 때만 차이를 검토해 스냅샷을 갱신하고 그 변경과 같은 커밋에 넣는다
+  (맹목 재생성 금지 — 갱신 절차 README 「OpenAPI 스냅샷 갱신」).
+- title = description(비었으면 pod 이름) · 헬스 3종 경로가 GET으로 있다 · 경로 키에 접두가 없다(Django 전역 FORCE_SCRIPT_NAME을
+  두지 않는다 — 두면 OpenAPI 경로 키에도 접두가 붙는다).
+- HTTP: /api/openapi.json은 자격이 필요한 경로다(헬스 3종만 면제 — 자격 없으면 403 access_required) · 자격을 붙이면 200
+  application/json이고 본문 = 스키마 · docs(/docs)는 꺼져 있다(404 not_found).
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+import pytest
+from django.test import Client
+
+from {{ pod_snake }}.api import TITLE, api
+from tests._jwt import ACCESS_KID, AUTHENTIK_KID, access_claims, bearer_claims, mint
+from tests._problem import assert_problem
+
+if TYPE_CHECKING:
+    from tests.conftest import JwksInfo
+
+SNAPSHOT = Path(__file__).resolve().parent / "snapshots" / "openapi.json"
+HOST = "{{ pod_name }}.test.svc"  # 시험 래퍼의 ALLOWED_HOSTS
+POD_NAME = "{{ pod_name }}"
+EXPECTED_TITLE = {{ (description or pod_name) | tojson }}
+OPENAPI_PATH = "/api/openapi.json"
+HEALTH_PATHS = ("/healthz", "/ready", "/health")
+DB = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
+
+
+def _schema() -> dict[str, Any]:
+    """지금 API의 OpenAPI 스키마(JSON 왕복 — 파일과 같은 형으로 비교한다)."""
+    schema: dict[str, Any] = json.loads(json.dumps(api.get_openapi_schema()))
+    return schema
+
+
+def _without_title(schema: dict[str, Any]) -> dict[str, Any]:
+    info = {key: value for key, value in schema.get("info", {}).items() if key != "title"}
+    return {**schema, "info": info}
+
+
+def _diff(current: dict[str, Any], expected: dict[str, Any]) -> str:
+    """경로별 차이 요약(값 전체가 아니라 경로 · 최상위 키 이름만)."""
+    current_paths = current.get("paths", {})
+    expected_paths = expected.get("paths", {})
+    added = sorted(set(current_paths) - set(expected_paths))
+    removed = sorted(set(expected_paths) - set(current_paths))
+    shared = set(current_paths) & set(expected_paths)
+    changed = sorted(name for name in shared if current_paths[name] != expected_paths[name])
+    keys = (set(current) | set(expected)) - {"paths"}
+    others = sorted(key for key in keys if current.get(key) != expected.get(key))
+    return f"추가된 경로 {added} · 사라진 경로 {removed} · 바뀐 경로 {changed} · 그 밖에 바뀐 최상위 키 {others}"
+
+
+def _auth_headers(jwks: JwksInfo) -> dict[str, str]:
+    access = mint(access_claims(), jwks.access_key, ACCESS_KID)
+    bearer = mint(bearer_claims(), jwks.authentik_key, AUTHENTIK_KID)
+    return {"host": HOST, "Cf-Access-Jwt-Assertion": access, "Authorization": f"Bearer {bearer}"}
+
+
+def test_openapi_schema_matches_snapshot() -> None:
+    """get_openapi_schema() − info.title = tests/snapshots/openapi.json(어긋나면 경로별 차이 · README 갱신 절차)."""
+    current = _without_title(_schema())
+    expected = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
+    same = current == expected
+    assert same, f"OpenAPI 스키마가 스냅샷과 다르다 — {_diff(current, expected)} · 의도한 변경이면 README 「OpenAPI 스냅샷 갱신」"
+
+
+def test_openapi_title_and_health_paths() -> None:
+    """title = description(비었으면 pod 이름) · 헬스 3종 경로가 GET 연산으로 있다 · 경로 키는 `/`로 시작하고 pod 접두가 없다."""
+    schema = _schema()
+    assert TITLE == EXPECTED_TITLE
+    assert schema["info"]["title"] == EXPECTED_TITLE
+    paths: dict[str, Any] = schema["paths"]
+    missing = [name for name in HEALTH_PATHS if "get" not in paths.get(name, {})]
+    assert missing == []
+    prefixed = sorted(name for name in paths if not name.startswith("/") or name.startswith(f"/{POD_NAME}/"))
+    assert prefixed == []
+
+
+def test_openapi_requires_credentials() -> None:
+    """/api/openapi.json은 인증 면제가 아니다 — 자격 없으면 403 access_required(problem+json)."""
+    assert_problem(Client().get(OPENAPI_PATH, headers={"host": HOST}), 403, "access_required")
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
+def test_openapi_http_body_is_the_schema(jwks_server: JwksInfo) -> None:
+    """자격을 붙인 /api/openapi.json → 200 · application/json · 본문 = get_openapi_schema()."""
+    response = Client().get(OPENAPI_PATH, headers=_auth_headers(jwks_server))
+    assert response.status_code == 200
+    assert response["Content-Type"].startswith("application/json")
+    body = json.loads(response.content)
+    same = body == _schema()
+    assert same, f"/api/openapi.json 본문이 스키마와 다르다 — {_diff(body, _schema())}"
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
+def test_docs_are_disabled(jwks_server: JwksInfo) -> None:
+    """docs_url=None — 자격을 붙여도 /docs · /api/docs는 404 not_found(problem+json)."""
+    client = Client()
+    for docs_path in ("/docs", "/api/docs"):
+        assert_problem(client.get(docs_path, headers=_auth_headers(jwks_server)), 404, "not_found")

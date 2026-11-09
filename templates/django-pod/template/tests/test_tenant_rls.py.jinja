@@ -1,0 +1,455 @@
+"""{{ pod_name }} 테넌트 RLS · app role 권한 · check_rls · startup_check 시험(T072 D12 · D7 — 계약 §기본 테스트 1).
+
+계약: contracts/pod-template.md §기본 테스트 1 · §테이블 등급 · 「마이그레이션」 행(app role 표 · 시퀀스 권한 =
+core/0001_app_role_grants) · 규칙 django-pod.md §Table grades · §Migrations. DB 별칭: default = app role(NOBYPASSRLS ·
+런타임) · owner = owner role(BYPASSRLS · DB 소유자 · 시드 · DDL). conftest는 app role에 기본 권한을 주지 않는다 — app role이
+가진 권한은 pod 마이그레이션이 준 것뿐이다(시험이 그 경로를 증명한다).
+
+- A 등급(시험 전용 앱 tests.rlsapp의 RlsWidget · rls_policies): 테넌트 A 컨텍스트에서 B 행 0 · 컨텍스트 없음 0행 · owner 전체 ·
+  WITH CHECK가 다른 테넌트 쓰기를 막는다 · 요청 경로(JwtAuthMiddleware가 Bearer tenant_id로 request.tenant_id를 두고
+  TenantContextMiddleware가 요청 트랜잭션에 set_config)로도 같다 · tenant_id 없는 Bearer는 403 tenant_required · 요청이 끝나면
+  GUC가 같은 DB 세션에 남지 않는다.
+- B 등급(django_common outbox — 허용 목록): app role이 컨텍스트 없이 전체를 읽는다.
+- app role 권한(D12): public 표 전부 SELECT · INSERT · UPDATE · DELETE 정확히(django_migrations는 SELECT만) · 시퀀스 USAGE ·
+  SELECT · owner가 나중에 만드는 표 · 시퀀스에도(ALTER DEFAULT PRIVILEGES — 이 pod의 migrate 순서에서 core/0001이 outbox ·
+  rls_widget보다 먼저 돈다) · relay 왕복(app role — 잠금 · 삭제 · attempts 갱신)이 실제로 된다.
+- check_rls: owner · app(require_rls_role) 둘 다 위반 0 · 성공 줄 · rls_widget은 ENABLE + FORCE · outbox는 RLS 없음 · 허용 목록
+  밖 RLS 없는 표를 owner가 만들면 그 표 이름으로 실패(정리 포함).
+- startup_check(D7 — web initContainer): app role → stdout 한 줄 `startup_check: OK` · owner 자격 → 종료 1 + stderr 한 줄
+  `startup_check: FAIL check_rls session_user` · 닫힌 포트 DB(하위 프로세스 · --wait 1) → 종료 1 + stderr 한 줄
+  `startup_check: FAIL OperationalError`(트레이스백 · 접속 문자열 조각 0).
+
+transaction=True: TenantContextMiddleware는 요청 트랜잭션 안의 set_config(…, true)라 TestCase의 바깥 시험 트랜잭션에서는 GUC가
+시험 끝까지 남는다(T068 인계) — 이 파일의 시험은 실제 커밋 경로로 돈다. 시드 · DDL은 owner 연결(autocommit)로 한다.
+"""
+
+from __future__ import annotations
+
+import io
+import json
+import os
+import re
+import secrets
+import socket
+import subprocess
+import sys
+import uuid
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+import pytest
+from django.core.management import call_command
+from django.core.management.base import CommandError
+from django.db import DatabaseError, connections, transaction
+from django.http import HttpRequest, JsonResponse
+from django.test import Client
+from django.urls import path
+from django_common.tenancy import check_rls, current_tenant_id, set_tenant_context, tenant_context
+
+from tests._jwt import ACCESS_KID, AUTHENTIK_KID, TENANT_ID, access_claims, bearer_claims, mint
+from tests._outbox_fakes import KAFKA_TOPIC, FakeProducer, fail_topics, owner_execute, owner_scalar, seed
+from tests._problem import assert_problem
+from tests._secret import Secret
+from tests.rlsapp.models import RlsWidget
+
+if TYPE_CHECKING:
+    from pytest_django.fixtures import SettingsWrapper
+
+    from tests.conftest import JwksInfo, PgInfo
+
+pytestmark = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
+
+POD_ROOT = Path(__file__).resolve().parents[1]
+POD_SNAKE = "{{ pod_snake }}"
+POD_SETTINGS = "{{ pod_snake }}.settings"
+HOST = "{{ pod_name }}.test.svc"  # 시험 래퍼의 ALLOWED_HOSTS
+TENANT_A = uuid.UUID(TENANT_ID)
+TENANT_B = uuid.UUID("00000000-0000-4000-8000-00000000000b")
+TABLE_PRIVILEGES = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
+APP_TABLE_PRIVILEGES = frozenset({"SELECT", "INSERT", "UPDATE", "DELETE"})
+APP_SEQUENCE_PRIVILEGES = frozenset({"USAGE", "SELECT"})
+MIGRATIONS_TABLE = "django_migrations"
+CHECK_RLS_OK = re.compile(r"check_rls: OK - A 등급 (\d+) · B 등급 (\d+) · 프레임워크 (\d+)")
+STARTUP_OK = "startup_check: OK"
+STARTUP_RETRY = re.compile(r"startup_check: db_connect_retry OperationalError attempt=[0-9]+")
+BOOT_TIMEOUT_S = 120
+SECRET_WINDOW = 12
+SENSITIVE_ENV_MARKERS = ("PASSWORD", "SECRET", "TOKEN", "KEY", "URL", "DSN")
+WIDGET_COUNT_PATH = "/probe/rls/widget-count"
+
+
+# --- 요청 경로 시험용 urlconf(settings.ROOT_URLCONF = 이 모듈) ------------------------------------------------------------------
+
+
+def widget_count_view(request: HttpRequest) -> JsonResponse:
+    """요청 트랜잭션(TenantContextMiddleware)의 컨텍스트로 읽은 RlsWidget 수 · tenant_id 집합 · GUC 값."""
+    tenant_ids = sorted({str(value) for value in RlsWidget.objects.values_list("tenant_id", flat=True)})
+    context = current_tenant_id()
+    return JsonResponse(
+        {"count": RlsWidget.objects.count(), "tenant_ids": tenant_ids, "context": str(context) if context else None}
+    )
+
+
+urlpatterns = [path(WIDGET_COUNT_PATH.removeprefix("/"), widget_count_view)]
+
+
+# --- 도우미 --------------------------------------------------------------------------------------------------------------
+
+
+def _seed_widgets() -> None:
+    """owner(BYPASSRLS)로 테넌트 A 2행 · B 3행을 만든다(autocommit — 다른 연결에서 곧바로 보인다)."""
+    for name in ("a1", "a2"):
+        RlsWidget.objects.using("owner").create(tenant_id=TENANT_A, name=name)
+    for name in ("b1", "b2", "b3"):
+        RlsWidget.objects.using("owner").create(tenant_id=TENANT_B, name=name)
+
+
+def _table_privileges(app_user: str, table: str) -> frozenset[str]:
+    """app role이 public.table에 가진 표 권한(has_table_privilege는 권한마다 따로 묻는다 — 쉼표 목록은 「하나라도」라 쓰지 않는다)."""
+    held: set[str] = set()
+    with connections["owner"].cursor() as cursor:
+        for privilege in TABLE_PRIVILEGES:
+            cursor.execute("SELECT has_table_privilege(%s, %s, %s)", [app_user, f"public.{table}", privilege])
+            if cursor.fetchone()[0]:
+                held.add(privilege)
+    return frozenset(held)
+
+
+def _sequence_privileges(app_user: str, sequence: str) -> frozenset[str]:
+    held: set[str] = set()
+    with connections["owner"].cursor() as cursor:
+        for privilege in ("USAGE", "SELECT", "UPDATE"):
+            cursor.execute("SELECT has_sequence_privilege(%s, %s, %s)", [app_user, f"public.{sequence}", privilege])
+            if cursor.fetchone()[0]:
+                held.add(privilege)
+    return frozenset(held)
+
+
+def _public_relations(relkind: str) -> list[str]:
+    """public 스키마의 관계 이름(relkind r = 표 · S = 시퀀스)."""
+    with connections["owner"].cursor() as cursor:
+        cursor.execute(
+            "SELECT c.relname FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace"
+            " WHERE n.nspname = 'public' AND c.relkind = %s ORDER BY 1",
+            [relkind],
+        )
+        return [row[0] for row in cursor.fetchall()]
+
+
+def _auth_headers(jwks: JwksInfo, **bearer_overrides: object) -> dict[str, str]:
+    """유효한 Access(서비스 토큰) + Bearer(기본 tenant_id = 테넌트 A) 헤더."""
+    access = mint(access_claims(), jwks.access_key, ACCESS_KID)
+    bearer = mint(bearer_claims(**bearer_overrides), jwks.authentik_key, AUTHENTIK_KID)
+    return {"host": HOST, "Cf-Access-Jwt-Assertion": access, "Authorization": f"Bearer {bearer}"}
+
+
+def _backend_pid_and_context() -> tuple[int, str | None]:
+    with connections["default"].cursor() as cursor:
+        cursor.execute("SELECT pg_backend_pid(), current_setting('app.tenant_id', true)")
+        pid, context = cursor.fetchone()
+    return pid, context
+
+
+def _plain_lines(text: str) -> list[str]:
+    """출력의 줄 가운데 구조 로그(JSON 객체 줄)가 아닌 것 — 명령의 고정 출력 줄만 남긴다."""
+    return [line for line in text.splitlines() if line.strip() and not line.lstrip().startswith("{")]
+
+
+def _windows(value: str, size: int = SECRET_WINDOW) -> tuple[str, ...]:
+    """value의 모든 size자 조각 — 잘린 표현에 실린 비밀 조각을 찾는다."""
+    return tuple(dict.fromkeys(value[start : start + size] for start in range(len(value) - size + 1)))
+
+
+def _assert_absent(where: str, text: str, *needles: str) -> None:
+    """needles가 text 어디에도 없다 — 인자를 Secret으로 다시 묶고 위치 번호로 접는다(실패 출력에 값이 실리지 않게)."""
+    text = Secret(text)
+    needles = tuple(Secret(needle) for needle in needles)
+    leaked = [index for index, needle in enumerate(needles) if needle and needle in text]
+    assert leaked == [], f"{where}에 민감 값이 있다(needles 위치 {leaked})"
+
+
+def _redact(text: str, env: Mapping[str, str], extra: tuple[str, ...] = ()) -> str:
+    values = {
+        value
+        for name, value in env.items()
+        if value and len(value) >= 4 and any(marker in name.upper() for marker in SENSITIVE_ENV_MARKERS)
+    }
+    values.update(value for value in extra if value)
+    for value in sorted(values, key=len, reverse=True):
+        text = text.replace(value, "***")
+    return text
+
+
+@dataclass(frozen=True)
+class CommandRun:
+    """관리 명령 하위 프로세스 결과 — 출력 · env · 심은 비밀은 repr에서 뺀다."""
+
+    returncode: int
+    stdout: str = field(repr=False)
+    stderr: str = field(repr=False)
+    env: dict[str, str] = field(repr=False)
+    planted: tuple[str, ...] = field(repr=False, default=())
+
+    def summary(self) -> str:
+        """종료 코드 + stderr 줄 수 + 마지막 줄(env 비밀 값 · 심은 비밀 가림 · 300자)."""
+        lines = [line for line in self.stderr.splitlines() if line.strip()]
+        last = _redact(lines[-1], self.env, self.planted)[:300] if lines else ""
+        return f"종료 코드 {self.returncode} · stderr {len(lines)}줄 · 마지막 줄: {last}"
+
+
+def _closed_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port: int = probe.getsockname()[1]
+    return port
+
+
+def _manage(args: list[str], overrides: Mapping[str, str], planted: tuple[str, ...]) -> CommandRun:
+    """pod 설정(래퍼가 아니다)으로 `python manage.py <args>`를 새 프로세스로 돈다 — env = 이 프로세스의 os.environ(래퍼가 채운
+    설정 env) + DJANGO_SETTINGS_MODULE={{ pod_snake }}.settings + overrides · cwd = pod 루트 · shell 없음 · 시간 상한."""
+    env = dict(os.environ)
+    env["DJANGO_SETTINGS_MODULE"] = POD_SETTINGS
+    env["PYTHONIOENCODING"] = "utf-8"
+    env.update(overrides)
+    completed: subprocess.CompletedProcess[str] | None
+    try:
+        completed = subprocess.run(  # noqa: S603 — 인자 고정 · shell 없음 · 이 프로세스의 인터프리터
+            [sys.executable, "manage.py", *args],
+            cwd=POD_ROOT,
+            env=env,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=BOOT_TIMEOUT_S,
+            check=False,
+            shell=False,
+        )
+    except subprocess.TimeoutExpired:
+        completed = None  # 실패는 except 밖에서 낸다(명령 줄 · 부분 출력이 연쇄 예외로 실리지 않게)
+    if completed is None:
+        pytest.fail(f"manage.py {args[0]}가 {BOOT_TIMEOUT_S} s 안에 끝나지 않았다", pytrace=False)
+    return CommandRun(completed.returncode, completed.stdout, completed.stderr, env, planted)
+
+
+# --- A 등급(RlsWidget) --------------------------------------------------------------------------------------------------
+
+
+def test_grade_a_tenant_context_sees_only_own_rows() -> None:
+    """테넌트 A 컨텍스트(app role · set_tenant_context)에서는 A 행 2개만 · B 행 0 / tenant_context(B)로 바꾸면 B 행 3개만."""
+    _seed_widgets()
+    with transaction.atomic():
+        set_tenant_context(TENANT_A)
+        assert RlsWidget.objects.count() == 2
+        assert RlsWidget.objects.filter(tenant_id=TENANT_B).count() == 0
+        assert set(RlsWidget.objects.values_list("tenant_id", flat=True)) == {TENANT_A}
+        with tenant_context(TENANT_B):
+            assert set(RlsWidget.objects.values_list("tenant_id", flat=True)) == {TENANT_B}
+            assert RlsWidget.objects.count() == 3
+        assert current_tenant_id() == TENANT_A
+
+
+def test_grade_a_without_context_sees_no_rows() -> None:
+    """테넌트 컨텍스트가 없으면 app role은 0행이다(닫힌 쪽)."""
+    _seed_widgets()
+    assert RlsWidget.objects.count() == 0
+    with transaction.atomic():
+        assert current_tenant_id() is None
+        assert RlsWidget.objects.count() == 0
+
+
+def test_grade_a_owner_sees_all_rows() -> None:
+    """owner role(BYPASSRLS)은 FORCE RLS 아래에서도 컨텍스트 없이 전체(5행)를 본다."""
+    _seed_widgets()
+    assert RlsWidget.objects.using("owner").count() == 5
+
+
+def test_grade_a_with_check_blocks_cross_tenant_write() -> None:
+    """테넌트 A 컨텍스트에서 B 행을 쓰면 정책의 WITH CHECK가 막는다(행은 남지 않는다)."""
+    with pytest.raises(DatabaseError, match="row-level security"):
+        with transaction.atomic():
+            set_tenant_context(TENANT_A)
+            RlsWidget.objects.create(tenant_id=TENANT_B, name="cross")
+    assert RlsWidget.objects.using("owner").count() == 0
+
+
+@pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
+def test_grade_a_request_context_from_bearer(jwks_server: JwksInfo, settings: SettingsWrapper) -> None:
+    """pod 미들웨어 사슬: Bearer tenant_id(A) → request.tenant_id → 요청 트랜잭션 컨텍스트 → A 행 2개만 · Bearer tenant_id(B) →
+    3개만 · tenant_id 없는 Bearer → 403 tenant_required · 요청 뒤 같은 DB 세션에 GUC가 남지 않는다(set_config(…, true))."""
+    settings.ROOT_URLCONF = __name__
+    _seed_widgets()
+    client = Client()
+    pid_before, _ = _backend_pid_and_context()
+    first = client.get(WIDGET_COUNT_PATH, headers=_auth_headers(jwks_server))
+    assert first.status_code == 200
+    assert json.loads(first.content) == {"count": 2, "tenant_ids": [str(TENANT_A)], "context": str(TENANT_A)}
+    second = client.get(WIDGET_COUNT_PATH, headers=_auth_headers(jwks_server, tenant_id=str(TENANT_B)))
+    assert second.status_code == 200
+    assert json.loads(second.content) == {"count": 3, "tenant_ids": [str(TENANT_B)], "context": str(TENANT_B)}
+    without_tenant = client.get(WIDGET_COUNT_PATH, headers=_auth_headers(jwks_server, tenant_id=None))
+    assert_problem(without_tenant, 403, "tenant_required")
+    pid_after, leaked = _backend_pid_and_context()
+    assert pid_after == pid_before  # 같은 세션이어야 누출 검사가 뜻이 있다(시험 Client는 요청 끝에 연결을 닫지 않는다)
+    assert leaked in (None, "")
+    assert RlsWidget.objects.count() == 0
+
+
+# --- B 등급(outbox) -----------------------------------------------------------------------------------------------------
+
+
+def test_grade_b_outbox_app_reads_all_without_context() -> None:
+    """B 등급(허용 목록 outbox · RLS 없음): app role이 publish(컨텍스트 없는 경로 · tenant_id 인자)로 쓴 테넌트 A · B 행을 컨텍스트
+    없이 전부 읽는다."""
+    from django_common.outbox import OutboxEvent
+
+    seed(2, TENANT_A)
+    seed(1, TENANT_B)
+    assert OutboxEvent.objects.count() == 3
+    assert set(OutboxEvent.objects.values_list("partition_key", flat=True)) == {str(TENANT_A), str(TENANT_B)}
+
+
+# --- app role 권한(core/0001_app_role_grants) ---------------------------------------------------------------------------
+
+
+def test_app_role_has_exactly_dml_on_every_table(pg: PgInfo) -> None:
+    """public 표 전부에 app role 권한 = SELECT · INSERT · UPDATE · DELETE 정확히(TRUNCATE · REFERENCES · TRIGGER 없음) ·
+    django_migrations만 SELECT 하나(앱은 마이그레이션 이력을 쓰지 않는다)."""
+    tables = _public_relations("r")
+    assert {"outbox", "rls_widget", MIGRATIONS_TABLE} <= set(tables)
+    expected = {table: frozenset({"SELECT"}) if table == MIGRATIONS_TABLE else APP_TABLE_PRIVILEGES for table in tables}
+    actual = {table: _table_privileges(pg.app_user, table) for table in tables}
+    mismatched = {table: sorted(actual[table]) for table in tables if actual[table] != expected[table]}
+    assert mismatched == {}
+
+
+def test_app_role_uses_every_sequence(pg: PgInfo) -> None:
+    """public 시퀀스 전부에 app role 권한 = USAGE · SELECT(UPDATE 없음 — setval 불가)."""
+    sequences = _public_relations("S")
+    assert sequences, "public 시퀀스가 하나도 없다(django_migrations id 시퀀스는 있어야 한다)"
+    mismatched = {
+        sequence: sorted(held)
+        for sequence in sequences
+        if (held := _sequence_privileges(pg.app_user, sequence)) != APP_SEQUENCE_PRIVILEGES
+    }
+    assert mismatched == {}
+
+
+def test_default_privileges_cover_objects_created_later(pg: PgInfo) -> None:
+    """owner가 마이그레이션 뒤에 만드는 표 · 시퀀스에도 app role 권한이 붙는다(ALTER DEFAULT PRIVILEGES) — app role이 그 표에 실제로
+    INSERT · SELECT · UPDATE · DELETE를 하고, 시퀀스에 nextval을 부른다. 표는 RLS가 없으므로 끝나면 지운다(check_rls)."""
+    table, sequence = "t072_later_probe", "t072_later_probe_seq"
+    owner_execute(f"CREATE TABLE {table} (id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY, note text NOT NULL)")
+    owner_execute(f"CREATE SEQUENCE {sequence}")
+    try:
+        assert _table_privileges(pg.app_user, table) == APP_TABLE_PRIVILEGES
+        assert _sequence_privileges(pg.app_user, f"{table}_id_seq") == APP_SEQUENCE_PRIVILEGES
+        assert _sequence_privileges(pg.app_user, sequence) == APP_SEQUENCE_PRIVILEGES
+        with connections["default"].cursor() as cursor:
+            cursor.execute(f"INSERT INTO {table} (note) VALUES (%s) RETURNING id", ["x"])
+            (row_id,) = cursor.fetchone()
+            cursor.execute(f"UPDATE {table} SET note = %s WHERE id = %s", ["y", row_id])
+            cursor.execute(f"SELECT note FROM {table} WHERE id = %s", [row_id])
+            assert cursor.fetchone() == ("y",)
+            cursor.execute(f"DELETE FROM {table} WHERE id = %s", [row_id])
+            assert cursor.rowcount == 1
+            cursor.execute("SELECT nextval(%s)", [sequence])
+            assert cursor.fetchone() == (1,)
+    finally:
+        owner_execute(f"DROP TABLE IF EXISTS {table}")
+        owner_execute(f"DROP SEQUENCE IF EXISTS {sequence}")
+
+
+def test_relay_round_trip_as_app_role() -> None:
+    """relay_once(app role · 컨텍스트 없음): 성공이면 행 삭제(DELETE) · 실패 DR이면 attempts 1(UPDATE) — 둘 다 app role 권한으로
+    된다(SELECT … FOR UPDATE SKIP LOCKED 포함). 프로듀서는 대역이다(실 Kafka 왕복은 test_outbox)."""
+    from django_common.outbox import relay_once
+
+    seed(1, TENANT_A)
+    delivered = relay_once(producer=FakeProducer())
+    assert (delivered.published, delivered.failed, delivered.dead) == (1, 0, 0)
+    assert owner_scalar("SELECT count(*) FROM outbox") == 0
+    seed(1, TENANT_B)
+    refused = relay_once(producer=FakeProducer(decide=fail_topics(KAFKA_TOPIC)))
+    assert (refused.published, refused.failed, refused.dead) == (0, 1, 0)
+    assert owner_scalar("SELECT attempts FROM outbox") == 1
+
+
+# --- check_rls --------------------------------------------------------------------------------------------------------
+
+
+def test_check_rls_passes_for_owner_and_app_role() -> None:
+    """check_rls: owner(CI · migrate Job) · app role + require_rls_role(기동) 둘 다 위반 0 · 명령 성공 줄 · 이 템플릿의 표 등급 —
+    rls_widget(A)은 ENABLE + FORCE ROW LEVEL SECURITY, outbox(B)는 RLS 없음."""
+    assert check_rls(using="owner") == []
+    assert check_rls(using="default", require_rls_role=True) == []
+    out = io.StringIO()
+    call_command("check_rls", database="owner", stdout=out)
+    match = CHECK_RLS_OK.fullmatch(out.getvalue().strip())
+    assert match is not None, "check_rls 성공 줄이 계약 꼴이 아니다"
+    grade_a, grade_b, framework = (int(value) for value in match.groups())
+    assert grade_a >= 1 and grade_b >= 1 and framework >= 1
+    with connections["owner"].cursor() as cursor:
+        cursor.execute(
+            "SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity FROM pg_catalog.pg_class c"
+            " JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace"
+            " WHERE n.nspname = 'public' AND c.relname IN ('rls_widget', 'outbox')"
+        )
+        flags = {name: (enabled, forced) for name, enabled, forced in cursor.fetchall()}
+    assert flags == {"rls_widget": (True, True), "outbox": (False, False)}
+
+
+def test_check_rls_flags_unlisted_table_without_rls() -> None:
+    """허용 목록 밖의 표가 RLS 없이 있으면 check_rls(함수 · 명령)가 그 표 이름으로 실패한다 — 지우면 다시 통과한다."""
+    table = "t072_rogue"
+    owner_execute(f"CREATE TABLE {table} (id integer)")
+    try:
+        flagged = [violation for violation in check_rls(using="owner") if violation.startswith(f"{table}:")]
+        assert flagged, f"check_rls가 {table}을 잡지 못했다"
+        with pytest.raises(CommandError, match=table):
+            call_command("check_rls", database="owner", stdout=io.StringIO())
+    finally:
+        owner_execute(f"DROP TABLE IF EXISTS {table}")
+    assert check_rls(using="owner") == []
+
+
+# --- startup_check(web initContainer · D7) ----------------------------------------------------------------------------
+
+
+def test_startup_check_ok_as_app_role(capsys: pytest.CaptureFixture[str]) -> None:
+    """app role(default 별칭): DB 접속 → check_rls --require-rls-role 통과 → stdout 한 줄 `startup_check: OK` · stderr 없음."""
+    capsys.readouterr()
+    call_command("startup_check", "--wait", "1")
+    captured = capsys.readouterr()
+    assert _plain_lines(captured.out) == [STARTUP_OK]
+    assert _plain_lines(captured.err) == []
+
+
+def test_startup_check_refuses_owner_credentials(capsys: pytest.CaptureFixture[str]) -> None:
+    """owner 자격(런타임에 owner 자격이 섞인 사고): 종료 코드 1 · stderr 한 줄 `startup_check: FAIL check_rls session_user` ·
+    OK 줄 없음."""
+    capsys.readouterr()
+    with pytest.raises(SystemExit) as raised:
+        call_command("startup_check", "--database", "owner", "--wait", "1")
+    captured = capsys.readouterr()
+    assert raised.value.code == 1
+    assert _plain_lines(captured.err) == ["startup_check: FAIL check_rls session_user"]
+    assert STARTUP_OK not in captured.out
+
+
+def test_startup_check_unreachable_db_prints_class_name_only() -> None:
+    """닫힌 포트 DB(하위 프로세스 · pod 설정 · --wait 1): 종료 코드 1 · stderr 한 줄 `startup_check: FAIL OperationalError` ·
+    stdout은 재시도 줄뿐 · 트레이스백 · 접속 문자열 · 비밀번호(조각 포함) 없음(libpq 오류 문구는 자격 조각을 실을 수 있다)."""
+    password = secrets.token_urlsafe(24)
+    url = f"postgresql://{POD_SNAKE}_app:{password}@127.0.0.1:{_closed_port()}/{POD_SNAKE}?sslmode=require"
+    result = _manage(["startup_check", "--wait", "1"], {"DATABASE_URL": url}, (password, url))
+    assert result.returncode == 1, result.summary()
+    one_line = _plain_lines(result.stderr) == ["startup_check: FAIL OperationalError"]
+    assert one_line, f"stderr가 계약 한 줄이 아니다 — {result.summary()}"
+    stray = [index for index, line in enumerate(_plain_lines(result.stdout)) if STARTUP_RETRY.fullmatch(line) is None]
+    assert stray == [], f"stdout에 재시도 줄이 아닌 줄이 있다(줄 번호 {stray})"
+    output = result.stdout + result.stderr
+    has_traceback = "Traceback" in output
+    assert not has_traceback, "startup_check 출력에 트레이스백이 있다"
+    _assert_absent("startup_check 출력", output, password, url, "postgresql://", *_windows(password))

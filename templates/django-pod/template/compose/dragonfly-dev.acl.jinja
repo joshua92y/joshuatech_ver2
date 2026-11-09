@@ -1,0 +1,3 @@
+USER default OFF +auth +hello
+USER admin ON nopass ~* &* +@all
+USER {{ pod_name }} ON nopass %R~revoked:* ~{{ pod_name }}:* +@all

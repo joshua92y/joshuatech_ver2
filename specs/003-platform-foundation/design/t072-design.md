@@ -224,7 +224,7 @@ T072가 만들어야 할 것은 다음과 같다.
   - `_exclude: [".gitkeep", "__pycache__", "*.py[co]", ".pytest_cache", ".venv", ".DS_Store", "~*"]`(항목당 패턴 하나 → 9.17과 호환) + `template/.gitkeep` 삭제
   - `_envops: {undefined: jinja2.StrictUndefined}`(변수 오타가 생성 실패로 드러나게, 〔조사 tooling C7〕)
   - 질문은 계약 7개를 유지한다(계약:11-17).
-    - **`pod_name`**: str, 기본값 없음. validator는 하나라도 어기면 고정 문구를 낸다.
+    - **`pod_name`**: str, 기본값 없음. validator는 하나라도 어기면 고정 문구를 낸다. 〔② r2 H4 · r3 J2 — 예약 이름도 거부한다: `pod_snake`가 파이썬 키워드 · `sys.stdlib_module_names` · 생성 잠금 의존의 최상위 import 이름 · 템플릿 내부 이름(`tests` · `core` · `rlsapp` · `django_common` · `manage`) · INSTALLED_APPS 앱 라벨(contrib 6 — has_admin과 무관) · 생성 트리 최상위 이름(디렉터리 `deploy` · `compose` + 대소문자를 가리지 않는 파일 시스템에서 파일 `Dockerfile`과 부딪히는 `dockerfile` — r3 실측: copier FileExistsError)과 같으면. 템플릿 묶음 둘(앱 라벨 · 최상위 이름)은 하네스 gen-37이 자기검사한다(③ r2 M11). 목록은 생성 venv에서 뽑아 copier.yml에 싣는다〕
       - `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`(봉투 source 패턴과 같음, publisher.py:83)
       - 길이 ≤ 39(CronJob `<pod>-outbox-purge` ≤ 52)
       - `dev`가 아니고 `dev-`로 시작하지 않음(data-model.md:113)
@@ -249,7 +249,7 @@ T072가 만들어야 할 것은 다음과 같다.
 - **계약 · 규칙**: C1(렌더 · 검사 전용 `--skip-tasks` · 형제 없는 배치 예외 · 〔X3〕), data-model §6 보정(C29 · 〔X20〕).
 - **시험**
   - gen-1 · gen-18(기존)
-  - 새 gen-28: `copier copy --defaults --skip-tasks --pretend --data pod_name=<잘못된 값>`이 0이 아닌 종료 코드와 validator 문구를 낸다. 대상 값: `Bad_Name` · `dev` · `dev-x` · 40자 · `--data pod_snake=wrong` · `--data owns_events=[bad]` · `consumes_events`에 따옴표가 든 항목 · 성분 2개 항목(〔X28〕).
+  - 새 gen-28: `copier copy --defaults --skip-tasks --pretend --data pod_name=<잘못된 값>`이 0이 아닌 종료 코드와 validator 문구를 낸다 〔r1 — 문구 앞머리 = `invalid <질문 이름>:`(영어 한 줄 · ASCII — copier 9.19.1이 `Validation error for question …`으로 감싸 stderr 마지막 줄에 낸다 · 처리하지 않은 ValueError라 트레이스백은 막을 수 없다) · r2 E4 — 받아들임 사례는 `--skip-tasks` 실제 생성 + `.copier-answers.yml`의 주입 값 대조〕. 대상 값: `Bad_Name` · `dev` · `dev-x` · 40자 · `--data pod_snake=wrong` · `--data owns_events=[bad]` · `consumes_events`에 따옴표가 든 항목 · 성분 2개 항목(〔X28〕).
   - 새 gen-25: 생성물에 `.gitkeep`이 없다.
 - **변이**: 따옴표 없는 9.17(float) → copier 자체 실패. validator 삭제 → gen-28이 잡는다.
 
@@ -303,9 +303,9 @@ apps/<pod>/
   - `[tool.uv.sources] django-common = { path = "../../packages/django-common", editable = true }`(가정 ⑤ — 정확 꼴)
   - pytest 설정:
     - `DJANGO_SETTINGS_MODULE = "tests.settings"` · `testpaths = ["tests"]` · `pythonpath = ["."]`
-    - `addopts = ["--tb=short", "--show-capture=no"]`
+    - `addopts = ["--tb=short", "--show-capture=no"]` 〔② r2 H9 · H12 — `--ds=tests.settings`를 더했고(셸 `DJANGO_SETTINGS_MODULE` 우회 차단), 생성물 conftest가 `register_assert_rewrite` + 실행 가드(`-O` · `short`가 아닌 `--tb` · `-l` · `no`가 아닌 `--show-capture` · `--full-trace` · 래퍼가 아닌 설정 모듈 → UsageError)를 둔다 · 하네스 `check_pytest_hygiene`는 `--ds=tests.settings`를 요구한다〕
     - `filterwarnings = ["error::DeprecationWarning:<pod_snake>", "error::DeprecationWarning:tests"]`
-  - 잠금은 copier `_tasks: uv lock`이 생성 시점에 만든다. 숙성 창 `exclude-newer`는 UD-2 결정에 따른다.
+  - 잠금은 copier `_tasks: uv lock`이 생성 시점에 만든다. 숙성 창 `exclude-newer`는 UD-2 결정에 따른다. 〔UD-2 B 결정 2026-11-09 — `[tool.uv] exclude-newer = "3 days"` · VD-T072-17 통과 조건〕
   - PyJWT 핀은 pod에 두지 않는다. 생성 잠금의 PyJWT 판은 VD-T072-2에서 확인한다.
 - **왜**
   - gen-2 판정(H/tests/_tree.py:215-275)
@@ -523,12 +523,12 @@ apps/<pod>/
 ### D11 WSGI 서버 · web 9100 지표
 
 - **무엇**
-  - **gunicorn**: gthread · `workers=1` · `threads=4` · `bind 0.0.0.0:8000` · `timeout 30` · `graceful_timeout 30`(pod grace 90 안) · `worker_tmp_dir /tmp` · accesslog 없음(기본 None) · `--preload` 없음.
+  - **gunicorn**: gthread · `workers=1` · `threads=4` · `bind 0.0.0.0:8000` · `timeout 30` · `graceful_timeout 30`(pod grace 90 안) · `worker_tmp_dir /tmp` · accesslog 없음(기본 None) · `--preload` 없음. 〔② r2 H15 · r3 J4 · J5 — `keepalive = 95`(Traefik 백엔드 유휴 90 s보다 길게 — 종료 때 유휴 keep-alive 연결이 남으면 워커가 graceful_timeout 30 s까지 기다린다 · VD-L19) · `forwarded_allow_ips = "127.0.0.1,::1"` 고정(env `FORWARDED_ALLOW_IPS`가 전달 헤더 신뢰를 넓히지 못하게)〕
   - 명령: `gunicorn --config python:<pod_snake>.gunicorn_conf --no-control-socket <pod_snake>.wsgi:application`(⑱).
   - `gunicorn_conf.post_worker_init`에서 `prometheus_client.start_http_server(9100)`.
   - `metrics.py`: `http_requests_total{route,status}` Counter.
     - route = `request.resolver_match.route`(해석 안 됨 = "")
-    - HttpMetricsMiddleware만 import하므로 relay · celery 레지스트리에는 생기지 않는다.
+    - HttpMetricsMiddleware만 import하므로 relay · celery 레지스트리에는 생기지 않는다. 〔②c — 이 근거는 틀렸다: Django admin 시스템 검사(`check_dependencies`)가 relay(manage.py) · celery(Django fixup)에서도 MIDDLEWARE 클래스를 import한다. 그래서 Counter 등록을 import 시점이 아니라 `HttpMetricsMiddleware` 인스턴스가 처음 만들어질 때로 미뤘다(지연 등록) · relay 레지스트리 시험이 import 시점 등록 변이를 잡는다〕
   - 워커가 하나라 prometheus multiprocess가 필요 없다. `PROMETHEUS_MULTIPROC_DIR`는 어디에도 두지 않는다.
   - gunicorn master/worker 생애 로그(Booting · exiting)는 원문 stderr로 남는다(문서화한 예외 · T098).
 - **왜**
@@ -611,7 +611,7 @@ apps/<pod>/
   - **`configure_broker(url)`**: `app.conf.broker_url = url`. ready의 runtime 분기가 부른다(〔X7〕) → 브로커 = `settings.DRAGONFLY_URL`. 새 자격 URL 설정 이름이 없으므로 마스킹 목록 개정이 없다(bn:3721).
   - 시험에서는 기동 순간의 닫힌 포트 자리값이 남는다 → T066 ⑥ · api-19가 결정적이다.
   - **tasks.py**: `@app.task(name="<pod_snake>.tasks.purge_dead_outbox") def purge_dead_outbox() -> int: return purge_dead()`.
-  - **워커 명령**: `celery --app <pod_snake> worker --pool solo --beat --schedule /tmp/celerybeat-schedule --without-gossip --without-mingle --without-heartbeat --loglevel INFO`. 배너 같은 원문 stdout은 예외로 둔다(VD로 `--quiet` 확인).
+  - **워커 명령**: `celery --app <pod_snake> worker --pool solo --beat --schedule /tmp/celerybeat-schedule --without-gossip --without-mingle --without-heartbeat --loglevel INFO`. 〔②a · ②c — Windows의 Celery CLI는 `--beat`를 거부한다(「-B option does not work on Windows」). 생성물 실제 워커 시험은 Windows에서 워커(`--beat` · `--schedule` 뺌) + 별도 `celery beat` 두 프로세스, Linux에서는 이 명령 그대로다 — Linux 갈래의 첫 실측은 CI(VD-T072-CI) · `--quiet`는 최상위 옵션(`celery --quiet --app …`) · 워커는 기동 때 Django 시스템 검사를 돈다〕 배너 같은 원문 stdout은 예외로 둔다(VD로 `--quiet` 확인).
   - CeleryIntegration을 두지 않는다. configure_sentry에 integrations 인자가 없고 자동 통합은 꺼져 있다 → T100이 정한다.
   - Dragonfly ACL을 넓히지 않는다(채널 0 유지).
   - 롤링 중 beat가 둘이 될 수 있다 → 작업은 멱등이다(purge).
@@ -711,7 +711,7 @@ apps/<pod>/
   - `call_command("makemigrations", "--check", "--dry-run")`(같은 줄 — H/tests/_tree.py:310-325)
   - `call_command("lintmigrations")`
   - **migrate 프로필 하위 프로세스**(has_celery 기본 생성물): env에서 pod 설정 키를 지우고 `JT_SETTINGS_PROFILE=migrate` · `ENV=test` · `DATABASE_OWNER_URL` · `DJANGO_SETTINGS_MODULE=<pod_snake>.settings`(pytest-django가 둔 tests.settings를 덮는다) → `manage.py migrate --noinput` 종료 0. 같은 프로필의 setup 탐침이 `DRAGONFLY_URL` 없이 기동하고 `'celery' not in sys.modules`를 단언한다(〔X7〕).
-  - **migrate Job 스크립트 실물 시험**: `deploy/base/migrate-job.yaml`을 pyyaml로 읽어 `python -c` 스크립트를 하위 프로세스로 실행 → 시험 PG에서 PUBLIC CONNECT 회수 · `<db>_app` · `<db>_owner` CONNECT 확인(임시 role 비교) + 하위 migrate의 종료 코드가 스크립트 종료 코드로 전달된다(없는 DB 이름 주입 → 0 아님 · 최종 실패 stderr에 예외 클래스 이름만 — 〔X4 · X25〕)
+  - **migrate Job 스크립트 실물 시험** 〔r2 E7 — 둘로 나눈다: (a) 접속 · REVOKE/GRANT 성공 뒤 하위 migrate 실패(`JT_SETTINGS_PROFILE=bogus`) → 스크립트 종료 ≠ 0 · CONNECT 바뀜 = 종료 코드 전달(X4) (b) 닫힌 포트 + `JT_DB_CONNECT_WAIT_SECONDS=1` → 종료 1 · stderr 한 줄 `db_connect_failed OperationalError`〕: `deploy/base/migrate-job.yaml`을 pyyaml로 읽어 `python -c` 스크립트를 하위 프로세스로 실행 → 시험 PG에서 PUBLIC CONNECT 회수 · `<db>_app` · `<db>_owner` CONNECT 확인(임시 role 비교) + 하위 migrate의 종료 코드가 스크립트 종료 코드로 전달된다(없는 DB 이름 주입 → 0 아님 · 최종 실패 stderr에 예외 클래스 이름만 — 〔X4 · X25〕)
 - **test_openapi_snapshot.py**: D9 비교 · title · 경로에 /healthz · /ready · /health · 자격을 붙인 `/api/openapi.json` = 스키마 · `/docs` 404.
 - Sentry 스모크는 기본 시험에 두지 않는다 — 생성물은 `SENTRY_DSN` 빈 값(끔) 경로만 돈다. init · 전송은 dc 계약 시험(T071)과 T100이 맡는다(〔X14〕).
 - **왜**: 하네스는 7파일 수집 · 통과 · skip 0만 보고 내용은 계약이 정한다(〔조사 harness F10,F32〕).
@@ -748,9 +748,9 @@ CMD ["gunicorn", "--config", "python:<pod_snake>.gunicorn_conf", "--no-control-s
 ```
 
   - `--no-editable`이라 dc는 site-packages에 정규 설치되고 런타임에 `/src/packages`가 필요 없다(〔조사 tooling U3〕).
-  - collectstatic은 없다(D10).
-  - `Dockerfile.dockerignore`(허용 목록): `*` → `!apps/<pod>` → `!packages/django-common/pyproject.toml` → `!packages/django-common/src` → 다시 빼기 `**/.venv` · `**/__pycache__` · `**/*.py[co]` · `**/.pytest_cache` · `apps/<pod>/tests` · `apps/<pod>/deploy` · `apps/<pod>/compose*` · `apps/<pod>/env.example` · `apps/<pod>/README.md` · `**/.env` · `**/.env.*` · `**/*.pem` · `**/*.key` · `**/.git*` · `apps/<pod>/.copier-answers.yml`(이미지는 GHCR Public이다 — 로컬 `.env` · 키가 실리지 않게 · 〔X27〕).
-  - **Python 패치 판 차이**(빌더 3.13.15 / 런타임 3.13.18)는 받아들이고 기록한다. minor가 같아 `/usr/local/bin/python3.13` 경로 · cp313 ABI · pyc 매직이 같다. ≥ 3.13.2 요구(bn:2683-2686)를 만족한다. 〔R16〕
+  - collectstatic은 없다(D10). 〔③ r2 M4 — `ARG APP_VERSION` · `ARG APP_GIT_SHA`는 `COPY --from=builder` 뒤(LABEL · ENV 바로 앞)에 둔다 — build-arg가 바뀌어도 useradd · COPY 층 캐시가 깨지지 않게. 하네스는 build-arg를 주고 라벨 · ENV가 준 값인지 단언한다〕
+  - `Dockerfile.dockerignore`(허용 목록): `*` → `!apps/<pod>` → `!packages/django-common/pyproject.toml` → `!packages/django-common/src` → 다시 빼기 `**/.venv` · `**/__pycache__` · `**/*.py[co]` · `**/.pytest_cache` · `apps/<pod>/tests` · `apps/<pod>/deploy` · `apps/<pod>/compose*` · `apps/<pod>/env.example` · `apps/<pod>/README.md` · `**/.env` · `**/.env.*` · `**/*.pem` · `**/*.key` · `**/.git*` · `apps/<pod>/.copier-answers.yml`(이미지는 GHCR Public이다 — 로컬 `.env` · 키가 실리지 않게 · 〔X27〕). 〔③ r2 M1 — pod 안까지 허용 목록으로 바꾼다: `*` → `!apps/<pod>/<pod_snake>` · `!apps/<pod>/manage.py` · `!apps/<pod>/pyproject.toml` · `!apps/<pod>/uv.lock` · `!packages/django-common/pyproject.toml` · `!packages/django-common/src` → 재제외 `**/__pycache__` · `**/*.py[co]` · `**/.pytest_cache` · `**/.venv` · `**/.env*` · `**/*.pem` · `**/*.key` · `**/*.crt` · `**/*.p12` · `**/*.pfx` · `**/.git*`. 위 꼴은 pod 디렉터리 안에서 거부 목록이라 작업 트리의 IDE 설정 · `*.env` · SSH 키 · `secrets/`가 공개 이미지 층에 실렸다(조각 ③ 리뷰 B-1 실측 — 12개 가운데 11개) · 저장소 루트 `.dockerignore` = `*`(이름이 어긋난 빌드는 빈 컨텍스트로 닫힌다 · M10)〕 〔마지막 라운드 N6 · 마감 Z3 — 재제외 16개: 접미(`pem` · `key` · `crt` · `p12` · `pfx`)와 `.env*`는 대괄호 대소문자 무관 꼴, 이름 꼴 다섯(`*.env` · `.netrc` · `id_rsa*` · `id_ed25519*` · `id_ecdsa*`)도 대괄호 꼴 — 실측: 옛 꼴은 `ID_RSA` · `LOCAL.ENV` · `CASE.PEM` 등이 이미지에 실렸다. `packages/django-common/src`의 추적 밖 파일은 wheel을 거쳐 site-packages에 들어간다(문서화 — 그 경로에 비밀 금지)〕
+  - 〔UD-1 B로 사라짐 — 빌더 uv 0.13.7 이미지와 런타임 모두 3.13.18(2026-11-09 실측)〕 **Python 패치 판 차이**(빌더 3.13.15 / 런타임 3.13.18)는 받아들이고 기록한다. minor가 같아 `/usr/local/bin/python3.13` 경로 · cp313 ABI · pyc 매직이 같다. ≥ 3.13.2 요구(bn:2683-2686)를 만족한다. 〔R16〕
 - **왜**: 계약:24,82 · 루트 컨텍스트 배치 · 숫자 UID(⑭) · Windows .venv(⑮) · build-arg(bn:3380).
 - **기각한 대안**
   - 이름 USER + runAsUser만: 이미지를 단독 실행할 때 비-root 판정이 약하다.
@@ -761,17 +761,17 @@ CMD ["gunicorn", "--config", "python:<pod_snake>.gunicorn_conf", "--no-control-s
 - **시험**
   - gen-6(기존)
   - 새 gen-33:
-    - `docker image inspect` → `Config.User == "10001:10001"` · Env 이름에 금지 env 0(D21 env_hygiene과 같은 목록 · 〔X18〕) · 라벨 revision · FROM 전부 `@sha256:`(Dockerfile 정적 검사 도우미)
+    - `docker image inspect` → `Config.User == "10001:10001"` · Env 이름에 금지 env 0(D21 env_hygiene과 같은 목록 · 〔X18〕) · 라벨 revision · FROM 전부 `@sha256:`(Dockerfile 정적 검사 도우미) 〔③ r2 M4 · 마지막 라운드 N4 — build-arg 배선(라벨 revision == Env APP_GIT_SHA == 준 값 · APP_VERSION) · `Config.Cmd == WEB_COMMAND`(exec 꼴) · `Config.Entrypoint` 없음 — 셸 꼴 CMD는 PID 1이 sh라 SIGTERM이 gunicorn에 닿지 않는다(실측 15.5 s 뒤 SIGKILL)〕
     - `docker run --rm --network none --read-only --tmpfs /tmp --entrypoint python …` 탐침 → uid/gid 10001 · `~/.netrc` · `~/_netrc` 없음 · Python ≥ 3.13.2 · `django_common` 파일이 venv site-packages(비-editable) · django-ninja 1.7.0 · `/src/packages` 없음 · `/src/apps/<pod>` 아래 `.env*` · `*.pem` · `*.key` 0(〔X27〕)
   - 새 gen-34: 웹 기동 스모크(D11)
-- **변이**: dockerignore 삭제 → Windows .venv 복사로 gen-33/34 실패. `USER app` → gen-33.
+- **변이**: dockerignore 삭제 → Windows .venv 복사로 gen-33/34 실패. `USER app` → gen-33. 〔③ — 첫 문장은 거짓이다(실측): Windows에서는 두 번째 `uv sync`가 venv를 다시 만들지 않고 합쳐진 venv로 web이 뜬다(gen-34 초록 · 컨텍스트 144 MB) · Linux에서는 uv가 「non-existent Python interpreter」로 venv를 지우고 다시 만든다. 이 변이는 조각 ③이 더한 gen-33 판정(탐침 최상위 허용 목록 · sensitive · 감시 파일)과 r2 M1 · M2(허용 목록 dockerignore · 생성 dockerignore 정적 검사 · 심기 단언)가 잡는다〕
 
 ### D19 compose.dev.yml · env.example · README
 
 - **무엇**
   - **compose.dev.yml**: 포트는 127.0.0.1에만 bind한다.
     - postgres: `build: tests/docker/pg-tls`(TLS 전용 · `sslmode=require`)
-    - dragonfly: `ghcr.io/dragonflydb/dragonfly:v1.40.1@sha256:ebf3c6c2…` + `--aclfile` `compose/dragonfly-dev.acl`(admin · `<pod>` 운영 규칙 + `nopass` — 비밀 0)
+    - dragonfly: `ghcr.io/dragonflydb/dragonfly:v1.40.1@sha256:ebf3c6c2…` + `--aclfile` `compose/dragonfly-dev.acl`(admin · `<pod>` 운영 규칙 + `nopass` — 비밀 0) 〔③ — 호스트 포트는 셸 env(`JT_DEV_POSTGRES_PORT` · `JT_DEV_DRAGONFLY_PORT` · `JT_DEV_KAFKA_PORT` · 기본 5432 · 6379 · 9092) · `name: <pod>-dev` · postgres TLS `pg_isready` healthcheck · Kafka는 KRaft env 전부(광고 리스너 `127.0.0.1:<포트>` · 파티션 3) · README 부트스트랩은 compose 컨테이너 안 psql · r2 M5 — Dragonfly `--primary_port_http_enabled=false`(운영과 같다) · gen-35가 `config --format json` 내용을 판정한다〕
     - kafka: `apache/kafka:4.3.1@sha256:77e3df90…` KRaft PLAINTEXT(〔조사 tooling I1 · I2〕)
     - 로컬 실행은 ENV=test(PLAINTEXT · require)다. 시험은 compose를 쓰지 않는다(MIS-15).
   - **env.example**: 계약 20키 + `SECRET_KEY` · `APP_VERSION` · `APP_GIT_SHA`(이미지 밖 로컬 실행에서도 runtime 필수 — 〔X16〕) + (has_admin) `FORCE_SCRIPT_NAME`. 줄마다 `KEY=`이고 주석은 허용한다. `DATABASE_OWNER_URL` · `EMAIL_*` · `POD_*`는 없다(계약:26-27).
@@ -781,7 +781,7 @@ CMD ["gunicorn", "--config", "python:<pod_snake>.gunicorn_conf", "--no-control-s
   - `postgres:18` 태그만: 시험 TLS 규칙과 다르고 digest가 없다.
   - aclfile에 비밀번호: gitleaks · 비밀 규칙에 걸린다.
 - **계약 · 규칙**: C4 · C5.
-- **시험**: gen-3(기존) · 새 gen-35 `docker compose -f compose.dev.yml config --quiet`.
+- **시험**: gen-3(기존) · 새 gen-35 `docker compose -f compose.dev.yml config --quiet`. 〔③ r2 M5 · 마지막 라운드 N5 · 마감 Z2 — gen-35 = `docker compose -f compose.dev.yml --profile "*" config --format json`(모든 프로필) 내용 판정(published 포트 루프백 · build 밖 image digest · aclfile 읽기 전용 · 주 포트 HTTP 끔 · pg-tls build) + 프로필 탐침 파일로 러너 Compose가 `*`를 펼치는지 실측 단언〕
 - **변이**: env.example에 값 → gen-3.
 
 ### D20 deploy/base
@@ -835,14 +835,14 @@ CMD ["gunicorn", "--config", "python:<pod_snake>.gunicorn_conf", "--no-control-s
     - 컨테이너 `migrate`: envFrom **`<pod>-migrate`만**(ConfigMap 없음) + env `JT_SETTINGS_PROFILE=migrate` · 256Mi/512Mi · pg-ca · tmp
     - 명령 `["python", "-c", <스크립트>]`. 스크립트 순서:
       1. `DATABASE_OWNER_URL` 경로에서 db를 얻는다.
-      2. 접속 재시도 ≤ 120 s. 메시지는 `db_connect_retry`이고 예외 클래스 이름만 싣는다. 최종 실패는 stderr 한 줄(`db_connect_failed <예외 클래스 이름>`) + 종료 코드 1이고 트레이스백 · 예외 메시지는 없다(〔X25〕). REVOKE 앞에 `migrate` 낱말을 두지 않는다(gen-14 순서 규칙).
+      2. 〔r2 E7 — 재시도는 `psycopg.OperationalError`만(그 밖은 즉시 실패) · 마감 env `JT_DB_CONNECT_WAIT_SECONDS`(정수 1–600 · 기본 120 · 아니면 stderr `db_connect_wait_invalid` + 종료 1) · 재시도 줄은 stdout `db_connect_retry <클래스> attempt=<n>` · 골든 두 개가 이 꼴의 본보기다〕 접속 재시도 ≤ 120 s. 메시지는 `db_connect_retry`이고 예외 클래스 이름만 싣는다. 최종 실패는 stderr 한 줄(`db_connect_failed <예외 클래스 이름>`) + 종료 코드 1이고 트레이스백 · 예외 메시지는 없다(〔X25〕). REVOKE 앞에 `migrate` 낱말을 두지 않는다(gen-14 순서 규칙). 〔④ r2 N1 — 접속 루프 밖도 같은 규칙: `DATABASE_OWNER_URL` 해석 실패 = stderr 한 줄 `db_url_invalid <클래스>`(Python `urlsplit` ValueError는 netloc 전체를 싣는다) · CONNECT 경계 SQL은 같은 마감 안에서 `OperationalError` · `UndefinedObject`(첫 배포에서 app role이 늦게 생긴다 — 런북 T054 실측)를 재시도(stdout `db_boundary_retry`) · 그 밖 · 마감 = `db_boundary_failed <클래스>` + 종료 1. 하네스가 렌더 스크립트 = 골든 스크립트(바이트)를 단언한다(N2)〕
       3. `sql.SQL("REVOKE CONNECT ON DATABASE {} FROM PUBLIC")` · `sql.SQL("GRANT CONNECT ON DATABASE {} TO {}, {}")`(Identifier — db, db_app, db_owner)
       4. `sys.exit(subprocess.call([sys.executable, "manage.py", "migrate", "--noinput"]))`(골든 꼴 — Windows 시험에서도 종료 코드가 그대로 전달된다 · 컨테이너 PID 1의 신호 동작은 execv와 같다 · ㉛ · 〔X4〕)
   - **첫 배포 순서**: PreSync에서 `<pod>-migrate` ES(wave -1)가 Healthy(Secret 생성)가 된 뒤 Job(wave 0)이 돈다. Argo hook 완료 판정이 health 기반이라는 점은 추론이다(VD-L1). Sync 단계에서는 `<pod>-env` ES · ConfigMap(wave -1)이 Healthy가 된 뒤 Deployment(wave 0)가 적용된다. pg-main-ca · CA 미러는 app sync-wave 100보다 앞인 wave 40에 있다(〔조사 shape F06〕).
   - **hook ES의 운영 성질**(㉞ · 〔X26〕): VD-L1 추론이 틀려 Job이 Secret보다 먼저 떠도 kubelet이 CreateContainerConfigError를 재시도하므로 activeDeadlineSeconds 600 안에서 스스로 풀린다. 남는 것은 넷이다.
     1. `-migrate` ES · migrate Job만 바꾼 변경은 자동 sync를 일으키지 않는다 → 전체 수동 Sync(리소스 선택 없음).
     2. `-migrate` ES 상태는 앱 health에 없다 → 운영자가 `kubectl get externalsecret <pod>-migrate`로 직접 판정한다.
-    3. hook이 Healthy가 되지 않으면(Vault · ESO 장애 · kv 누락) operation이 시간 제한 없이 멈춘다 → 운영자가 operation을 terminate한다.
+    3. hook이 Healthy가 되지 않으면(Vault · ESO 장애 · kv 누락) operation이 시간 제한 없이 멈춘다 → 운영자가 operation을 terminate한다. 〔④ r1 B-2 정정(Argo CD v3.5.2 소스 — ExternalSecret health.lua · gitops-engine getOperationPhase · appcontroller 「Skipping auto-sync: failed previous sync attempt」): ① ES Degraded(kv 누락 · Vault · store 오류 — `kubectl get externalsecret <pod>-migrate` Ready=False) = operation Failed → 자동 재시도 창(≈ 5분) 소진 뒤 같은 리비전은 자동 sync되지 않는다 → 원인 해소 뒤 전체 수동 Sync ② ES 상태 없음(ESO 중단 = Progressing)만 operation이 무기한 Running → terminate → ESO 복구 → 전체 수동 Sync. 라이브 확인은 VD-L1과 함께(T075)〕
     4. 전체 sync마다 owner Secret이 지워졌다 다시 생긴다(BeforeHookCreation + Owner) — 모든 배포가 Vault · ESO 가용성에 걸린다(닫힌 쪽).
     - 넷 다 T075 런북에 적는다.
   - **자원 · 쿼터**(dev)
@@ -881,14 +881,14 @@ CMD ["gunicorn", "--config", "python:<pod_snake>.gunicorn_conf", "--no-control-s
     - `pod_lifecycle`(gen-19): web Deployment grace ≥ 90 · web liveness/readiness/startup timeoutSeconds ≥ 3 · web env POD_IP fieldRef `status.podIP` · web `lifecycle.preStop.sleep.seconds` ≥ 5(〔X29〕). 계약:108 ① · Y7 · D8.
     - `env_hygiene`(gen-20): 컨테이너마다 실효 env 이름 = env[].name ∪ (envFrom[].prefix + 참조한 ConfigMap 키) ∪ (prefix + 참조한 ES Secret 키 — template.data, 템플릿이 없거나 Merge면 secretKey). 렌더 밖 ConfigMap · Secret을 가리키는 envFrom은 위반이다(T071 r9 K5 · 〔X18〕).
       - 대소문자를 무시하고 금지 이름을 본다: NETRC · SSLKEYLOGFILE · HTTP_PROXY · HTTPS_PROXY · ALL_PROXY · CLIENT_CERT_FILE · CLIENT_KEY_FILE · SSL_CERT_FILE · SSL_CERT_DIR · REQUESTS_CA_BUNDLE · CURL_CA_BUNDLE · SENTRY_PRINT_ENVELOPES · PYTHONOPTIMIZE · PYTHONINSPECT · PYTHONSTARTUP · PYTHONPATH · `PG`로 시작하는 이름 전부(libpq env — `PGOPTIONS`가 app role의 statement_timeout을 덮는다 · ㉟ · 〔X18〕).
-      - 런타임 거부는 두지 않는다 — T071이 정한 방어선(렌더 · 이미지 단언 + T075 gitops lint)과 같은 층이다(bn:4311).
+      - 런타임 거부는 두지 않는다 — T071이 정한 방어선(렌더 · 이미지 단언 + T075 gitops lint)과 같은 층이다(bn:4311). 〔② r2 H10 — 예외 다섯: `CELERY_BROKER_URL` · `CELERY_BROKER_READ_URL` · `CELERY_BROKER_WRITE_URL` · `CELERY_RESULT_BACKEND` · `GUNICORN_CMD_ARGS`는 검증된 설정을 대신하므로 runtime 프로필 기동(`startup.run`)이 거부하고(빈 값 포함), env_hygiene 금지 목록에도 있다〕
       - `PROMETHEUS_MULTIPROC_DIR`는 relay 이름 집합 · 모든 ConfigMap 키 · `<pod>-env` 키에서 0이어야 한다.
       - 근거: 계약:108 ② · T071 S4/L3.
-    - `external_secrets`(gen-21): v1 · ClusterSecretStore `vault-dev` · 키 `^dev/[a-z0-9_./-]+$` 꼴 · `(dev|prod)/(access|web)/` 금지 · property 있음 · refreshInterval 5m · refreshPolicy Periodic · creationPolicy Owner · target.name = 이름 · engineVersion v2 · mergePolicy 없음 또는 Replace · dataFrom · templateFrom 0. gitops 3.0 · 3.1의 거울 + 계약 공통 규칙.
+    - `external_secrets`(gen-21 〔r2 E2 — data ≥ 1 · template.data 참조 ⊆ secretKey · `-env` 순번 = D20 표 · `-migrate` data[0,1] = owner username · password〕): v1 · ClusterSecretStore `vault-dev` · 키 `^dev/[a-z0-9_./-]+$` 꼴 · `(dev|prod)/(access|web)/` 금지 · property 있음 · refreshInterval 5m · refreshPolicy Periodic · creationPolicy Owner · target.name = 이름 · engineVersion v2 · mergePolicy 없음 또는 Replace · dataFrom · templateFrom 0. gitops 3.0 · 3.1의 거울 + 계약 공통 규칙.
     - `hook_order`(gen-22): `<pod>-migrate` ES = PreSync · BeforeHookCreation · wave < Job wave / Job 컨테이너 · 볼륨에 ConfigMap 참조 0 / `<pod>-env` ES · 모든 ConfigMap은 hook이 아니고 wave < 0. Secret 참조는 env_split 몫이라 교차가 없다.
     - `images`(gen-23): 모든 pod 문서의 모든 컨테이너 image가 정확히 `ghcr.io/joshua92y/sample-pod`. gen-23은 base `kustomization.yaml`에 images · namespace · commonLabels가 없는지도 본다(정적).
     - `cronjob`(gen-24): 기본 렌더 0개. 변형은 `<pod>-outbox-purge` 하나 · schedule `^\d{1,2} \d{1,2} \* \* \*$` · Forbid · timeZone이 있으면 Etc/UTC|UTC · 컨테이너 하나의 명령 = `python manage.py outbox_purge`. 계약:108 ③.
-    - `runtime_wiring`(gen-36 · 〔X2〕 — 계약 행은 있는데 단언이 없던 배선. 다른 검사가 맡은 것 — relay 9464(gen-12 · 15), initContainers의 pg-ca · /tmp · securityContext(gen-11 · 9가 `_containers`로 initContainers까지 본다 · H/tests/_render.py:128-133) — 은 다시 보지 않는다)
+    - `runtime_wiring`(gen-36 · 〔X2〕 — 계약 행은 있는데 단언이 없던 배선. 다른 검사가 맡은 것 — relay 9464(gen-12 · 15), initContainers의 pg-ca · /tmp · securityContext(gen-11 · 9가 `_containers`로 initContainers까지 본다 · H/tests/_render.py:128-133) — 은 다시 보지 않는다) 〔r1 — gen-11 전제는 틀렸다(옛 db_tls는 web pod의 web · relay만 봤다) → db_tls가 web initContainers도 본다 · r2 E1 — migrate `JT_SETTINGS_PROFILE=migrate` · 런타임 컨테이너 전부의 ConfigMap + `-env` envFrom · 런타임 필수 이름 집합 ⊆ 실효 env · migrate 실효 env에 런타임 전용 이름 0을 더한다〕
       - web pod initContainers = `startup-check` 하나 · 명령 `["python", "manage.py", "startup_check"]` · envFrom = ConfigMap `<pod>-config` + secretRef `<pod>-env`(`-migrate` 없음)
       - web · relay가 secret `jt-kafka-cluster-ca-cert` 볼륨을 `/etc/kafka`(readOnly)에 마운트한다(계약:76)
       - web containerPort 9100(계약:64)
@@ -907,7 +907,7 @@ CMD ["gunicorn", "--config", "python:<pod_snake>.gunicorn_conf", "--no-control-s
     - Ingress 주석 · host · pathType(G4)
     - kafka-ca 볼륨
     - 컨테이너 이름(web · relay · celery · migrate)은 변이 도우미가 기대므로 유지한다(H/tests/test_render_helpers.py:47-77).
-  - **기존 변이 2건 수정**(〔X1〕 — 기존 68 × 새 검사 대조에서 충돌은 이 둘뿐이다 · 비판 A-1)
+  - **기존 변이 2건 수정**(〔X1〕 — 기존 68 × 새 검사 대조에서 충돌은 이 둘뿐이다 · 비판 A-1) 〔r1 — 실제 충돌은 셋이다: render-18(relay env를 통째로 바꿔 끼워 POD_NAMESPACE가 지워짐 → runtime_wiring)도 덧붙이기로 고쳤다 · build-notes 「T072 조각 ① r1 결과」〕
     - render-21 `env-secret-owner-url-via-secret-key`의 추가 키 `placeholder/sample-pod/db-owner`(:208-212)가 external_secrets에 교차 → `dev/db/dev_sample_pod/owner`로 바꾼다. 의도(secretKey 경로의 owner URL)는 그대로다.
     - render-09 `job-tmp-volume-not-empty-dir`(:158-160)의 `{"name": "tmp", "configMap": {"name": "x"}}`가 hook_order(Job의 ConfigMap 참조 금지)에 교차 → `persistentVolumeClaim: {claimName: x}`로 바꾼다. security_context만 위반하고 의도(Job /tmp가 emptyDir 아님)는 그대로다.
     - 조각 ①의 첫 단계로 기존 변이 68 × 새 검사 7종(runtime_wiring 포함) 교차 행렬을 돌려 충돌이 이 둘뿐임을 기록한다. 새 변이도 맡은 검사만 걸리는 꼴로 둔다(아래 목록은 예시 — 교차하면 꼴을 바꾼다).
@@ -945,12 +945,12 @@ CMD ["gunicorn", "--config", "python:<pod_snake>.gunicorn_conf", "--no-control-s
     - gen-29(변형 두 벌 생성 · 트리) · gen-30(변형 두 벌 kustomize+kubeconform)
     - gen-31(변형 렌더 단언 — CHECKS를 `has_celery=False`로 매개화 · 두 벌)
     - gen-32(변형 Python — 기본 pod venv(상위 집합)로 변형마다 `manage.py check` + settings 하위 프로세스 + `pytest --collect-only` 7파일. 하위 프로세스는 `django.setup()`과 ROOT_URLCONF import 뒤 `'celery' not in sys.modules`를 단언한다 — 상위 집합 venv가 has_celery=false 코드의 celery import를 가리지 못하게. no-celery: admin · Session 미들웨어 있음 · no-admin: contrib · Session · Auth · Message 미들웨어 · TEMPLATES · ADMIN_URLCONF 없음 · 〔X10〕)
-    - gen-33(이미지 구성 · 탐침) · gen-34(이미지 기동 스모크 넷 — 아래 · 〔X22〕) · gen-35(compose config) · gen-36(runtime_wiring — 위)
+    - gen-33(이미지 구성 · 탐침) · gen-34(이미지 기동 스모크 넷 — 아래 · 〔X22〕) · gen-35(compose config) · gen-36(runtime_wiring — 위) 〔조각 ③ · 마지막 라운드 — gen-33에 생성 dockerignore 정적 검사 · 심기 단언 · build-arg 배선 · `Config.Cmd` = WEB_COMMAND · Entrypoint 없음(M2 · M4 · N4) / gen-37 예약 pod 이름 ⊇ 앱 라벨 ∪ 트리 최상위 이름(상수 ∪ 실제 생성 트리 · M11 · N7) / gen-38 렌더 = 골든(예외 relay pg-ca 마운트 꼴 하나 · N3) / gen-14 · gen-31이 migrate 스크립트 = 골든 바이트(N2) / runtime_wiring이 web · relay · celery 명령을 하네스 상수에 묶는다(M6)〕
     - gen-34 스모크(공통: `--network none --read-only --tmpfs /tmp` · 이미지 USER 그대로 · 시험 env 자리값 · 대기 상한 180 s(x86 Windows의 QEMU) · 끝에 `docker rm -f`와 정리 확인)
       1. web: gunicorn `--no-control-socket` 기동 · `:9100/metrics`에 `http_requests_total` · POD_IP=127.0.0.1로 `/healthz` 200
       2. relay: `python manage.py outbox_relay`가 N초 뒤 살아 있고 `docker exec`로 `127.0.0.1:9464/metrics`가 응답한다 · 로그에 `Read-only file system` · PermissionError 0
       3. celery: D14 명령이 N초 동안 브로커 재시도 단계까지 가고 `/tmp/celerybeat-schedule*`가 생긴다 · 쓰기 오류 0
-      4. 명령: `outbox_purge` · `startup_check --wait 1`이 DB 없음으로 0이 아닌 종료 + 예외 클래스 이름만(값 · 트레이스백 없음 · 〔X25〕)
+      4. 명령: `outbox_purge` · `startup_check --wait 1`이 DB 없음으로 0이 아닌 종료 + 예외 클래스 이름만(값 · 트레이스백 없음 · 〔X25〕) 〔r2 E3 — startup_check = 종료 1 · stderr 한 줄 · 클래스 접미 `OperationalError` · 트레이스백 없음 / outbox_purge는 django-common 명령 그대로(D13 · D1)라 X25 출력 규칙 밖: 0 아닌 종료 + `OperationalError` 예외 줄 + `Unknown command` · `ImproperlyConfigured` · `ImportError` · `ModuleNotFoundError` 줄 0 + 심은 비밀 0 · 트레이스백 허용〕
   - **가정 ①–⑩ 변경**(test_generate.py 독스트링과 이 문서에 적는다 — 닫힌 bn 「T065」 절은 고치지 않는다. 독스트링의 「build-notes 「T065」 설계를 먼저 개정」은 「계약 §기본 테스트 6 + design/t072-design.md를 먼저 개정」으로 바꾼다 · 〔X11〕)
     - ① 변형 모드 추가(기본 규칙 불변)
     - ⑥ 강화(숫자 10001 + pod runAsUser)
@@ -996,7 +996,7 @@ CMD ["gunicorn", "--config", "python:<pod_snake>.gunicorn_conf", "--no-control-s
   - test job에서만 `--generated`: kubeconform job 경보선이 계속 FAIL한다.
   - django-common pytest를 빼기: CI 공백이 남는다.
 - **계약 · 규칙**: C1 · ci.yml 머리 주석 한 줄.
-- **시험**: `pwsh -NoProfile -File tests/scripts/kubeconform-deploy.tests.ps1` · run-all · VD-T072-CI(push 뒤 첫 실행).
+- **시험**: `pwsh -NoProfile -File tests/scripts/kubeconform-deploy.tests.ps1` · run-all · VD-T072-CI(push 뒤 첫 실행). 〔④ — test job: 하네스 예산 `JT_HARNESS_BUDGET_SECONDS` 1800(60분 − 설치 10 − django-common 10 − 정리 헤드룸 10) · `if: always()` `harness-stages.log`만 artifact(조각 ① r3 인계가 「실패 산출물 업로드 없음」보다 뒤 결정) · static-11..14 · 마지막 라운드 N8 static-15(test job 배선) · N9 r-1 대상 수 무관 · N11 setup-uv `checksum`(uv 0.13.7 aarch64 — setup-uv 내장 표에 없어 대조 없이 받던 것)〕 〔마감 Z1 — static-16(ci.yml 어디에도 `_proc.POD_PYTEST_ENV` 이름 여덟의 env 키 0 · 최상위와 job test의 주석 밖 줄에 그 이름 0) · static-17(upload-artifact `if: always()` 정확히)〕
 - **변이**: run 줄에서 `--generated` 하나 빠짐 → 새 static이 잡는다.
 
 ### 덮음 표(누락 확인용)
@@ -1261,7 +1261,7 @@ bn:757의 「사용자 확인 항목(T072 착수 전 되돌릴 수 있음)」은
 | B 0.13.x(≥ 0.13.4, 예 0.13.7)로 한 변경에서 올림(ci.yml lint · test · kubeconform setup-uv + 템플릿 빌더 태그 · digest + 로컬 uv) | 권고 해소. Renovate가 낼 bump를 첫 소비자(템플릿 Dockerfile)에서 한 번에 소화 | 계획 핀 편차(report.md) · 새 digest 실측 | 루트 · dc · 하네스 uv.lock이 새 판에서 `--locked` 재작성을 요구할 수 있다(VD). |
 | C B + 빌더를 런타임 python digest로 · `COPY --from=ghcr.io/astral-sh/uv:<판>@sha256 /uv /uvx /bin/` | B의 장점 + 빌더 · 런타임 Python 판 동일 | 문면 빌더 이미지 꼴에서 더 벗어난다 | 이미지 핀 두 개를 관리해야 한다 |
 
-**권고: B.** GHSA-2cv4(0.12.7–0.12.17 Windows)도 피한다. 로컬 uv는 0.12.6이라(㉗) B면 로컬도 올린다(`uv self update` — 사용자 PC의 도구 변경이라 실행 전에 확인한다). **상태: 사용자 결정 대기 — 조각 ③(Dockerfile) 전에 받는다.** 조각 ① · ②는 판과 무관하게 진행한다.
+**결정(2026-11-09 사용자): B — uv 0.13.7**(11-03 공개 · GitHub 보안 권고 0건 — 2026-11-09 조회). 로컬은 winget으로 올린다(`winget upgrade --id astral-sh.uv --version 0.13.7` — 사용자 승인 · 조각 ① r2 뒤 실행 · uv가 winget 설치라 `uv self update`는 안 된다). 빌더 `ghcr.io/astral-sh/uv:0.13.7-python3.13-trixie-slim` 인덱스 digest `sha256:6ff812e34a0e14b4b8bc9ddf25e77b3e16bac6e0c4d9b67641f40366fa382d4c`(Docker Hub `astral/uv` 같은 값 · arm64 있음)의 Python은 3.13.18이라 런타임과 같다 — R16(패치 판 차이)이 사라진다. 〔이전 권고 문장〕 **권고: B.** GHSA-2cv4(0.12.7–0.12.17 Windows)도 피한다. 로컬 uv는 0.12.6이라(㉗) B면 로컬도 올린다(`uv self update` — 사용자 PC의 도구 변경이라 실행 전에 확인한다). **상태: 사용자 결정 대기 — 조각 ③(Dockerfile) 전에 받는다.** 조각 ① · ②는 판과 무관하게 진행한다.
 
 ### UD-2 Python 숙성 창
 
@@ -1273,7 +1273,7 @@ bn:757의 「사용자 확인 항목(T072 착수 전 되돌릴 수 있음)」은
 | B 생성 pyproject `[tool.uv] exclude-newer = "3 days"` | npm과 대칭 · 생성 시점 방어 | VD-T072-17 · 하한 핀과 충돌하면 해석 실패(psycopg 하한은 `!=3.3.7`로 이미 완화) | 창 안의 긴급 보안판(필요하면 그 패키지만 `exclude-newer-package`) |
 | C 하한 · 제외 핀만(D4 그대로) | 실측 불필요 | 일반 방어가 아니다 | — |
 
-**권고: B.** VD-T072-17이 통과해야 하고, 실패하면 C로 간다. 루트 · dc · 하네스 잠금에도 같은 창을 둘지는 저장소 전체 정책이라 이 결정과 따로 다룬다(T065 B-6 — T116 후보). **상태: 사용자 결정 대기 — 조각 ②(첫 생성 잠금) 전에 받는다.**
+**결정(2026-11-09 사용자): B — 생성 pod `[tool.uv] exclude-newer = "3 days"`**(VD-T072-17을 조각 ② 시작에 실측 · 실패하면 C). 〔이전 권고 문장〕 **권고: B.** VD-T072-17이 통과해야 하고, 실패하면 C로 간다. 루트 · dc · 하네스 잠금에도 같은 창을 둘지는 저장소 전체 정책이라 이 결정과 따로 다룬다(T065 B-6 — T116 후보). **상태: 사용자 결정 대기 — 조각 ②(첫 생성 잠금) 전에 받는다.**
 
 ### (결정) django-ninja 판 — 사용자 결정이 아니다
 
@@ -1345,7 +1345,7 @@ bn:757의 「사용자 확인 항목(T072 착수 전 되돌릴 수 있음)」은
 | X15 | A-15 transaction=True · T068 라이브 잔여 | low | 채택 | D12 · VD-L16 |
 | X16 | A-16 로컬 개발 경로 | low | 채택(compose 부트스트랩은 README 절차 — 비밀 0) | D19 · C5 |
 | X17 | A-17 SECRET_KEY kv 경로 소유 | low | 채택 | D20 ES 표 · C27 · §7 T075 |
-| X18 | B-6 env 위생 계산 · 목록 빈틈 · assert | low | 채택(런타임 거부는 두지 않는다 — T071과 같은 방어선) | D21 env_hygiene · D18 gen-33 · D7 · ㉟ |
+| X18 | B-6 env 위생 계산 · 목록 빈틈 · assert | low | 채택(런타임 거부는 두지 않는다 — T071과 같은 방어선 · 〔② r2 H10 — 검증된 설정을 대신하는 다섯은 예외로 런타임 거부〕) | D21 env_hygiene · D18 gen-33 · D7 · ㉟ |
 | X19 | A-18 REQUIRED_FILES 기각 근거 오류 | low | 근거 정정 | D3 · D21 기각한 대안 |
 | X20 | A-8 계약 보정 누락 · 번호 중복 | low | 채택 | §4 C29(번호 바꿈) · C30 · C31 · C28 · 규칙 §Logging |
 | X21 | B-8 SECRET_KEY 강도 | low | 채택 | D5 · C17 · C27 · §7 T073 · T075 |

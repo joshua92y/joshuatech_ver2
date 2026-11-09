@@ -5,8 +5,10 @@
 #   태그→SHA 갱신은 Renovate(config:best-practices의 pinGitHubActionDigests)가 유지한다.
 # - 설치는 pnpm install --frozen-lockfile --ignore-scripts · uv sync --locked 만 허용
 #   (잠금파일이 정본, 라이프사이클 스크립트 실행 금지).
-# - job kubeconform(T047 M1): pod 배포 매니페스트(생성물의 deploy/base — gitops apps/<pod>/base로 복사된다)를
-#   kustomize build → kubeconform -strict로 검사한다(scripts/ci/kubeconform-deploy.sh — 대상이 없으면 "대상 없음"으로 통과).
+# - job kubeconform(T047 M1 · T072): pod 배포 매니페스트(생성물의 deploy/base — gitops apps/<pod>/base로 복사된다)를
+#   kustomize build → kubeconform -strict로 검사한다(scripts/ci/kubeconform-deploy.sh). T072부터 템플릿으로 렌더 · 검사 전용 생성물
+#   세 벌(copier copy --skip-tasks — 기본 · has_celery=false · has_admin=false)을 만들어 --generated로 넘긴다(경보선이 꺼진다).
+# - job test(T072): packages/django-common 계약 시험 + 템플릿 하네스(templates/django-pod/tests — Docker · kustomize · kubeconform).
 # - job gitleaks(T049 AC5): job id `gitleaks`는 ruleset(main)의 required check 이름이다 — 바꾸지 않는다.
 #   gitleaks-action(v3.0.0)을 쓰지 않는다. 그 판의 PR 경로는 PR 커밋 목록(GET /pulls/{n}/commits)을 per_page · 페이지 넘김
 #   없이 한 번만 불러 첫 30개(기본 페이지)만 받고, 범위를 `--no-merges --first-parent <첫 커밋>^..<30번째 커밋>`으로 자른다
@@ -315,6 +317,11 @@ jobs:
           # 기준 bump PR을 연다(automerge 전역 off). 그 PR을 머지할 때는 템플릿 Dockerfile의 uv 빌더
           # 이미지 태그 · digest(uv:<ver>-python3.13-trixie-slim)와 로컬 uv를 같은 변경에서 함께 올린다.
           version: "0.13.7"
+          # uv 0.13.7 linux aarch64 릴리스 자산 uv-aarch64-unknown-linux-gnu.tar.gz의 sha256(T072 마지막 라운드 N11) — 출처: 릴리스의
+          # .sha256 파일 값 = 그 tar.gz를 받아 직접 계산한 값 = GitHub 릴리스 자산 digest(2026-11-10 대조). setup-uv v10.0.1은 내장 표
+          # (0.12.4까지)에 없는 판을 이 입력 없이는 대조하지 않고 받는다. 판을 올리면 checksum도 같은 변경에서 함께 올린다(Renovate bump
+          # PR 포함 — T116). 세 job(lint · test · kubeconform)이 같은 값이다(arm64 러너 — tests/scripts/kubeconform-deploy.tests.ps1 static-14).
+          checksum: "71279f8d3c67241e807b9d8db872d1bf541579fb9f08b7d1eb1682196d1e57dc"
       - name: 의존성 설치(잠금파일 고정 · 스크립트 실행 금지)
         run: |
           pnpm install --frozen-lockfile --ignore-scripts
@@ -323,9 +330,23 @@ jobs:
         run: echo "lint 자리(placeholder) — US 단계에서 채움"
 
   test:
+    # 시험(T072 D22): packages/django-common 계약 시험 + 템플릿 하네스(templates/django-pod/tests — 생성 → uv sync --locked → 생성물
+    # 시험 → arm64 이미지 빌드 · 탐침 · 기동 스모크 → kustomize build · kubeconform → 렌더 단언 = T065). 둘 다 Docker를 쓴다(testcontainers ·
+    # buildx 기본 docker 드라이버 — arm64 러너라 에뮬레이션 없음). 시험은 패키지 · 하네스의 ini 그대로 돈다(-O 없음 · 실패 출력을 넓히는
+    # 옵션 없음 — 규칙 django-pod.md §Tests).
+    # 하네스 시간 예산 JT_HARNESS_BUDGET_SECONDS = job 상한 60분 − 설치 10분(체크아웃 · pnpm · uv · Python · 도구 — 넉넉히) − django-common
+    # 시험 10분(그 스텝의 상한 — 로컬 실측 765개 105 s) − 정리 헤드룸 10분(예산이 다한 뒤에도 도는 docker rm · 이미지 rm — 컨테이너당 최악
+    # 141–287 s · 이미지 rm 160 s · build-notes T072 조각 ① r3 B-3) = 30분 = 1800 s. 예산은 하네스 수집 때부터 센다 — 다하면 남은 명령을
+    # 돌리지 않고 실패한다(정리 호출은 예산 밖 · 자기 상한 — templates/django-pod/tests/_proc.py).
+    # 하네스는 JT_SAMPLE_POD_ROOT/harness-stages.log(단계 시작 · 끝 · 결과 · 초 · 정리 메모 — ASCII · 값 없음)를 남긴다. 실패해도 그
+    # 파일 하나만 짧은 보존으로 올린다(생성 트리 · 시험 출력 · 로그 원문은 올리지 않는다 — 실패 원인은 이 job 로그의 pytest 요약이 싣는다).
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 뒤 스텝이 저장소의 코드(시험 · 하네스)를 돌린다 — .git/config에 토큰을 남기지 않는다(push · fetch를 하는 스텝이 없다)
+          persist-credentials: false
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
@@ -339,16 +360,82 @@ jobs:
           # 기준 bump PR을 연다(automerge 전역 off). 그 PR을 머지할 때는 템플릿 Dockerfile의 uv 빌더
           # 이미지 태그 · digest(uv:<ver>-python3.13-trixie-slim)와 로컬 uv를 같은 변경에서 함께 올린다.
           version: "0.13.7"
+          # uv 0.13.7 linux aarch64 릴리스 자산 uv-aarch64-unknown-linux-gnu.tar.gz의 sha256(T072 마지막 라운드 N11) — 출처: 릴리스의
+          # .sha256 파일 값 = 그 tar.gz를 받아 직접 계산한 값 = GitHub 릴리스 자산 digest(2026-11-10 대조). setup-uv v10.0.1은 내장 표
+          # (0.12.4까지)에 없는 판을 이 입력 없이는 대조하지 않고 받는다. 판을 올리면 checksum도 같은 변경에서 함께 올린다(Renovate bump
+          # PR 포함 — T116). 세 job(lint · test · kubeconform)이 같은 값이다(arm64 러너 — tests/scripts/kubeconform-deploy.tests.ps1 static-14).
+          checksum: "71279f8d3c67241e807b9d8db872d1bf541579fb9f08b7d1eb1682196d1e57dc"
       - name: 의존성 설치(잠금파일 고정 · 스크립트 실행 금지)
         run: |
           pnpm install --frozen-lockfile --ignore-scripts
           uv sync --locked
-      - name: test 자리(placeholder) — US 단계에서 채움
-        run: echo "test 자리(placeholder) — US 단계에서 채움"
+      - name: 도구 설치 — kustomize · kubeconform(버전 고정 + sha256 대조 — job kubeconform과 같은 값 · 하네스가 PATH에서 찾는다)
+        env:
+          # linux arm64 공식 릴리스 자산의 sha256(각 릴리스의 체크섬 파일 값).
+          # 버전을 바꾸면 sha256도 함께 — gitops 저장소 validate.yml의 값과 같이 움직인다.
+          KUSTOMIZE_VERSION: v5.8.1
+          KUSTOMIZE_SHA256: 0953ea3e476f66d6ddfcd911d750f5167b9365aa9491b2326398e289fef2c142
+          KUBECONFORM_VERSION: v0.8.0
+          KUBECONFORM_SHA256: 1f53fc8e81258197a35e8603054162a5af1de8c5af13746c71ab680d9534ed87
+        run: |
+          set -euo pipefail
+          bin="$RUNNER_TEMP/bin"
+          dl="$RUNNER_TEMP/dl"
+          mkdir -p "$bin" "$dl"
+          # fetch <url> <파일 이름> <sha256> — 받은 파일을 sha256으로 대조한다. 맞지 않으면 실패(풀지도 설치하지도 않는다)
+          fetch() {
+            if [[ ! $3 =~ ^[0-9a-f]{64}$ ]]; then
+              printf '::error::%s: sha256 값의 형식이 틀렸다\n' "$2"
+              return 1
+            fi
+            curl -fsSL --retry 3 --connect-timeout 10 --max-time 120 -o "$dl/$2" "$1"
+            printf '%s  %s\n' "$3" "$dl/$2" | sha256sum -c -
+          }
+          fetch "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_arm64.tar.gz" kustomize.tar.gz "$KUSTOMIZE_SHA256"
+          tar -xzf "$dl/kustomize.tar.gz" -C "$bin" kustomize
+          fetch "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-arm64.tar.gz" kubeconform.tar.gz "$KUBECONFORM_SHA256"
+          tar -xzf "$dl/kubeconform.tar.gz" -C "$bin" kubeconform
+          chmod 0755 "$bin/kustomize" "$bin/kubeconform"
+          # 버전 확인 — 설치한 바이너리가 기대 버전이 아니면 실패
+          want_got() {
+            if [[ $3 != "$2" ]]; then
+              printf '::error::%s 버전 불일치: 실제 %q · 기대 %s\n' "$1" "$3" "$2"
+              return 1
+            fi
+            printf '  %-12s %s\n' "$1" "$3"
+          }
+          want_got kustomize "$KUSTOMIZE_VERSION" "$("$bin/kustomize" version)"
+          want_got kubeconform "$KUBECONFORM_VERSION" "$("$bin/kubeconform" -v)"
+          # 다음 스텝부터 PATH 맨 앞에 온다(GITHUB_PATH는 앞에 붙인다)
+          printf '%s\n' "$bin" >> "$GITHUB_PATH"
+      - name: django-common 계약 시험(패키지 ini 그대로)
+        # 위 예산 계산의 django-common 몫 — 넘으면 이 스텝이 실패한다(하네스 시간을 먹지 않게)
+        timeout-minutes: 10
+        run: uv run --directory packages/django-common --locked pytest -q
+      - name: 템플릿 하네스(T065 · T072 — templates/django-pod/tests)
+        env:
+          # 생성 트리(미니 저장소)를 러너 임시 디렉터리에 둔다 — 저장소 밖 · 저장소의 조상이 아니다(하네스가 거부하는 자리 밖)
+          JT_SAMPLE_POD_ROOT: ${{ runner.temp }}/jt-sample-pod
+          # job 머리 주석의 계산: 60분 − 설치 10분 − django-common 시험 10분 − 정리 헤드룸 10분 = 1800 s
+          JT_HARNESS_BUDGET_SECONDS: "1800"
+          KUBECONFORM_CACHE: ${{ runner.temp }}/kubeconform-cache
+        run: uv run --directory templates/django-pod --locked pytest -q
+      - name: 하네스 단계 기록 올리기(harness-stages.log 하나 · 실패해도)
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          # 재실행(run_attempt)마다 다른 이름 — 같은 실행의 앞 시도가 올린 것과 부딪히지 않게
+          name: harness-stages-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/jt-sample-pod/harness-stages.log
+          # 하네스가 단계 기록 전에 끝났으면(설치 · django-common 시험 실패) 올릴 것이 없다 — 이 스텝은 실패하지 않는다
+          if-no-files-found: ignore
+          retention-days: 7
 
   kubeconform:
-    # pod 배포 매니페스트 스키마 검사(T047 M1). 대상 규칙 · 판정 · 경보선(템플릿에 매니페스트가 생겼는데 생성 단계가
-    # 연결되지 않으면 실패 — T072가 연결한다)은 scripts/ci/kubeconform-deploy.sh 머리 주석이 정본이다.
+    # pod 배포 매니페스트 스키마 검사(T047 M1 · T072). 템플릿(templates/django-pod)으로 렌더 · 검사 전용 생성물 세 벌을 $RUNNER_TEMP/gen
+    # 아래에 만들고(copier copy --skip-tasks — _tasks(uv lock)를 돌리지 않아 --trust가 필요 없고 형제 packages/django-common이 없는 배치를
+    # 허용한다 · 계약 pod-template.md 머리 · 하네스 venv의 copier — uv run --locked) 셋 다 --generated로 넘긴다 — 템플릿의 deploy/base가
+    # 생성물로 검사되고 경보선이 꺼진다. 대상 규칙 · 판정 · 경보선은 scripts/ci/kubeconform-deploy.sh 머리 주석이 정본이다.
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     steps:
@@ -356,6 +443,19 @@ jobs:
         with:
           # 뒤 스텝이 저장소의 스크립트를 실행한다 — .git/config에 토큰을 남기지 않는다(push · fetch를 하는 스텝이 없다)
           persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          # uv 버전 핀 0.13.7 — T072 UD-1(2026-11-09 사용자 결정)로 plan Technical Context의
+          # 0.12.8에서 올렸다(0.12.x는 GHSA-hq85 High에 걸린다 · 0.13.4 수정 · plan.md는 승인 뒤
+          # 고정이라 편차는 report.md 후보). Renovate가 이 version 입력을 추적해 astral-sh/uv 릴리스
+          # 기준 bump PR을 연다(automerge 전역 off). 그 PR을 머지할 때는 템플릿 Dockerfile의 uv 빌더
+          # 이미지 태그 · digest(uv:<ver>-python3.13-trixie-slim)와 로컬 uv를 같은 변경에서 함께 올린다.
+          version: "0.13.7"
+          # uv 0.13.7 linux aarch64 릴리스 자산 uv-aarch64-unknown-linux-gnu.tar.gz의 sha256(T072 마지막 라운드 N11) — 출처: 릴리스의
+          # .sha256 파일 값 = 그 tar.gz를 받아 직접 계산한 값 = GitHub 릴리스 자산 digest(2026-11-10 대조). setup-uv v10.0.1은 내장 표
+          # (0.12.4까지)에 없는 판을 이 입력 없이는 대조하지 않고 받는다. 판을 올리면 checksum도 같은 변경에서 함께 올린다(Renovate bump
+          # PR 포함 — T116). 세 job(lint · test · kubeconform)이 같은 값이다(arm64 러너 — tests/scripts/kubeconform-deploy.tests.ps1 static-14).
+          checksum: "71279f8d3c67241e807b9d8db872d1bf541579fb9f08b7d1eb1682196d1e57dc"
       - name: 도구 설치 — kustomize · kubeconform(버전 고정 + sha256 대조)
         env:
           # linux arm64 공식 릴리스 자산의 sha256(각 릴리스의 체크섬 파일 값).
@@ -395,8 +495,18 @@ jobs:
           want_got kubeconform "$KUBECONFORM_VERSION" "$("$bin/kubeconform" -v)"
           # 다음 스텝부터 PATH 맨 앞에 온다(GITHUB_PATH는 앞에 붙인다)
           printf '%s\n' "$bin" >> "$GITHUB_PATH"
-      - name: pod 배포 매니페스트 스키마 검사 — scripts/ci/kubeconform-deploy.sh
-        run: bash scripts/ci/kubeconform-deploy.sh
+      # 렌더 · 검사 전용 생성(T072 D22) — 하네스 venv(templates/django-pod 잠금)의 copier. --directory가 cwd를 바꾸므로 경로는 절대 경로다.
+      # run 본문에는 워크플로 식을 넣지 않는다(셸 변수만 — GITHUB_WORKSPACE · RUNNER_TEMP는 러너가 주는 env · static-3)
+      - name: 템플릿 생성(렌더 · 검사 전용) — 기본(has_celery · has_admin)
+        run: uv run --directory templates/django-pod --locked python -m copier copy --defaults --skip-tasks --quiet --data pod_name=sample-pod "$GITHUB_WORKSPACE/templates/django-pod" "$RUNNER_TEMP/gen/default/apps/sample-pod"
+      - name: 템플릿 생성(렌더 · 검사 전용) — has_celery=false
+        run: uv run --directory templates/django-pod --locked python -m copier copy --defaults --skip-tasks --quiet --data pod_name=sample-pod --data has_celery=false "$GITHUB_WORKSPACE/templates/django-pod" "$RUNNER_TEMP/gen/no-celery/apps/sample-pod"
+      - name: 템플릿 생성(렌더 · 검사 전용) — has_celery=false · has_admin=false
+        run: uv run --directory templates/django-pod --locked python -m copier copy --defaults --skip-tasks --quiet --data pod_name=sample-pod --data has_celery=false --data has_admin=false "$GITHUB_WORKSPACE/templates/django-pod" "$RUNNER_TEMP/gen/no-admin/apps/sample-pod"
+      # 출력의 이름표 <생성물 N: sample-pod>(루트 밖 --generated — 절대 경로를 찍지 않는다)의 N은 --generated 순서다: 1 default ·
+      # 2 no-celery · 3 no-admin(세 벌 모두 디렉터리 이름이 sample-pod라 이름표의 이름만으로는 갈리지 않는다 — T072 마지막 라운드 N10)
+      - name: pod 배포 매니페스트 스키마 검사 — scripts/ci/kubeconform-deploy.sh(생성물 세 벌)
+        run: bash scripts/ci/kubeconform-deploy.sh --generated "$RUNNER_TEMP/gen/default/apps/sample-pod" --generated "$RUNNER_TEMP/gen/no-celery/apps/sample-pod" --generated "$RUNNER_TEMP/gen/no-admin/apps/sample-pod"
 
   events-compat:
     # packages/events 스키마 호환성 게이트(T067 · 머리 주석 「job events-compat · events-test」). 이 job은 PR 코드를 돌리지 않는다 —

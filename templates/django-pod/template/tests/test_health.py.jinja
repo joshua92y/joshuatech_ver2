@@ -1,0 +1,500 @@
+"""{{ pod_name }} 헬스 3종 · kubelet 프로브 Host · web 지표 시험(T072 D17 · D8 · D11 — 계약 §기본 테스트 4).
+
+계약: contracts/pod-template.md §기본 테스트 4(`/healthz` 200 · DB 다운이면 `/ready` 503 · Dragonfly 다운이어도 `/ready` 200 ·
+`/health`는 언제나 200에 checks 반영) · 「프로브 3종」 · 「메트릭」 행 · 규칙 django-pod.md §Logging(헬스 문장) · §Auth(kubelet 프로브
+Host). 헬스 라우터 자체(칸 상한 · 병렬 · 마감)는 django-common 계약 시험(T063)이 본다 — 여기서는 이 pod의 배선(urlconf 루트 장착 ·
+미들웨어 면제 · 설정 이름 · DB 별칭)이 계약 동작을 내는지 본다.
+
+- /healthz: DB 마크 없이 200(DB에 닿으면 pytest-django가 막아 시험 Client가 예외를 다시 올린다) · 본문 = status ok · 설정
+  APP_VERSION · APP_GIT_SHA.
+- /ready는 DB만 본다: Dragonfly · Kafka 자리에 연결을 받자마자 끊고 수락 수를 세는 리스너를 두면 /ready · /healthz 200 · 수락 0
+  (시간 · 플랫폼과 무관한 증거), /health는 200 degraded(db ok · 나머지 fail)이고 두 리스너에 실제로 다이얼한다.
+- DB 다운(default 별칭을 닫힌 포트로): /ready 503 not_ready(detail 없음) · /healthz 200 · /health 200 degraded(db만 fail —
+  Dragonfly · Kafka는 살아 있다) · 각 3 s 안 · 응답 · 로그에 app role 비밀번호 없음 · 되돌리면 /ready 200.
+- 의존이 모두 살아 있으면 /health ok · 세 항목 ok · latency_ms 숫자.
+- kubelet 프로브 Host(D8): web 컨테이너 env POD_IP(downward API)를 settings가 ALLOWED_HOSTS 끝에 더한다 — 기동 하위 프로세스가
+  wsgi 진입점(application · OTel 미들웨어 설치 상태 — OTel · CommonMiddleware가 모든 요청에서 get_host()를 부른다)으로 Host
+  `<POD_IP>:8000` /healthz → 200, POD_IP가 없거나 다른 IP면 400 invalid_host(IPv6는 괄호 꼴).
+- web 지표(D11): /healthz → http_requests_total{route="healthz",status="200"} +1 · URL 해석 전에 거절된 요청은 route "" — 원문
+  경로를 라벨에 싣지 않는다(라벨 수가 요청 경로만큼 늘지 않는다).
+- gunicorn(D11): keepalive 95 s > Traefik 백엔드 유휴 연결 90 s(프록시가 먼저 닫는다 — 재사용 경합 502를 피한다) ·
+  forwarded_allow_ips "127.0.0.1,::1" 고정(env FORWARDED_ALLOW_IPS가 전달 헤더 신뢰를 넓히지 못한다).
+
+비밀(app role 비밀번호 · 자격이 든 Dragonfly URL)은 Secret으로 감싸고 노출 단언은 위치 번호로 접는다(실패 출력에 값이 실리지
+않게). 하위 프로세스의 실패 요약은 env 비밀 값을 가린 stderr 마지막 줄만 싣는다.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import secrets
+import socket
+import subprocess
+import sys
+import threading
+import time
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from copy import deepcopy
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, NoReturn
+
+import pytest
+from django.conf import settings
+from django.db import connections
+from django.test import Client
+from prometheus_client import REGISTRY
+
+from tests._problem import assert_problem, problem_type
+from tests._secret import Secret
+
+if TYPE_CHECKING:
+    from django.http import HttpResponse
+    from pytest_django.fixtures import SettingsWrapper
+
+    from tests.conftest import LogLines, PgInfo
+
+POD_ROOT = Path(__file__).resolve().parents[1]
+POD_NAME = "{{ pod_name }}"
+POD_SETTINGS = "{{ pod_snake }}.settings"
+HOST = "{{ pod_name }}.test.svc"  # 시험 래퍼의 ALLOWED_HOSTS
+DB = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
+CHECK_NAMES = frozenset({"db", "dragonfly", "kafka_producer"})
+# 계약 타임아웃 표 /health 행: BFF pod fetch 3 s 안에 답한다(헬스 라우터의 검사 마감 2.5 s).
+DOWN_LIMIT_S = 3.0
+# /ready · /healthz는 의존에 다이얼하지 않는다 — 남는 것은 DB SELECT 1(작업 스레드의 새 TLS 연결)뿐이다. 보조 증거다(본 증거는
+# 두 리스너의 수락 수 0).
+QUIET_LIMIT_S = 1.0
+# psycopg는 connect_timeout 2 s 미만을 2 s로 올린다 — DB 다운 판정은 약 2 s(헬스 마감 2.5 s 안).
+DB_DOWN_CONNECT_TIMEOUT_S = 1
+# 시간 초과가 없는 구현(영구 대기)을 유한한 실패로 끝내는 상한.
+HANG_LIMIT_S = 10.0
+BOOT_TIMEOUT_S = 120
+PROBE_MARK = "JT-WSGI-PROBE "
+OTEL_MIDDLEWARE_PREFIX = "opentelemetry.instrumentation.django."
+# 하위 프로세스 실패 요약에서 값을 가릴 env 이름 표식
+SENSITIVE_ENV_MARKERS = ("PASSWORD", "SECRET", "TOKEN", "KEY", "URL", "DSN")
+
+
+# --- 도우미 --------------------------------------------------------------------------------------------------------------
+
+
+def _closed_port() -> int:
+    """연결을 받지 않는 127.0.0.1 포트 — bind로 번호만 받고 닫는다."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port: int = probe.getsockname()[1]
+    return port
+
+
+class _Listener:
+    """연결을 받자마자 끊고 수락 수를 세는 127.0.0.1 리스너의 손잡이(_counting_listener)."""
+
+    def __init__(self, address: str, counts: list[int], lock: threading.Lock) -> None:
+        self.address = address
+        self._counts = counts
+        self._lock = lock
+
+    @property
+    def count(self) -> int:
+        with self._lock:
+            return self._counts[0]
+
+
+@contextmanager
+def _counting_listener() -> Iterator[_Listener]:
+    """127.0.0.1 임시 포트에서 TCP 연결을 받자마자 닫고 수락 수를 세는 리스너(데몬 스레드) — 어떤 의존에 "다이얼했는가"를 시간 ·
+    플랫폼과 무관하게 증명한다. 연결을 곧바로 끊으므로 클라이언트는 즉시(redis-py) 또는 자기 시간 초과 안에(librdkafka) 실패한다."""
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind(("127.0.0.1", 0))
+    server.listen(16)
+    server.settimeout(0.1)
+    host, port = server.getsockname()
+    stop = threading.Event()
+    lock = threading.Lock()
+    counts = [0]
+
+    def serve() -> None:
+        while not stop.is_set():
+            try:
+                accepted, _ = server.accept()
+            except TimeoutError:
+                continue
+            except OSError:
+                break
+            with lock:
+                counts[0] += 1
+            accepted.close()
+
+    thread = threading.Thread(target=serve, name="health-counting-listener", daemon=True)
+    thread.start()
+    try:
+        yield _Listener(f"{host}:{port}", counts, lock)
+    finally:
+        stop.set()
+        thread.join(2.0)
+        server.close()
+
+
+@contextmanager
+def _db_down(pg: PgInfo) -> Iterator[Secret]:
+    """default 별칭을 닫힌 127.0.0.1 포트로 돌려 DB 다운을 흉내 낸다 · 끝나면 되돌린다 · app role 비밀번호(Secret)를 준다.
+
+    connection.settings_dict는 settings.DATABASES["default"]와 같은 dict라 헬스 작업 스레드의 새 연결에도 유효하다. HOST도
+    127.0.0.1로 둔다(`localhost`는 ::1 시도가 먼저라 판정이 두 배가 된다)."""
+    connection = connections["default"]
+    original = deepcopy(connection.settings_dict)
+    try:
+        connection.close()
+        connection.settings_dict["HOST"] = "127.0.0.1"
+        connection.settings_dict["PORT"] = str(_closed_port())
+        connection.settings_dict["OPTIONS"] = {**original["OPTIONS"], "connect_timeout": DB_DOWN_CONNECT_TIMEOUT_S}
+        yield Secret(pg.app_password)
+    finally:
+        connection.close()
+        connection.settings_dict.clear()
+        connection.settings_dict.update(original)
+
+
+def _fail_without_trace(what: str, exc: BaseException) -> NoReturn:
+    """예외를 원 트레이스백 · 메시지 없이 실패로 바꾼다 — psycopg Connection.connect의 conninfo 인자(비밀번호)를 긴 트레이스백이
+    찍지 않게 형식 이름만 싣는다. 호출자는 except 블록 밖에서 부른다(연쇄된 원 예외도 남지 않게)."""
+    kind = f"{type(exc).__module__}.{type(exc).__name__}"
+    pytest.fail(f"{what}: 예외로 끝났다({kind}) — 원 트레이스백 · 메시지는 비밀 노출을 막으려고 싣지 않는다", pytrace=False)
+
+
+def _safe_get(client: Client, path: str) -> HttpResponse:
+    """DB에 닿는 GET — 예외가 나면 _fail_without_trace로 끝난다(시험 Client는 뷰 예외를 그대로 다시 올린다)."""
+    failure: BaseException | None = None
+    try:
+        return client.get(path, headers={"host": HOST})
+    except Exception as exc:  # noqa: BLE001 — 어떤 예외든 원 트레이스백 없이 실패로 바꾼다
+        failure = exc
+    _fail_without_trace(f"GET {path}", failure)
+
+
+def _timed_get(client: Client, path: str) -> tuple[HttpResponse, float]:
+    """GET 한 번과 그 경과(초) — 요청은 데몬 스레드에서 돈다. HANG_LIMIT_S 안에 끝나지 않으면(시간 초과가 없는 구현) 실패로
+    끝낸다. 작업 스레드는 settings.DATABASES의 같은 dict로 새 연결을 열고 끝날 때 자기 연결만 닫는다."""
+    outcome: list[HttpResponse | BaseException] = []
+
+    def run() -> None:
+        try:
+            outcome.append(client.get(path, headers={"host": HOST}))
+        except BaseException as exc:  # noqa: BLE001 — 스레드 경계: 어떤 예외든 호출 스레드로 넘긴다
+            outcome.append(exc)
+        finally:
+            connections.close_all()
+
+    worker = threading.Thread(target=run, name="health-timed-get", daemon=True)
+    start = time.perf_counter()
+    worker.start()
+    worker.join(HANG_LIMIT_S)
+    elapsed = time.perf_counter() - start
+    if worker.is_alive():
+        pytest.fail(f"GET {path}가 {HANG_LIMIT_S:.0f} s 안에 끝나지 않았다 — 의존 조회에 시간 초과가 없는 구현인가")
+    result = outcome[0]
+    if isinstance(result, BaseException):
+        _fail_without_trace(f"GET {path}", result)
+    return result, elapsed
+
+
+def _health_body(response: HttpResponse) -> tuple[Any, dict[str, Any]]:
+    """/health 본문의 status와 항목별 status(checks의 키 집합은 정확히 db · dragonfly · kafka_producer)."""
+    body: dict[str, Any] = json.loads(response.content)
+    checks = body.get("checks")
+    assert isinstance(checks, dict)
+    assert set(checks) == CHECK_NAMES
+    statuses = {name: check.get("status") if isinstance(check, dict) else None for name, check in checks.items()}
+    return body.get("status"), statuses
+
+
+def _response_text(response: HttpResponse) -> str:
+    headers = "\n".join(f"{name}: {value}" for name, value in response.items())
+    return f"{response.content.decode('utf-8', errors='replace')}\n{headers}"
+
+
+def _assert_absent(where: str, text: str, *needles: str) -> None:
+    """needles(비밀번호 · 자격 URL)가 text 어디에도 없다 — 인자를 Secret으로 다시 묶고(트레이스백 인자 repr) 위치 번호로 접는다
+    (단언 재작성이 비교 피연산자를 찍지 않게)."""
+    text = Secret(text)
+    needles = tuple(Secret(needle) for needle in needles)
+    leaked = [index for index, needle in enumerate(needles) if needle and needle in text]
+    assert leaked == [], f"{where}에 민감 값이 있다(needles 위치 {leaked})"
+
+
+def _redact_env(text: str, env: Mapping[str, str]) -> str:
+    """text에서 비밀처럼 보이는 env 값(이름에 PASSWORD · SECRET · TOKEN · KEY · URL · DSN)을 가린다(긴 값부터)."""
+    values = {
+        value
+        for name, value in env.items()
+        if value and len(value) >= 4 and any(marker in name.upper() for marker in SENSITIVE_ENV_MARKERS)
+    }
+    for value in sorted(values, key=len, reverse=True):
+        text = text.replace(value, "***")
+    return text
+
+
+@dataclass(frozen=True)
+class ProbeRun:
+    """기동 하위 프로세스 결과 — 출력 · env는 repr에서 뺀다(단언 실패 출력에 실리지 않게)."""
+
+    returncode: int
+    stdout: str = field(repr=False)
+    stderr: str = field(repr=False)
+    env: dict[str, str] = field(repr=False)
+
+    def summary(self) -> str:
+        """종료 코드 + stderr 마지막 줄(env 비밀 값 가림 · 300자)."""
+        lines = [line for line in self.stderr.splitlines() if line.strip()]
+        last = _redact_env(lines[-1], self.env)[:300] if lines else ""
+        return f"종료 코드 {self.returncode} · stderr 마지막 줄: {last}"
+
+    def facts(self) -> dict[str, Any]:
+        """종료 0 · PROBE_MARK 줄 하나 → 그 JSON."""
+        assert self.returncode == 0, self.summary()
+        lines = [line for line in self.stdout.splitlines() if line.startswith(PROBE_MARK)]
+        assert len(lines) == 1, f"탐침 결과 줄 수 {len(lines)} · {self.summary()}"
+        facts: dict[str, Any] = json.loads(lines[0][len(PROBE_MARK) :])
+        return facts
+
+
+# wsgi 진입점(django.setup → configure_otel → configure_sentry → WSGIHandler)을 그대로 적재한 뒤 Host마다 GET /healthz를
+# application(environ, start_response)로 부른다 — 시험 Client가 아니라 web이 실제로 쓰는 application 객체다.
+_WSGI_PROBE_BODY = """
+import json
+import sys
+from wsgiref.util import setup_testing_defaults
+
+from {{ pod_snake }}.wsgi import application
+from django.conf import settings
+
+
+def call(host):
+    environ = {"PATH_INFO": "/healthz", "REQUEST_METHOD": "GET", "HTTP_HOST": host}
+    setup_testing_defaults(environ)
+    seen = {}
+
+    def start_response(status, headers, exc_info=None):
+        seen["status"] = int(status.split(" ", 1)[0])
+        seen["content_type"] = dict(headers).get("Content-Type", "")
+
+    body = b"".join(application(environ, start_response))
+    try:
+        parsed = json.loads(body)
+    except ValueError:
+        parsed = None
+    seen["body"] = parsed if isinstance(parsed, dict) else None
+    return seen
+
+
+facts = {"middleware0": settings.MIDDLEWARE[0], "results": {host: call(host) for host in sys.argv[1:]}}
+print(MARK + json.dumps(facts), flush=True)
+"""
+WSGI_PROBE_SCRIPT = f"MARK = {PROBE_MARK!r}\n" + _WSGI_PROBE_BODY
+
+
+def _wsgi_probe(pod_ip: str | None, hosts: tuple[str, ...]) -> ProbeRun:
+    """pod 설정(래퍼가 아니다)으로 새 프로세스를 띄워 wsgi 진입점을 적재하고 hosts마다 /healthz를 부른다.
+
+    env = 이 프로세스의 os.environ(래퍼가 채운 설정 env) + DJANGO_SETTINGS_MODULE={{ pod_snake }}.settings · POD_IP는 인자대로
+    (None이면 지운다) · OTEL_* 는 지운다(configure_otel 기본값 — 개발자 셸 값이 결과를 바꾸지 않게) · cwd = pod 루트 · shell 없음."""
+    env = {name: value for name, value in os.environ.items() if not name.upper().startswith("OTEL_")}
+    env["DJANGO_SETTINGS_MODULE"] = POD_SETTINGS
+    env["PYTHONIOENCODING"] = "utf-8"
+    env.pop("POD_IP", None)
+    env.pop("SSLKEYLOGFILE", None)
+    if pod_ip is not None:
+        env["POD_IP"] = pod_ip
+    completed: subprocess.CompletedProcess[str] | None
+    try:
+        completed = subprocess.run(  # noqa: S603 — 인자 고정 · shell 없음 · 이 프로세스의 인터프리터
+            [sys.executable, "-c", WSGI_PROBE_SCRIPT, *hosts],
+            cwd=POD_ROOT,
+            env=env,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=BOOT_TIMEOUT_S,
+            check=False,
+            shell=False,
+        )
+    except subprocess.TimeoutExpired:
+        completed = None  # 실패는 except 밖에서 낸다(명령 줄 · 부분 출력이 연쇄 예외로 실리지 않게)
+    if completed is None:
+        pytest.fail(f"wsgi 탐침이 {BOOT_TIMEOUT_S} s 안에 끝나지 않았다", pytrace=False)
+    return ProbeRun(completed.returncode, completed.stdout, completed.stderr, env)
+
+
+def _requests_total(route: str, status: str) -> float:
+    value = REGISTRY.get_sample_value("http_requests_total", {"route": route, "status": status})
+    return value or 0.0
+
+
+# --- /healthz · /ready · /health --------------------------------------------------------------------------------------
+
+
+def test_healthz_is_process_only() -> None:
+    """/healthz — DB 마크 없이 200(DB에 닿으면 pytest-django가 막는다) · JSON 본문 = status ok · version · git_sha(설정 값)."""
+    response = Client().get("/healthz", headers={"host": HOST})
+    assert response.status_code == 200
+    assert response["Content-Type"].startswith("application/json")
+    expected = {"status": "ok", "version": settings.APP_VERSION, "git_sha": settings.APP_GIT_SHA}
+    assert json.loads(response.content) == expected
+
+
+@DB
+def test_ready_and_healthz_dial_no_dependency(settings: SettingsWrapper) -> None:
+    """Dragonfly · Kafka 자리에 수락 수를 세는 리스너 → /ready 200 {status: ok} · /healthz 200 · 그동안 수락 0 · 각 1 s 안 /
+    /health 200 degraded(db ok · dragonfly fail · kafka_producer fail) · 3 s 안 · 두 리스너에 수락 ≥ 1(상세 헬스는 의존을 실제로
+    본다) · 응답에 Dragonfly 비밀번호 · URL 없음."""
+    password = Secret(secrets.token_urlsafe(16))
+    with _counting_listener() as dragonfly_sink, _counting_listener() as kafka_sink:
+        url = Secret(f"redis://{POD_NAME}:{password}@{dragonfly_sink.address}/0")
+        settings.DRAGONFLY_URL = url
+        settings.KAFKA_BOOTSTRAP_SERVERS = kafka_sink.address
+        client = Client()
+        ready, ready_s = _timed_get(client, "/ready")
+        healthz, healthz_s = _timed_get(client, "/healthz")
+        quiet = (dragonfly_sink.count, kafka_sink.count)
+        health, health_s = _timed_get(client, "/health")
+        dialed = (dragonfly_sink.count, kafka_sink.count)
+    for response in (ready, healthz, health):
+        _assert_absent("응답", _response_text(response), password, url)
+    assert ready.status_code == 200
+    assert json.loads(ready.content) == {"status": "ok"}
+    assert healthz.status_code == 200
+    assert quiet == (0, 0), f"/ready · /healthz가 의존에 다이얼했다(Dragonfly · Kafka 수락 수 {quiet})"
+    assert ready_s < QUIET_LIMIT_S, f"/ready 경과 {ready_s:.3f} s"
+    assert healthz_s < QUIET_LIMIT_S, f"/healthz 경과 {healthz_s:.3f} s"
+    assert health.status_code == 200
+    status, checks = _health_body(health)
+    assert status == "degraded"
+    assert checks == {"db": "ok", "dragonfly": "fail", "kafka_producer": "fail"}
+    assert dialed[0] >= 1 and dialed[1] >= 1, f"/health가 의존에 다이얼하지 않았다(수락 수 {dialed})"
+    assert health_s < DOWN_LIMIT_S, f"/health 경과 {health_s:.3f} s"
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "kafka_settings")
+def test_db_down_ready_503_and_health_degraded(pg: PgInfo, log_lines: LogLines) -> None:
+    """DB 다운: /ready 503 not_ready(problem+json · detail 없음) · /healthz 200 · /health 200 degraded(db만 fail —
+    Dragonfly · Kafka는 시험 컨테이너로 살아 있다) · 각 3 s 안 · 응답 · 로그에 app role 비밀번호 없음 → 되돌리면 /ready 200."""
+    client = Client()
+    with _db_down(pg) as password:
+        ready, ready_s = _timed_get(client, "/ready")
+        healthz, healthz_s = _timed_get(client, "/healthz")
+        health, health_s = _timed_get(client, "/health")
+    for response in (ready, healthz, health):
+        _assert_absent("응답", _response_text(response), password)
+    log_lines()
+    _assert_absent("로그", log_lines.raw, password)
+    body = assert_problem(ready, 503, "not_ready")
+    assert "detail" not in body
+    assert healthz.status_code == 200
+    assert health.status_code == 200
+    status, checks = _health_body(health)
+    assert status == "degraded"
+    assert checks == {"db": "fail", "dragonfly": "ok", "kafka_producer": "ok"}
+    elapsed = {"/ready": round(ready_s, 2), "/healthz": round(healthz_s, 2), "/health": round(health_s, 2)}
+    slow = [path for path, seconds in elapsed.items() if seconds >= DOWN_LIMIT_S]
+    assert slow == [], f"경과(s) {elapsed}"
+    assert _safe_get(client, "/ready").status_code == 200
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "kafka_settings")
+def test_health_all_dependencies_up() -> None:
+    """의존이 모두 살아 있다(시험 DB · Dragonfly pod 사용자 · 시험 Kafka) → /health 200 · status ok · 세 항목 ok · latency_ms
+    숫자 ≥ 0 · version · git_sha = 설정 값."""
+    response = _safe_get(Client(), "/health")
+    assert response.status_code == 200
+    status, checks = _health_body(response)
+    assert status == "ok"
+    assert checks == dict.fromkeys(CHECK_NAMES, "ok")
+    body: dict[str, Any] = json.loads(response.content)
+    assert (body.get("version"), body.get("git_sha")) == (settings.APP_VERSION, settings.APP_GIT_SHA)
+    for name in sorted(CHECK_NAMES):
+        latency = body["checks"][name].get("latency_ms")
+        assert isinstance(latency, int | float) and not isinstance(latency, bool), name
+        assert latency >= 0, name
+
+
+# --- kubelet 프로브 Host(D8) ---------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("pod_ip", "expected"),
+    [
+        pytest.param("10.42.0.7", {"10.42.0.7:8000": 200, "10.42.0.8:8000": 400}, id="ipv4"),
+        pytest.param(None, {"10.42.0.7:8000": 400}, id="absent"),
+        pytest.param("fd00::7", {"[fd00::7]:8000": 200, "[fd00::8]:8000": 400}, id="ipv6"),
+    ],
+)
+def test_probe_host_is_pod_ip(pod_ip: str | None, expected: dict[str, int]) -> None:
+    """wsgi 진입점(OTel 미들웨어가 MIDDLEWARE 맨 앞) + env POD_IP → Host `<POD_IP>:8000`의 /healthz 200(본문 status ok) · POD_IP가
+    없거나 다른 IP의 Host는 400 invalid_host(problem+json) — 프로브에 httpHeaders를 두지 않아도 된다."""
+    facts = _wsgi_probe(pod_ip, tuple(expected)).facts()
+    middleware0 = facts.get("middleware0")
+    assert isinstance(middleware0, str) and middleware0.startswith(OTEL_MIDDLEWARE_PREFIX), "OTel 미들웨어가 맨 앞에 없다"
+    results: dict[str, Any] = facts["results"]
+    for host, status in expected.items():
+        result = results[host]
+        assert result["status"] == status, (host, result["status"])
+        body = result["body"] or {}
+        if status == 200:
+            assert body.get("status") == "ok", host
+        else:
+            assert result["content_type"].startswith("application/problem+json"), host
+            assert body.get("type") == problem_type("invalid_host"), host
+
+
+# --- web 지표(D11) ------------------------------------------------------------------------------------------------------
+
+
+def test_http_requests_total_labels_route_pattern_only() -> None:
+    """/healthz → http_requests_total{route="healthz",status="200"} +1 · 해석 전에 거절된 경로(자격 없음 403 — JwtAuthMiddleware가
+    URL 해석보다 먼저 판정한다) → {route="",status="403"} +1 · 그 원문 경로는 어느 라벨에도 없다."""
+    stray = f"/no-route-{secrets.token_hex(4)}"
+    before_ok = _requests_total("healthz", "200")
+    before_refused = _requests_total("", "403")
+    client = Client()
+    assert client.get("/healthz", headers={"host": HOST}).status_code == 200
+    assert_problem(client.get(stray, headers={"host": HOST}), 403, "access_required")
+    assert _requests_total("healthz", "200") == before_ok + 1
+    assert _requests_total("", "403") == before_refused + 1
+    labels = {
+        value
+        for metric in REGISTRY.collect()
+        if metric.name == "http_requests"
+        for sample in metric.samples
+        for value in sample.labels.values()
+    }
+    assert stray.strip("/") not in {label.strip("/") for label in labels}
+    assert not any("no-route-" in label for label in labels)
+
+
+# --- gunicorn(D11) ----------------------------------------------------------------------------------------------------
+
+# Traefik serversTransport forwardingTimeouts.idleConnTimeout 기본값(백엔드 유휴 keep-alive 연결을 닫기까지의 초)
+TRAEFIK_IDLE_CONN_TIMEOUT_S = 90
+
+
+def test_gunicorn_keepalive_outlives_proxy_idle_timeout() -> None:
+    """gunicorn keepalive(유휴 keep-alive 연결을 닫기까지의 초 — gthread 기본 2 s)가 Traefik 백엔드 유휴 연결 시간(기본 90 s)보다
+    길다: 프록시가 먼저 닫아야 막 닫힌 연결을 다시 쓰는 경합(비멱등 요청 502)이 없다(T072 ② r2 H15 · B-8 — 라이브 확인은 T075 VD)."""
+    from {{ pod_snake }} import gunicorn_conf
+
+    assert gunicorn_conf.keepalive == 95
+    assert gunicorn_conf.keepalive > TRAEFIK_IDLE_CONN_TIMEOUT_S
+
+
+def test_gunicorn_trusts_forwarded_headers_from_loopback_only() -> None:
+    """gunicorn forwarded_allow_ips가 설정 파일에 "127.0.0.1,::1"(gunicorn 기본값과 같다)로 고정돼 있다 — 설정 파일 값이 env
+    FORWARDED_ALLOW_IPS 기본값을 이긴다: pod는 Traefik 뒤에서 평문 HTTP를 받고 전달 헤더(X-Forwarded-Proto → wsgi.url_scheme ·
+    SCRIPT_NAME · PATH_INFO)를 믿지 않는다 — env 하나가 프록시 신뢰를 조용히 넓히지 못한다(T072 ② r3 J4 · B-3)."""
+    from {{ pod_snake }} import gunicorn_conf
+
+    assert gunicorn_conf.forwarded_allow_ips == "127.0.0.1,::1"

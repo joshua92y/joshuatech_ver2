@@ -1,43 +1,149 @@
-# Copier template for a Django pod (skeleton, T015 — template/ tree is empty until later tasks).
+# Copier template for a Django pod (T072 — design: specs/003-platform-foundation/design/t072-design.md D2).
 # Contract of record: specs/003-platform-foundation/contracts/pod-template.md
-# Usage: copier copy templates/django-pod apps/<pod>
-# NOTE: this directory is intentionally NOT a uv workspace member — the generated
-# pyproject under template/ will be jinja-templated and must never be resolved by uv.
+# Usage (from the repository root):
+#   copier copy --trust --defaults --data pod_name=<pod> templates/django-pod apps/<pod>
+#   --trust is required: _tasks runs `uv lock` inside the generated pod (needs PyPI). If the task fails, copier deletes
+#   the destination; rerun with --no-cleanup to keep it for debugging.
+# Render-only generation (CI kubeconform job, harness variants): add --skip-tasks instead of --trust (no uv lock).
+#   Such a tree may live without a sibling packages/django-common; never run uv lock or uv sync in it.
+# NOTE: this directory is intentionally NOT a uv workspace member — the generated pyproject under template/ is
+# jinja-templated and must never be resolved by uv here. copier update is unsupported (no _commit) — regenerate and diff.
 
+_min_copier_version: "9.17"
 _subdirectory: template
+_templates_suffix: .jinja
+# A typo in a template variable fails the generation instead of rendering an empty string.
+_envops:
+  undefined: jinja2.StrictUndefined
+# _subdirectory empties copier's default exclude list — keep one pattern per item (copier 9.17 compatible).
+_exclude:
+  - .gitkeep
+  - __pycache__
+  - "*.py[co]"
+  - .pytest_cache
+  - .venv
+  - .DS_Store
+  - "~*"
+# List form: runs without a shell, the same on Windows and Linux.
+_tasks:
+  - ["uv", "lock"]
 
 pod_name:
   type: str
-  help: "Pod name in kebab-case (e.g. identity-admin) — used as topic prefix, image name, host prefix, Dragonfly user, and key prefix"
+  help: "Pod name in kebab-case (e.g. identity-admin) — topic prefix, image name, host prefix, Dragonfly user, key prefix"
   placeholder: identity-admin
+  # Reserved snake names (T072 slice 2 r2 H4 · r3 J2): a pod package (pod_snake = pod_name with - replaced by _) named
+  # like one of these breaks generation or startup — a path clash or directory merge with a top-level entry of the
+  # generated tree, a duplicate app label (core, or a contrib label such as auth), a keyword SyntaxError in
+  # "from <pod_snake>.settings import *", or an import shadowed through pythonpath ["."].
+  # The list is the sorted union, filtered to ^[a-z][a-z0-9_]*$, of:
+  # - Python 3.13 keyword.kwlist and sys.stdlib_module_names;
+  # - the template-internal names tests, core, rlsapp, django_common, manage;
+  # - the app labels of the template INSTALLED_APPS, reserved whatever has_admin says (pod_name is asked first): every
+  #   django.apps.apps.get_app_configs() label but the pod's own, under the pod settings and the test wrapper, in a
+  #   generated default pod and both render-only variants (has_celery=false, has_admin=false) — the six contrib
+  #   labels admin, auth, contenttypes, sessions, messages, staticfiles, plus core, django_common, rlsapp and
+  #   django_migration_linter;
+  # - the top-level names of the generated tree that the pod package directory would merge into or clash with: the
+  #   directories tests, deploy and compose (deploy/ and compose/ come with slices 3 and 4) and dockerfile (the
+  #   top-level Dockerfile on a case-insensitive file system — generation fails there);
+  # - the importable top-level names of importlib.metadata.packages_distributions() in a freshly generated default pod
+  #   venv (uv run --locked python in apps/<pod>; importlib.util.find_spec is not None — names that only appear in a
+  #   top_level.txt and do not import, such as 15 pywin32 win32comext parts, are left out).
+  # Extracted 2026-11-09 with Python 3.13.15 from a generated uv.lock of 77 packages (332 names in r2 H4; r3 J2 adds 9 —
+  # 341). Extract again whenever the template dependencies, INSTALLED_APPS or the generated top-level tree change.
+  validator: >-
+    {% set reserved = [
+    'abc', 'admin', 'adodbapi', 'amqp', 'and', 'annotated_types', 'antigravity', 'appdirs', 'argparse', 'array', 'as',
+    'asgiref', 'assert', 'ast', 'async', 'asyncio', 'atexit', 'auth', 'await', 'base64', 'bdb', 'billiard', 'binascii',
+    'bisect', 'break', 'builtins', 'bz2', 'calendar', 'celery', 'certifi', 'cffi', 'charset_normalizer', 'class',
+    'click', 'click_didyoumean', 'click_plugins', 'click_repl', 'cmath', 'cmd', 'code', 'codecs', 'codeop',
+    'collections', 'colorama', 'colorsys', 'compileall', 'compose', 'concurrent', 'configparser', 'confluent_kafka',
+    'contenttypes', 'contextlib', 'contextvars', 'continue', 'copy', 'copyreg', 'core', 'cryptography', 'csv', 'ctypes',
+    'curses', 'dataclasses', 'datetime', 'dateutil', 'dbm', 'dde', 'decimal', 'def', 'del', 'deploy', 'difflib', 'dis',
+    'django', 'django_common', 'django_migration_linter', 'django_structlog', 'docker', 'dockerfile', 'doctest',
+    'dotenv', 'elif', 'else', 'email', 'encodings', 'ensurepip', 'enum', 'errno', 'except', 'faulthandler', 'fcntl',
+    'filecmp', 'fileinput', 'finally', 'fnmatch', 'for', 'fractions', 'from', 'ftplib', 'functools', 'gc',
+    'genericpath', 'getopt', 'getpass', 'gettext', 'glob', 'global', 'google', 'graphlib', 'grp', 'gunicorn', 'gzip',
+    'hashlib', 'heapq', 'hiredis', 'hmac', 'html', 'http', 'idlelib', 'idna', 'if', 'imaplib', 'import', 'importlib',
+    'in', 'iniconfig', 'inspect', 'io', 'ipaddress', 'ipware', 'is', 'isapi', 'itertools', 'json', 'jwt', 'keyword',
+    'kombu', 'lambda', 'linecache', 'locale', 'logging', 'lzma', 'mailbox', 'manage', 'marshal', 'math', 'messages',
+    'mimetypes', 'mmap', 'mmapfile', 'modulefinder', 'msvcrt', 'multiprocessing', 'netrc', 'ninja', 'nonlocal', 'not',
+    'nt', 'ntpath', 'nturl2path', 'numbers', 'odbc', 'opcode', 'opentelemetry', 'operator', 'optparse', 'or', 'os',
+    'packaging', 'pass', 'pathlib', 'pdb', 'perfmon', 'pickle', 'pickletools', 'pkgutil', 'platform', 'plistlib',
+    'pluggy', 'poplib', 'posix', 'posixpath', 'pprint', 'profile', 'prometheus_client', 'prompt_toolkit', 'pstats',
+    'psycopg', 'psycopg_binary', 'pty', 'pwd', 'py', 'py_compile', 'pyclbr', 'pycparser', 'pydantic', 'pydantic_core',
+    'pydantic_settings', 'pydoc', 'pydoc_data', 'pyexpat', 'pygments', 'pytest', 'pytest_django', 'python_ipware',
+    'pythoncom', 'pythonwin', 'pywintypes', 'queue', 'quopri', 'raise', 'random', 're', 'readline', 'redis', 'reprlib',
+    'requests', 'resource', 'return', 'rlcompleter', 'rlsapp', 'runpy', 'sched', 'secrets', 'select', 'selectors',
+    'sentry_sdk', 'servicemanager', 'sessions', 'shelve', 'shlex', 'shutil', 'signal', 'site', 'smtplib', 'socket',
+    'socketserver', 'sqlite3', 'sqlparse', 'sre_compile', 'sre_constants', 'sre_parse', 'ssl', 'stat', 'staticfiles',
+    'statistics', 'string', 'stringprep', 'struct', 'structlog', 'subprocess', 'symtable', 'sys', 'sysconfig', 'syslog',
+    'tabnanny', 'tarfile', 'tempfile', 'termios', 'testcontainers', 'tests', 'textwrap', 'this', 'threading', 'time',
+    'timeit', 'timer', 'tkinter', 'token', 'tokenize', 'toml', 'tomllib', 'trace', 'traceback', 'tracemalloc', 'try',
+    'tty', 'turtle', 'turtledemo', 'types', 'typing', 'typing_extensions', 'typing_inspection', 'tzdata', 'tzlocal',
+    'unicodedata', 'unittest', 'urllib', 'urllib3', 'uuid', 'venv', 'vine', 'warnings', 'wave', 'wcwidth', 'weakref',
+    'webbrowser', 'while', 'win32api', 'win32clipboard', 'win32com', 'win32comext', 'win32console', 'win32cred',
+    'win32crypt', 'win32event', 'win32evtlog', 'win32file', 'win32gui', 'win32help', 'win32inet', 'win32job', 'win32lz',
+    'win32net', 'win32pdh', 'win32pipe', 'win32print', 'win32process', 'win32profile', 'win32ras', 'win32security',
+    'win32service', 'win32trace', 'win32transaction', 'win32ts', 'win32ui', 'win32uiole', 'win32wnet', 'winreg',
+    'winsound', 'with', 'wrapt', 'wsgiref', 'xml', 'xmlrpc', 'yaml', 'yield', 'zipapp', 'zipfile', 'zipimport', 'zlib',
+    'zoneinfo'
+    ] %}
+    {% if not (pod_name | regex_search('^[a-z][a-z0-9]*(-[a-z0-9]+)*$'))
+    or pod_name != (pod_name | trim)
+    or (pod_name | length) > 39
+    or pod_name == 'dev'
+    or pod_name.startswith('dev-') %}invalid pod_name: use kebab-case [a-z][a-z0-9]*(-[a-z0-9]+)*
+    with at most 39 characters, and not dev or dev-*{% elif (pod_name | replace('-', '_')) in reserved %}invalid
+    pod_name: {{ pod_name | replace('-', '_') }} is reserved (Python keyword, standard-library module, template-internal
+    name, Django app label, top-level name of the generated tree or top-level name of a locked package){% endif %}
 
 pod_snake:
   type: str
-  help: "snake_case form of pod_name — Django project and database name (auto-derived, not prompted)"
+  help: "snake_case form of pod_name — Python package, Django project, and database name (derived, never set)"
   default: "{{ pod_name | replace('-', '_') }}"
   when: false
+  validator: "{% if pod_snake != (pod_name | replace('-', '_')) %}invalid pod_snake: must equal pod_name with - replaced by _ (derived value, never set){% endif %}"
 
 description:
   type: str
-  help: "One-line description of the pod — used in README and as the OpenAPI title"
+  help: "One-line description (at most 120 characters) — README and OpenAPI title"
   default: ""
+  validator: >-
+    {% if description is not string
+    or (description.splitlines() | join('')) != description
+    or (description | length) > 120 %}invalid description: use a single line of at most 120 characters{% endif %}
 
 owns_events:
   type: yaml
-  help: "Published topics as an entity.event list (e.g. [session.revoked]) — generates events/ stubs and KafkaTopic examples"
+  help: "Published events as an entity.event list (e.g. [session.revoked]) — events/ helpers and KafkaTopic examples"
   default: []
+  validator: >-
+    {% set ns = namespace(bad=(owns_events is string or owns_events is mapping or owns_events is not iterable)) %}
+    {% if not ns.bad %}{% for item in owns_events %}{% if item is not string
+    or not (item | regex_search('^[a-z][a-z0-9]*(-[a-z0-9]+)*[.][a-z][a-z0-9]*(-[a-z0-9]+)*$'))
+    or item != (item | trim) %}{% set ns.bad = true %}{% endif %}{% endfor %}{% endif %}
+    {% if ns.bad %}invalid owns_events: use a list of entity.event names (two kebab-case parts){% endif %}
 
 consumes_events:
   type: yaml
-  help: "Consumed topics as a list — generates consumer stubs"
+  help: "Consumed topics as a list of full prod topic names (e.g. [other-pod.thing.created]) — consumer helpers"
   default: []
+  validator: >-
+    {% set ns = namespace(bad=(consumes_events is string or consumes_events is mapping or consumes_events is not iterable)) %}
+    {% if not ns.bad %}{% for item in consumes_events %}{% if item is not string
+    or not (item | regex_search('^[a-z][a-z0-9-]*([.][a-z][a-z0-9-]*){2,}$'))
+    or item != (item | trim)
+    or item.startswith('dev.') %}{% set ns.bad = true %}{% endif %}{% endfor %}{% endif %}
+    {% if ns.bad %}invalid consumes_events: use a list of full prod topic names (pod.entity.event, no dev. prefix){% endif %}
 
 has_celery:
   type: bool
-  help: "Generate Celery worker and beat manifests (broker = Dragonfly, user = <pod>)"
+  help: "Celery worker + beat Deployment (broker = Dragonfly, user = <pod>); false = outbox purge CronJob instead"
   default: true
 
 has_admin:
   type: bool
-  help: "Enable Django admin plus the prod admin Ingress (dev keeps ADMIN_HOST empty — no admin surface in dev)"
+  help: "Django admin on ADMIN_HOST only (dev keeps ADMIN_HOST empty — no admin surface in dev)"
   default: true

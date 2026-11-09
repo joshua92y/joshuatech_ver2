@@ -1,0 +1,491 @@
+"""{{ pod_name }} 구조 로그 시험(T072 D17 · D6 · D7 — 계약 §기본 테스트 5 · 「로그」 행 · 규칙 django-pod.md §Logging).
+
+로그 모양(마스킹 목록 · 렌더 · request_id 꼴)은 django-common 계약 시험(T063 · T071)이 본다 — 여기서는 이 pod의 배선(설정 ·
+미들웨어 순서 · 기동 자리)이 계약 로그를 내는지 본다.
+
+- 설정(D6): LOGGING_CONFIG = None(Django 기본 dictConfig · mail_admins · console 중복 없음) · `django` 로거 핸들러 0 · 어느 로거에도
+  AdminEmailHandler 없음 · DEBUG False · ADMINS · MANAGERS 빈 값 · MAILERS = {} · pod 설정 모듈에 EMAIL_ 이름 0.
+- 요청 로그: 자격을 갖춘 요청(Access + Bearer · OTel 계측 · sampled traceparent · 상류 X-Request-ID)의 request_finished에 request_id
+  (= 응답 X-Request-ID) · tenant_id · sub_hash · trace_id · span_id(내보낸 SERVER span) · route(URL 패턴) · code · request
+  (`<METHOD> <path>` — 쿼리 없음) · duration_ms. 로그 어디에도 authorization · cookie · x-authentik-signature ·
+  cf-access-jwt-assertion 키가 없고 그 값(토큰 · 표식) · 쿼리 값 · 원문 sub이 없다.
+- 헬스 · 거절 요청: /healthz는 트레이스 제외라 trace_id · span_id가 없고 tenant_id · sub_hash도 없다 · 자격 없는 요청(403
+  access_required)은 problem 슬러그를 싣고 route · tenant_id · sub_hash가 없다.
+- 500(D6): 처리하지 못한 예외 하나 → django.request JSON 줄 정확히 하나(request_id 포함) + request_failed 하나 · request_finished
+  없음 · JSON sink 밖(stdout · stderr)으로 나간 원문 줄 0.
+- wsgi 진입점(D7): 새 프로세스(pod 설정)에서 `{{ pod_snake }}.wsgi`를 적재하면 application = WSGIHandler · MIDDLEWARE[0]이 OTel ·
+  [1]이 RequestIdMiddleware · Sentry 꺼짐(SENTRY_DSN 빈 값) · 기동 중 공개 이름 조회 0(socket 이름 조회 가드 — 가드 자기검사 포함) ·
+  stdout은 줄마다 JSON 객체(configure_otel의 otel_exporter_disabled 경고 포함 — configure_logging 뒤라 JSON이다) · stderr 0.
+- 시험 실행 위생(conftest — H9 · H12): 도우미 모듈이 단언 재작성에 등록됐다(-O에서도 단언이 남는다) · python -O · 넓히는 실패
+  출력 옵션 · tests.settings가 아닌 설정 모듈로 돈 pytest는 모으기 전에 UsageError(조건 이름만) · 셸 env DJANGO_SETTINGS_MODULE이
+  있어도 addopts --ds가 시험 래퍼를 고정한다.
+
+비밀 · 토큰 값은 실패 출력에 싣지 않는다: 노출 단언은 위치 번호로 접고, 로그 원문은 LogLines.raw를 bool로만 본다.
+"""
+
+from __future__ import annotations
+
+import importlib
+import json
+import logging
+import os
+import re
+import secrets
+import subprocess
+import sys
+from collections.abc import Iterator, Mapping
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+import pytest
+from django.conf import settings
+from django.test import Client
+from django.utils.log import AdminEmailHandler
+
+from tests._jwt import ACCESS_KID, AUTHENTIK_KID, BEARER_SUB, TENANT_ID, access_claims, bearer_claims, mint
+from tests._problem import assert_problem
+from tests._secret import Secret
+
+if TYPE_CHECKING:
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+    from pytest_django.fixtures import SettingsWrapper
+
+    from tests.conftest import JwksInfo, LogLines
+
+    OTel = tuple[TracerProvider, InMemorySpanExporter]
+
+DB = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
+
+POD_ROOT = Path(__file__).resolve().parents[1]
+POD_SETTINGS = "{{ pod_snake }}.settings"
+HOST = "{{ pod_name }}.test.svc"  # 시험 래퍼의 ALLOWED_HOSTS
+REQUEST_ID = "req-t072-logging"
+OPENAPI_PATH = "/api/openapi.json"
+OPENAPI_ROUTE = "api/openapi.json"
+HEX32 = re.compile(r"[0-9a-f]{32}")
+SPAN_ID = re.compile(r"[0-9a-f]{16}")
+# 로그에 키로 남으면 안 되는 요청 헤더(정규화: 소문자 · `_` → `-`)
+SENSITIVE_KEYS = frozenset({"authorization", "cookie", "x-authentik-signature", "cf-access-jwt-assertion"})
+COOKIE_MARK = "MARK-COOKIE"
+SIGNATURE_MARK = "MARK-SIGNATURE"
+QUERY_MARK = "QS-MARK"
+OTEL_MIDDLEWARE_PREFIX = "opentelemetry.instrumentation.django."
+REQUEST_ID_MIDDLEWARE = "django_common.observability.RequestIdMiddleware"
+BOOT_TIMEOUT_S = 120
+BOOT_MARK = "JT-WSGI-BOOT "
+SENSITIVE_ENV_MARKERS = ("PASSWORD", "SECRET", "TOKEN", "KEY", "URL", "DSN")
+PROXY_ENV = frozenset({"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"})
+
+
+# --- 도우미 --------------------------------------------------------------------------------------------------------------
+
+
+def _events(records: list[dict[str, Any]], event: str) -> list[dict[str, Any]]:
+    return [record for record in records if record.get("event") == event]
+
+
+def _one(records: list[dict[str, Any]], event: str) -> dict[str, Any]:
+    """event 줄이 정확히 하나여야 한다."""
+    matches = _events(records, event)
+    assert len(matches) == 1, f"{event} 줄 수 {len(matches)}"
+    return matches[0]
+
+
+def _keys(value: object) -> Iterator[str]:
+    """중첩 매핑 · 목록의 모든 키(정규화: 소문자 · `_` → `-`)."""
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            yield str(key).lower().replace("_", "-")
+            yield from _keys(item)
+    elif isinstance(value, list | tuple):
+        for item in value:
+            yield from _keys(item)
+
+
+def _auth_headers(jwks: JwksInfo) -> tuple[dict[str, str], tuple[str, str]]:
+    """유효한 Access + Bearer(tenant_id = 테넌트 A · sub user-sub-1) 헤더와 두 토큰 문자열."""
+    access = mint(access_claims(), jwks.access_key, ACCESS_KID)
+    bearer = mint(bearer_claims(), jwks.authentik_key, AUTHENTIK_KID)
+    return {"host": HOST, "Cf-Access-Jwt-Assertion": access, "Authorization": f"Bearer {bearer}"}, (access, bearer)
+
+
+def _traceparent(trace_id: str, parent_id: str) -> str:
+    """sampled W3C traceparent — 샘플러가 parentbased라 상류가 샘플링했으면 span이 기록된다."""
+    return f"00-{trace_id}-{parent_id}-01"
+
+
+def _all_loggers() -> list[logging.Logger]:
+    found = [logging.getLogger()]
+    found.extend(logger for logger in logging.root.manager.loggerDict.values() if isinstance(logger, logging.Logger))
+    return found
+
+
+def _redact(text: str, env: Mapping[str, str]) -> str:
+    values = {
+        value
+        for name, value in env.items()
+        if value and len(value) >= 4 and any(marker in name.upper() for marker in SENSITIVE_ENV_MARKERS)
+    }
+    for value in sorted(values, key=len, reverse=True):
+        text = text.replace(value, "***")
+    return text
+
+
+@dataclass(frozen=True)
+class BootRun:
+    """wsgi 기동 하위 프로세스 결과 — 출력 · env는 repr에서 뺀다(단언 실패 출력에 실리지 않게)."""
+
+    returncode: int
+    stdout: str = field(repr=False)
+    stderr: str = field(repr=False)
+    env: dict[str, str] = field(repr=False)
+
+    def summary(self) -> str:
+        """종료 코드 + stderr 줄 수 + 마지막 줄(env 비밀 값 가림 · 300자)."""
+        lines = [line for line in self.stderr.splitlines() if line.strip()]
+        last = _redact(lines[-1], self.env)[:300] if lines else ""
+        return f"종료 코드 {self.returncode} · stderr {len(lines)}줄 · 마지막 줄: {last}"
+
+
+# 기동 하위 프로세스: socket 이름 조회 함수 넷을 감싸 모든 조회를 기록하고 공개 도메인 이름은 막는다(가드 자기검사 = 공개 이름
+# 하나를 일부러 조회해 막히고 기록되는지 본 뒤 기록을 비운다) → wsgi 진입점 적재 → 사실 JSON 한 줄(finally — 실패 기동에도 조회
+# 기록이 남는다). C 확장의 자체 이름 해석(libpq · librdkafka)은 보지 못한다 — 기동은 그 둘에 닿지 않는다(D7).
+_BOOT_BODY = """
+import json
+import socket
+import threading
+
+lookups = []
+_lock = threading.Lock()
+
+
+def _name(host):
+    if host is None:
+        return ""
+    text = host.decode("ascii", "replace") if isinstance(host, bytes) else str(host)
+    return text.strip().lower().rstrip(".")
+
+
+def _public(name):
+    return name == PUBLIC_SUFFIX or name.endswith("." + PUBLIC_SUFFIX)
+
+
+def _guarded(original):
+    def wrapper(host, *args, **kwargs):
+        name = _name(host)
+        with _lock:
+            lookups.append(name)
+        if _public(name):
+            raise socket.gaierror(socket.EAI_NONAME, "test guard blocked a public name lookup")
+        return original(host, *args, **kwargs)
+
+    return wrapper
+
+
+for _attr in ("getaddrinfo", "gethostbyname", "gethostbyname_ex", "gethostbyaddr"):
+    setattr(socket, _attr, _guarded(getattr(socket, _attr)))
+
+guard_ok = False
+try:
+    socket.getaddrinfo("guard-selftest." + PUBLIC_SUFFIX, 443)
+except socket.gaierror:
+    guard_ok = lookups == ["guard-selftest." + PUBLIC_SUFFIX]
+lookups.clear()
+
+facts = {}
+try:
+    from {{ pod_snake }}.wsgi import application
+    import sentry_sdk
+    from django.conf import settings
+
+    facts = {
+        "application": type(application).__name__,
+        "middleware": list(settings.MIDDLEWARE[:2]),
+        "sentry_active": sentry_sdk.get_client().is_active(),
+    }
+finally:
+    public = [name for name in lookups if _public(name)]
+    print(MARK + json.dumps({"guard_ok": guard_ok, "public_lookups": public, "facts": facts}), flush=True)
+"""
+BOOT_SCRIPT = f"MARK = {BOOT_MARK!r}\nPUBLIC_SUFFIX = 'joshuatech.dev'\n" + _BOOT_BODY
+
+
+def _boot_wsgi() -> BootRun:
+    """pod 설정(래퍼가 아니다)으로 새 프로세스에서 wsgi 진입점을 적재한다 — env = 이 프로세스의 os.environ(래퍼가 채운 설정 env)
+    + DJANGO_SETTINGS_MODULE={{ pod_snake }}.settings − OTEL_*(configure_otel 기본값 — 개발자 셸 값이 결과를 바꾸지 않게) − 프록시 ·
+    SSLKEYLOGFILE · cwd = pod 루트 · shell 없음 · 시간 상한."""
+    env = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.upper().startswith("OTEL_") and name.upper() not in PROXY_ENV and name.upper() != "SSLKEYLOGFILE"
+    }
+    env["DJANGO_SETTINGS_MODULE"] = POD_SETTINGS
+    env["PYTHONIOENCODING"] = "utf-8"
+    completed: subprocess.CompletedProcess[str] | None
+    try:
+        completed = subprocess.run(  # noqa: S603 — 인자 고정 · shell 없음 · 이 프로세스의 인터프리터
+            [sys.executable, "-c", BOOT_SCRIPT],
+            cwd=POD_ROOT,
+            env=env,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=BOOT_TIMEOUT_S,
+            check=False,
+            shell=False,
+        )
+    except subprocess.TimeoutExpired:
+        completed = None  # 실패는 except 밖에서 낸다(명령 줄 · 부분 출력이 연쇄 예외로 실리지 않게)
+    if completed is None:
+        pytest.fail(f"wsgi 기동이 {BOOT_TIMEOUT_S} s 안에 끝나지 않았다", pytrace=False)
+    return BootRun(completed.returncode, completed.stdout, completed.stderr, env)
+
+
+# --- 설정(D6) -----------------------------------------------------------------------------------------------------------
+
+
+def test_django_default_logging_and_mail_are_off() -> None:
+    """LOGGING_CONFIG = None · `django` · `django.request` 로거 핸들러 0 · 어느 로거에도 AdminEmailHandler 없음 · DEBUG False ·
+    ADMINS · MANAGERS 빈 값 · MAILERS = {}(빈 MAILERS 경고 mail.W001은 끈다) · pod 설정 모듈에 EMAIL_ 이름 0(Django 전역 기본값
+    EMAIL_* 은 남으므로 dir(settings)가 아니라 모듈 이름공간을 본다)."""
+    assert settings.LOGGING_CONFIG is None
+    assert settings.DEBUG is False
+    assert list(settings.ADMINS) == []
+    assert list(settings.MANAGERS) == []
+    assert settings.MAILERS == {}
+    assert "mail.W001" in settings.SILENCED_SYSTEM_CHECKS
+    pod_settings = importlib.import_module(POD_SETTINGS)
+    assert [name for name in vars(pod_settings) if name.startswith("EMAIL_")] == []
+    assert logging.getLogger("django").handlers == []
+    assert logging.getLogger("django.request").handlers == []
+    mailers = [
+        type(handler).__name__
+        for logger in _all_loggers()
+        for handler in logger.handlers
+        if isinstance(handler, AdminEmailHandler)
+    ]
+    assert mailers == []
+
+
+# --- 요청 로그 ------------------------------------------------------------------------------------------------------------
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
+def test_request_finished_carries_request_fields(otel: OTel, jwks_server: JwksInfo, log_lines: LogLines) -> None:
+    """자격을 갖춘 요청(OTel 계측 · sampled traceparent · 상류 X-Request-ID · 민감 헤더 표식 · 쿼리 표식) → request_started ·
+    request_finished의 request_id = 상류 값 = 응답 X-Request-ID · request_finished의 tenant_id · sub_hash(hex 32 · 원문 sub 아님) ·
+    trace_id(상류) · span_id(내보낸 SERVER span) · route · code · request(쿼리 없음) · duration_ms / 모든 줄 ts · level · logger ·
+    event / 민감 헤더 키 0 · 토큰 · 표식 · 쿼리 값 · 원문 sub 0."""
+    _, exporter = otel
+    trace_id, parent_id = secrets.token_hex(16), secrets.token_hex(8)
+    headers, tokens = _auth_headers(jwks_server)
+    headers.update(
+        {
+            "Cookie": f"jt_probe={COOKIE_MARK}",
+            "X-Authentik-Signature": f"sha256={SIGNATURE_MARK}",
+            "X-Request-ID": REQUEST_ID,
+            "traceparent": _traceparent(trace_id, parent_id),
+        }
+    )
+    response = Client().get(f"{OPENAPI_PATH}?access_token={QUERY_MARK}", headers=headers)
+    assert response.status_code == 200
+    assert response["X-Request-ID"] == REQUEST_ID
+    records = log_lines()
+    started = _one(records, "request_started")
+    finished = _one(records, "request_finished")
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 1
+    span_id = format(spans[0].context.span_id, "016x")
+    assert started.get("request_id") == REQUEST_ID
+    assert finished.get("request_id") == REQUEST_ID
+    assert finished.get("tenant_id") == TENANT_ID
+    sub_hash = finished.get("sub_hash")
+    assert isinstance(sub_hash, str) and HEX32.fullmatch(sub_hash) is not None
+    assert finished.get("trace_id") == trace_id
+    assert finished.get("span_id") == span_id and SPAN_ID.fullmatch(span_id) is not None
+    assert finished.get("route") == OPENAPI_ROUTE
+    assert finished.get("code") == 200
+    assert finished.get("request") == f"GET {OPENAPI_PATH}"
+    duration = finished.get("duration_ms")
+    assert isinstance(duration, int | float) and not isinstance(duration, bool) and duration >= 0
+    for index, record in enumerate(records):
+        for key in ("ts", "level", "logger", "event"):
+            value = record.get(key)
+            assert isinstance(value, str) and value != "", (index, key)
+    sensitive = sorted({key for record in records for key in _keys(record)} & SENSITIVE_KEYS)
+    assert sensitive == [], f"로그에 민감 헤더 키가 있다: {sensitive}"
+    needles = tuple(Secret(value) for value in (*tokens, COOKIE_MARK, SIGNATURE_MARK, QUERY_MARK, BEARER_SUB))
+    raw = Secret(log_lines.raw)
+    leaked = [index for index, needle in enumerate(needles) if needle in raw]
+    assert leaked == [], f"로그에 토큰 · 표식 · 쿼리 값 · 원문 sub이 있다(needles 위치 {leaked})"
+
+
+def test_health_and_refused_requests_log_no_identity(otel: OTel, log_lines: LogLines) -> None:
+    """/healthz(sampled traceparent여도 트레이스 제외) → request_finished code 200 · route healthz · trace_id · span_id ·
+    tenant_id · sub_hash · problem 키 없음 · span 0 / 자격 없는 /api/openapi.json → 403 access_required · request_finished code
+    403 · problem access-required · route(URL 해석 전 거절) · tenant_id · sub_hash 키 없음."""
+    _, exporter = otel
+    client = Client()
+    traceparent = _traceparent(secrets.token_hex(16), secrets.token_hex(8))
+    healthz = client.get("/healthz", headers={"host": HOST, "traceparent": traceparent})
+    assert healthz.status_code == 200
+    health_line = _one(log_lines(), "request_finished")
+    shape = (health_line.get("code"), health_line.get("route"), health_line.get("request"))
+    assert shape == (200, "healthz", "GET /healthz")
+    present = [key for key in ("trace_id", "span_id", "tenant_id", "sub_hash", "problem") if key in health_line]
+    assert present == []
+    assert len(exporter.get_finished_spans()) == 0
+    assert_problem(client.get(OPENAPI_PATH, headers={"host": HOST}), 403, "access_required")
+    refused = _one(log_lines(), "request_finished")
+    assert (refused.get("code"), refused.get("problem")) == (403, "access-required")
+    assert [key for key in ("route", "tenant_id", "sub_hash") if key in refused] == []
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
+def test_server_error_logs_one_django_request_line(
+    jwks_server: JwksInfo, settings: SettingsWrapper, log_lines: LogLines, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """처리하지 못한 예외(probe urlconf /probe/boom) → 500 internal_error(detail 없음) · django.request 줄 정확히 하나(error ·
+    request_id = 응답 X-Request-ID) · request_failed 하나 · request_finished 없음 · stdout · stderr에 원문 줄 0(Django 기본 로깅의
+    console · mail_admins가 돌지 않는다 — LOGGING_CONFIG = None)."""
+    settings.ROOT_URLCONF = "tests.probe_urls"
+    headers, _ = _auth_headers(jwks_server)
+    capsys.readouterr()
+    response = Client(raise_request_exception=False).get("/probe/boom", headers=headers)
+    body = assert_problem(response, 500, "internal_error")
+    assert "detail" not in body
+    records = log_lines()
+    request_lines = [record for record in records if record.get("logger") == "django.request"]
+    assert len(request_lines) == 1
+    assert request_lines[0].get("level") == "error"
+    assert request_lines[0].get("request_id") == response["X-Request-ID"]
+    assert len(_events(records, "request_failed")) == 1
+    assert _events(records, "request_finished") == []
+    captured = capsys.readouterr()
+    raw_lines = (len(captured.out.splitlines()), len(captured.err.splitlines()))
+    assert raw_lines == (0, 0), f"JSON sink 밖으로 나간 줄 수(stdout · stderr) {raw_lines}"
+
+
+# --- wsgi 진입점(D7) -----------------------------------------------------------------------------------------------------
+
+
+def test_wsgi_entry_boots_with_otel_and_no_public_lookups() -> None:
+    """새 프로세스(pod 설정)에서 wsgi 적재 → 종료 0 · application WSGIHandler · MIDDLEWARE[0] OTel · [1] RequestIdMiddleware ·
+    Sentry 꺼짐 · 공개 이름 조회 0(가드 자기검사 통과) · stdout은 줄마다 JSON 객체(otel_exporter_disabled 경고 포함) · stderr 0."""
+    result = _boot_wsgi()
+    assert result.returncode == 0, result.summary()
+    marked = [line for line in result.stdout.splitlines() if line.startswith(BOOT_MARK)]
+    assert len(marked) == 1, f"기동 결과 줄 수 {len(marked)} · {result.summary()}"
+    report = json.loads(marked[0][len(BOOT_MARK) :])
+    assert report["guard_ok"] is True, "이름 조회 가드가 공개 이름을 막지 못했다(가드 자기검사)"
+    assert report["public_lookups"] == []
+    facts = report["facts"]
+    assert facts["application"] == "WSGIHandler"
+    middleware = facts["middleware"]
+    assert middleware[0].startswith(OTEL_MIDDLEWARE_PREFIX), "OTel 미들웨어가 맨 앞에 없다"
+    assert middleware[1] == REQUEST_ID_MIDDLEWARE
+    assert facts["sentry_active"] is False
+    records: list[dict[str, Any]] = []
+    non_json: list[int] = []
+    for number, line in enumerate(result.stdout.splitlines(), start=1):
+        if line.startswith(BOOT_MARK):
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            non_json.append(number)
+            continue
+        if isinstance(record, dict):
+            records.append(record)
+        else:
+            non_json.append(number)
+    assert non_json == [], f"기동 stdout에 JSON 객체가 아닌 줄(줄 번호 {non_json})"
+    disabled = [(line.get("level"), line.get("logger")) for line in _events(records, "otel_exporter_disabled")]
+    assert disabled == [("warning", "django_common.observability")]
+    stderr_lines = len([line for line in result.stderr.splitlines() if line.strip()])
+    assert stderr_lines == 0, f"기동 stderr 줄 수 {stderr_lines}"
+
+
+# --- 시험 실행 위생(conftest 가드 — T072 ② r2 H9 · H12) ------------------------------------------------------------------
+
+# conftest가 단언 재작성에 등록하는 도우미 모듈(재작성된 모듈에만 pytest가 넣는 이름 @pytest_ar가 있다)
+REWRITTEN_HELPERS = ("tests._boot", "tests._problem", "tests._outbox_fakes", "tests._jwt", "tests._kafka")
+# conftest pytest_configure 가드의 문구 앞머리 · 조건 이름(값 없음)
+RUN_GUARD_PREFIX = "생성물 시험 실행 위생 위반: "
+RUN_GUARD_LABELS = frozenset(
+    {"PYTHONOPTIMIZE(-O)", "--tb", "--showlocals(-l)", "--show-capture", "--full-trace", "DJANGO_SETTINGS_MODULE(--ds)"}
+)
+USAGE_ERROR_EXIT = 4  # pytest ExitCode.USAGE_ERROR
+PYTEST_CHILD_TIMEOUT_S = 120
+PYTEST_CHILD_TARGET = "tests/test_openapi_snapshot.py"  # 모으기만 한다(컨테이너 없음)
+# 자식 pytest가 이 프로세스에서 물려받지 않는 env — 사례가 정한다(pytest-django는 이 프로세스에 DJANGO_SETTINGS_MODULE을 둔다)
+_PYTEST_CHILD_DROPPED = frozenset(
+    {"PYTEST_ADDOPTS", "PYTEST_PLUGINS", "PYTHONOPTIMIZE", "DJANGO_SETTINGS_MODULE", "DJANGO_CONFIGURATION"}
+)
+
+
+def test_helper_modules_are_assert_rewritten() -> None:
+    """conftest가 도우미 모듈을 pytest 단언 재작성에 등록했다(pytest.register_assert_rewrite — 도우미 import 앞): 기동 거부 · 위생 ·
+    문제 응답 단언(tests._boot · tests._problem · tests._outbox_fakes …)이 재작성돼 python -O · PYTHONOPTIMIZE에서도 사라지지 않고
+    (재작성한 단언은 명시 raise다) 공허하게 통과하지 않는다."""
+    plain = [name for name in REWRITTEN_HELPERS if "@pytest_ar" not in vars(importlib.import_module(name))]
+    assert plain == [], f"단언 재작성 밖의 도우미 모듈: {plain}"
+
+
+def _pytest_collect(changes: Mapping[str, str]) -> BootRun:
+    """이 pod에서 새 pytest 프로세스로 PYTEST_CHILD_TARGET을 모은다(--collect-only) — env = 이 프로세스 env − _PYTEST_CHILD_DROPPED +
+    changes · cwd = pod 루트(이 pod의 pyproject addopts · conftest) · shell 없음 · 시간 상한."""
+    env = {name: value for name, value in os.environ.items() if name.upper() not in _PYTEST_CHILD_DROPPED}
+    env.update(changes)
+    env["PYTHONIOENCODING"] = "utf-8"
+    completed: subprocess.CompletedProcess[str] | None
+    try:
+        completed = subprocess.run(  # noqa: S603 — 인자 고정 · shell 없음 · 이 프로세스의 인터프리터
+            [sys.executable, "-m", "pytest", "--collect-only", "-p", "no:cacheprovider", PYTEST_CHILD_TARGET],
+            cwd=POD_ROOT,
+            env=env,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=PYTEST_CHILD_TIMEOUT_S,
+            check=False,
+            shell=False,
+        )
+    except subprocess.TimeoutExpired:
+        completed = None  # 실패는 except 밖에서 낸다(명령 줄 · 부분 출력이 연쇄 예외로 실리지 않게)
+    if completed is None:
+        pytest.fail(f"pytest 하위 프로세스가 {PYTEST_CHILD_TIMEOUT_S} s 안에 끝나지 않았다", pytrace=False)
+    return BootRun(completed.returncode, completed.stdout, completed.stderr, env)
+
+
+def _run_guard_labels(run: BootRun) -> set[str] | None:
+    """stderr의 가드 문구(UsageError — `ERROR: <앞머리><이름> · <이름> … — <안내>`)에 실린 조건 이름 · 없으면 None."""
+    lines = [line for line in run.stderr.splitlines() if RUN_GUARD_PREFIX in line]
+    if not lines:
+        return None
+    names = lines[-1].split(RUN_GUARD_PREFIX, 1)[1].split(" — ", 1)[0]
+    return {name.strip() for name in names.split(" · ")}
+
+
+def test_run_guard_refuses_unsafe_runs() -> None:
+    """conftest 가드(pytest_configure — H12 · H9 · B-4 · B-1): python -O(PYTHONOPTIMIZE) · short가 아닌 --tb · -l · no가 아닌
+    --show-capture · --full-trace · tests.settings가 아닌 설정 모듈(--ds)이 PYTEST_ADDOPTS(명령줄과 같다)로 들어오면 시험을 모으기
+    전에 UsageError(종료 4)로 멈추고, 문구는 어긴 조건 이름 여섯만 싣는다(값 없음)."""
+    widening = f"--tb=long -l --show-capture=all --full-trace --ds={POD_SETTINGS}"
+    run = _pytest_collect({"PYTHONOPTIMIZE": "1", "PYTEST_ADDOPTS": widening})
+    assert run.returncode == USAGE_ERROR_EXIT, run.summary()
+    assert _run_guard_labels(run) == RUN_GUARD_LABELS, run.summary()
+
+
+def test_run_settings_module_is_the_wrapper_despite_shell_env() -> None:
+    """셸 env DJANGO_SETTINGS_MODULE={{ pod_snake }}.settings(실제 설정)가 있어도 pyproject addopts --ds=tests.settings(pytest-django:
+    옵션 > env > ini)가 시험 래퍼를 고정한다 — 새 pytest 프로세스가 `settings: tests.settings (from option)`으로 모으고 가드를
+    통과한다(종료 0 · H9 · B-1)."""
+    run = _pytest_collect({"DJANGO_SETTINGS_MODULE": POD_SETTINGS})
+    assert run.returncode == 0, run.summary()
+    pinned = "settings: tests.settings (from option)" in run.stdout
+    assert pinned, "pytest-django 머리말에 `settings: tests.settings (from option)`이 없다 — 셸 env가 시험 래퍼를 비켜 갔다"

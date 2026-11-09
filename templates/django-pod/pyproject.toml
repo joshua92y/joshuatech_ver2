@@ -7,6 +7,8 @@
 #   실행 파일 경로를 따로 줄 수 있다). 도구가 없으면 skip이 아니라 FAIL이다.
 #   JT_SAMPLE_POD_ROOT=<dir>: 생성 트리(미니 저장소 <dir>/apps/sample-pod + <dir>/packages/django-common)를 그 디렉터리에
 #   남긴다 — 상대 경로는 저장소 루트 기준이다. 하네스는 표식 파일 .jt-sample-pod-root가 있는 디렉터리만 비운다.
+#   하네스 동시 실행 금지 — 이미지 태그(IMAGE_TAG)가 고정이고 남은 스모크 컨테이너 쓸기를 세션끼리 나눠 쓴다(T072 r3 F5).
+#   30분보다 젊은 다른 세션 스모크 컨테이너가 보이면 지우지 않고 gen-34가 「다른 하네스 세션이 실행 중일 수 있다」로 실패한다.
 [project]
 name = "django-pod-template-tests"
 version = "0.0.0"

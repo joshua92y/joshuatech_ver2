@@ -1,0 +1,298 @@
+# {{ pod_name }}
+
+{% if description -%}
+{{ description }}
+
+{% endif -%}
+`templates/django-pod`(copier)로 생성한 Django pod다. 계약의 정본은 `specs/003-platform-foundation/contracts/pod-template.md`,
+규칙은 `.claude/rules/django-pod.md`다. 공용 코드는 `packages/django-common`에 있고 pod에 복사하지 않는다.
+
+## 구성
+
+| 경로 | 내용 |
+|---|---|
+| `{{ pod_snake }}/conf.py` | 설정 모델(pydantic-settings) — env 검증 · 프로필 · 교차 규칙. 실패는 설정 이름만 실은 `ImproperlyConfigured` |
+| `{{ pod_snake }}/settings.py` | Django 설정(conf 값에서 파생 · `MAILERS` · `LOGGING_CONFIG = None`) |
+| `{{ pod_snake }}/apps.py` · `startup.py` | `PodConfig.ready()` = 로깅 → 기동 단언(네트워크 0){% if has_celery %} → Celery 브로커{% endif %} |
+| `{{ pod_snake }}/wsgi.py` · `gunicorn_conf.py` | web(gunicorn gthread 워커 1 × 스레드 4) · OTel · Sentry · 지표 9100 |
+| `{{ pod_snake }}/api.py` · `urls.py` · `errors.py` | Ninja API(헬스 3종 · `/api/openapi.json`) · RFC 9457 오류 처리기{% if has_admin %} · `urls_admin.py`(ADMIN_HOST만){% endif %} |
+| `{{ pod_snake }}/middleware.py` · `metrics.py` | `http_requests_total{route,status}`{% if has_admin %} · AdminHostMiddleware(admin urlconf · 경로 접두 · 정적 자산){% endif %} |
+| `{{ pod_snake }}/core/` | 도메인 앱 자리 · `0001_app_role_grants`(app role GRANT) |
+| `{{ pod_snake }}/events/` | 소유 이벤트(`OWNED_EVENTS` · `publish_owned`) — `events/README.md` |
+{%- if has_celery %}
+| `{{ pod_snake }}/celery.py` · `tasks.py` | Celery 앱(워커 + 내장 beat) · 기본 작업 outbox dead purge |
+{%- endif %}
+| `{{ pod_snake }}/management/commands/` | `outbox_relay`(django-common 재노출) · `startup_check`(web initContainer) |
+| `tests/` | 시험 래퍼(`tests/settings.py`) · 픽스처(`conftest.py`) · 도우미 · TLS 전용 PostgreSQL 이미지(`tests/docker/pg-tls`) |
+
+## 시험
+
+```sh
+uv sync --locked
+uv run --locked pytest -q
+```
+
+- Docker가 필요하다(testcontainers — PostgreSQL 18.6 TLS · Kafka · Dragonfly). 시험은 skip하지 않는다.
+- 시험 설정 = 래퍼 `tests.settings`(pyproject addopts `--ds=tests.settings` · ini `DJANGO_SETTINGS_MODULE`) — pytest-django는
+  옵션 > env > ini 순이라 셸의 `DJANGO_SETTINGS_MODULE`도 래퍼를 비켜 가지 못한다. 래퍼는 pod 설정 env를 시험 자리값(닫힌 포트 ·
+  난수 비밀 · `ENV=test`)으로 덮어쓰고 선택 설정 · 검증된 설정을 대신하는 env(`CELERY_BROKER_URL` 등 — 아래 「설정」)를 지운 뒤
+  pod 설정을 적재한다. 셸에 둔 실제 설정 env는 시험에 닿지 않는다.
+- 실패 출력 위생: `addopts = ["--tb=short", "--show-capture=no", "--ds=tests.settings"]`를 바꾸지 않는다. `tests/conftest.py` 가드가
+  python `-O` · `PYTHONOPTIMIZE` · 실패 출력을 넓히는 옵션(short가 아닌 `--tb` · `-l` · no가 아닌 `--show-capture` · `--full-trace` —
+  명령줄 · `PYTEST_ADDOPTS` · `-o addopts=`로 들어온 것 포함) · `tests.settings`가 아닌 설정 모듈로 돈 실행을 시험 전에
+  `UsageError`(종료 4 · 조건 이름만)로 멈춘다. 도우미 모듈(`tests._boot` · `_problem` · `_outbox_fakes` · `_jwt` · `_kafka`)의 단언은
+  pytest 단언 재작성에 등록돼 있다. 가드 밖의 넓히는 설정(`log_cli` · `--log-cli-level` · `--log-file` · `junit_logging` · `-s` ·
+  `--capture=no|tee-sys`)은 로컬에서만 쓰고 그 출력은 공유하지 않는다(접속 문자열 · 심은 비밀). 새 시험은 env 매핑(`os.environ`) ·
+  자격 헤더(토큰) · 비밀 · 자격 URL을 단언 식 안(호출 인자 · 피연산자)에 두지 않는다 — 결과를 지역 변수로 받아 단언한다(단언 재작성이
+  인자 repr을 찍고 `-vv`는 자르지 않는다).
+- 시험 이미지 `jt-{{ pod_name }}-pg-tls:18.6`(`tests/docker/pg-tls`)은 세션이 끝나도 남긴다 — 같은 이미지(ID)를 쓰는 동시 세션의
+  이미지 삭제 충돌을 피한다. 다음 세션의 빌드(캐시)가 같은 태그를 덮는다.
+- 마이그레이션 검사: `makemigrations --check` · `lintmigrations`(django-migration-linter — 대상 = pod 앱 `{{ pod_snake }}` · `core`)는
+  시험(`tests/test_migrations.py`)이 돈다.
+
+## 설정
+
+프로필은 env `JT_SETTINGS_PROFILE`이다 — `runtime`(없음 · 기본) | `migrate`(PreSync migrate Job 전용). 모르는 값은 기동 실패다.
+
+| 이름 | runtime | 출처(운영) | 비고 |
+|---|---|---|---|
+| `SECRET_KEY` | 필수 · 비밀 | `<pod>-env`(kv `{env}/django/{{ pod_name }}`) | 50자 이상 · 서로 다른 글자 5 이상 · `django-insecure-` 접두 아님 |
+| `DATABASE_URL` | 필수 · 비밀 | `<pod>-env`(app role) | dev · prod는 `sslmode=verify-full&sslrootcert=/etc/pg/ca.crt` · test는 require 이상 · 쿼리는 이 둘만 |
+| `DRAGONFLY_URL` | 필수 · 비밀 | `<pod>-env` | `redis://{{ pod_name }}:…@…/0` · 쿼리 없음 |
+| `KAFKA_PASSWORD` | 필수 · 비밀 | `<pod>-env` | SASL SCRAM-SHA-512 |
+| `KAFKA_BOOTSTRAP` · `KAFKA_USERNAME` | 필수 | ConfigMap | `host:port` 목록 · prod `{{ pod_name }}` / dev `dev-{{ pod_name }}` |
+| `AUTHENTIK_ISSUER` · `AUTHENTIK_JWKS_URL` · `AUTHENTIK_AUDIENCE` | 필수 | `<pod>-env` · `<pod>-env` · ConfigMap | ISSUER = 공개 URL(문자열 비교만) · JWKS = 클러스터 안 svc DNS · AUDIENCE = `{{ pod_name }}` |
+| `ACCESS_TEAM_DOMAIN` · `ACCESS_AUD_M2M` · `ACCESS_EXPECTED_CN` | 필수 | ConfigMap | dev · prod에서 `http://` 거부 · EXPECTED_CN = 서비스 토큰 Client ID |
+| `ACCESS_AUD_ADMIN` · `ADMIN_HOST` | 필수(빈 값 유효) | ConfigMap | 빈 `ADMIN_HOST` = admin 없음(dev) |
+| `ALLOWED_HOSTS` | 필수 | ConfigMap | 쉼표 목록 · `*` 금지 · web은 downward API `POD_IP`가 더해진다 |
+| `ENV` | 필수 | ConfigMap | `dev` · `prod` · `test`(클러스터 밖 전용) |
+| `APP_VERSION` · `APP_GIT_SHA` | 필수 | 이미지 ENV(build-arg) | git sha = 소문자 hex 7–64 |
+| `AUTH_ACTOR_SUB` · `SENTRY_DSN` | 선택(기본 빈 값) | ConfigMap · `<pod>-env` | 빈 `SENTRY_DSN` = Sentry 끔 |
+{%- if has_admin %}
+| `FORCE_SCRIPT_NAME` | 선택 | ConfigMap(prod) | `/<pod>` 꼴 → `ADMIN_SCRIPT_NAME`(ADMIN_HOST 요청에만 적용 · Django 전역 `FORCE_SCRIPT_NAME` 아님) |
+{%- endif %}
+| `POD_IP` · `POD_NAMESPACE` | 선택 | downward API | `POD_NAMESPACE`가 있으면 클러스터 교차 규칙 |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` · `OTEL_TRACES_SAMPLER` · `OTEL_TRACES_SAMPLER_ARG` | 선택 | ConfigMap | 엔드포인트 빈 값 = 내보내기 끔(T098) |
+| `DATABASE_OWNER_URL` | **거부**(비지 않으면 기동 실패) | `<pod>-migrate`(migrate 프로필 필수) | owner role · migrate Job 전용 |
+
+- **게이트 2**: 문자열 값에 `PLACEHOLDER-`가 있으면 기동 실패(base ConfigMap 자리값이 overlay에서 빠진 경우). 면제는 env
+  `JT_PLACEHOLDER_EXEMPT`(쉼표 이름) ∩ 코드 상수 `PLACEHOLDER_EXEMPTABLE`(템플릿은 빈 집합)뿐이다.
+- **클러스터 교차 규칙**(`POD_NAMESPACE`가 있을 때): `ENV` ≠ test · `POD_NAMESPACE` = `jt-<ENV>` · `KAFKA_USERNAME` = (dev면
+  `dev-`) + `{{ pod_name }}` · `DATABASE_URL` 사용자 = (dev면 `dev_`) + `{{ pod_snake }}_app` · `ALLOWED_HOSTS`에
+  `{{ pod_name }}.<POD_NAMESPACE>.svc`.
+- 클러스터 안 URL(`DATABASE_URL` · `DRAGONFLY_URL` · `KAFKA_BOOTSTRAP` · `AUTHENTIK_JWKS_URL` · OTLP 엔드포인트)이 공개 도메인
+  `joshuatech.dev`(하위 포함)을 가리키면 기동 실패다.
+- 자격 URL(`DATABASE_URL` · `DATABASE_OWNER_URL` · `DRAGONFLY_URL`)의 사용자 정보는 `[A-Za-z0-9_-]`만 받는다.
+- 검증된 설정을 대신하는 env — `CELERY_BROKER_URL` · `CELERY_BROKER_READ_URL` · `CELERY_BROKER_WRITE_URL` ·
+  `CELERY_RESULT_BACKEND`(Celery가 `DRAGONFLY_URL`보다 먼저 읽는다) · `GUNICORN_CMD_ARGS`(`gunicorn_conf`를 덮는다) — 가 있으면(빈
+  값 포함) runtime 프로필의 모든 프로세스(migrate Job은 migrate 프로필이라 제외)의 기동이 실패한다(`{{ pod_snake }}/startup.py` —
+  이름만 싣는다). `GUNICORN_CMD_ARGS`는 gunicorn이 먼저 읽는다: gunicorn이 해석하는 값은 runtime 기동이 이름만 실어 거부한다 — 단
+  그 값에 `--log-level debug`가 있으면 gunicorn이 Django 전에 설정 덤프(해석한 값 — `raw_env` 등)를 찍는다. 해석하지 못하는 값은 Django
+  전에 gunicorn 사용법 오류(값 포함 · 종료 2)로 끝난다 — 값 쪽 방어선은 렌더 단언(env_hygiene) · 이미지 단언 · T075 gitops lint다.
+- 목록을 넓히는 자리(`{{ pod_snake }}/conf.py`): `SECRET_SETTINGS`(비밀 — 빈 값 금지) · `IN_CLUSTER_URL_SETTINGS`(`DATABASE_URL` ·
+  `DRAGONFLY_URL` · `KAFKA_BOOTSTRAP` 밖의 이름은 http(s) URL로 검사한다 — 꼴이 틀렸거나 모델 필드가 없으면 기동 실패) ·
+  `PLACEHOLDER_EXEMPTABLE`. 새 설정은 모델 필드와 이 목록에 함께 더하고, 필수 설정이면 시험 래퍼(`tests/settings.py`)에 자리값도
+  둔다(`tests/test_auth_middleware.py`가 목록의 이름마다 공개 호스트 거부를 스스로 시험한다).
+
+## 로컬 실행
+
+로컬 실행은 `ENV=test`다(Kafka PLAINTEXT · `sslmode=require` · 루프백 `http://` 팀 도메인). 의존 서비스는 `compose.dev.yml`(TLS 전용
+PostgreSQL 18.6 · Dragonfly v1.40.1 · Kafka 4.3.1 KRaft — 포트는 127.0.0.1에만)이 띄우고, pod 설정은 `env.example`의 키를 셸 env로
+채운다(값을 파일로 저장소에 두지 않는다). 시험은 compose를 쓰지 않는다(testcontainers). 비밀번호는 `[A-Za-z0-9_-]`만 쓴다(자격 URL의
+사용자 정보 규칙 — `python -c "import secrets; print(secrets.token_urlsafe(32))"`의 글자다). 명령은 pod 루트(이 디렉터리)에서 bash로 돈다.
+
+1. **의존 서비스** — postgres 슈퍼유저 비밀번호는 셸 env `POSTGRES_PASSWORD`에서만 온다(비어 있으면 postgres가 초기화를 거부한다).
+   `--wait`는 postgres가 TCP(TLS)를 받을 때까지 기다린다. 호스트 포트가 이미 쓰이면 `JT_DEV_POSTGRES_PORT` · `JT_DEV_DRAGONFLY_PORT`
+   · `JT_DEV_KAFKA_PORT`(기본 5432 · 6379 · 9092)로 바꾸고 아래 URL의 포트도 같은 값으로 쓴다.
+
+   ```bash
+   read -rs POSTGRES_PASSWORD; export POSTGRES_PASSWORD
+   docker compose -f compose.dev.yml up -d --wait
+   ```
+
+2. **DB · role**(한 번) — owner(`{{ pod_snake }}_owner` · LOGIN BYPASSRLS · DB 소유자)와 app(`{{ pod_snake }}_app` · LOGIN
+   NOBYPASSRLS)으로 나눈다. compose postgres 컨테이너 안의 psql(18 — `\getenv`는 15 이상)이 superuser로(컨테이너 안 유닉스 소켓)
+   만든다. 비밀번호는 export한 셸 env로만 넘긴다 — `exec -e <이름>`은 값을 현재 셸 env에서 읽고, psql은 heredoc 안의 `\getenv`로
+   읽는다(명령줄 인자 · 프로세스 목록에 값이 실리지 않는다):
+
+   ```bash
+   read -rs OWNER_PASSWORD; read -rs APP_PASSWORD; export OWNER_PASSWORD APP_PASSWORD
+   docker compose -f compose.dev.yml exec -T -e OWNER_PASSWORD -e APP_PASSWORD postgres \
+     psql -v ON_ERROR_STOP=1 --username postgres --dbname postgres <<'SQL'
+   SET log_min_error_statement = panic; SET log_statement = 'none';
+   \getenv owner_pw OWNER_PASSWORD
+   \getenv app_pw APP_PASSWORD
+   CREATE ROLE {{ pod_snake }}_owner LOGIN BYPASSRLS PASSWORD :'owner_pw';
+   CREATE ROLE {{ pod_snake }}_app LOGIN NOBYPASSRLS PASSWORD :'app_pw';
+   CREATE DATABASE {{ pod_snake }} OWNER {{ pod_snake }}_owner;
+   SQL
+   ```
+
+   다시 돌리면 role이 있어 실패한다 — 실패한 문장은 서버 로그에 남지 않게 했다(첫 줄 `SET` 둘 — superuser 세션 설정: 실패한
+   `CREATE ROLE … PASSWORD` 문장이 `docker logs`에 평문으로 실리지 않는다).
+
+3. **migrate**(owner · migrate 프로필) — app role의 표 권한은 마이그레이션(`core/0001_app_role_grants`)이 준다:
+
+   ```bash
+   JT_SETTINGS_PROFILE=migrate ENV=test \
+   DATABASE_OWNER_URL="postgresql://{{ pod_snake }}_owner:$OWNER_PASSWORD@127.0.0.1:5432/{{ pod_snake }}?sslmode=require" \
+     uv run --locked python manage.py migrate --noinput
+   ```
+
+4. **runtime env**(app role) — `env.example`의 키를 셸 env로 export한다(`DATABASE_OWNER_URL` · `JT_SETTINGS_PROFILE`은 두지 않는다 —
+   runtime 프로필이 owner URL을 거부한다). 로컬 값의 꼴:
+
+   | 이름 | 로컬 값 |
+   |---|---|
+   | `DATABASE_URL` | `postgresql://{{ pod_snake }}_app:<APP_PASSWORD>@127.0.0.1:5432/{{ pod_snake }}?sslmode=require` |
+   | `DRAGONFLY_URL` | `redis://{{ pod_name }}:<아무 값>@127.0.0.1:6379/0` — aclfile(`compose/dragonfly-dev.acl`)이 `nopass`라 비밀번호는 검사되지 않지만 설정 모델이 사용자 · 비밀번호를 둘 다 요구한다 |
+   | `KAFKA_BOOTSTRAP` · `KAFKA_USERNAME` · `KAFKA_PASSWORD` | `127.0.0.1:9092` · `{{ pod_name }}` · `<아무 값>`(PLAINTEXT라 쓰지 않지만 비밀 설정이라 빈 값은 기동 실패다) |
+   | `ENV` · `ALLOWED_HOSTS` · `SECRET_KEY` | `test` · `127.0.0.1,localhost` · 50자 이상 난수(`secrets.token_urlsafe(48)`) |
+   | `APP_VERSION` · `APP_GIT_SHA` | `0.0.0+local` · `0000000`(이미지 밖에서만 — 이미지는 ENV로 준다) |
+   | `AUTHENTIK_ISSUER` · `AUTHENTIK_JWKS_URL` · `AUTHENTIK_AUDIENCE` | 공개 URL 문자열 · 클러스터 밖 키 서버 URL(ENV=test는 루프백 `http://`도 받는다) · `{{ pod_name }}` |
+   | `ACCESS_TEAM_DOMAIN` · `ACCESS_AUD_M2M` · `ACCESS_EXPECTED_CN` · `ACCESS_AUD_ADMIN` · `ADMIN_HOST` | 루프백 `http://127.0.0.1:<포트>` 가능 · 값 · 값 · 빈 값 · 빈 값 |
+
+   확인: `uv run --locked python manage.py startup_check` → `startup_check: OK`(app role 접속 · `check_rls --require-rls-role`).
+
+5. **프로세스** — 아래 「프로세스」 표의 명령을 `uv run --locked …`로 돈다. Windows에서는 gunicorn이 돌지 않는다(POSIX 전용 — web은
+   「이미지」의 컨테이너나 WSL에서 돌린다).{% if has_celery %} Windows의 Celery CLI는 `--beat`를 거부한다 — 워커(`--beat` · `--schedule`을
+   뺀 명령)와 `celery --app {{ pod_snake }} beat --schedule <쓰기 가능한 임시 경로>`를 따로 띄운다.{% endif %}
+
+6. **정리** — `docker compose -f compose.dev.yml down -v`(컨테이너 · 네트워크 · 볼륨 — DB 내용도 지운다).
+
+## 프로세스
+
+| 프로세스 | 명령 |
+|---|---|
+| web | `gunicorn --config python:{{ pod_snake }}.gunicorn_conf --no-control-socket {{ pod_snake }}.wsgi:application` |
+| relay | `python manage.py outbox_relay`(지표 9464) |
+| web initContainer | `python manage.py startup_check`(DB 접속 재시도 → `check_rls --require-rls-role`) |
+{%- if has_celery %}
+| celery | `celery --app {{ pod_snake }} worker --pool solo --beat --schedule /tmp/celerybeat-schedule --without-gossip --without-mingle --without-heartbeat --loglevel INFO` — 프로브 · 지표 없음: 멈춰도 재시작되지 않는다(dead outbox purge 정지 감시는 T098 · T114 인계) |
+{%- else %}
+| outbox purge(CronJob) | `python manage.py outbox_purge`(일 1회 03:17 UTC) |
+{%- endif %}
+| migrate(PreSync Job) | CONNECT 경계 SQL 뒤 `python manage.py migrate --noinput`(`JT_SETTINGS_PROFILE=migrate`) — 하위 migrate의 종료 코드를 돌려준다. 접속 · 경계 SQL 재시도 줄은 stdout(`db_connect_retry` · `db_boundary_retry <클래스> attempt=<n>` — 경계는 `OperationalError` · app role 지연 `UndefinedObject`) · 마감은 함께 `JT_DB_CONNECT_WAIT_SECONDS`(기본 120). 스크립트 자신의 실패는 stderr 한 줄 + 종료 1(`db_url_invalid` · `db_connect_wait_invalid` · `db_connect_failed` · `db_boundary_failed` + 예외 클래스 이름 — 트레이스백 · 메시지 · 값 없음) |
+
+## 이미지
+
+빌드 컨텍스트는 저장소 루트다(`packages/django-common`을 함께 넣는다 — `Dockerfile` 머리 주석). 저장소 루트에서:
+
+```bash
+docker buildx build --platform linux/arm64 -f apps/{{ pod_name }}/Dockerfile \
+  --build-arg APP_VERSION=<판> --build-arg APP_GIT_SHA=<git sha> -t {{ pod_name }}:<태그> .
+```
+
+- build-arg `APP_VERSION`(기본 `0.0.0+local`) · `APP_GIT_SHA`(기본 `0000000` — 소문자 hex 7–64자)는 이미지 ENV와 라벨
+  `org.opencontainers.image.revision`이 된다(배포 빌드는 `github.sha`).
+- 컨텍스트는 `Dockerfile.dockerignore`가 거른다 — pod 안까지 허용 목록이다(`{{ pod_snake }}` · `manage.py` · `pyproject.toml` ·
+  `uv.lock` + django-common `pyproject.toml` · `src`만 넣고 캐시 · `.venv` · `.git*`와 비밀 후보를 다시 뺀다 — `.env*` · `*.pem` ·
+  `*.key` · `*.crt` · `*.p12` · `*.pfx` · `*.env` · `.netrc` · `id_rsa*` · `id_ed25519*` · `id_ecdsa*`, 모두 대소문자를 가리지 않는다:
+  `CASE.PEM` · `.Env.prod` · `LOCAL.ENV` · `.NETRC` · `ID_RSA`도 빠진다). 그래서 작업 트리에 무엇이 있든(IDE 설정 · 로컬 env · 키 ·
+  시험 · deploy · compose · 문서) 이미지의 `/src/apps/{{ pod_name }}` 최상위는 `.venv` · `{{ pod_snake }}` · `manage.py` · `pyproject.toml` ·
+  `uv.lock`뿐이다. 패키지 디렉터리(`{{ pod_snake }}/`) 안의 파일은 그 재제외 꼴이 아니면 들어간다(`secrets.json` 같은 이름은 걸러지지
+  않는다) — 비밀을 패키지 안에 두지 않는다. `packages/django-common/src`의 추적 밖 파일도 django-common wheel을 거쳐 이미지 venv의
+  site-packages에 들어간다 — 그 경로에 비밀을 두지 않는다. 저장소 루트 `.dockerignore`(`*`)는 Dockerfile 이름이 어긋난 빌드(다른
+  이름으로 복사한 `-f`)를 빈 컨텍스트로 막는다(COPY에서 실패 — 닫힌 쪽).
+- USER는 숫자 `10001:10001`이고 루트 파일시스템은 읽기 전용으로 돈다(쓰기는 `/tmp`뿐 — `docker run --read-only --tmpfs /tmp`). 기본
+  명령은 web(gunicorn)이다 — relay · {% if has_celery %}celery · {% endif %}관리 명령은 명령을 바꿔 돈다(`docker run … <이미지> python manage.py outbox_relay`).
+- 비밀 env(`SECRET_KEY` · `DATABASE_URL` · `DRAGONFLY_URL` · `KAFKA_PASSWORD`)는 `docker run -e NAME`(값 없이 — docker CLI가 셸 env에서
+  읽는다)으로 넘긴다 — `-e NAME=값`은 값을 명령줄 · 셸 기록 · 프로세스 목록에 남긴다.
+- 로컬 compose 서비스에 붙이려면 `--network {{ pod_name }}-dev_default`와 서비스 이름(`postgres` · `dragonfly`)을 쓴다. Kafka의 광고
+  리스너는 호스트용(`127.0.0.1`)이라 그 네트워크의 컨테이너는 브로커에 붙지 못한다(relay는 호스트 프로세스로 돈다).
+
+## deploy/base 인터페이스(T075가 gitops로 복사한다)
+
+- 파일(`kustomization.yaml`의 resources 순서): `configmap.yaml` · `externalsecret-env.yaml` · `externalsecret-migrate.yaml` ·
+  `migrate-job.yaml` · `deployment.yaml` · {% if has_celery %}`deployment-celery.yaml`{% else %}`cronjob-outbox-purge.yaml`{% endif %} ·
+  `service.yaml` · `ingress.yaml`. gitops `apps/{{ pod_name }}/base`로 파일 이름 1:1 복사한다.
+- base는 dev 값이다 — prod overlay가 namespace · 이미지 digest · Ingress host(`/spec/rules/0/host`) · ConfigMap 값 · ExternalSecret
+  store와 키(`prod/…`)를 패치한다. base `kustomization.yaml`에는 `namespace` · `images` · `commonLabels`가 없다. 모든 컨테이너의
+  `image`는 태그 · digest 없는 `ghcr.io/joshua92y/{{ pod_name }}`이다(overlay `images[].name`과 글자까지 같아야 digest가 붙는다).
+  라벨은 `app.kubernetes.io/name: {{ pod_name }}` + 워크로드의 `app.kubernetes.io/component`(web · {% if has_celery %}celery{% else %}outbox-purge{% endif %} · migrate)이고, selector는
+  바꿀 수 없으므로 라벨을 바꾸지 않는다. ConfigMap 값은 클러스터 교차 규칙을 만족해야 한다(머지 전 렌더로 확인).
+- ConfigMap `{{ pod_name }}-config` base 값: `ACCESS_AUD_ADMIN=""` · `ACCESS_AUD_M2M` · `ACCESS_EXPECTED_CN` =
+  `PLACEHOLDER-SET-IN-OVERLAY`(게이트 2가 overlay 누락을 기동 실패로 바꾼다) · `ACCESS_TEAM_DOMAIN=joshua-tech.cloudflareaccess.com` ·
+  `ADMIN_HOST=""` · `ALLOWED_HOSTS={{ pod_name }}.jt-dev.svc` · `AUTH_ACTOR_SUB=""` · `AUTHENTIK_AUDIENCE={{ pod_name }}` · `ENV=dev`{% if has_admin %} ·
+  `FORCE_SCRIPT_NAME=""`{% endif %} · `KAFKA_BOOTSTRAP=jt-kafka-kafka-bootstrap.data.svc:9093` · `KAFKA_USERNAME=dev-{{ pod_name }}` ·
+  `OTEL_EXPORTER_OTLP_ENDPOINT=""` · `OTEL_TRACES_SAMPLER=parentbased_traceidratio` · `OTEL_TRACES_SAMPLER_ARG="0.1"`(값은 전부 평문
+  스칼라 — 블록 스칼라 `|`의 끝 줄바꿈 금지). `APP_VERSION` · `APP_GIT_SHA` · `DJANGO_SETTINGS_MODULE`은 이미지 ENV가 정하므로 두지
+  않는다(덮어쓰게 된다).
+- ExternalSecret `{{ pod_name }}-env`(store `vault-dev` · `refreshInterval: 5m` · `Periodic` · `creationPolicy: Owner` · 템플릿 v2
+  `Replace`)의 `data[]` 순번은 overlay 인덱스 패치의 인터페이스다 — prod overlay는 인덱스 replace마다 앞에 `op: test`(`path:
+  /spec/data/N/secretKey` · `value: <이름>`)를 둔다(재생성으로 순번이 바뀌면 렌더가 실패한다 — validate 3.2는 키 접두 · store만
+  본다). 새 항목은 끝(7번 뒤 — 8번부터)에만 덧붙인다. `DATABASE_URL`은 템플릿이 조립한다(DB 이름 = `db_username`에서 `_app`을 뗀 것
+  · `sslmode=verify-full&sslrootcert=/etc/pg/ca.crt`) — prod overlay는 URL 문자열을 패치하지 않는다.
+
+| # | secretKey | remoteRef.key(dev) | property |
+|---|---|---|---|
+| 0 | db_username | `dev/db/dev_{{ pod_snake }}/app` | username |
+| 1 | db_password | `dev/db/dev_{{ pod_snake }}/app` | password |
+| 2 | kafka_password | `dev/kafka/{{ pod_name }}` | password |
+| 3 | dragonfly_url | `dev/dragonfly/{{ pod_name }}` | url |
+| 4 | authentik_issuer | `dev/authentik/{{ pod_name }}` | issuer |
+| 5 | authentik_jwks_url | `dev/authentik/{{ pod_name }}` | jwks_url |
+| 6 | sentry_dsn | `dev/sentry/{{ pod_name }}` | dsn |
+| 7 | secret_key | `dev/django/{{ pod_name }}` | secret_key |
+
+- ExternalSecret `{{ pod_name }}-migrate`: `data[0]` · `data[1]` = `dev/db/dev_{{ pod_snake }}/owner`의 username · password ·
+  `DATABASE_OWNER_URL`(DB 이름 = `db_username`에서 `_owner`를 뗀 것). migrate Job만 참조한다. prod overlay는 store(`vault-prod`)와
+  `data[0]` · `data[1]`의 key를 prod 경로(`prod/db/{{ pod_snake }}/owner`)로 바꾸고, 각 인덱스 replace 앞에 `op: test`(`path:
+  /spec/data/N/secretKey` · `value: <이름>`)를 둔다(위 `-env`와 같은 규칙).
+- 단계 · sync-wave(첫 배포에 Secret · ConfigMap이 소비자보다 먼저 생긴다):
+
+| 리소스 | 단계 | sync-wave | hook-delete-policy |
+|---|---|---|---|
+| ExternalSecret `{{ pod_name }}-migrate` | PreSync hook | -1 | BeforeHookCreation |
+| Job `{{ pod_name }}-migrate` | PreSync hook | 0 | BeforeHookCreation |
+| ConfigMap `{{ pod_name }}-config` · ExternalSecret `{{ pod_name }}-env` | Sync | -1 | — |
+| Deployment {% if has_celery %}둘{% else %}· CronJob{% endif %} · Service · Ingress | Sync | 0(주석 없음) | — |
+
+- hook 리소스는 Argo 추적 밖이다: hook만 바뀐 변경은 전체 수동 Sync(리소스 선택 없음) · `{{ pod_name }}-migrate` ES 상태는
+  Application health 밖(`kubectl get externalsecret {{ pod_name }}-migrate`로 직접 본다) · 전체 sync마다 owner Secret이 지워졌다 다시
+  생긴다(BeforeHookCreation + Owner — 모든 배포가 Vault · ESO 가용성에 걸린다). hook ES가 Healthy가 되지 않을 때는 두 갈래다(Argo CD
+  v3.5.2 — ExternalSecret health: Ready=False는 Degraded · 상태 없음은 Progressing):
+  - ES Degraded(kv 누락 · Vault · store 오류 — `kubectl get externalsecret {{ pod_name }}-migrate`의 Ready=False 메시지로 판정): operation이
+    Failed가 되고, 자동 재시도(기본 창 ≈ 5분)가 다하면 같은 리비전은 다시 자동 sync되지 않는다 → 원인을 고친 뒤 전체 수동 Sync.
+  - ES 상태 없음(ESO 컨트롤러 중단 — Progressing): operation이 무기한 Running이다 → operation terminate → ESO 복구 → 전체 수동 Sync.
+- 마운트: CA Secret `pg-main-ca` → `/etc/pg`(모든 컨테이너) · `jt-kafka-cluster-ca-cert` → `/etc/kafka`(web · relay) · `/tmp` emptyDir
+  (유일한 쓰기 경로 — 읽기 전용 루트). 런타임 컨테이너는 env `POD_NAMESPACE`(downward API — 클러스터 교차 규칙)를, web은 `POD_IP`도
+  받는다(migrate Job은 둘 다 없다).
+- 자원(memory — CPU limit 없음):
+
+| 컨테이너 | requests | limits |
+|---|---|---|
+| web | 256Mi | 512Mi |
+| relay | 96Mi | 192Mi |
+| startup-check(initContainer) | 128Mi | 256Mi |
+{%- if has_celery %}
+| celery | 192Mi | 512Mi |
+{%- else %}
+| outbox-purge(CronJob) | 256Mi | 512Mi |
+{%- endif %}
+| migrate(Job) | 256Mi | 512Mi |
+
+## OpenAPI 스냅샷 갱신
+
+`tests/snapshots/openapi.json` = `api.get_openapi_schema()`에서 `info.title`을 뺀 값이다(title은 따로 비교한다). API를 일부러
+바꿨거나 django-ninja 판을 올렸을 때만 갱신한다 — 시험을 돌려 차이를 경로별로 검토하고, 그 변경을 일으킨 커밋에 스냅샷을 함께
+넣는다(맹목 재생성 금지 — 규칙 django-pod.md §OpenAPI snapshot refresh). 새 JSON은 pod 루트에서 이 명령으로 쓴다(시험 래퍼로
+`django.setup()` · title 제외 · 키 정렬 · 들여쓰기 2 · UTF-8 · 끝 줄바꿈 — 지금 파일과 같은 꼴이라 diff가 바뀐 경로만 보인다):
+
+```sh
+uv run --locked python -c "import json, os, pathlib, django; os.environ['DJANGO_SETTINGS_MODULE'] = 'tests.settings'; django.setup(); from {{ pod_snake }}.api import api; schema = json.loads(json.dumps(api.get_openapi_schema())); schema['info'].pop('title'); pathlib.Path('tests/snapshots/openapi.json').write_text(json.dumps(schema, ensure_ascii=False, indent=2, sort_keys=True) + '\n', encoding='utf-8', newline='\n')"
+```
+
+## 재생성
+
+`copier update`는 지원하지 않는다(모노레포 안 템플릿이라 `_commit`이 없다). 템플릿이 바뀌면 같은 답으로 다시 생성하고 diff로
+옮긴다 — 저장소 루트에서 상대 경로로 생성하고, `.copier-answers.yml`의 답(`description` · `owns_events` · `consumes_events` ·
+`has_celery` · `has_admin`)도 `--data`로 그대로 준다:
+
+```sh
+copier copy --trust --defaults --overwrite --data pod_name={{ pod_name }} templates/django-pod apps/{{ pod_name }}
+```
+
+생성 pod가 고친 파일(conf.py의 목록 · 모델 · 시험 등)은 diff를 보고 다시 옮긴다.
+
+생성 뒤 `_tasks: uv lock`이 실패하면 copier가 대상 디렉터리를 지운다 — `--no-cleanup`으로 남겨 원인을 본다.

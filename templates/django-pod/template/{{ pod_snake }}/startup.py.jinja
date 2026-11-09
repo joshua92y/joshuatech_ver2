@@ -1,0 +1,90 @@
+"""{{ pod_name }} 기동 단언(T072 D7) — PodConfig.ready()가 모든 프로세스에서 부른다.
+
+네트워크가 0이다(DB · Dragonfly · Kafka · 이름 조회 없음 — django.setup()과 urlconf import는 외부 의존에 닿지 않는다).
+검사는 assert가 아니라 raise다(python -O · PYTHONOPTIMIZE가 지우지 못하게). 실패 메시지는 설정 이름만 싣는다.
+
+- 공통: DEBUG False · ADMINS · MANAGERS 빈 값.
+- runtime 프로필만(이 순서): 검증된 설정을 대신하는 env 없음(OVERRIDING_ENV — 아래) → 면제 경로 포함 관계(AUTH_EXEMPT_PATHS ⊆
+  TENANT_CONTEXT_EXEMPT_PATHS · AUTH_ACCESS_ONLY_PATHS ⊆ TENANT_CONTEXT_EXEMPT_PATHS — Bearer가 없는 경로는 테넌트 컨텍스트도
+  없다) → django_common.auth.check_settings() → django_common.kafka.client_config() →
+  django_common.outbox.relay.producer_config() · relay_settings(). Kafka · outbox 정적 설정 오류를 relay의 로그 + 백오프(조용한
+  발행 중단)가 아니라 기동 실패로 앞당긴다.
+DB가 필요한 check_rls --require-rls-role은 여기가 아니라 web initContainer의 startup_check 명령이다(migrate 뒤에 돈다).
+"""
+
+from __future__ import annotations
+
+import os
+from collections.abc import Collection
+
+from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
+
+from {{ pod_snake }}.conf import RUNTIME
+
+# 검증된 설정을 대신하는 env(T072 ② r2 H10 · B-2) — 있으면(빈 값 포함) 기동 실패 · 이름만 싣는다. Celery는 broker · result URL을
+# app.conf(= DRAGONFLY_URL — conf가 검증한 값)보다 이 env에서 먼저 읽어 DRAGONFLY_URL 검증 · 공개 도메인 거부 · 로그 마스킹 목록을
+# 비켜 가고, gunicorn은 GUNICORN_CMD_ARGS로 --config 파일 값(workers · preload · 접근 로그)을 덮는다. runtime 프로필의 모든
+# 프로세스(migrate Job은 migrate 프로필이라 제외)가 ready에서 이 검사를 돈다 — gunicorn 워커의 Django 기동이 실패하면 워커 부팅
+# 실패로 master가 끝난다(닫힌 쪽). 렌더 단언(하네스 env_hygiene · T075 gitops lint)의 금지 목록과 같은 이름이다(그쪽은 배포
+# 매니페스트를 · 여기는 실행 env를 본다).
+OVERRIDING_ENV = (
+    "CELERY_BROKER_URL",
+    "CELERY_BROKER_READ_URL",
+    "CELERY_BROKER_WRITE_URL",
+    "CELERY_RESULT_BACKEND",
+    "GUNICORN_CMD_ARGS",
+)
+
+
+def run() -> None:
+    _common()
+    if settings.SETTINGS_PROFILE != RUNTIME:
+        return
+    _overriding_env()
+    _paths()
+    from django_common.auth import check_settings
+    from django_common.kafka import client_config
+    from django_common.outbox.relay import producer_config, relay_settings
+
+    check_settings()
+    client_config()
+    producer_config()
+    relay_settings()
+
+
+def _common() -> None:
+    names: list[str] = []
+    if settings.DEBUG is not False:
+        names.append("DEBUG")
+    if list(settings.ADMINS):
+        names.append("ADMINS")
+    if list(settings.MANAGERS):
+        names.append("MANAGERS")
+    if names:
+        raise ImproperlyConfigured(f"기동 검사 실패: {', '.join(names)}")
+
+
+def _overriding_env() -> None:
+    """OVERRIDING_ENV 가운데 env에 있는 이름(빈 값 포함 · 값은 읽지 않는다) → conf와 같은 꼴의 ImproperlyConfigured(이름만)."""
+    names = sorted(name for name in OVERRIDING_ENV if name in os.environ)
+    if names:
+        raise ImproperlyConfigured(f"설정 오류: {', '.join(names)}")
+
+
+def _paths() -> None:
+    tenant_exempt = _path_set("TENANT_CONTEXT_EXEMPT_PATHS")
+    names = [
+        name
+        for name in ("AUTH_EXEMPT_PATHS", "AUTH_ACCESS_ONLY_PATHS")
+        if not _path_set(name) <= tenant_exempt
+    ]
+    if names:
+        raise ImproperlyConfigured(f"기동 검사 실패: {', '.join(names)}가 TENANT_CONTEXT_EXEMPT_PATHS에 없는 경로를 담는다")
+
+
+def _path_set(name: str) -> set[str]:
+    value = getattr(settings, name, ())
+    if isinstance(value, str) or not isinstance(value, Collection):
+        raise ImproperlyConfigured(f"기동 검사 실패: {name}는 경로(str) 모음이어야 한다")
+    return set(value)

@@ -53,12 +53,14 @@
 #   templates/django-pod/template 경로 자체에 심볼릭 링크가 있으면 훑지 않고 FAIL.
 #   이유: 템플릿의 매니페스트는 jinja 템플릿이라 그대로는 kubeconform에 넣을 수 없어 생성물을 검사해야 한다. 생성 단계가
 #   CI에 연결되기 전에 매니페스트가 들어오면 이 검사는 "대상 없음"으로 조용히 통과해 버린다 — 그 상태를 실패로 막는다.
-#   T072가 생성 단계를 연결한다(T072가 해야 할 일): CI에서 copier copy --defaults --data pod_name=sample-pod
-#   templates/django-pod <출력 디렉터리>로 생성하고 그 디렉터리를 --generated로 넘긴다(그러면 경보선은 꺼지고 생성물의
-#   deploy/base가 검사된다).
-#   - copier는 아직 저장소의 잠금 파일(uv.lock · pnpm-lock.yaml)에 없다 — 생성 단계를 만들 때 함께 들인다.
-#   - copier copy --defaults는 copier.yml의 질문 7개 전부에 기본값이 있어야 한다 — 기본값이 없는 pod_name은
-#     --data pod_name=…으로 준다.
+#   생성 단계(T072 — CI job kubeconform): uv run --directory templates/django-pod --locked python -m copier copy --defaults
+#   --skip-tasks --quiet --data pod_name=sample-pod [--data has_celery=false [--data has_admin=false]]
+#   "$GITHUB_WORKSPACE/templates/django-pod" "$RUNNER_TEMP/gen/<변형>/apps/sample-pod"로 렌더 · 검사 전용 생성물 세 벌(기본 ·
+#   no-celery · no-admin)을 만들고 그 디렉터리를 --generated로 넘긴다(그러면 경보선은 꺼지고 생성물의 deploy/base가 검사된다).
+#   - copier는 템플릿 하네스의 잠금(templates/django-pod/uv.lock)에 있다 — uv run --locked가 그 판을 쓴다(--directory가 cwd를
+#     바꾸므로 경로는 절대 경로로 준다).
+#   - --skip-tasks는 copier.yml의 _tasks(uv lock)를 돌리지 않는다 — --trust가 필요 없고 형제 packages/django-common이 없는 배치를
+#     허용한다(계약 pod-template.md 머리 「렌더 · 검사 전용 생성」). copier.yml에서 기본값이 없는 질문은 pod_name 하나다.
 #   막지 못하는 것: 경로에 이름이 deploy인 디렉터리가 없고(k8s-deploy/ 같은 이름은 디렉터리 규칙에 걸리지 않는다), 파일
 #   이름이 kustomization이 아니고, apiVersion:/kind:가 줄 머리에 글자 그대로 없는 매니페스트(예: 키 이름을 jinja로 만드는 경우).
 #
@@ -322,7 +324,7 @@ fi
 if (( ${#trip[@]} > 0 )); then
   more=''
   if (( ${#trip[@]} > 1 )); then more=" 외 $(( ${#trip[@]} - 1 ))개"; fi
-  add_item fail '' "$T" "경보선: 배포 매니페스트로 보이는 템플릿 파일 ${#trip[@]}개(예: ${trip[0]}${more})가 있는데 --generated가 없다. 템플릿의 매니페스트는 jinja 템플릿이라 그대로 검사할 수 없다 — CI에 생성 단계(copier copy --defaults --data pod_name=sample-pod templates/django-pod <출력 디렉터리>)를 더하고 그 결과 디렉터리를 --generated로 넘긴다(T072)"
+  add_item fail '' "$T" "경보선: 배포 매니페스트로 보이는 템플릿 파일 ${#trip[@]}개(예: ${trip[0]}${more})가 있는데 --generated가 없다. 템플릿의 매니페스트는 jinja 템플릿이라 그대로 검사할 수 없다 — 생성 단계(uv run --directory templates/django-pod --locked python -m copier copy --defaults --skip-tasks --quiet --data pod_name=sample-pod <템플릿 절대 경로> <출력 디렉터리> — CI job kubeconform)로 만든 생성물 디렉터리를 --generated로 넘긴다(T072)"
 fi
 
 # ---------- A: apps/<pod>/deploy/base ----------
@@ -554,7 +556,7 @@ done
 if (( N_ITEMS == 0 )); then
   printf '대상 없음 — apps/<pod>/deploy/base · templates/django-pod/deploy/ · --generated가 모두 없고, 템플릿에 배포 매니페스트도 없다(경보선 해당 없음)\n'
   if [[ ${GITHUB_ACTIONS:-} == true ]]; then
-    printf '::notice title=kubeconform-deploy::대상 없음 — 검사할 pod 배포 매니페스트가 아직 없다(T072가 템플릿 생성 단계를 연결하면 생성물을 검사한다)\n'
+    printf '::notice title=kubeconform-deploy::대상 없음 — --generated 없이 검사할 pod 배포 매니페스트가 없다(규칙 A · B 대상도, 템플릿의 배포 매니페스트도 없을 때)\n'
   fi
 fi
 if (( N_FAIL > 0 )); then result=FAIL; else result=PASS; fi
