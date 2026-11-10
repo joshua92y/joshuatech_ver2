@@ -1,0 +1,9 @@
+"""outbox_relay 관리 명령 — django_common의 명령을 그대로 재노출한다(계약 §생성 트리 · relay 컨테이너 `python manage.py outbox_relay`).
+
+{{ pod_snake }} 앱이 INSTALLED_APPS에서 django_common보다 앞이라 이 이름이 이긴다 — 동작은 같다(인자 없음 = 계약 값). 공용 코드를
+pod에 복사하지 않는다(규칙 django-pod.md §Template and structure).
+"""
+
+from django_common.management.commands.outbox_relay import Command
+
+__all__ = ["Command"]

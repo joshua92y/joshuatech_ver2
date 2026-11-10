@@ -1,0 +1,41 @@
+"""{{ pod_name }} gunicorn 설정(T072 D11) — gunicorn --config python:{{ pod_snake }}.gunicorn_conf --no-control-socket {{ pod_snake }}.wsgi:application.
+
+gthread 워커 하나 × 스레드 4(헬스 검사 칸 8 안 · 인증 · 테넌트 미들웨어가 sync 전용이라 WSGI) — 워커가 하나라 prometheus
+multiprocess가 필요 없다(PROMETHEUS_MULTIPROC_DIR 없음). graceful_timeout 30 s는 pod terminationGracePeriodSeconds 90 안이다.
+keepalive 95 s > Traefik 백엔드 유휴 연결 90 s(아래 주석) · forwarded_allow_ips는 루프백으로 고정한다(env FORWARDED_ALLOW_IPS를
+쓰지 않는다). GUNICORN_CMD_ARGS env는 이 파일 값을 덮으므로 기동 단언이 거부한다.
+accesslog는 끈다(요청 로그는 RequestIdMiddleware의 JSON 줄). --preload를 쓰지 않는다(워커가 앱을 적재한다 — OTel · 9100이 워커
+안에 있다). gunicorn master · worker 생애 줄(Booting · exiting)은 Django 밖이라 stderr 원문으로 남는다(수집은 T098).
+"""
+
+from typing import Any
+
+bind = "0.0.0.0:8000"
+worker_class = "gthread"
+workers = 1
+threads = 4
+timeout = 30
+graceful_timeout = 30
+# 유휴 keep-alive 연결을 닫기까지의 초(gthread 기본 2 s) — Traefik 백엔드 유휴 연결 시간(serversTransport
+# forwardingTimeouts.idleConnTimeout 기본 90 s)보다 길게 둔다: gunicorn이 먼저 닫으면 Traefik이 막 닫힌 연결을 다시 쓰는 경합이 생기고,
+# Go 전송은 비멱등 요청(BFF의 m2m POST)을 다시 보내지 않아 502가 된다. 프록시가 먼저 닫게 한다(T072 ② r2 H15 · B-8). gthread는 유휴
+# 연결을 스레드 밖 poller에 두므로 스레드 4를 차지하지 않는다. 실제 Traefik 설정 · 롤링에서의 502 0은 라이브 VD(T075 — VD-L 목록)다.
+# 종료(SIGTERM) 때 유휴 keep-alive 연결이 남아 있으면 워커는 graceful_timeout(30 s)까지 기다린다 — 그동안 그 연결로 온 요청은 처리하고
+# 닫는다 · preStop 5 s + 30 s < grace 90(T072 ② r3 J5 · A-3).
+keepalive = 95
+# 전달 헤더를 믿는 peer(X-Forwarded-Proto → wsgi.url_scheme · SCRIPT_NAME · PATH_INFO 헤더) — gunicorn 기본값과 같은 루프백만 둔다.
+# 설정 파일 값이 env FORWARDED_ALLOW_IPS(gunicorn 기본값을 정한다)를 이긴다: pod는 Traefik 뒤에서 평문 HTTP를 받고 전달 헤더를 믿지
+# 않는다 — env 하나가 프록시 신뢰를 조용히 넓히지 못하게(T072 ② r3 J4 · B-3).
+forwarded_allow_ips = "127.0.0.1,::1"
+worker_tmp_dir = "/tmp"  # noqa: S108 — 읽기 전용 루트 파일시스템 · /tmp는 emptyDir
+accesslog = None
+preload_app = False
+
+WEB_METRICS_PORT = 9100
+
+
+def post_worker_init(worker: Any) -> None:
+    """워커가 앱을 적재한 뒤 web 지표 서버(9100 · 기본 REGISTRY)를 연다."""
+    from prometheus_client import start_http_server
+
+    start_http_server(WEB_METRICS_PORT)

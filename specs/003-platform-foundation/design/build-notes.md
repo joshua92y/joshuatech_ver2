@@ -1,0 +1,4494 @@
+# SP-1 build 컨트롤러 노트 (이월 항목·리뷰 Minor)
+
+- [T001 quality Minor] `.gitignore`에 `.next/` 추가 — T086/T090(web) 시작 시 함께.
+- [T001 quality Minor] T015(django-pod copier 전환) 시 `templates/django-pod`를 uv workspace members에서 빼거나 템플릿의 pyproject를 비-jinja로 유지 — T015 브리프에 명시할 것.
+- [T001 quality Minor] Python 핀: 루트 `.python-version`(3.13) 추가 검토 — T015 또는 T060대(uv 소비 시작 시).
+- [T001 quality Minor] `engine-strict` 미설정(경고만) — 의도 유지, 조치 없음.
+- [T001 concern] `pnpm-lock.yaml` 없음 — T002에서 `pnpm install`로 생성(빈 워크스페이스 lockfile), CI frozen-lockfile 통과 조건.
+- pnpm-workspace 멤버는 글롭이라 오타 시 조용히 제외 — 첫 JS 멤버(T086?) 랜딩 때 `pnpm ls -r` 확인.
+- [T002 quality Minor] lint/test job setup 5단계 중복 — 실제 명령이 들어오는 US 단계에서 composite action(.github/actions/setup)으로 공용화.
+- [T004 quality Minor] 러너 마지막 줄 기계 마커(platform-result: SKIP|PASS)로 run-all 슬롯 정규식 단일화 — 플랫폼 테스트 본체가 생기는 US2(T031)에서.
+- [T004 quality Minor] KUBECONFIG가 설정됐는데 파일이 없으면 SKIP(현행) vs FAIL — US2에서 재결정.
+- [T004 quality Minor] 하니스는 Windows 전용(kubectl.cmd shim) — CI 이전 시 $IsWindows 가드.
+- [T005 quality Minor] docs/README.md bootstrap 행 설명 "(§1–§6은 후속 task가 작성)"은 T114 완성 때 갱신.
+- [T003 완료 2026-09-02] 사용자 항목 마감: 모노레포 public 전환(API `visibility: public` 확인), App 두 repo 설치, private key 재발급·재등록(이름 예외는 §0 blockquote 기록). VD-5 최종 확정(auto-merge 실동작)은 T074 첫 dev bump PR에서 — allow_auto_merge=true는 API 확인. 잔여: 모노레포 secret scanning·push protection **disabled** — 사용자 활성 필요(§0 항목 유지), 구 키·바탕화면 .pem 삭제 최종 확인.
+- [T003 관찰] GitHub ruleset 서버 기본값 `require_extra_approval_for_unattributed_changes: true`가 자동 주입됨 — 봇 dev bump auto-merge와의 상호작용을 VD-5 실측(T074)에서 관찰.
+- [T003 완료분] platform-gitops: repo 2db3da2, ruleset id 22066865 active, allow_auto_merge true, secret scanning+push protection enabled(API). 남은 사용자 몫: App 설치(platform-gitops)·private key 재발급.
+- [T029 quality Minor] CLAUDE.md Active Technologies의 패치 핀(K3s v1.36.4·Argo 3.5.2)은 /finish 또는 archive 시점에 메이저.마이너로 트림(rot 방지) — ADR 포인터가 정본.
+- [T108 quality Minor] agent-layer.tests.ps1: 인라인 `[]`/`''`/`""`/블록 스칼라 지시자(`|`,`>`)가 NonEmpty로 인정됨(115행·84행), 경계 이름 정규식 우측 경계 없음(214행, `security.mdx` 오탐) — T109/T110 산출물이 정상 형식이면 무해; T113 전 여유 있으면 봉인.
+- [T110 review Minor] infra-builder.md L31 한정어("without the operator running them"·"on non-test resources")가 엄밀히는 예외를 여는 문구 — L23·L28이 실질 봉인하나 후속 리비전에서 무조건형으로 다듬기.
+- [T008 review Minor·경계] providers.tf auth 기본 APIKey 전환으로 에이전트가 하네스 실행 시 운영자 API 키로 읽기 plan을 수행하게 됨(infra.md "svc-verify만" 경계의 회색 지대). T010 키 교체 시점에 재결정: 기본값 SecurityToken 복귀 or 기본 없음(-var 강제) or 하네스 plan을 운영자 게이트 뒤로. §1에 전환 기록함.
+- [T008 review Minor] network.tf 검사 비대상 블록의 행 끝 주석 — 향후 서브넷/RT tf-text 단언 추가 시 하네스 파서 계약(행 끝 주석 금지)과 충돌 주의.
+- [T009 review Minor 1 → T010에서 수정] instances.tf의 `assign_public_ip` ignore_changes 근거 주석 부정확: provider 8.29.0에서 이 필드는 Updatable이며 변경 시 provider가 공개 IP를 생성/삭제(reserved 포함 — `DeletePublicIp`)한다 → "컷오버 창 임시 방어"가 아니라 **영구 가드**. T010(같은 파일 IMDS 수정)에서 주석 교체.
+- [T009 review Minor 3 → 운영 규칙 문서화] Cloudflare IPv4 대역 변동 시 정기 plan에 NSG rule destroy가 나타남 — infra.md "routine plan destroy 0"과 형식 충돌. "CF CIDR 제거로 인한 NSG rule destroy는 사용자 확인 후 apply"를 runbook(§1 또는 incident/rotation 런북)에 규칙으로 기록.
+- [T009 review Minor 4 → tester E2E 관찰] default SL의 ICMP type3(code4 PMTUD) ingress 제거 — 큰 응답 stall 관측 시 CF CIDR 한정 ICMP 규칙을 spec 개정과 함께 검토.
+- [T009 review 정보] ephemeral 삭제~reserved 부착 창: 해당 노드 인터넷 egress 전체 단절(NAT GW 없음) — §1에 반영. NSG description 문자열 영어(리소스 속성, 콘솔 표시값 — 허용).
+- [infra 하네스 b0b4cb2 review Minor·선택] Get-RuleClass 출처 검사를 "허용 참조만"으로(모든 srcRefs가 each.value|each.key|data.cloudflare_ip_ranges.여야) — coalesce(unknown 리소스값, each.value) 경계 사례 봉인; sl-1은 tofu 관리 SL만 봄 → 서브넷 security_list_ids 참조 라벨 ⊆ 관리 SL + planned 원소 수 대조 추가 가능. 운영 규칙: CF 공표 대역 변경 시 `$cloudflareCidrs` 스냅샷 갱신 전까지 nsg-2/4 RED(의도된 fail-closed) — T009 Minor 3 운영 규칙 문서화와 함께 기록.
+- [T013 실측 → report.md·§2] OCI 인스턴스 metadata `ssh_authorized_keys`는 변경 불가(400) → 재이미지 키 교체는 cloud-init `user_data`(또는 v1 키로 접속 후 수동 교체). 하네스 헤더 필수 변수에 `TF_VAR_jt_ops_public_key` 추가 필요(다음 하네스 라운드). infra.md "SSH 22 절대 공개 금지"에 "재이미지 리허설 창의 운영자 /32 CLI 임시 규칙(desired state 외, 즉시 제거)" 예외 문구 추가 검토. T014 전 block-storage 한도 확인(preserve 방식 247 GB 순간 합계 — PAYG라 한도 다를 수 있음).
+- [T012 사용자 결정 2026-09-04 → report.md·converge] 승인 문면의 "v1 GitHub Secrets 전부 삭제"는 **US8(T105) v1 삭제 시 일괄**로 이월(옵션 B 최소안): PR 머지(push 트리거 제거) + Cloudflare v1 API/R2 토큰 원천 revoke + Render Auto-Deploy off만 수행. 근거: 위험은 토큰 원천 revoke로 해소되고 시크릿 삭제는 복구 불가라 부담. T105 문면("T012에서 이미 폐기 — 잔여 확인만")은 실제로는 T105에서 20개 삭제로 수정 필요 → converge에서 잡힘.
+- [VD-6 관찰 → report.md] ≈2026-11-02 이후 두 백업 버킷 이전 버전 수 감소 확인 → `= OBJECT_VERSION_DELETE` 문장 제거 후 재관찰 → 옵션 A/B 확정. VD-3(Rate Limiting host 조건)은 T011 apply 시 확정.
+- [T010 완료] 임시 Customer Secret Key `joshuatech-tfstate-bootstrap-temp` 삭제 사용자 확인(2026-09-03). T011 입력: GitHub OAuth App `joshuatech-cf-access`(Client ID Iv23liWmKm2wgQxshEQo — 비밀 아님), 신규 이름 6건 OK.
+- [T010 builder 제안·이월] 두 백업 버킷에 `multipart-uploads ABORT` lifecycle 규칙(barman 대용량 업로드 잔여 파트 비용) — 슬라이스 밖, T084/운영 규칙 시점 검토.
+- [T010 review Minor 1·2 → converge/report 후보] ① svc-tfstate·svc-s3-backup `manage objects`에서 `OBJECT_VERSION_DELETE` 제외(랜섬웨어 방어 — barman·tofu 백엔드는 버전 삭제 불필요); ② svc-verify는 `joshuatech-backup`(평문 DB 백업)엔 inspect만, `backup-platform`(T048 .age 다운로드)만 read. 사양 문면("manage objects"·"inspect/read")을 넘는 강화라 사용자 확인 후 적용.
+- [T010 review Minor 3 → 하네스 fix] iam-5가 `OBJECT_VERSION_DELETE` 문자열 존재만 검사 → `!=` 문장으로도 PASS. `= 'OBJECT_VERSION_DELETE'`(부정 아님) 형태 요구로 보강.
+- [하네스 b020add review Minor → 다음 라운드(T011 하네스 정합 때 묶어서)] ① `${local.*}` 해석 휴리스틱(L632-652)이 전용 local + 템플릿 소비자 조합에서 plan-vs-config 괴리를 은폐(R19) → local은 tf-text `locals{}` 문자열 리터럴에서만 해석, `each.*`/`count.*`는 항상 마커; 또는 "apply 후 statements known 상태 재실행"을 완료 조건으로 헤더 명시. ② `oci_identity_user_group_membership` 리소스 = 0 단언 + `child_modules` 부재 단언. ③ 예산 단언(budget 35 MONTHLY + alert 4 type/threshold). ④ 모순 `all{perm=A, perm=B}`를 unsound로 표시.
+- [T011 사전 리뷰 참고] ① traefik import가 replace(destroy)로 나오면 중단(infra.md 0-destroy); WAF entrypoint는 신규 생성 경로(기존 없음 확인). ② VD-3 옵션 B(호스트 조건 없음)는 US8 전까지 v1 `api.`·`mainapi.`의 `/api/auth/*`·`/if/flow/*`에도 IP당 60회/10s 적용 — report.md에 범위 기록. ③ 계약 hostnames-and-access.md:26 "Access 403" → 코드는 task 문면대로 401(`service_auth_401_redirect`) — /finish 때 계약 문구 401로 정정. ④ Cloudflare 토큰 ① 스코프 5개 추가(§0 기록 완료) — report.md 실측 항목.
+- [하네스 4라운드 후보(125b22e 재리뷰 Minor)] ① inst-3/kms-2/access-1 tf-text 단언: 검사 대상 블록 body에 heredoc 표식(`<<-?[A-Za-z_]`)이 있으면 FAIL(블록 범위; `/*`는 access.tf URI 글롭 때문에 제외). ② infra 규칙에 "infra/oci `*.tf`의 `/*` 문자열(주석·글롭 포함)은 pre-apply local.* 해석을 오염" 한 줄. ③ Test-Group 예외 시 합계가 37로 찍힘(exit 1 유지, 무해).
+- [T011 builder 관찰 → 하네스] validate-oci-1(`init -backend=false`)이 백엔드 초기화 이후엔 로컬 AWS 프로파일을 요구 — 헤더 "자격 증명 불필요" 문구와 어긋남. 다음 하네스 라운드에서 주석 정정(또는 `-backend=false`를 임시 작업 디렉터리 복사본으로 실행).
+- [T011 편차] task가 가정한 `admin` DNS 레코드 부재 → 신규 생성; `cdn.joshuatech.dev`는 v1 R2 버킷 `joshtech` 소유 → 새 R2 커스텀 도메인은 `enable_r2_custom_domain` 게이트(US8). Workers 도메인 2 게이트(T093/T094). 추가 정책 admin-github-ssh(1h)·svc-auth-k8s.
+- [T010 → 하네스 fix 필요] tests/infra 단언이 구 `jt-*`·사용자명을 인코딩: bucket-1..3(`public_access_type`인데 provider 인자는 `access_type`), iam-1/2/4(사용자 `svc-*` 검색 — OCI 정책은 그룹 대상), iam-3(`use keys … where target.key.id` 문장을 위반으로 오판), iam-4(`budgets` vs 실제 `usage-budgets`), dg/lc 이름. 운영자 plan 결과 확정 후 T009 때처럼 fix 라운드 → 재리뷰.
+- [T015 review Minor] 신규 뼈대 파일 주석·docstring이 영어(컨트롤러 브리프 오지시) — 저장소 규칙은 주석 한국어. T016+ 실코드 태스크에서 한국어로 정리. copier help·package.json description은 재량 수용.
+- [T015 선례] JS 패키지 스코프 `@jt/*` 확립(계약 무모순, 최초 선례) — 이후 apps/web 의존 선언(T086+)은 `@jt/*` 일관 사용.
+- [T113 tester 관찰] apps/web에 `.py`/`Dockerfile`이 생기는 순간 django-pod 규칙 중첩 재발(회귀 트리거) — web 관련 task(T086~)에서 인지. pod 내 비Django 형상(README 등)은 규칙 무로드(의도된 축소). r3 리뷰 파일 `## K8s security` 헤딩 중복(외형).
+- [T030 tester Low] spec §8이 D15를 ADR 0002에 귀속하나 0002 본문에 D15 문구 없음(소스 주석에만; 모순 아님 — D15 실체는 architecture.md·spec에 기록). docs.md 규칙상 accepted ADR 본문 수정 금지 → /finish report.md Next에 기재. quickstart §US1 rules grep 줄은 US9 주석 반영 완료.
+- [T013/T014 운영자 키 경로] v1 SSH 개인키(노드 metadata ssh-rsa …AAAACAQDLOZ71, 주석 wlsgh@Home-2024) = C:\.ssh\config\.ssh\id_rsa (RSA 4096; $HOME\.ssh\id_rsa는 별개 3072 키). 새 키 joshuatech-ops = $HOME\.ssh\joshuatech-ops. v1 키는 표 ⑦대로 T105까지 보존.
+- [T013 실측 2026-09-04] block-storage total-storage-gb(AD-1): used 94 / available 61,346 GB — PAYG라 Always Free 200 GB 한도 미적용, T013/T014 preserve 방식 문제 없음(위 T014 한도 우려 해소).
+- [T013 리뷰 → T014 host-prep 상속] ① user_data도 launch 후 불변 → 재이미지마다 metadata의 v1 키가 첫 부팅에 재주입됨(정상) → host-prep.sh는 authorized_keys를 '추가 → 새 키 검증 → v1 제거' 순서로 멱등 교체(절대 덮어쓰기 먼저 X). ② `cloud-init clean`/`/var/lib/cloud` 삭제 금지(PER_INSTANCE 세마포어 소실 시 v1 키 재주입). ③ 임시 SSH CIDR /32 형식 가드, $PUB 가드는 sk-ssh-ed25519@openssh.com 허용. ④ cloud-init status --wait는 degraded done=exit 2.
+- [T014 실측 2026-09-04 → report.md·research 후속] ① 두 노드 rules.v4에 `-A FORWARD -j REJECT` 앵커 존재(FORWARD 규칙 "inserted", 폴백 미발동) — research.md 338행 "실측 필요" 해소(feature dir 불변이라 런북 §2에만 기록; /finish report.md Next 또는 archive 때 반영). ② 재이미지 직후 첫 ssh는 "Connection closed by … port 22"(sshd 기동 중) → 재시도; T014 헤더의 `cloud-init status --wait` 확인은 이 때문에 생략됨(host-prep preflight가 OS 확인). ③ ssh-agent에 두 키가 있을 때 `-i`만으로는 키 보장 안 됨 → 리뷰 Minor로 `-o IdentitiesOnly=yes` 전면 적용(instances.tf T013/T014 절 13곳). ④ 노드 A needrestart가 `unattended-upgrades.service` 재시작 보류(무해; 다음 부팅/§6 창에서 해소). ⑤ 노드 A 구 이미지는 v1도 Ubuntu 24.04(2025.03.28 빌드)였음. ⑥ 설치 실측: vault CLI 2.1.0(deb 2.1.0-1 arm64, built 2026-08-31), oci-cli 3.92.0(pipx 1.4.3), wireguard-tools 1.0.20210914, age 1.1.1, sqlite3 3.45.1, kernel 6.17.0-1018-oracle. ⑦ T105: v1 키는 두 노드 모두 무효 → T105는 GitHub v1 secrets 20개 삭제 + 로컬 v1 키(C:\.ssh\config\.ssh\id_rsa) 폐기만 남음. ⑧ host-prep 후속 후보(비긴급): shellcheck 미설치라 정적 검사 생략 — CI/로컬에 shellcheck 도입 시 host-prep.sh 포함.
+- [T032 리뷰 → 후속 task 메모] ① **T042 브리프**: cert-manager helm 값에 `global.rbac.aggregateClusterRoles: true`(기본값이지만 명시) — ingress.tests.ps1 cert-1/2가 `view`에 집계된 `certificates.cert-manager.io` get/list에 의존(agent-view는 Secret get 없음). ② **tester/T049 보고 문구**: 운영자 PC(Cloudflare 대역 밖)에서 `--resolve` 직접 접속은 NSG 계층(curl 28)에서 거부되어 AOP(TLS 계층) 자체는 관측 불가 — aop-1 PASS 근거에 계층이 적히므로 "NSG 계층 거부, AOP 미관측"으로 옮겨 적을 것; 진짜 AOP 검증은 클러스터 내부 Job 또는 Cloudflare 대역 vantage(계약 §자격이 필요한 검사; 이 SP 범위 밖 후보). ③ **302는 Ingress 증거가 아님**: T011 Access 앱이 edge에서 먼저 302를 내므로 argo/vault/traefik 호스트는 오리진 없이도 302 — ingress.tests는 Ingress 리소스 존재(argo-2/vault-2)로 보강했고, T044 전까지 vault-2 FAIL이 정상(run-all은 KUBECONFIG 없이 SKIP이라 초록). ④ Traefik 대시보드 IngressRoute(traefik.io)는 agent-view로 읽을 수 없음 — 필요 시 T041 `agent-view-extra`에 추가하는 계약 변경 사안(현재는 HTTP 302 단언만).
+- [사용자 결정 2026-09-04] ⑤ 모순 → **옵션 A(프로브 교체)** 확정. converge 항목: contracts/network-policy.md :150 ⑤ 문구를 "`jt-dev` pod에서 `1.1.1.1:53`(ports 밖)·`<노드 A 사설 IP>:443`(RFC1918 except)·`169.254.169.254:80`(IMDS except) 실패 + `1.1.1.1:443` 성공(양성 대조)"로 갱신 + T031 문면 ⑤ 주석(태스크 줄은 불변이므로 report에 기록) + 계약 ③에 "(`k8s-data-ca` 미러 제외 — ④)" 추가 + 계약 매트릭스 Argo metrics 괄호 순서(controller·server·repo-server) 정정 + ⑤ ES 검사 문구를 StatefulSet·DaemonSet·secretKeyRef·volume까지로 확장 + 외부 egress 형식에 `/32` 목적지·`deny-imds` 예외 명문화 + ② "platform/**(③ 5개·policies/tests 제외) → vault-platform"(T033 리뷰 제안). cluster.tests np-5-live 문구는 즉시 갱신(T031 builder). 같은 결정: 임시 22 규칙 **옵션 A(창 단위)** → infra.md 갱신 커밋 5e44e68.
+- [T031 리뷰 → 후속 task 메모] ① **계약 모순(결정됨 — 위 항목)**: contracts/network-policy.md :150 · tasks T031 ⑤ "`jt-dev` pod에서 `1.1.1.1:443` 연결 실패"는 같은 계약 :52–65(외부 egress = `0.0.0.0/0` except {IMDS, RFC1918 ×3} + ports 443)·:107(jt-* → 외부 443 허용)과 모순 — 형식대로면 1.1.1.1:443은 성공. 리뷰어 의견: 매트릭스+형식이 정본, ⑤ 프로브를 "`1.1.1.1:53`(ports 밖)·`<노드 A private IP>:443`(RFC1918 except)·`169.254.169.254:80`(IMDS except) 실패 + `1.1.1.1:443` 성공(양성 대조)"로 교체 → 결정 후 converge에서 tasks 추가 + contracts :150 갱신(feature dir 불변이므로 converge 경로) + cluster.tests np-5-live 문구. ② **T041 브리프**: `platform/policies/tests/` Job 3종 로그 계약(예: `RESULT: PASS <id>` 행 + ③⑥ 부정 프로브 `jt-prod:8000`·`169.254.169.254:80` 실패 라인)을 정하고 cluster.tests np-2-*가 T102에서 파싱하도록; Job 성공 조건(pg-main·Kafka·OpenFGA)은 US3/US4라 T041 직후~US4 사이 np-2-* FAIL + `tests` Application Degraded → argo-1 FAIL 예상 RED 구간(또는 Job 매니페스트를 의존 phase로) — 컨트롤러가 인지; `default`·`kube-public`·`kube-node-lease` PSA 라벨을 SSA로 줄지 결정(계약 :26 "모든 ns" vs task 14개). ③ **T046 브리프**: reloader helm `fullnameOverride: reloader`(cluster.tests reloader-1은 리터럴 `deployment reloader -n reloader`). ④ **T098/converge**: T031 문면 `ds/alloy-metrics` vs T098 `alloy-metrics` StatefulSet(`k8s-monitoring-alloy-metrics`) 표기 불일치 — 테스트는 워크로드 탐색으로 견고화했고 문면 정리는 converge/report. ⑤ **T102/tester**: np-7(PSA 위반 이벤트)은 K3s event TTL 1h라 배포 직후 실행; np-2-manual 잔여 행(jt-dev → identity 9000, jt-* → monitoring 4317/4318, jt-prod 출발 전부)은 운영자 수동 프로브 + 출력 첨부. ⑥ `svc-verify` 세션 만료 상태(2026-09-04) — backup-* 단언 실행 전 `oci session authenticate --profile-name svc-verify` 필요(운영자).
+- [T040 리뷰 최종(Approved) → T116·T041·report 메모] ① **T116 Renovate**: 기본 kustomize 매니저는 raw URL SHA 미추적, images[] digest-only는 `latest` digest로 갱신 PR을 열 수 있음(quay `latest` = master 스냅샷) → `packageRules`로 bootstrap/argocd digest 업데이트 비활성 + customManager(regex)로 install.yaml SHA를 `github-tags depName=argoproj/argo-cd` currentValue v3.5.2에 묶어 digest로 갱신; SHA·digest 2개는 같은 PR에서 사람이 맞춤. ② **T041**: T040이 upstream argocd NetworkPolicy 5장을 삭제(합집합 방지) — T041 default-deny+allow 세트가 argocd 흐름(traefik→server 8080, 내부 pod↔pod, controller→kube-api, repo-server→외부 443) 전부를 덮는지 계약 매트릭스로 재확인; Argo SSA는 항상 force라 인수 시 conflict 재실행 불필요. ③ **report.md "계약 외 동작"**: `?ref=<commit sha>` 표기(contracts/gitops-repo.md:10·tasks T040·plan.md:17·spec FR-010)를 raw 단일 파일 URL(경로 SHA)로 구현(research ARGOCD-D1 결정) — 결함 아님, 문구 정정은 converge. ④ kubeconform은 CRD 객체 3개(1.44 MB ApplicationSet CRD 포함)를 스키마 미검증(Skipped) — 알려진 한계.
+- [T037 반영 후 → T098·T041·T048 메모] ① **운영 규칙(T098 알림)**: SUC Plan Job 실패 뒤에는 `status.applying`이 남아 어떤 Plan 변경·컨트롤러 재시작(T041 sync, 노드 재부팅 T048 포함)에도 창 밖 즉시 실행되므로, `UpgradeJobFailed` 알림 수신 즉시 `kubectl label node <node> plan.upgrade.cattle.io/<plan>=disabled --overwrite`를 붙이는 것이 표준 대응 — T098 알림 규칙 runbook 링크에 포함. ② **T041 첫 창 VD 항목**: (a) disabled 라벨 복구 절차 실측, (b) prepare `privileged: true` 없이(chroot만) 성공하면 축소, (c) retrigger 어노테이션 동작, (d) 컨트롤러 `readOnlyRootFilesystem`. ③ T048 재부팅 리허설 전에 실패 Plan이 없는지(`applying` 비어 있는지) 확인 항목 추가.
+- [2026-09-07 T040/T037 리뷰 → 사실 정정·converge] ① **`cloudflared access logout`은 존재하지 않는 명령**(2026.8.3 `access` 하위: login/curl/token/tcp·rdp·ssh·smb/ssh-config/ssh-gen; 캐시는 `~/.cloudflared/*-token`·`*-org-token`) — 규칙 infra.md+kr 미러·런북 T039 기록·k3s-server.sh 헤더는 즉시 정정, **plan.md A12·contracts/hostnames-and-access.md:89는 불변 문서라 converge에서 정정**, gitops cloudflared README ⑦은 T040 docs 커밋에 포함. ② **T037 Major(2/2 확정)**: SUC v0.20.1은 Job 실패 뒤 `status.applying`이 남아 window 검사를 건너뜀 → 실패 Plan은 어떤 spec/metadata 변경(retrigger PR, 채널 새 패치 해석)에도 창 밖에서 즉시 실행 — 복구 절차(노드 `plan.upgrade.cattle.io/<plan>: disabled` 라벨 or Plan 제거/재추가) + VD 실측(T041 첫 창) 필요. ③ 계약 network-policy.md:139 "이미지 digest 핀"은 채널 Plan과 양립 불가(SUC WithLatestTag) → converge 정정; gitops-repo.md §이미지·승격에 채널 Plan 예외, §삭제 보호 목록에 SUC CRD. ④ T040 계약 `?ref=<sha>` 문구 정정(raw URL 경로 SHA). ⑤ validate 공백 후보(T047): `$patch: delete` target 불일치 무시, 태그 ref 미검사, bootstrap/ 이미지 digest 미요구, GOMEMLIMIT≤limit·root project 미검사. ⑥ 리뷰 워크플로 교훈: 검증 에이전트 실패(리밋) 시 지적이 "반박"으로 분류되는 스크립트 결함 — `valid.length==0`을 unverified로 분리해야 함(다음 워크플로부터 수정).
+- [T040 구현자 보고 → converge·T041 브리프] ① 계약 gitops-repo.md의 `install.yaml ?ref=<commit sha>` 표기는 kustomize 5.8에서 성립 불가(단일 파일에 `?ref=` 불가) — 채택: `https://raw.githubusercontent.com/argoproj/argo-cd/<sha>/manifests/install.yaml`(대안 `manifests/cluster-install?ref=<sha>` 렌더 바이트 동일) → 계약 문구 정정. ② **구조적 순환**: root Application의 path가 `clusters/oci-k3s/apps`라 `clusters/oci-k3s/projects/`(AppProject)는 root가 동기화하지 못함 → T041이 AppProject 투입 경로(수동 apply 1회 or bootstrap 포함 or apps/ 안에 projects Application)를 정해야 하며, root project는 T040 시점 `default`(임시) → T041에서 `platform`으로 이관 + default 봉인 순서. ③ 호스트명 research `argocd.joshuatech.dev` vs 계약/task `argo.joshuatech.dev` — 계약 우선. ④ research D4 wave 값·D13 `platform/argocd/` 경로가 계약 단일 표와 다름 — 계약 기준. ⑤ plan A14가 Argo CD를 노드 A 예산에 두지만 nodeSelector 지시 없음 — 첫 롤아웃 NODE 확인 후 T041/T046 결정. ⑥ Renovate가 raw URL SHA·digest-only 이미지를 추적 못할 수 있음 — 업그레이드는 SHA+digest 수동 PR(T116 Renovate 온보딩 때 재검토). ⑦ 2026-09-07 교훈: 병렬 gitops 빌더는 전용 worktree 필수(공유 클론 checkout 경합 발생).
+- [2026-09-07 T039 ⑤ 실측 — Access GitHub IdP 첫 검증 실패] `ssh ssh-a` → Access "Authentication error / Failed to fetch user/group information"; Zero Trust IdP 테스트 → `GET https://api.github.com/user/emails returned 403`. 토큰 교환은 성공(secret 정상), 이메일 조회만 403 → Client ID `Iv23li…` 형식 = **GitHub App**(OAuth App 아님) 추정: GitHub App은 요청 스코프를 무시하고 계정 권한(Account permissions → Email addresses: Read-only)이 있어야 `/user/emails` 허용. 조치 = GitHub App 권한 추가(또는 OAuth App으로 재생성 → tofu 변수 2개 갱신). 결과에 따라 런북 §1 T011 기록의 "OAuth App" 표기 정정 + T039 기록에 경위. Cloudflare 문서는 OAuth App을 전제 — 향후 계약/런북에 "OAuth App 또는 Email Read 권한을 가진 GitHub App" 명시.
+- [2026-09-07 실측] joshuatech.dev MX = route1/2/3.mx.cloudflare.net(**Cloudflare Email Routing 켜짐**), SPF `v=spf1 include:_spf.mx.cloudflare.net include:spf.mtasv.net ~all`(Postmark 발신 포함 — 이메일 발신 결정 시 참고). **대시보드 확인(2026-09-07 스크린샷)**: Email Routing 활성·DNS 잠김, 규칙 = `admin@joshuatech.dev` → <operator-email>(활성), `contact@joshuatech.dev` → <operator-email>(활성), 전체 수신(catch-all) 비활성. → **contact@ 수신 가능 확정**: converge에서 `infra/oci` `budget_alert_email` 기본값·spec 표기·T042 ACME 이메일을 contact@로, 그리고 Email Routing 설정·규칙 2건을 `infra/cloudflare/`에 import(토큰 스코프 Email Routing 필요 여부 실측). converge 후보: 기존 Email Routing(설정·규칙)을 `infra/cloudflare/`에 import 해 코드화(`cloudflare_email_routing_settings/_rule`), 토큰 `joshuatech-tofu-deploy`에 Email Routing 스코프 추가 필요 가능성. **Access 이메일 사고 최종**: T039 apply(3 changed) → contact@로 재적용(오타·2 changed) → 0/0/0 → <operator-email> 원복(2 changed, 02:58Z 이후) — 라이브 = <operator-email> 확정. 런북 T039 기록에 이 경위 포함할 것.
+- [사용자 결정 2026-09-07 → converge 항목] **대표 메일 통일 = `contact@joshuatech.dev`**. 바꿀 지점: ① `infra/oci` `budget_alert_email`(현재 plan 시 <operator-email> → contact@; OCI 예산 알림 4건 재적용 필요) ② T042 ACME 등록 이메일 ③ 계약 hostnames-and-access.md:43 운영자 이메일 표기(Access 규칙은 아래 예외) ④ spec.md의 <operator-email>(예산 알림) — 불변 문서라 converge ⑤ Sentry/Grafana Cloud 계정 연락처(사용자 수동) ⑥ T080 Authentik 관리자 이메일. **선행 조건**: contact@joshuatech.dev가 실제로 수신 가능해야 함(사서함 또는 Cloudflare Email Routing → Gmail; 생성 시 `infra/cloudflare/`에 `cloudflare_email_routing_*`로 코드화 — 신규 범위, converge task 후보). **예외(기술 제약)**: Access GitHub IdP include 이메일은 GitHub가 보고하는 기본 이메일(<operator-email>)이어야 함 — GitHub 기본 이메일을 contact@로 바꾸기 전까지 유지. `e2e@joshuatech.dev`는 E2E 고정 신원이라 대상 아님.
+- [2026-09-07 사고·converge 항목] **Access include 이메일 회전**: T039 Cloudflare apply(터널 포트 443)에 `TF_VAR_operator_email` 누락으로 `admin_github`·`admin_github_ssh` include가 `<operator-email>`(T011 실측, GitHub 기본 이메일) → 기본값 `<access-email>`으로 바뀜(3 changed). plan 게이트("1 change 아니면 멈춤")를 운영자가 넘겼음. 조치: (a) 라이브 재적용으로 원복(운영자), (b) `operator_email` 기본값 제거 커밋, (c) **계약 hostnames-and-access.md:43이 `<access-email>`이라 적혀 있어 실제(T011 기록 <operator-email>)와 불일치 → converge에서 계약을 실측값(또는 "운영자 GitHub 기본 이메일")으로 정정**. 교훈: 신원·자격 변수에는 기본값을 두지 않는다; plan 요약의 change 수가 기대와 다르면 apply 전에 반드시 멈춘다.
+- [자격 경계 — 사용자 결정 대기] `tests/infra/tofu.tests.ps1`의 `plan-1`/`plan-2`가 `infra/oci`에 대해 `tofu plan -lock=false`를 돌리며 **운영자 DEFAULT 프로파일 자격**을 씁니다(providers.tf `auth` 기본 APIKey). `run-all`이 이 하네스를 포함하므로 에이전트가 run-all을 돌릴 때마다 규칙 `.claude/rules/infra.md`("OCI 접근은 svc-verify 세션 토큰만")와 겹칩니다(T010 때 "회색지대, 재검토"로 남긴 항목이 T039 builder에 의해 다시 제기됨). 옵션 A: providers.tf를 프로파일 파라미터화해 하네스는 `svc-verify`로 plan(권한 충분한지 실측 필요 — 전 리소스 read). 옵션 B: 에이전트 환경에서는 plan-1/2를 SKIP(환경변수 게이트), 운영자 실행 때만 수행(검증력 하락 — destroy 0 보장이 핵심 단언). 옵션 C: 규칙에 예외 명문화. → 다음 질문 배치에 포함.
+- [T038·T039 리뷰 → 후속 task 설계 변경(중요)] ① **T042 설계 수정 필요**: Traefik v3.7.8의 `GetBestCertificate`는 **DynamicCerts만** 검색하고 `sniStrict`면 DefaultCertificate 폴백에 도달하지 않는다(tlsmanager.go:272-281, certificate_store.go:77-131) → research/plan의 "TLSStore `default.defaultCertificate`로만 와일드카드 지정 + 앱 Ingress는 `spec.tls` 생략" 설계는 sniStrict와 양립 불가. T042는 와일드카드를 TLSStore `certificates:` 목록(또는 라우터 `tls.secretName`)으로도 실어 dynamic cert로 만들고, 그것을 확인한 뒤 T038 파일에 `sniStrict`를 추가한다. ② **T043 브리프**: `clientAuth`(`clientAuthType`+`secretNames`)는 Secret 생성 **뒤** traefik-config.yaml에 추가 — 순서를 어기면 TLSOption 빌드 실패로 websecure 전체 핸드셰이크가 끊긴다(brokenTLSRouter). 적용 후 `rollout status`+실제 443 curl로 확인. ③ **T038 문면 편차(converge 기록)**: task 117행은 `tlsOptions.default`에 `VerifyClientCertIfGiven`·`secretNames`·`sniStrict`를 요구하지만 T038 시점에는 셋 다 넣지 않고 T042/T043으로 지연 — 헤더에 목표 블록 보존. ④ **k3s manifests 롤백 사실**: 파일을 지워도 리소스는 안 지워진다(research.md:331) → 롤백은 `kubectl -n kube-system delete helmchartconfig traefik`. 다른 manifests 산출물(T037 등)에도 같은 함정 적용. ⑤ **T041 `agent-view-extra` 후보**: `helm.cattle.io`(HelmChartConfig)·`traefik.io`(TLSOption·IngressRoute) get/list/watch — 없으면 Traefik 관련 확인이 운영자 admin 전용. ⑥ **T084 포인터**: 대시보드 forward-auth 미들웨어가 `infra/bootstrap/traefik-config.yaml`을 다시 고친다(오리진 측 유일 통제). ⑦ **klipper-lb 소스 IP 보존 실측(research.md:1192)에 담당 task 없음** → T038 적용 시 액세스 로그의 `ClientHost` vs `request_CF-Connecting-IP` 비교로 측정, 결과를 런북에. ⑧ **T011 결함(T039 리뷰 J2)**: `infra/cloudflare/tunnel.tf`의 k8s ingress origin이 `kubernetes.default.svc:6443`인데 그 Service는 port 443/targetPort 6443 → `tcp://…:443`으로 정정(Cloudflare 스택 apply 필요). ⑨ **계약 정리 후보**: gitops-repo.md §이미지·승격의 digest "병기 의무" vs §validate.yml의 "경고"가 어긋남; cloudflared → 외부 7844는 **TCP+UDP 둘 다** 필요(매트릭스에 프로토콜 열 없음).
+- [T036 리뷰(6축 워크플로, 57 에이전트) → 후속·잔여 위험] ① **bash 함정(전 스크립트 공통)**: `f || true`·`if f`·`!f`로 호출된 함수는 **본문 전체에서 `set -e`가 무시**된다 — 컴포넌트 함수 안에서는 errexit에 기대지 말고 명령마다 실패 분기를 둘 것(host-prep·k3s-server·k3s-agent도 같은 패턴이 있는지 다음 하네스 라운드에서 점검). ② **정적 테스트 설계 교훈**: 함수 "본문 존재"만 보는 단언은 **호출부 삭제·순서 뒤집기·주석 처리**를 못 잡는다 — 호출 그래프(존재+순서)와 값 파싱(unit `키=값`)을 고정해야 한다. 기존 host-prep/k3s-server 스위트에도 같은 구멍이 있을 수 있음(다음 라운드 후보). ③ **T037 브리프**: `--pre-upgrade`는 vault 미배포 구간(T044 전)에서 건너뛰되 배포됐는데 실패하면 exit 1 — SUC Plan을 T044 전에 활성화해도 업그레이드가 구조적으로 막히지 않게 하는 분기(T036에서 구현). ④ **잔여 위험(승인 시 인지)**: 백업 번들의 **실제 복원 가능성은 이 feature 안에서 증명되지 않는다** — T048은 `PRAGMA integrity_check`·`snapshot inspect`까지, 실제 복원은 T106 rollback.md 절차 문서화뿐. tar 구성원이 평면 이름(`state.db token cred tls`)인데 복원 문서는 `server/…` 경로로 말하므로 T106 작성 시 반드시 대조할 것. ⑤ T096 1회 점검 외에는 `platform_backup_last_success_timestamp` 라벨 부재를 잡을 알림이 없음(plan.md의 absent()·26h stale 규칙이 컴포넌트 라벨별로 성립하는지 T098에서 확인).
+- [T038/T039 구현자 보고 → converge·후속 task 메모] ① **tasks.md T038 문면의 chart 키가 41.x 표기**: `logs.access.fields.headers.defaultMode`·`statusCodes: ["400-599"]` → 번들 chart 40.1.x 실제 키는 `defaultmode`(소문자)·`statuscodes`(문자열 "400-599", 리스트 아님, 스키마 additionalProperties:false라 camelCase는 거부). 구현은 40.1.x 철자를 따랐고 헤더에 근거 기록 — converge에서 문면 정정. ② **research K3S-D6의 `trustedIPs=[10.42.0.0/16]`은 채택하지 않음**(클러스터 내 파드가 X-Forwarded-* 위조 가능) — Cloudflare IPv4 15개 리터럴 사본, 정본은 `infra/oci/network.tf`의 `data.cloudflare_ip_ranges`(NSG 443 규칙과 동일 목록, 공개 API etag 38f79d050aa027e3be3865e495dcc9bc로 일치 확인). klipper-lb MASQUERADE로 소스 IP가 svclb 파드 IP가 되면 매칭 실패 가능 → 노드 A 실측 항목(앱은 `CF-Connecting-IP` 사용). ③ **T037 브리프**: K3s 업그레이드로 번들 chart가 40.1.x를 벗어나면 traefik-config.yaml 키가 깨짐 — 업그레이드 뒤 values 스키마 확인 절차(§6)에 `kubectl logs job/helm-install-traefik` 확인 포함. ④ **T041 브리프(계약 보강 필요)**: contracts/network-policy.md 매트릭스에 **cloudflared ns의 ingress 행이 없어** `default-deny` 후 kubelet liveness/readiness 프로브(2000)가 막힐 수 있음 → 계약에 노드 IP/32 → cloudflared 2000 ingress 행 추가 검토(converge). ⑤ cloudflared 메트릭 2000이 monitoring scrape 목록에 없음 — 터널 지표 미수집이 의도인지 확인(추가하려면 계약 매트릭스 먼저, T098). ⑥ **T046 브리프**: Reloader 감시 대상에 cloudflared 없음 → T045 ExternalSecret 전환·토큰 회전 시 수동 `rollout restart` 필요(또는 대상 추가). ⑦ platform-gitops 저장소 blob이 CRLF(.gitattributes 없음) — 모노레포 LF 규약과 다름, 정리하려면 `.gitattributes` 도입(별건). ⑧ T039 README ⑧은 임시 22 규칙 제거를 "⑤ cloudflared access 동작 확인 뒤"로 못박음(먼저 제거하면 잠금).
+- [T033 구현자 보고 → 후속 메모] ① **봇 로그인 이름 예외**: 계약·task는 `jt-ci[bot]`, 실제 App은 `joshuatech-gitapp-1` → 로그인 `joshuatech-gitapp-1[bot]`(validate.sh 기본값 둘 다 허용, `VALIDATE_BOT_AUTHORS`) — T047 validate.yml·README 검사 5 이름을 실제 로그인으로 정리 + report 이름 예외 표에 추가. ② k8s-data-ca 미러 ES는 ES 검사 ①②③ 면제·④만 적용(③ 문면대로면 wave 표의 `cnpg-databases`/`kafka-topics` 위치와 모순) — converge/report에 해석 기록. ③ 계약 Argo metrics 포트 순서(8082/8083/8084 ↔ controller/repo-server/server)가 상류 기본(server 8083, repo-server 8084)과 뒤바뀜 — 집합 검사라 영향 없음, report Next. ④ helm values 포트 키(`HELM_PORT_KEYS`)는 cert-manager·ESO·CNPG·Vault만 — Authentik/OpenFGA/monitoring 배포 task(T080·T082·T098)가 행 추가 필요. ⑤ `kustomize build --enable-helm`이 `<component>/charts/`를 저장소에 남김 → platform-gitops `.gitignore`(`charts/`)를 T037/T042 첫 helmCharts 도입 시 또는 T047에서. ⑥ T047 연결 예: 도구 4종 sha256 핀 설치 → `PR_AUTHOR=${{ github.event.pull_request.user.login }} VALIDATE_BASE_SHA=… VALIDATE_HEAD_SHA=… bash tests/validate.sh` + `bash tests/validate.tests.sh`; 골격 트리에서는 FAIL이 정상이라 required check 연결은 T041 뒤(T047)에. ⑦ 브랜치 `003-validate-script`는 컨트롤러가 push·PR(ruleset: PR 필수) — validate required check가 아직 없어 머지 가능 여부 확인.
+
+- [T040 머지 2026-09-07] platform-gitops PR #5 squash → main `9727269`(브랜치 `003-argocd-bootstrap` 최종 `e316b37`, worktree wt-argocd 제거). converge/후속: ① notifications-controller metrics **9001**이 계약 network-policy.md 매트릭스에 없음(upstream NP는 전 ns 허용이었음) — 스크레이프 대상이면 T098에서 행 추가. ② T041 default-deny 전까지 argocd ns는 NetworkPolicy 0(upstream 5장 삭제). ③ Renovate raw URL SHA 추적은 T116 customManager(`# renovate: datasource=github-tags depName=argoproj/argo-cd currentValue=v3.5.2` 주석 배치됨). ④ 노드 배치: nodeSelector 없음 — ③ 롤아웃 NODE 열 보고 T041/T046 결정. ⑤ validate 공백 후보 4건(T047): 삭제 패치 target 부재 검사·원격 base 태그 ref 금지·bootstrap/** digest 요구·GOMEMLIMIT ≤ limit.
+- [T037 리뷰 결과 2026-09-07] Workflow 26 에이전트: 17건 중 확정 7(major 2 = 실패 Plan의 창 우회 서술 — 2838865·1dabb52에서 해소), 반박 10, critic **Approved**(HEAD 2838865 + 1dabb52 기준). 마이너 8건 구현자 2명에 분배(gitops wt-suc: VERSION 열→`.status.latestVersion`·`+/-` 표기·창 안 채널 갱신 시 진행 중 Job 삭제 위험·비상 정지 순서(로그 확인→라벨)·컨트롤러 `unschedulable` toleration·renovate.json `rancher/k3s-upgrade` pinDigests false; 모노레포 §6: Traefik 재확인 참조 정정·latestVersion 표기·실패 Plan 즉시 실행·비상 정지 순서). **converge 항목**: ⓐ contracts/network-policy.md:139 보완 통제 "이미지 digest 핀" → 채널 Plan과 양립 불가(task 116행 `channel` + 태그 없는 `rancher/k3s-upgrade`) — "채널 해석 태그(digest 핀은 `version:` 고정 모드에서만)"로 정정; ⓑ gitops-repo.md §이미지·승격에 system-upgrade Plan 이미지 채널 의존(4b WARN 허용) 한 문장; ⓒ gitops-repo.md 삭제 보호 목록에 SUC CRD 추가; ⓓ research K3S-D10 대안으로 `version:` 고정 + Renovate custom datasource 기록(트레이드오프). **VD(T041 첫 창)**: 실패 뒤 재트리거 즉시 생성 여부, prepare `privileged` 없이 성공하는지, 비상 정지 순서, Renovate dry-run(T116).
+
+- [T041 설계 확정 2026-09-08] 설계 문서 `scratchpad/t041-design.md`(619행, 12절 + 부록). 워크플로 14 에이전트(사실 6 → 설계 3 → 심사 3 → 종합 → 비평), 심사 만장일치 1위 = "안전 우선 롤아웃". **사용자 결정: D1=A**(bootstrap/argocd가 `../../clusters/oci-k3s/projects`를 base로 포함 → 첫 투입만 운영자 `apply -k`, 이후 platform-argocd가 소유), **D2=A**(AppProject platform destinations에 14 ns 전부 = jt-dev·jt-prod 포함, 계약 문장 정정은 converge), **D3=A**(tests Job은 매니페스트 + AppProject tests만, Application·validate 특례·계약 표 행은 converge 뒤 후속 태스크). 컨트롤러 확정: D4 4단계 PR(A projects+root 이관 → B1 자기 인수 → B2 policies → C 앱 17+tests), D6 삭제 보호 = Namespace 14 + AppProject 5 + Argo CRD 3종(**strategic merge** — install.yaml CRD에 annotations 맵이 없어 JSON6902 add는 빌드 실패), D7 sourceRepos = gitops + 차트 저장소·default 봉인 4필드, D8 identity-admin-*는 T075 몫, D9 Argo nodeSelector는 T046 이월, D10 default·kube-public·kube-node-lease PSA는 범위 밖(converge). **D5는 미결 — 운영자 VD-DNS 실측 대기**(CoreDNS 업스트림이 169.254.169.254면 kube-system `deny-imds`(ports 없음)가 외부 이름 해석을 전면 차단 → 계약 개정 + `allow-coredns-upstream` 1장 선행).
+- [T041 핵심 사실(설계 근거)] ① root는 `automated`+`selfHeal`이라 apps/에 파일이 들어오면 ≤180s에 child를 만든다 — AppProject 부재 상태면 InvalidSpecError·Unknown → default 봉인 시 operation permission 실패 → retry 소진 후 `Skipping auto-sync: failed previous sync attempt`로 **자동 sync 정지**. 그래서 PR-A에는 apps/ 파일을 넣지 않는다. ② 정지 스위치는 `scale sts argocd-application-controller --replicas=0` 하나뿐(child만 automated null → root selfHeal이 되돌림). ③ `argocd-cm`이 `resourceTrackingMethod: annotation`이라 **`-l argocd.argoproj.io/instance=…` 선택자는 아무것도 매칭하지 않는다** → 되돌리기용으로 정책 객체에 `app.kubernetes.io/part-of: platform-policies` 라벨을 직접 기재(Namespace·RBAC에는 붙이지 않음). ④ 1차 break-glass = 노드 A 대화형 SSH + `sudo k3s kubectl`(kubectl은 호출마다 새 dial이라 "열어 둔 터널 세션"은 안전망이 아님), 2차 = NSG 22 임시 규칙. ⑤ 정책 93장 = 공통 49 + 내부 ingress 21 + 내부 egress 10 + 외부 13. ⑥ PR-B2 게이트 2건 = VD-P(일회성 `np-probe` ns에서 DNAT 후 6443 매칭·kubelet 프로브·except 형식 실측)·VD-DNS.
+
+- [T041 진행 2026-09-08] **PR-A 머지·적용 완료**(main `7efb1da` → PR #7; 라이브: AppProject 5 생성, root project default→platform, Synced/Healthy). **PR-B1 머지·적용 완료**(main `3dc2a4c` → PR #8; `platform-argocd` Synced/Healthy, **파드 5개 AGE 20h/19h·RESTARTS 0 불변** = 소유권만 이동, CRD 어노테이션 `Delete=false,Prune=false` 확인). 브랜치 `003-t041-policies`(PR-B2 예정, HEAD `c5de94a` = S2 `fefbb6b` + S3 `d95d7cd` + S4 `326aa01` + UDP `90479c3` + S6 `69f7319` + S8 `0cb581d` + main 병합) — 렌더 **123객체**(Namespace 14 · NetworkPolicy 93 · RQ 2 · LR 2 · RBAC 12), tests 5객체 별도, `bash tests/validate.sh` **PASS 18 · FAIL 0 · WARN 4**. 브랜치 `003-t041-apps`(PR-C 예정, `7c50847`) — Application 17개, validate FAIL/WARN 집합 베이스라인과 동일. **PR-B2·PR-C는 VD 게이트 전까지 PR을 열지 않는다**(실수 머지 방지).
+- [T041 QUIC 판정 2026-09-08, 사용자 결정 A] 계약 `network-policy.md` 허용 매트릭스에는 **프로토콜 열이 없고** 프로토콜은 용도 열에 적는 것이 관례다(:109 "…, UDP·TCP"). :117 용도 열이 "Cloudflare edge 터널(**QUIC**/HTTP2)"이고 QUIC은 정의상 UDP이므로 `UDP 7844 + TCP 7844 + TCP 443`은 계약 행의 구현이지 추가 허용이 아니다(:152 위반 아님). 커밋 `90479c3`. 기말 converge 문서 개선 항목: 매트릭스에 프로토콜 열을 두거나 :117을 `7844(UDP·TCP) · 443(TCP)`로 표기(동작 변경 아님).
+- [중요 — /speckit-converge 의 실제 성격 2026-09-08] 이 저장소의 converge 스킬은 **`tasks.md` 끝에 `## Phase N: Convergence`를 append 하는 것이 유일한 쓰기**이고 `spec.md`·`plan.md` 수정을 금지한다 — **계약(`contracts/*.md`)을 고치지 못한다**. 또 "구현 통과 후" 전제라 지금(46/119) 실행하면 미구현 T042–T119가 전부 `missing`으로 잡혀 중복 태스크가 대량 append된다. 따라서 그동안 쌓아 온 "계약 정정은 converge 몫" 항목들은 **기말 lifecycle 단계에서 converge가 append한 태스크를 구현자가 실행하는 형태**로 처리해야 한다(계약을 직접 고치는 별도 경로가 필요하면 사용자 결정 필요).
+- [T041 converge/후속 인계 추가분] ⓐ `tests/validate.sh` 검사 3.2의 `RE_LOC_*`가 `platform/policies/tests/`를 덮지 않아 그 경로 ES에 `prod/` 키를 써도 store 불일치가 안 잡힘 → 계약 개정 후 `^platform/policies/tests/` → `vault-dev`+`dev/` 규칙 추가(T047). ⓑ 계약 :73 "출발 egress + 도착 ingress 한 쌍"은 traefik 출발 5행(:77–:81)에 적용 불가(kube-system은 정책이 `deny-imds` 1장뿐) → 문구 예외 명시. ⓒ agent-view `applications` 권한 위치가 계약(:52-55, `agent-view-extra`에 watch 포함)과 문면(별도 ClusterRole, get/list)이 다름 — 문면을 따랐으므로 `kubectl get applications -w`는 거부됨. ⓓ Kafka bootstrap DNS·KafkaUser 그룹 접두·OpenFGA Service DNS는 계약 공백(T055/T056/T082에서 확인). ⓔ `edenhill/kcat:1.7.1`은 amd64 단일이라 arm64 노드에서 불가 → `apache/kafka` 콘솔 도구로 대체.
+
+---
+
+## 계약 정정 큐 — T042 VD-W 실측 (2026-09-09)
+
+**대상**: `specs/003-platform-foundation/contracts/network-policy.md` :37 · :48 · :121
+
+**현재 문면**
+- `:37` `allow-apiserver-webhook | ingress ← ipBlock <노드 A private IP>/32, ns마다 포트 지정 | cert-manager 10250 · external-secrets 10250 · cnpg-system 9443 · vault 8200`
+- `:121` `노드 A private IP | cert-manager · external-secrets · cnpg-system | 10250 · 10250 · 9443 | API 서버 → admission webhook`
+- `:48` "port-forward는 API 서버·kubelet을 거치므로 출발 IP가 노드 A private IP다"
+
+**틀린 지점**: `:48`의 추론은 **vault 행(port-forward)에는 맞고 webhook 행에는 틀리다**. 같은 규칙 안에 메커니즘이 다른 두 경로가 섞여 있다.
+
+**실측 근거** (운영자 실행, 2026-09-09)
+```
+ssh ssh-a 'ip route get 10.42.1.14'        → 10.42.1.14 dev flannel-wg src 10.42.0.0
+ssh ssh-a 'iptables-save -t nat | grep FLANNEL-POSTRTG'
+                                            → -s 10.42.0.0/24 -d 10.42.0.0/16 -j RETURN   (SNAT 없음)
+ssh ssh-a 'journalctl -u k3s -b | grep "egress proxy mode"'
+                                            → Tunnel server egress proxy mode: agent
+k3s 저널                                     → dial tcp 10.42.1.14:10250: connect: connection refused (즉시)
+A) 노드 A → webhook 10.42.1.14:10250        → exit 7, 0ms          (실패)
+B) 노드 A → coredns 10.42.1.11:9153         → code=200, 2.6ms      (같은 소스·경로, 정책 없는 ns → 성공)
+C) 노드 B → webhook 10.42.1.14:10250        → code=404, 6.7ms      (kube-router LOCAL 예외 → 성공)
+```
+
+**메커니즘**: K3s 기본 `--egress-selector-mode: agent`에서 apiserver → **파드 IP** 연결은 터널을 타지 않고 노드 A 호스트 netns에서 직접 dial된다(터널은 노드 IP·kubelet 포트만 등록). `flannel-backend: wireguard-native`라 `10.42.0.0/16`이 `dev flannel-wg scope link` 라우트이고 그 장치의 유일한 주소가 노드 A 리스 서브넷의 네트워크 주소이므로 출발 IP가 노드 private IP가 아니다.
+**flannel host-gw였다면 `10.0.7.78/32`가 정확히 옳다** — 정책 작성자의 가정은 백엔드 선택 때문에 깨진 것이다.
+
+**정정안**
+- `:37`·`:121`의 webhook 행 출발지를 `<노드 A private IP>/32` **및** `<노드 A flannel-wg 주소>/32`(= 노드 A 파드 CIDR의 네트워크 주소, 현재 `10.42.0.0/32`)로 확장
+- `:48`에 "webhook 행은 apiserver가 파드 IP로 직접 dial 하므로 출발 IP가 flannel 터널 장치 주소다"를 별도 각주로 분리
+- `vault` 8200 행에 "port-forward는 파드 netns 안 loopback이라 NetworkPolicy를 거치지 않는다 — 이 규칙은 실효가 없으나 np-set-5가 존재를 요구한다"를 명시
+
+**T042에서 한 것**: `platform/policies/policies-common.yaml`의 cert-manager·cnpg-system `allow-apiserver-webhook`에 `10.42.0.0/32`를 add-only로 추가(PR-A). 기존 `10.0.7.78/32`는 유지(np-set-5가 "포트 + /32를 한 규칙에" 요구 + 계약 문면 근거 보존).
+
+**같이 인계할 것**
+- **`kubectl get --raw /api/v1/namespaces/<ns>/pods/<pod>:<port>/proxy`도 같은 경로다** — default-deny ns의 노드 B 파드에 대한 에이전트 진단 경로가 막힌다. 계약 §에이전트 자격에 각주 필요.
+- **이 실패 유형은 Argo Healthy + 파드 Ready 아래에서 100% 침묵한다**(kubelet 프로브는 kube-router의 `--src-type LOCAL` ACCEPT로 구조적으로 항상 통과). webhook 도달 dry-run 프로브를 T042 일회성 게이트가 아니라 **상시 검사로 승격** 검토(T047 또는 tests/platform).
+- **external-secrets**(T045, 노드 A `nodeSelector platform`): LOCAL 예외로 통과할 것으로 보이나 **미검증**. T045에서 같은 dry-run 게이트로 실측 후 결정.
+- **cnpg-system**(T052, 노드 B, 9443): 같은 경로이므로 PR-A에서 **선제 적용**.
+
+**설계 문서 오류 정정 3건** (`t042-design.md`)
+1. §2 D6 옵션 B "노드 A 이동은 해결 보장이 없다(cni0 SNAT 가능성)" → **오기**. kube-router가 파드 방화벽 체인 맨 앞에 `--src-type LOCAL` ACCEPT를 넣으므로 같은 노드면 출발 IP와 무관하게 통과한다. B를 기각할 근거는 기술이 아니라 동결 문서 4곳(plan A14 · tasks T042·T052·T097)과 노드 A 여유(0.4→0.24 GiB)다.
+2. §7 단계 3의 보조 측정 "노드 A → webhook **ClusterIP:443** curl" → **오기**. apiserver는 ClusterIP가 아니라 **엔드포인트 파드 IP:10250**으로 간다(에러 문자열이 증거). ClusterIP 경로는 kube-proxy DNAT와 masq 마크를 끌어들여 소스 결정이 달라진다. **파드 IP 직접 curl**이 맞다.
+3. §12.4 "객체 45개" → **46개**(`---` 구분자 45개를 객체 수로 오독). CRD 6 · ClusterRole 13 · ClusterRoleBinding 10 · SA 3 · Service 3 · Role 3 · RoleBinding 3 · Deployment 3 · Validating 1 · Mutating 1.
+
+**T041 런북 정정**: "머지 직후 `annotate app root ... refresh=hard`" → root에만 걸면 **자식 앱에 전파되지 않는다**. 자식 앱(`platform-<comp>`)에 직접 걸어야 한다(2026-09-09 실측 — root만 걸었을 때 `platform-cert-manager`가 옛 리비전에서 Synced/Healthy로 보였다).
+
+---
+
+## T042 staging/prod 발급 — 근본 원인과 교훈 (2026-09-09) · **study 노트 1순위 소재**
+
+### 사건
+
+PR-2 머지 후 staging 인증서가 **107분 정체**했다. Challenge가 `pending: Waiting for DNS-01 challenge propagation: DNS record for "joshuatech.dev" not yet propagated`에 고정.
+
+**근본 원인**: 존에 v1 Fly.io 시절의 레코드가 남아 있었다.
+```
+_acme-challenge.joshuatech.dev   CNAME   joshtech-api.fly.dev.d5d6qg.flydns.net   (목적지 NXDOMAIN)
+```
+cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이미 사라진 Fly.io 이름으로 끌려가 값을 영원히 찾지 못했다. Cloudflare는 같은 이름에 CNAME과 TXT를 동시에 보유할 수 있어(비표준 허용) 질의 타입에 따라 다른 답을 준다.
+
+**해소**: 운영자가 Cloudflare에서 그 CNAME을 삭제 → 리솔버 캐시 만료 직후 즉시 통과. `infra/cloudflare/dns.tf:4`가 `_acme-challenge`를 영구 제외로 선언해 tofu 관리 밖이었고, 목적지 앱이 이미 사라져 아무 기능도 하지 않던 잔재였다.
+
+**영향 범위**: 이건 T042만의 문제가 아니라 **앞으로 모든 인증서 갱신을 영구히 막았을** 결함이다. 90일마다 조용히 실패하다 만료 시점에 전 호스트가 죽는 형태. staging 단계에서 걸린 것이 다행이다.
+
+### ★ 학습 노트 핵심 주제 — "관측 도구가 대상과 다른 경로를 보면 초록불이 거짓말을 한다"
+
+오늘 나온 세 사례가 **같은 구조**다. study 노트는 이 축으로 묶으면 된다.
+
+| 사례 | 도구가 본 것 | 대상이 본 것 | 결과 |
+|---|---|---|---|
+| **CNAME** | `nslookup -type=TXT`·DoH는 CNAME을 **따라가지 않아** 값이 보였다 | cert-manager는 `followCNAMEs`로 죽은 이름에 갔다 | 100분간 캐시·정책·워크큐·RD 플래그를 헛짚음 |
+| **cert-1 단언** | `spec.secretName` 일치 + `Ready=True`만 확인(발급자 무지) | staging 체인이 들어 있어도 PASS | **거짓 초록** → 각색 D(D4)를 택한 근거 |
+| **VD-W**(webhook) | 파드는 Ready, Argo는 Synced/Healthy | apiserver는 도달 실패, 인증서 0장 발급 | kube-router의 `--src-type LOCAL` ACCEPT 때문에 kubelet 프로브가 **구조적으로 항상 통과** → 100% 침묵 |
+
+부수 사례: `resourceVersion` 고정 + 로그 0줄을 "컨트롤러 멈춤"으로 읽었으나, cert-manager는 status가 같으면 쓰기를 생략하고(`DeepEqual` 조기 반환) self-check 재시도 로그는 `V(4)`인데 `--v=2`로 돌고 있었다. **정지와 정상 재시도가 외부 신호상 완전히 동일하다.** 메트릭(`certmanager_controller_sync_call_count{controller="challenges"}` 273→282/90초)이 유일한 판별 수단이었다.
+
+### 진단 과정에서 내가 틀린 것 (노트에 정직하게 쓸 것)
+
+1. **"재시작하면 풀린다"** — RV 고정·로그 침묵을 멈춤으로 오독. 둘 다 정상 동작이었다.
+2. **"egress가 안 걸린다"** — 실제로는 80·IMDS·타 목적지 6443 전부 정상 차단. 새는 건 **53 하나뿐**.
+3. **"Secret 없으면 ClusterIssuer Ready=False"** — 실제로는 Ready=True(ACME 계정 등록은 솔버 Secret과 무관).
+4. **놓친 결정적 단서**: 노드 B `resolvectl`이 뱉은 `Name 'joshtech-api.fly.dev.…flydns.net' not found`. systemd-resolved가 **바로 그 CNAME을 따라가다 실패한 것**이었는데 "설명 안 됨, 재현 안 됨"으로 넘겼다. **CNAME을 직접 조회해 본 것이 정답이었고 그건 사용자가 했다.**
+
+→ **런북 규칙으로 승격**: DNS-01이 pending이면 **TXT보다 CNAME을 먼저 조회한다.**
+
+### 부수 발견 2건 (T042와 무관, 별도 관리)
+
+**① egress 포트 53 누수 — T041 산출물 정확성 문제**
+
+프로브 실측(cert-manager ns, CNI 파드 `10.42.1.23` — hostNetwork 아님):
+
+| 대상 | 기대 | 실제 |
+|---|---|---|
+| `1.1.1.1:53` | 허용 | OK |
+| **`8.8.8.8:53` · `9.9.9.9:53`** | 막힘 | **통과** |
+| 외부 443 | 허용 | OK |
+| 외부 80 | 막힘 | BLOCKED |
+| IMDS `169.254.169.254:80` | 막힘 | BLOCKED |
+| 6443 → 노드 A(허용 목적지) | 허용 | OK |
+| **6443 → 노드 B(다른 목적지)** | 막힘 | **BLOCKED** |
+
+→ **목적지×포트 교집합은 정상 작동한다**(6443 테스트가 증명). 새는 건 **53 하나**.
+추정 원인: `allow-dns`만 ipBlock이 아니라 `namespaceSelector`+`podSelector`(kube-system `k8s-app=kube-dns`) 기반이고, kube-router가 그 셀렉터를 ipset으로 변환하지 못하면 "peer 제한 없음 = 53은 아무 데나"로 퇴화할 수 있다. **미확정** — 노드에서 `iptables-save`로 확인 필요.
+심각도 **중간**: IMDS·임의 포트는 막히므로 자격 노출 경로가 아니다. "지정 리솔버만 쓴다"는 통제가 실효 없는 것.
+**T047 검증 항목으로 넣을 것.** 그리고 `dns01RecursiveNameserversOnly: false` 같은 조치를 택할 때 **이 결함에 기대면 안 된다** — 고쳐지는 순간 갱신이 조용히 실패한다.
+
+**② `host-prep.sh:216-220`의 FORWARD ACCEPT 2줄 — 설계 결함(확정)**
+```
+-A FORWARD -s 10.42.0.0/16 -j ACCEPT
+-A FORWARD -d 10.42.0.0/16 -j ACCEPT
+```
+지금은 `KUBE-ROUTER-FORWARD` 점프가 position 1이라 먼저 평가돼 무해하다(VD-W 실측이 보여줬다). 그러나 kube-router가 재시작·재프로그래밍하면 **fail-open 증폭기**가 된다.
+
+### 설계 문서(`t042-design.md`) 오류 정정 — 이미 §14.3에 일부 반영, 나머지
+
+- §5.4 "순서상 중요" 문단과 §7 단계 5의 "Secret 없으면 ClusterIssuer가 Ready=False … ACME 호출 자체가 없다" → **틀렸다**. Ready=True가 되고 staging newOrder가 실제로 나가며 Challenge가 `secret "cloudflare-dns-token" not found`로 정체한다. prod 한도가 안전한 근거는 "ACME 호출 없음"이 아니라 **"Certificate가 staging만 가리킴"**이다.
+- §9 VD-P의 "CertificateRequest 개수" 근거는 `revisionHistoryLimit: 1` 아래서 무효 → `.status.revision`으로 대체(실제로 승격 전 1 → 후 2로 확인했다).
+
+### 최종 결과 (2026-09-09)
+
+- staging: Order valid · Secret `wildcard-joshuatech-dev-tls-staging` · issuer `(STAGING) Artificial Amaranth YE1` · SAN 2개 · 90일
+- **prod 승격**: rev **2** · CertificateRequest issuer `letsencrypt-prod` · Secret `wildcard-joshuatech-dev-tls` · issuer `C=US, O=Let's Encrypt, CN=YE2` · SAN `*.joshuatech.dev`+`joshuatech.dev` · `notAfter 2026-12-08`
+- `ingress.tests.ps1`: **cert-1·cert-2 PASS**. 남은 FAIL 2건은 미래 태스크(`argo-2` = T043, `vault-2` = T044)
+- prod 중복 한도 **1슬롯만** 소비
+- 잔여: 고아 Secret `wildcard-joshuatech-dev-tls-staging` — **PR-4 머지 전(2026-09-09~10) 운영자 삭제 완료**(README §10 시점 "PR-4 안정화 뒤"보다 앞섬, 참조 0이라 무해 — 정확한 시각은 운영자 회상 → 런북 T042 절)
+
+## T042 PR-4 머지 완료 (2026-09-10 07:45Z / 16:45 KST) — **서빙 경로 확정**
+
+- gitops main `32a1022` → **`4f23abd`**(PR #16 squash). 트레일러 **1개**(본문을 `-F`로 넘겨 squash 기본 템플릿의 3~5회 중복을 피했다 — 앞선 PR들의 결함 해소, 앞으로 이 방식 고정).
+- **머지 전 게이트를 CT 로그로 독립 확인**: certspotter에 `2026-09-09 → 2026-12-08 · C=US, O=Let's Encrypt, CN=YE2 · SAN *.joshuatech.dev + joshuatech.dev`. **staging 인증서는 공개 CT에 오르지 않으므로 이 한 줄이 체인 진위를 확정한다** — kubectl 없이 검증 가능한 게이트로 승격할 것(런북·README §1에 추가). crt.sh는 같은 인증서를 하루 넘게 못 보여줬다(집계기별 지연 차이 — 한 곳만 믿지 말 것).
+- **회귀 경로 부재 논증**: 머지 직전 `auth`가 이미 526이었으므로 이 머지는 개선 아니면 현상 유지다. "되돌리기가 곧 장애"는 *좋은 상태로 못 돌아온다*는 뜻이고, 이미 나쁜 상태였다. 같은 논증을 앞으로도 게이트 판단에 쓸 것.
+- **실측 결과 전건 통과**: `platform-traefik` Synced/Healthy · TLSStore `kube-system/default` 1개(AGE 4s) · `spec.certificates[0].secretName = wildcard-joshuatech-dev-tls`(CRD 프루닝 없음) · Traefik 로그 6종 패턴 0건 · **`auth` 526 → 404**.
+- 전 호스트 사후 상태: `auth` 404 · `traefik`·`argo`·`vault`·`admin` 302(Access) · `identity-m2m-{prod,dev}` 401(Service Auth) · **526 0건**. v1 무영향(`api`·`mainapi` 404 · apex 200 · `www` 522는 기존 v1 이슈).
+- **관찰**: 운영자가 `annotate … refresh=hard`를 건너뛰었는데도 Argo가 수 초 안에 sync했다(TLSStore AGE 4s). 자식 앱 대상 정정은 여전히 옳지만(당길 때 무엇을 당기느냐의 문제), **평소에는 180s 안에 저절로 반영된다** — 런북에 "먼저 기다려 보고, 안 되면 자식에 건다" 순서로 적을 것.
+
+## T042 단계 9 sniStrict — **완료** (2026-09-10 17:24 KST 노드 A 적용 · 커밋 `0bdc621`+`829226d`)
+
+- **최종 판정 전건 통과**: SNI 불일치 → **`000`**(핸드셰이크 거절) · SNI 일치 → `302` · `HelmChartConfig`(gen 2)·`TLSOption default` 둘 다 `sniStrict: true` · TLSOption 1개 · Traefik 오류 로그 0건 · 엣지 `auth` 404·`traefik` 302·`argo` 302 무영향.
+- **롤아웃 0 실측 확인**: 파드 `traefik-84ff6ff49d-tk8c2` creationTimestamp `2026-09-04T09:58:33Z`·RESTARTS 0 **불변**(6일째). **443 순단 0초.** → `tlsOptions` 변경이 `TLSOption` CR만 갱신한다는 분석이 실측으로 확정됐다. T043 clientAuth도 같은 CR이라 **동일하게 롤아웃 없이 반영된다**(단 clientAuth는 CA Secret 부재 시 TLSOption 등록 실패로 443이 끊기므로 위험의 성격이 다르다).
+- **[교훈] 반영에 약 15초 지연이 있고, 그 창에서 조회하면 "적용 실패"로 보인다.** 실측: 파일 mtime `17:24:20.878` → journal `Applied manifest` `17:24:34`(≈14초) → helm Job 5초. 그 사이 `get tlsoption default`는 갱신 전 spec을, `generation`은 1을, helm Job 로그는 6일 전 것을 보여준다 — 나는 실제로 이걸 "미적용"으로 읽고 진단 절차를 한 바퀴 돌았다. **판정은 설치 30초 뒤 한 번에** 하고, 그래도 옛 값이면 `journalctl -u k3s | grep 'Applied manifest'`로 컨트롤러가 집었는지부터 본다. Job 교체 중 나오는 `error syncing … DesiredSet - Replace Wait … requeuing` 한 줄은 정상. 같은 지연이 **모든 manifests 경유 변경**(T043 포함)에 적용된다 — 런북 §3 절차 메모로 승격할 것.
+
+### (적용 전 기록)
+
+- 판별 실험 ①② 통과: ① SNI 일치 → `issuer C=US; O=Let's Encrypt; CN=YE2` · `expire Dec  8 08:59:09 2026 GMT` ② SNI 불일치 → `subject`·`issuer` 모두 `CN=TRAEFIK DEFAULT CERT`. ②가 **defaultCertificate 미설정의 증거**다.
+- **[중대 정정] `tlsOptions` 변경은 파드 롤아웃을 일으키지 않는다.** 차트에서 `tlsOptions`가 쓰이는 템플릿은 `templates/tlsoption.yaml` 하나뿐이고 `TLSOption` CR로만 렌더된다. Deployment의 `checksum/traefik-dynamic-conf`는 `providers.file.enabled`(기본 false) 가드 안. → **443 순단 없음**, CR 갱신으로 초 단위 반영, **파드 AGE 유지가 정상**. 종전 헤더의 "replica 1이라 443이 수십 초 끊긴다"는 이 경우 사실이 아니었고 "수십 초"는 런북에 실측 근거 0건이었다. 롤아웃이 나는 값에서도 차트 기본이 `maxUnavailable: 0 / maxSurge: 1`이라 신규 연결 공백은 없다. **유지보수 창의 목적은 순단 흡수가 아니라 역순 되돌리기를 즉시 할 사람이 붙어 있는 것.** 같은 정정을 T043(clientAuth)·향후 traefik-config 변경에도 적용할 것.
+- **`{{- with $config.sniStrict }}` 함정**: `false`는 falsy라 키 자체가 렌더되지 않는다 → `sniStrict: false`는 "끔"이 아니라 "미지정"이고 결과가 같아 조용하다. helm 스키마도 못 잡는다(`tlsOptions`는 free-form object). 그래서 신규 `v-24`가 리터럴 `true`를 따로 본다. **차트가 `with`로 렌더하는 다른 불리언 값에도 같은 함정이 있다 — T043 clientAuth 관련 값 점검할 것.**
+- 테스트 68 → 69. `x-7`은 "부재" → "정확히 1회"로 반전(조용한 삭제·중복 둘 다 차단). `Sort-Object` 정렬은 14개 문화권 동일 순서 실측(이 저장소의 `-ceq` 문화권 이력 때문에 확인).
+- 리뷰 3렌즈 25에이전트 → 생존 1(위 순단 정정) · 반박 기각 21. 독립 확인: SNI 없이 443에 붙는 경로 0건(kubelet 프로브는 8080 HTTP) · 2단계 서브도메인 0건 · TLSOption `default` 중복 0건 · `ingress.tests` `aop-1`은 올바른 SNI를 보내 공허 통과 아님.
+- **인계**: 적용 뒤 낡는 문서 — gitops `platform/traefik/README.md` §9("이 PR은 sniStrict를 켜지 않는다"·판별 실험 절차)·`tlsstore-default.yaml`·`kustomization.yaml`의 "sniStrict는 이 PR이 아니다(D5)" 문면, 설계 §14.5 D5 셀 → **PR-5**. 노드 A의 sniStrict 유실을 잡는 장치 없음(`x-7`은 저장소 사본만 지킨다) → **T047/플랫폼 테스트**.
+
+## T042 전체 검수 (2026-09-10) → 실행 큐
+
+정본: `t042-audit-fable.md`(fable 종합) · 대조/순서: `t042-audit-report.md` · 원본 103건: `t042-audit-raw.md`. 아래는 build-notes 큐 항목만.
+
+- **[내 주장 철회·정정]** ① 위 "부수 발견 ① port 53 누수"는 YAML·kube-router 코드로 성립하지 않는다 — `to`가 있는 규칙은 dst ipset이 비면 규칙 0개(거부로 퇴화), 기본 거부 REJECT라 연결 없는 UDP 쓰기 1회는 ICMP 전에 "성공". 프로브 명령·프로토콜을 기록하지 않았다. 재측정 = 응답 요구 프로브(`dig @8.8.8.8 +time=2 +tries=1`, `nc -zv -w3`), 인계처는 T047이 아니라 **np-5-live(T031) → T102**. ② PR-4 README §10 ④·PR #16 본문 "kubeconform이 TLSStore skip" — validate.sh는 datree 스키마로 **실제 검증**했다(캐시 `traefik.io/tlsstore_v1alpha1.json` 2026-09-09 19:13). "skipped"는 맨몸 kubeconform. ③ 위 "런북 정정: root refresh"는 **범위 명시형**으로 — root 소스(`clusters/oci-k3s/apps/`)가 바뀔 때는 root가 정답, 기존 child의 `platform/<comp>/`만 바뀌면 child. ④ 런북 :218 "큰따옴표가 먹지 않아"는 원인 오기 — pwsh 7.6.5에서 jsonpath `[?(@.type=="Ready")]`는 정상, 깨지는 조건은 `custom-columns=A:.x,B:'…'` 쉼표 뒤 작은따옴표. ⑤ renewBefore "40으로 올린다(잔여 36일)"는 90일 계산 — 64일에서 25.6일 < 30, ≥47%(실용 50). ⑥ "노드 B 드레인 중" 문구 — SUC Plan은 `cordon: true`만, `drain:` 없음.
+- ~~**[block-pr4]** traefik README:84·:206 `annotate app root` → `platform-traefik` + 편승 문면~~ → **완료 2026-09-10, 커밋 `6b99400`(브랜치 `003-t042-pr4`, PR #16 draft 유지, checks SUCCESS·CLEAN).** 매니페스트 무변경(yq 파싱 결과 동일). 3렌즈 리뷰(26 에이전트) 생존 2건 반영. **정정 중 새로 드러난 사실 3건**:
+  - `certificates:` 경로는 **2단**이라 실패 문면도 2종이다 — 1단 `Unable to read certificate secret`(Secret/키 없음), 2단 `Unable to parse certificate`(`tlsmanager.go:139`, X509KeyPair 실패 → **그 인증서만 조용히 탈락**). 후자를 처음에 빠뜨렸다.
+  - **어떤 로그 목록도 닫힌 집합이 될 수 없다** — 지배적 실패 모드(staging 체인·만료된 prod = 유효하지만 틀린 인증서)는 파싱에 성공해 로그를 한 줄도 남기지 않는다. "합격 0건"을 적재 성공의 증거로 쓰면 안 된다. 정본 증거는 노드 내부 curl(issuer + expire date).
+  - **TLSOption 중복의 "minVersion 소실"은 절반 틀렸다** — Traefik 내장 `DefaultTLSOptions.MinVersion`이 이미 `VersionTLS12`라(`tlsmanager.go:34-38`) 같은 provider 안 중복이면 집계기가 그 값을 다시 넣는다. 실제 회귀는 **내장 기본이 없는** 설정뿐이고, 지금은 없고 `sniStrict`·`clientAuth` 투입 시점에 생긴다. 서로 다른 provider가 각각 `default`를 주면 집계기가 기본값을 넣지 않아 **라우터 초기화가 통째로 실패**("cascading failure")한다. 이 구분은 설계 §6.4·R7과 T043 문면에도 반영해야 한다.
+  - 부수: `delete(tlsOptions, tls.DefaultTLSConfigName)`가 실제 호출 문면(상수 값이 `"default"`) — 리터럴로 인용하면 소스 grep이 0건이 된다.
+- **[pr5 추가]** issuers README 시제(:1·:12·:17-18·:160·:281·§10 완료 표기)·:346 · §13 갱신 전제 체크리스트(CNAME/TXT/CAA 없음 · 토큰 TTL 없음 · 정책 2장 · 계정키 Secret · 노드 B·webhook · LE 한도) + §1 사전 조회 + §2 진단 순서 "CNAME 먼저 → 리졸버 → 로그" · policies README:83-85·:259-261·:271 + policies-common.yaml:658-669 "계약 정정 대기" → 완료(d5f8a82) · 계약 줄번호 +5 밀림 9곳(:121→:126 등) → 검색 리터럴 · README:272 8.8.8.8 해소 표기 · :135/:276 tunnel UDP 7844 문면 반대 · :117→:122 · hard refresh 대상 명시 4곳(cert-manager README:59,67,158 · issuers README:401) · issuers kustomization:29-30·certificate:15-18 "즉시 FAIL·Traefik이 Secret 잃음" 과장(prune:false) · cert-manager README §2/§3 차트 bump 함정(kustomize `chartExistsLocally`는 버전 무시 → repo-server 재시작 필요) · README:129-130·issuers README:21-26 드레인 문구 · tlsstore-default.yaml:41-42 Traefik 전 ns Secret 읽기 = 폭발 반경 1줄 · README §1 토큰 TTL 없음 행 + 존 전체 편집 반경 · apps/README.md cert-manager·issuers 2행 · I-1 "이 PR" 관례 문장(bootstrap/README.md) · PR #14/#16 정정 코멘트.
+- **[별도 gitops PR]** dev/prod/tests AppProject blacklist에 `cert-manager.io: Certificate·Issuer·CertificateRequest`, `acme.cert-manager.io: Order·Challenge` + 계약 gitops-repo.md:43 (argo-3은 ⊇ 판정). ingress-shim 우회는 converge 결정(approver-policy vs ns별 Issuer).
+- **[runbook §3 T042 절]** 기준선 `auth=526·traefik=302·www=522(2026-09-10)` · PR SHA/시각(#11 03:50Z·#12 03:59Z·#13 06:21Z·#14 07:52Z·#15 09:54Z) · 수동 Secret/고아 Secret 시각 · VD-H1/H2/H3(H3 = repo-server 재시작 필요 여부 → `rollout history deploy/argocd-repo-server`) · CNAME 107분 + 규칙 · 갱신 ≈2026-11-08/만료 2026-12-08 · cert-2 창 7.2h/60d·2027-02-10 · 기대 FAIL(argo-2·vault-2) · 편차 ①③⑤ · D1–D6 결정표(D5=A·D6=A1 사용자 확정 2026-09-09, ACME 키 "지금대로", 계약 직접 편집 승인) · :36/:114 T043→T045 · :236 `§2`→gitops README §2 · :218 원인 정정 + root/child 범위 · 프로브 파드(`10.42.1.23`) 정의·이미지·삭제 기록 · 53 재측정 결과 · squash 절차(`gh pr merge --squash -F`) · 저장소 위생 체크리스트. 설계 :576·:775(48/119)·§14.5 D5 각주(v-20·x-7 확정, doc-5/doc-6 문자열 유지, 머리 :15·:27·:29)·D6 셀. 노트 필터(ssh 별칭·파드 IP·Fly 식별자·개인 메일·토큰명).
+- **[contract]** infra.md:27 + kr :28 + network-policy.md:74 → validate 5.3 문장("0.0.0.0/0(prefix<32)은 ports+except 4 · /32는 ports만 · deny-imds만 ports 없이 except IMDS/32") · 계약 표 행 ID 도입 · webhook 행을 노드 B 배치(private+flannel)/노드 A 배치(ESO, LOCAL 예외 — T045 실측) 조건부로.
+- **[converge 추가]** origin-1(`https://auth.joshuatech.dev/` ≠ 52x, T080 전 404 허용) + T048 재실행 · dns-1(DoH `_acme-challenge` CNAME 0·CAA) · research.md:894/:968 8.8.8.8·:901 defaultCertificate · cert-2 `status.renewalTime` 기반 · CAA 2단계(`issue letsencrypt.org`+`issuewild`+`iodef`; accounturi는 계정키 백업 뒤) · Traefik RBAC 스코핑(FR-011 충돌) · 계약 :122 프로토콜 열 · `secrets/` Application 부재 · T049 공백(TLSStore·ClusterIssuer Ready·재부팅 후 TLS).
+- **[t047 추가]** validate.yml 스텁 **fail-loud(`exit 1`)** · 4b 렌더 소스 + system-upgrade WARN 예외 · Certificate ns 단언 · blacklist ⊇ 단언 · `helmCharts[].repo` 허용 목록 · 스키마 벤더링(결정성) · `--enable-helm` 단언 · `allow-apiserver-webhook` from 두 항목 단언 · validate.tests helm 픽스처.
+- **[operator-check]** 프로브 파드 잔존(`kubectl -n cert-manager get pods -o wide` 3개 · ephemeralContainers · `get app platform-cert-manager -o jsonpath='{.status.conditions}'` orphaned 없음) · `get secret -n cert-manager` 4장 + staging NotFound + `get certificate,certificaterequest,order,challenge -n kube-system` · 백업 타임스탬프 ≥ 2026-09-10 02:30 · VD-H3 · 53 재측정(cert-manager ns + jt-dev 동일 프로브) · Cloudflare 토큰 Expiration 없음.
+
+## T043 진행 (2026-09-11)
+- **결정 확정(사용자)**: D1=C(CA Secret 정본 = 모노레포 `infra/bootstrap/cloudflare-origin-pull-ca.yaml`, K3s manifests) · D2=(b′)(Verify 관찰 게이트 → hostname 매트릭스 9 + self-signed 음성 + PASS/FAIL/INCONCLUSIVE → Require 승격) · D3=`bootstrap/argocd/ingress.yaml` · D4=`argocd-cm url` T084(IngressRoute h2c 2-route 질문: Access가 gRPC 미지원·CLI는 --grpc-web·argo-2가 kind Ingress 요구 → 일반 Ingress, 필요 시 별도 객체 추가) · D5=(ii)+(iii)(인증서 없는 판별 + 실험 ①②는 '승격 전 마지막 점검/재투입 전용') · D6=7건 분리, 계약 먼저.
+- **M1 완료** 모노레포 `d9b5662`(계약 2파일 +7줄). 검토 워크플로 3렌즈(opus) + 반박 검증 6: 반영 = TLS1.3 플라이트 순서(CertificateRequest → Certificate; "인증서가 CR 이전" 문장 오류) · 525/520 분류는 VD-7 미실측 헤지 · TLS1.3 거절은 post-handshake alert(`openssl s_client` 성공처럼 보임) · gitops-repo.md:21 선행사 명시. run-all: `tofu` 슬롯만 FAIL(`TF_VAR_budget_alert_email` 미설정, 기존 환경 상태) 나머지 PASS.
+- **도구**: kustomize 5.8.1 · kubeconform 0.8.0 · yq · gitleaks = 스크래치패드 `review-t040/sec/bin/`(PATH 없음, helm 없음). validate.sh :237은 도구 부재 시 검사 skip.
+- **G1** builder(infra-builder) 슬라이스 `g1-builder-slice.md` — 브랜치 `t043-argocd-ingress`, 5파일, push/PR 금지(컨트롤러가 검토 후 push·PR). 단계 0 게이트(CF API GET · tofu plan · kubectl 읽기 · Secret NotFound · idleTimeout)는 운영자 몫 — 아직 미실행.
+- **푸시 완료**: 모노레포 `d9b5662`(c2a058c..d9b5662, 2026-09-11). **gitops PR #18**(`t043-argocd-ingress`: `4d1b82d` + `dcfca82` + `1e15afb`, 본문 = `g1-pr-body.md`) — 머지는 운영자(단계 3, 사용자 재확인).
+- **단계 3 실행(2026-09-11, 사용자 확인 뒤)**: PR #18 squash 머지 ✔ · `platform-argocd` refresh → Ingress `argocd-server` ingressClassName traefik, `status.loadBalancer.ingress=[{"ip":"10.0.7.78"}]`(VD-13 ✔) · Synced Healthy ✔ · 노드 A 내부 `curl --resolve argo.` → `< HTTP/2 200`, issuer `C=US; O=Let's Encrypt; CN=YE2`, expire Dec 8 08:59:09 2026 ✔ · edge `argo.` 302 유지 ✔ · **8080 Host 프로브 000 = PowerShell `"$pod:8080"` 파싱 함정**(`$pod:8080`이 스코프 변수로 해석 → URL `http://:8080/`) → `${pod}`로 재실행 요청(VD-12 미판정) · run-platform-tests는 0b infra 그룹(tofu.tests, `TF_VAR_budget_alert_email` 미설정)에서 exit 1 → argo-2 미실행 → 변수 설정 후 재실행 또는 ingress.tests.ps1 단독 실행 요청 · 브라우저(Applications 목록·SSE 3분·라우저 tls.options) 결과 대기. → **후속 실측**: `${pod}`로 8080 프로브 **404** ✔(VD-12) · `TF_VAR_budget_alert_email` 설정 뒤 infra 41/0 ✔(tofu 슬롯 green — 값은 운영자 셸에만) · platform 스위트는 `KUBECONFIG`(agent-view) 미설정으로 SKIP → argo-2 미실행(agent-view kubeconfig 조립 블록 전달) · 브라우저: 터널 없이 `https://argo.joshuatech.dev` 접속 성공, 기존 Access 세션(SSO)으로 GitHub 프롬프트 없이 admin 로그인 화면 → **Applications 목록 로딩 ✔(T043 접근 확인)** · VD-11(라우터 tls.options)·VD-14(SSE 3분) 대기. gitops 로컬 main `54fdb59`로 ff, 브랜치 정리. **M2 builder 착수(2026-09-11, 단계 3 잔여 항목과 병행 — 라이브 영향 0)** → 1차 기동은 세션 리밋(429)으로 시작 직후 종료(테스트 파일만 남김) → 재기동 → **M2 완료** builder 커밋 `e35fc6f`(다운로드 PEM 2154B · 지문 9A1A…A2B9 · notAfter 2029-11-01T17:00Z 일치; 새 스위트 16/0 + `WARN remaining=1147d`; traefik-config 69/0; run-all Check FAIL은 `platform`(tofu 내포, env) 1건). **컨트롤러 정정**: builder가 `tests/run-all.ps1`을 파일째 add해 기존 미커밋 Codex hunk(1a2·1a3·1b1·1f3 = untracked 테스트 호출)가 혼입 → `reset --soft` + 1l hunk만 `apply --cached`로 재커밋 **`8613630`**(run-all +8, 총 +269; Codex hunk +25는 미스테이지 유지). 슬라이스의 "파일 전체가 들어간다·되돌리지 말 것" 지시가 결함 — 다음부터 "부분 스테이징(hunk 추출)" 또는 "컨트롤러가 스테이징" 규칙. 3렌즈 검토 워크플로 `wf_5043bd5b-38a` 완료(17 에이전트): findings 10(should-fix 7·nit 3), 반박 검증 14/14 유지. **테스트 결함**: k-1이 `metadata:` 구조 미검사(삭제해도 green) · p-1 "블록 1개"가 계약의 옛+새 병기 회전을 FAIL시키고 `CreateFromPem`은 첫 블록만 파싱(p-2~p-5 무력) · d-1 needle 약함(순서 규율 문단 삭제해도 PASS) · k-3 flow-style 라벨 통과 · d-1 지문 4바이트만. **헤더 오기**: "INFO 로그 조용"(실제 Secret 부재 Warn:1332 · 키 불일치 Error:1338 — 조용한 건 등록 실패 자체·Job 로그·파드 상태) · 회전 "허용 지문만 갱신" 과소 · 고아 경고 포인터(platform/traefik/README 미기록 → G2). 확인된 사실: 다운로드 원본과 바이트 동일(ETag 일치) · secretNames Secret-only · `owner!=helm` label selector(crd_client.go:170-171) · gitleaks no leaks · 4파일/Codex 혼입 없음. → `m2-fix-slice.md`(builder, 커밋 금지)로 수정; M3와 병렬(파일 겹침 없음).
+- **M2-fix 완료 → 커밋 `35664fb`**(컨트롤러 스테이징, 2파일 +136/-45): 17단언(k-4 신설: 최상위 키 `apiVersion,kind,metadata,type,stringData` 순서 고정 · p-1 블록 ≥1 · p-2~p-5 `ImportFromPem` 전 블록 순회 + `$allowed`{지문→notAfter} · k-3 flow-style 라벨 차단 · d-1 needle 12개(콜론형 지문 파생)) · 변이 5종(+3b) 기대대로 · 본문/PEM sha256 F7A77086… 불변. builder 메모: `Test-Group`이 dot-source라 블록 안 `$body`가 함수 파라미터 `[scriptblock]$body`로 풀림 → `$bodyText`(같은 골격 스위트 공통 함정) · 해시테이블 키 조회는 대소문자 무시라 `Get-AllowedKey`(Eq 순회). 독립 재검증 워크플로 `wf_9a0cf203-564`: A(동작) ok — 변이 8종 전부 기대대로(BEGIN 2/END 1 → p-1+p-2, type 변경 → k-1, 잉여 최상위 키 → k-4, 파일 부재 → 17 FAIL exit 1) · B(코드) ok + nit 3(빈 줄 병기 시 PEM 루프 종료 → p-2 원인 불명 FAIL · p-4 detail allowKeys 부재 · owner 스캔이 base64 포함) → 컨트롤러 직접 반영 커밋 **`c5a098c`**(17/0 · 빈 줄 병기 2블록 17/0 · base64 owner → k-3 PASS). **push `d9b5662..c5a098c`** — push protection 차단 없음(VD-16 절반). 단계 5(CA Secret 설치) 재확인 요청.
+- **M3 builder 완료(커밋 없음)**: red 66/6(v-20·v-25·v-26·x-6·doc-4·doc-18) → green **72/0** · valuesContent `clientAuth{secretNames:[cloudflare-origin-pull-ca], clientAuthType: VerifyClientCertIfGiven}` · 헤더 :42-44·:54(신설 되돌리기 순서)·:59-70(관찰 단계 투입 블록)·:77·:118·:121(grep 게이트 패턴)·:129 · `RequireAndVerifyClientCert`는 헤더 :69·:129만 · 음성 변이 6종 확인 · v-26 `@(Seq …)` 래퍼 제거(Seq가 이미 배열 반환 — 감싸면 Count 항상 1). 후속: yaml :99 "위 :53 의 역순" → ":53-54"(검토 뒤 컨트롤러 반영). 3렌즈 검토 `wf_db92d366-b1b` 완료(11 에이전트, findings 13: should-fix 5·nit 8, 반박 8/8 유지): doc-18 순서 미검사(역순 문장 PASS) → IndexOf 순서+각 1회 단언 · doc-4 +'무해한 단계' · x-5 detail 갱신 · 헤더: 이유 1 "정본 파일 M2, 클러스터 Secret은 절차 1~2 뒤" · clientAuthType 누락 = 암묵적 Require 함정(tlsmanager CAFiles→Require 선설정) · :95 clientAuth 병기 · :107 ":53–:54" · :120 중복 TLSOption 시 clientAuth 소실 · :129 exit 56/35 참고값 · 절차 5 "전량 제거 전용" → 컨트롤러 직접 반영, 변이(역순 문장 → doc-18 FAIL · 주의 문장 삭제 → doc-4 FAIL) 확인 → **커밋 `6141baa`**(+74/-28) push `c5a098c..6141baa`. 검토 확인 사실: 차트 `templates/tlsoption.yaml` `{{- with $config.clientAuth }} toYaml` · values.schema tlsOptions 자유 객체 · CRD enum에 VerifyClientCertIfGiven · 로그 게이트 6패턴 전부 v3.7.8 원문 존재 · Deployment checksum은 providers.file 가드.
+- **단계 5 실행(2026-09-11 06:39:01Z 설치)**: scp 시 ssh-a Access 브라우저 재로그인(정상) · 파일 install 완료 · 워크스테이션 kubectl "TLS handshake timeout"(k8s tcp 리스너 세션 만료 — 별개 앱) · 노드 안 `kubectl` sudo 누락(블록 결함) → `sudo kubectl` here-string 블록으로 재확인 요청 · auth 404 ✔. 교훈: 노드 내부 kubectl 은 항상 `sudo`; 검증 블록은 터널 의존 없이 노드 안에서 완결되게. → 재확인 **통과(VD-3 ✔)**: addon checksum 24d0e174… · Opaque · labels objectset hash만 · keys ca.crt · rv 477630 · subject/notAfter/지문 일치 · grep 0줄 · Applied manifest 15:39:08 KST. VD-18 rv 재조회는 단계 7 블록 0)에 포함.
+- **단계 7 사용자 확인(2026-09-11)**: 블록 = 사본 보존(pre-t043, grep -c clientAuth 0) → 설치본 6141baa scp/install → 30초 게이트(노드 안 sudo: spec·default 1개·Job succeeded·grep 0·파드 2026-09-04T09:58:33Z/0 불변·traefik-internal 302·argo-internal 200; edge 404/302) → 180초 → hostname 매트릭스 9(auth/api/mcp 공개 · argo/vault/admin/traefik `cloudflared access curl` · identity-m2m-prod/dev tester-m2m 서비스 토큰 env) → 액세스 로그 python 파싱(RequestHost·TLSVersion·TLSClientSubject·ray) → 자체 서명 음성(/tmp EC 인증서, alert 관찰, 삭제) + 무인증서 양성 404. 판정 PASS/FAIL/INCONCLUSIVE(D2 b′). → **실행·PASS(2026-09-11)**: 설치 06:49:41Z · 30초 게이트 전부 기대값(spec Verify+minVersion+sniStrict · default 1 · Job 1 · grep 0 · 파드 불변 · 내부 302/200 · edge 404/302) · VD-18 rv 477630 불변 · 사본 valuesContent clientAuth 0(헤더 8은 주석) · 매트릭스 8/8 `TLSClientSubject=CN=origin-pull.cloudflare.net,O=Cloudflare Inc.,L=San Francisco,ST=CA,C=US` TLS 1.3 LAX · `traefik` 호스트 0줄 = api@internal 내부 리소스 액세스 로그 기본 제외(구조적, INCONCLUSIVE → 진단 후 종결) · 자체 서명 exit 56/000 거절 · 무인증서 404. alert 리터럴 재실행 요청. **M4 builder 기동**(슬라이스 기입란 채움: 리터럴·1.3·06:49:41Z·2026-09-11; 커밋 금지). alert 리터럴 확보: `TLS alert, unknown CA (560)` · `error:0A000418 … tlsv1 alert unknown ca`.
+- **M4 완료 → 커밋 `a6f2cae`(push)**: builder red 69/3 → green 72/0 · 이웃 17/0 · fmt 0 · tf-text PASS · run-all env FAIL만. 컨트롤러 정리: keep-alive 180초 근거 복원 · `:53–:54` 줄 번호 참조(한 줄 어긋남) → 내용 앵커("위 두 ⚠ 되돌리기 줄") · ⚠ 문구 승격 뒤 맥락. 리터럴: Verify 헤더 42/46/60/72/75 · Require 헤더 42/71/74/124/137 + valuesContent 233(1회). 3렌즈 검토 `wf_6888bfb3-f3e`(29 에이전트): findings 19(blocking 3·should-fix 9·nit 7), 반박 26 중 18 유지. 반영(컨트롤러 직접, 73/0): "9 호스트 전부" → 8 + traefik 구조적 제외 · 승격 완료 = M4 커밋/설치는 런북(:60·:83·zone_settings.tf) · doc-4 조각 연속 4줄 regex 앵커(절차 4 줄 겹침) · doc-19 신설(절차 4 반전 기대값 고정) · :46 로그 리터럴 일반화 · klipper-lb 측정을 edge 프로브로 · unknown CA 판별표 · :33 분기 지문 대조 · '역순' 제거 · -w exitcode · x-6 이름 · 525 또는 520 헤지. 기각(2/2 반박): "커밋/설치 구분 없음"(xf-2 — 이유 1 줄에 이미 있음; 그래도 :60에 명시 추가) · unknown CA 누락 blocking(nit로 반영). 변이 3종 FAIL 확인. → 커밋 **`7e48409`** push.
+- **단계 11 실행(2026-09-11, 사용자 확인)**: 설치본 7e48409 · install **07:48:23Z** · 30초 게이트 전부 PASS(Require · default 1 · Job 1 · grep 0 · 파드 불변 · 무인증서 TLS1.3 exit 56 `tlsv13 alert certificate required`(curl `unknown (628)`) · TLS1.2 exit 35 `handshake failure (552)` · SNI `unrecognized name (624)` · s_client LE YE2/Dec 8 2026 · handshake 로그 0 · edge auth 404 · argo 302). +180초 양성 재확인·브라우저·러너 결과 대기. 블록 0)의 sed 확인은 PowerShell `\$p` 변수 확장으로 깨짐(cp·chown은 실행).
+- **G2 builder 완료(커밋 금지 규율 → 이번엔 gitops 브랜치라 builder 커밋 허용)**: `t043-docs` @ `f120dc9`(5파일 +154/-50, 렌더 sha256 main==branch, YAML 정규화 동일, validate PASS 17/FAIL 1(helm)/WARN 4). 편차: §5 argo 행 526 탐지 ✗ 유지(Access 302가 앞섬) · 고아 목록은 §10 말미 bullet(⑤ 참조 보존), 선례 cert-manager-issuers README §3 · 슬라이스 밖 낡은 참조 3곳(§3 ③·§7 "§9 ① 노드 내부 curl") 정정. 모노레포 `cloudflare-origin-pull-ca.yaml:34` "platform/traefik/README 에는 T043 G2 에서 기록" → §10 병기는 M5에서. 2렌즈 검토 `wf_77131d39-894`(14 에이전트): findings 11, 반박 12 중 유지 5 — "T043 완료" 과다 주장(잔여 검증·M5 전) · 525 = AOP 단정(§2 표 sniStrict 매칭 실패 525와 모순 → "유력 + ①·③으로 갈라낸다" 헤지, :87·:188·:209·:389) · tlsstore:61 "minVersion 소실 = 실제 회귀" → sniStrict·clientAuth · nit(§6 ① 레버 조건 · issuer ' = ' 구분자 · §9.3 ① 포인터 · tlsstore:69 §9.3). 기각 4(§9.3 pre-t043 문장 오독 2/2 ×2). 컨트롤러 반영 커밋 `15a6675`(렌더 db8d0b18… 불변) → push → **PR #19 → main `fa6d838`**(운영자 squash 머지 2026-09-14).
+- **단계 11 마무리(2026-09-14)**: +3일 양성 재확인 auth/api/mcp/argo 404 + TLSClientSubject(TLS 1.3, 콜로 SJC) ✔ · 브라우저 Argo UI 20 Synced/Healthy · Traefik 대시보드 · VD-11 라우터 TLS Options default(websecure만) ✔ · VD-14 미관찰 · 러너 09-14는 TF_VAR 부재로 infra 중단 → 09-11 PASS로 갈음(기록).
+- **M5 완료 → T043 마감**: `d34cfb7`(런북 §3 T043 절 + :250 + §4 kv 한 줄 + cloudflare-origin-pull-ca.yaml:34 §10 포인터) · `53f99f8`(tasks T043 `[X]` **49/119**) push. 메모리 갱신. 러너 09-14 재실행(터널 리스너·TF_VAR·토큰 재발급 뒤) PASS aop-1·argo-2·argo-1 / FAIL vault-2 → 런북 문장 교체 `3bf06a7` push. 다음 = T044 Vault.
+
+## T044 착수 (2026-09-14)
+- 사용자 "시작" → SDD 스킬 로드 → 사실 수집(tasks :123 문면 · research R4 :1202-1420 · 계약 vault 행 · ADR 0010 · gitops platform/vault 뼈대 · platform-vault Application wave 10 라이브 · infra/oci kms.tf(joshuatech-vault/joshuatech-key SOFTWARE, 출력 3종) · iam.tf 동적 그룹 노드 A만 · platform-backup.sh vault 기대(SA/role vault-backup·audience·port-forward·env 파일·pre-upgrade 게이트) · cluster/reboot/ingress 테스트 vault 단언 · validate.sh HELM_PORT_KEYS vault 8200).
+- 사용자 결정: 설계 워크플로(다중 에이전트) 사용 동의 → `t044-design.js`(사실 6렌즈 opus → 설계안 2 opus → 비평 2 opus → 종합 fable) `wf_ca07710e-d69` 실행 중. 결정 후보 D1~D9(Ingress 방식 · PVC 보호 · init 경로/비밀 취급 · tofu provider 이후 인증 · 감사 장치 · digest · 순서/PR 분할 · kv 플레이스홀더 포함 · 재부팅 리허설).
+- 컨트롤러 사전 확보: `scratchpad/t044-vault-helm/`(vault-helm v0.34.1 Chart/values/values.schema + 템플릿 15개, Chart appVersion 2.0.4) · Docker Hub `hashicorp/vault:2.0.4` 인덱스 digest **`sha256:5be49781ecf78bfe775c5309c6a4d9f4e9e040b6c885c99eb2b12fb69855e1a2`**(manifest list: linux/386·amd64·arm64) · host-prep.sh가 노드 A에 `vault` CLI(메이저 2 apt pin) 설치(:299-322) → platform-backup.sh 전제 충족(버전 실측은 VD) · docs/README.md 런북 표 형식(:18-19).
+- **단계 3 게이트 닫힘(2026-09-11 14:40 KST)**: agent-view kubeconfig 조립(admin 컨텍스트 명시 뒤: tok 957자·srv 127.0.0.1:6443·tsn 빈 값·ca 760자) → `auth whoami` = agent-view ✔ → 러너: infra 41/0 · cluster 26/11/11(FAIL = argo-4 CNPG·vault-1/2·eso-1~3·ca-1·reloader-1 = T044~T046 전 상태, backup-1~3 = OCI CLI 세션 만료 → `oci session authenticate` 필요, T043 무관; `argo-1: 20 Applications Synced/Healthy`) · **ingress 11/1: argo-2 PASS `ingress=[argocd/argocd-server]`, FAIL = vault-2(T044)**, aop-1 PASS(28) · reboot 3/0/4. 첫 조립 실패 원인 = 셸에 admin 컨텍스트 미지정(`config view --minify` "current-context must exist", `create token` → localhost:8080 404) → 런북 절차 메모 후보: "agent-view kubeconfig 조립 전 `$env:KUBECONFIG`를 admin 파일로 명시하고 `kubectl config current-context`로 확인". VD-11(라우터 tls.options)·VD-14(SSE 3분)는 브라우저 결과 대기(게이트 외 정보 항목으로 런북 기록).
+- **단계 0 게이트(운영자, 2026-09-11)**: ① 69/0 ✔ · ② `tls_client_auth` value=on editable=True **modified_on 2026-09-03 10:42:46 KST**(런북 기록) ✔ · ③ `origin_tls_client_auth/settings` → 10000 Authentication error(`joshuatech-tofu-deploy` 토큰에 SSL and Certificates:Read 없음) → 대시보드 SSL/TLS → Origin Server 카드로 대체 확인 요청 · ④ cloudflare plan No changes exit 0 ✔(Access 앱 argo 존재 재확인) · ⑤ admin `yes` → agent-view impersonation(`--as=system:serviceaccount:kube-system:agent-view`) **yes** ✔(VD-15) · ⑥ tlsoption default kube-system 1개 · Secret NotFound · idleTimeout 인자 없음 ✔ · ③ 대체 확인(대시보드 SSL/TLS → Origin Server): 전역 토글 On · Zone-level/Per-hostname 업로드 없음·Off ✔ → **단계 0 게이트 닫힘(2026-09-11)**. 운영 교훈: 첫 실행은 셸에 `CLOUDFLARE_API_TOKEN`·`TF_VAR_*`·cloudflared k8s 리스너가 없어 전부 빈 출력/403/6443 거부 — `Read-Host -AsSecureString | ConvertFrom-SecureString -AsPlainText` 마스킹 입력 블록으로 해결(런북 절차 메모 후보).
+- **G1 builder 완료**: gitops `t043-argocd-ingress` @ `4d1b82d`(5파일, 렌더 46문서, kubeconform Valid 38/Invalid 0/Skipped 8(CRD 3 + AppProject 5), validate.sh PASS 17·FAIL 1(검사 1 KUST helm 부재 fail-closed)·WARN 4(system-upgrade digest 기존)). 3렌즈 검토 워크플로 `wf_c6e3ac17-8c2` 완료(19 에이전트, 매니페스트 결함 0): 반영 = README 머리 소유 목록·"나머지"·파일 표·:17 ⑥ 요약·:18 객체 수·§② 45→46 + Ingress grep, kustomization 계약 인용 `+ ingress.yaml`·중복 총계 제거(`dcfca82`) · ingress.yaml:11 우회 경로 서술 정정(TLS 경로, web은 리다이렉트). 기각 = "부트스트랩 시점 ⑥ 불가"(platform-*은 ⑤ root 적용에서 sync, 2/2 반박). **k8s-security 확인 사실**: `default` 이름 TLSOption은 ns 무관 전역 id(kubernetes.go:1346-1350) · 백엔드 포트 443/`https*` 이름이면 Traefik이 백엔드 TLS · argocd-server-metrics는 별도 Service 8083 · Traefik은 `status.loadBalancer`만 씀(SSA 충돌 없음). **후속(G2/T084/T047)**: clusters/oci-k3s/apps/README.md:42 · platform-argocd.yaml:4 소스 열거에 Ingress 1 · platform/traefik/README.md:79 낡음 · Argo 세션 쿠키 Secure 플래그(HSTS 부재) 실측 · validate.sh Ingress 전용 검사 · 클러스터 내부 Access 우회(egress 정책 없는 ns → traefik 8443 SNI)는 기존 구조(계약 :94 자기 호출 금지).
+
+## T044 (2026-09-14 시작)
+- 결정 D1–D9 확정(t044-design.md §2.10). M0 커밋 e94e613(run-all ALL PASS). G0 = gitops PR #20(브랜치 t044-g0-appproject 857b210, hashicorp 줄 삭제; gitleaks 0; validate helm 부재 1건만).
+- 단계 0 실측: VD-01 CLI `Vault v2.1.0`(winget 최신, 서버 2.0.4) · VD-02 클립보드 기록 ON(=1, 결정 대기) · VD-05 crypto 140.204.52.131 / management 140.204.52.195(CNAME dp-prod-shard2/cp-prod-shard2 → splat-api), auth 140.204.52.181/.165, 사설 0 · key_id `ocid1.key.oc1.ap-chuncheon-1.gjvjsruaaadoq.ab4w4ljrjk4tfx75c47dgyeibp4pxgh3pn3pttsudq2p2hcbsjifvacwspda` · crypto `https://gjvjsruaaadoq-crypto.kms.ap-chuncheon-1.oci.oraclecloud.com` · management `https://gjvjsruaaadoq-management.kms.ap-chuncheon-1.oci.oraclecloud.com`(D7: 공개 허용) · VD-06 스왑 0, RAM 12Gi · VD-07 `/etc/platform-backup/env`=`BACKUP_COMPONENTS=k3s` 잔존, 타이머 02:30 KST · Access 앱 github["vault"] 존재 · helm 4.3.0(winget) + kustomize 5.8.1 `--enable-helm` 호환 실측(cert-manager 렌더 OK, validate.sh main 기준선 PASS 18/FAIL 0/WARN 4) · 에이전트 셸에서도 WinGet Links 경로로 helm·vault 가시.
+- kubectl 5건 실패 = 터널/admin KUBECONFIG 미설정(T043 동일) → 정정 블록 전달. 주의: 컨트롤러가 validate 기준선 측정을 위해 gitops를 main으로 switch함(G1 빌더는 main 워킹 트리에 파일 작성 중 → G1 브랜치는 G0 머지 후 main에서 분기).
+- **G0 머지 완료(2026-09-14 08:36:51Z, b490f18)**: 3분 시점 sourceRepos 미반영 → 폴링 주기(180s) 안 → refresh 어노테이션 후 revision b490f18 · hashicorp 제거 확인 · 20/20 Synced/Healthy(G1 진입 조건 충족). 로컬 gitops main ff.
+- **G1**: 빌더 DONE_WITH_CONCERNS(파일 3개; 설계 §4.1 대비 지정 3곳만 diff). 컨트롤러 반영: (a) helm test hook Pod `vault-server-test`가 렌더 10번째로 나옴(끄는 value 없음, securityContext 없음) → `helmCharts[].skipTests: true` 채택 → 렌더 9장 · kubeconform 9/9; (b) kustomization 주석 wave 번호 "10" 삭제(infra.md 규칙). seal 3값 투입(운영자 tofu output 값, D7 공개 허용) → OCID 히트 kustomization 1건·tenancy/user/compartment 0·OPERATOR-FILL 0·gitleaks 0·validate PASS 18. 브랜치 t044-g1-vault: 커밋 ① 8316e0b(자리표시자) · ② a429a3f(seal 3값) → draft PR #21. 리뷰 워크플로 wf_95d5340a-410(6렌즈 → 반박 3표 → synth) 실행 중. 렌더 사본 scratchpad/t044-g1-render.yaml.
+- **M1**: 1차 빌더가 .tf 7개 + lock 작성 뒤 API 529로 종료(tofu.tests 미착수) → 2차 빌더 재기동(정본 diff·보정 → tofu.tests 20 단언).
+- **런북 초안**: scratchpad/t044-vault-unseal-draft.md(498행, 표식 17건). ⚠ 슬라이스의 절 번호가 설계 §4.12 정본과 다름(설계: §0 범위 · §1 정상판정 · §2 KMS 장애 · §3 진단 · §4 root 토큰 · §5 break-glass · §6 KMS 키 삭제 · §7 스냅샷 · §8 Shamir · §9 감사 장애 · §10 OnDelete · §11 PVC · §12 e2e-reader · §13 문서). gitops README/kustomization은 설계 번호(§0·§3·§9·§10·§11·§12)를 참조하므로 **M2에서 초안을 설계 번호로 재정렬**(초안 §1 도달경로→§0, §2 해석표→§1/§2, §4 init→§4에 init 절차 포함, §5 토큰표/D8 게이트→§4·§5, §6 감사→§9, §9 드릴→§1, §7 하단 KMS 키 삭제→§6). 초안 지적 사항: platform-backup.sh 헤더 :44-45 "TLS면 https" → M2 수정 · `-force` 복원 = `snapshot-force` 엔드포인트(vault-backup 정책 deny, root/OIDC admin 필요) 런북 §7 반영 · 버킷 실명 joshuatech-backup-platform · research VAULT-D10 Shamir 이행 시 기존 seal 도달 필요 주의 = 미검증(확인 필요).
+- **G1 리뷰 wf_95d5340a-410 완료(70 에이전트, 4.66M 토큰)**: 6렌즈 findings 15 → 중복 제거 8건(major 1 · minor 6 · nit 1), 전부 문서·주석. F1 README §2 bump에 OnDelete 파드 교체 단계 누락(Argo는 OnDelete면 Healthy 유지 → 무신호) · F2/F3 skipTests 이전 문면 잔존 · F4 seal 값 투입 뒤 README 시제 · F5 §6 mutatingwebhookconfigurations는 agent-view 권한 밖(Forbidden이 stderr → Select-String 0행 = 거짓 통과) · F6 auth-delegator 반경(SubjectAccessReview 정찰·authDelegator.enabled false는 반경 불변) · F7 PVC RetentionPolicy 근거(helm 4 Capabilities.KubeVersion v1.37 — 게이트 열림; repo-server 번들 helm 4.2.1) · F8 nit 3(CSS 위치·backup 스킴·SUC disabled 라벨). 반박됨: discovery Role 동사 5개는 차트 하드코딩(GET+PATCH만 사용 — 강화 후보 converge) · 런북 선행 참조는 관례. 18치환 적용(t044-g1-fixes.json) → 렌더 무변경 9장 checksum c6d7b923… · validate PASS 18 · gitleaks 0. 설계 §3.1 "helm 기본 KubeVersion v1.20 V" 표기는 helm 3 기준 — helm 4에서는 v1.37(정정).
+- **M1 2차 빌더 DONE_WITH_CONCERNS**: .tf 7개 = 설계 §4.4–4.10 정본과 IDENTICAL(설계 코드 블록 실제 위치는 표기보다 +14~17행) · lock hashicorp/vault 5.11.0 · fmt/validate OK · tofu.tests 61/0(기존 41 유지 + 새 20) · 변이 검증 mut1/mut2/빈 디렉터리로 비공허성 확인. 새 단언 구현 특이점: 0회 단언은 전체 행 주석 제거 텍스트에 적용(정본 주석이 금지어를 언급하므로), vt-8 token_policies 추가, vt-9 role 배선, vt-15 data 블록도 금지, vt-1 lock provider 블록 1개. **인계 후보**: 기존 tunnel-1/2의 `$cfgs = @(Get-TfResourceBlocks …)` comma 중첩 배열 → `.Count -ne 1` 공허(블록 2개여도 통과) — 기존 단언 무변경 규칙으로 미수정(별도 슬라이스/converge). 리뷰 워크플로 wf_e0d64459-e4f 실행 중(6렌즈 → 반박 3표 → synth).
+- **2026-09-16 재개**: M1 리뷰 wf_e0d64459-e4f는 Fable 한도로 7/7 오류(결과 0) → 스크립트를 scratchpad/t044-m1-review.js로 복사해 wf_ce10bfcc-5d3 재기동. 모노레포 로컬 HEAD = 사용자 커밋 6bcf425(Codex 어댑터, origin은 e94e613) — M1 push 시 함께 올라감. 사용자 결정: **init 입회 = M1 커밋 직후 오늘(09-16)** · **VD-02 = 클립보드 기록 OFF 뒤 Set-Clipboard 경로**(단계 9 직전 EnableClipboardHistory=0 확인).
+- **도구 소실·복구(2026-09-16 23:4x)**: scratchpad `bin/`이 10:42에 비워졌고 `review-t040/sec/`도 사라짐(다른 세션/정리로 추정) → `bin/`에 kustomize 5.8.1 · kubeconform 0.8.0 · yq 4.53.6 · gitleaks 8.30.1 재설치(GitHub 릴리스 SHA256 대조 OK). 이후 도구 경로 = `scratchpad/bin/` 하나(구 `review-t040/sec/bin` 참조는 무효). helm 4.3.0·vault 2.1.0은 WinGet Links. G2 자료: `t044-g2-ingress.yaml`(설계 §4.2 추출, kubeconform 검증) · 라이브 세션 블록 `t044-live-session.md`(단계 7–17, sentinel 단일 리터럴·agent-view kubeconfig 조립 포함).
+- **M1 리뷰 wf_ce10bfcc-5d3 완료(46 에이전트, 3.45M 토큰)**: 동작·리소스·계약 결함 0 · 생존 9(주석 7 + 하네스 가드 1 + 설계 문서 1). 적용 12치환(t044-m1-fixes.json): main.tf sudo 주석 정정(**auth backend refresh는 `sys/mounts/auth/<path>` 읽기라 sudo 불요** — vault/api sys_auth.go; enable/disable만 sudo; audit은 read도 sudo라 versions.tf 문장은 유지) · ADR 단계 번호(④ = 이 스택, ⑤ = ESO) · backend.tf `$Transcript` 게이트 → `try { Stop-Transcript } catch {}` + 정책 전사 레지스트리(`$Transcript`는 자동 변수 아님) · 3b 부분 적용 복구(import vault_mount.kv kv / vault_auth_backend.kubernetes kubernetes; secrets disable 금지) · providers.tf 스키마 Optional + Configure 미실행 두 층 · policies.tf New-TfValidateCopy 복사 범위(최상위 *.tf except backend.tf · lock · .terraform/providers — 코드 확인) · VD-19 `kv get` preflight 403 단정 유보(Unauthenticated 특수 경로 + hasMountAccess) · roles.tf ESO checkToken 서술 · tofu.tests vt-15 정규식(`^[ \t]*(resource|data|ephemeral)` — 중첩 check/ephemeral 검출; 변이 사본에서 신 2건/구 0건 확인) + $tops 목록(ephemeral·moved·import·removed·check) + 1b 주석. 재실행: fmt/validate OK · **61/0**. 반박·인계: vt-7 `Group-Object -CaseSensitive` 문화권 비교(fail-closed 방향, Ordinal 2중 방어 → 미수정) · **OpenTofu 1.12.6 validate는 locals 맵 중복 키를 거부하지 않음**(vt-7이 유일 방어) · tunnel-1/2 공허(별도 태스크). **설계/런북/계약 정정 후속**: 설계 :132·:263·:980·:1377 "정례 plan sudo→root" 문구 → "read 전용 정책"(D4 근거 한 조각 제거되나 D4 유지: kv 시드·최초 apply auth enable=sudo·break-glass) · 단계 12 `show -json … Measure-Object` 줄 무용(삭제) · VD-19 검사는 `capabilities sys/internal/ui/mounts/kv`(항상 deny) 대신 `$te`로 `vault kv get` 실측(라이브 세션 블록 반영) · 런북 §0 Stop-Transcript 프로브(라이브 블록 반영) · hostnames-and-access.md:79 괄호절 "(kv get … 403)"은 T077 실측 뒤 converge에서 정정(승인 계약 재편집 금지).
+- **⚠ 사고(2026-09-17 10:27–10:31 KST) — init 산출물 유실**: G1 PR #21 머지 10:18:34(revision 0f384bee) → vault-0 Running 0/1(imageID digest 일치 VD-12 PASS · PVC Bound · MWC/PDB 0) → 단계 8 PASS(HTTP 200 VD-11 · type ocikms · recovery_seal true · storage raft · init -status exit 2 · 클립보드 기록 0 · 배너에 `Seal Type` 줄 없음). 단계 9: 10:27:42 init 성공(t:2 n:3, recovery_seal_type shamir, cluster vault-cluster-832ae26d)했으나 운영자가 블록을 통째로 실행 → PM 붙여넣기 지점(주석)에서 멈추지 않음 → 해시 검증 3건 False · Read-Host 빈 입력 → (3) 소거가 무조건 실행되어 `$init` 삭제·클립보드 `' '` 덮어씀. 재실행은 "already initialized" → `$init` null. **recovery key 3·root 토큰 영구 유실**(클립보드 기록 OFF·전사 없음·SaveNothing). 마운트·정책·시드 0이므로 복구 = raft 스토리지 초기화(PVC data-vault-0 삭제 + pod 재생성) → 재init. 근본 원인: (a) 사람 동작이 주석으로만 표시 (b) 소거가 검증 결과에 조건부가 아님 (c) 한 블록에 담겨 통째 실행 가능. 개선: Read-Host 강제 정지 + 조건부 소거 + 단계별 분리. 검증 워크플로 실행 후 사용자 확인 뒤 실행.
+- **재초기화·라이브 세션 완료(2026-09-17 KST)**: R0 게이트(Ingress 0·PVC uid 65c4d83d·provisioner 1·applying 비어 있음·PM 0) → R1 `delete pvc --wait=false` → `delete pod`(기본 grace) → 1분 44초 뒤 새 PVC 671c6607(어노테이션 유지) Bound·옛 PV 소멸·helper 종료·vault-0 Running 0/1·Synced Progressing → seal-status initialized:false → **단계 9′ 안전 블록**: init 11:09:13(cluster vault-cluster-d3b29227, t:2 n:3, recovery_seal_type shamir) · PM 4항목 되가져오기 해시 4/4 · PM 사본 root lookup policies=root · WIPED(.vault-token False). 단계 10: `vault audit enable file file_path=stdout` OK · 파드 로그 감사 JSON 확인(VD-15). 단계 11: pod 삭제 → 8초 만에 1/1(auto-unseal, VD-17 PASS, 총 20초) · 같은 PVC · FailedPreStopHook 없음(Killing·readiness 취소만). 단계 12: `plan "-out=t044.tfplan"`(따옴표 필수 — `-out=` 분리 함정) 15 add → apply 15 added(accessor kv_49afbd61 · auth_kubernetes_1812c21e) · state 비밀 패턴 0(VD-23) · role 6 · policy 6+default·default-ceiling·root · 2.0.4 기본 secrets에 `agent-registry/` 존재 · VD-18 vault-backup 로그인 → snapshot read / snapshot-force deny · **VD-19: e2e-reader로 `vault read`·`vault kv get` 둘 다 통과(No value found exit 2, 403 아님) → 계약 :79 괄호절 정정 필요** · VD-20 agent-view can-i token create = no. 단계 13: sentinel 8경로 11:19:26. 단계 14: env 삭제 · 수동 vault 백업 OK(vault-20260917T022021Z.snap.age 36,642B · textfile 1789611628) · `--pre-upgrade` gate PASS(k3s 16.8MB + vault) exit 0 · 타이머 09-18 02:30 · VD-22 버킷 목록은 OCI CLI 세션 키 passphrase 오류(재인증 시 passphrase 저장 안 함 → `oci session authenticate` N/A로 재실행 권고). `echo exit=\$?`는 PowerShell `$?` 치환(here-string 규칙 재확인). 단계 15 하네스: infra 61/0 · cluster 28/9/11(vault-1/2·argo-1·np-4 PASS; argo-4·eso·ca = T045/T046, backup-1~3 = OCI 세션) · ingress 11/1(vault-2 = G2 대기) · reboot 3/0/4. **배너에 `Seal Type` 줄 없음(2.0.4)** → README §6·런북 정정. G2 브랜치 t044-g2-ingress 커밋·push, 검증 워크플로 실행.
+- **G2·VD-21 완료(2026-09-17)**: G2 검증 wf_cfdba7f1-ea7(23 에이전트) 생존 2(README 로그 패턴 `error` → `[ERROR]` · test Pod 순번→장수) + 비용 0 정리 3 → b88f3b5 → PR #22 ready → 머지 **7a83884**(11:4x KST). 200초 뒤에도 App 리비전 0f384bee 고착(ls-remote 캐시) → refresh 어노테이션 → 7a83884 Synced Healthy · Ingress vault/vault HOSTS vault.joshuatech.dev ADDRESS 10.0.7.78(63s) · edge 302. **노드 A 내부 `--resolve` 무인증서 프로브 = 000(AOP Require 하 정상 거절) — 설계 VD-21의 "노드 내부 200/307" 기대값은 T043 이전 기준이라 폐기**. ingress.tests 12/0(vault-2 PASS `ingress=[vault/vault]`). 브라우저: Access 통과 → `/ui/vault/auth` "Sign in to Vault"(Method Token) 렌더 ✔. 액세스 로그는 4xx/5xx만 남김 → `cloudflared access curl …/__probe-404` = 307(Vault가 /ui/로 리다이렉트, 미기록) → `/v1/__probe-404` = **403** → 로그 1줄: router `vault-vault-vault-joshuatech-dev@kubernetes` · svc `vault-vault-http@kubernetes` · TLS 1.3 · `TLSClientSubject=CN=origin-pull.cloudflare.net,O=Cloudflare Inc.,L=San Francisco,ST=CA,C=US`(02:54:07Z). 단계 17 정리: VAULT_TOKEN/ADDR 제거 · .vault-token False · tfplan 없음 · 클립보드 덮음.
+- **VD-22·backup 재측정(2026-09-17, svc-verify 재인증 뒤)**: cluster.tests **31 passed / 6 failed / 11 skipped** — `backup-1` PASS(k3s/ 24h 내 2건, 총 9 .age) · `backup-2` PASS(**vault/ 2건**: 022021Z 수동 · 022039Z pre-upgrade) · `backup-3` PASS(비-.age 0, 11 객체) · vault-1/2 · argo-1 PASS. 남은 FAIL 6 = argo-4(CNPG CRD)·eso-1~3·ca-1(ESO CRD)·reloader-1 → T045/T046+. OCI CLI `--query`의 하이픈 키는 PowerShell에서 `` `"time-created`" `` 이스케이프 필요(이번엔 name/size만 조회).
+
+## T045 (2026-09-17 시작)
+- 이 파일은 이제부터 저장소(`specs/003-platform-foundation/design/`)에서 직접 이어 쓴다(스크래치패드 사본은 폐기 — Temp 유실 위험).
+- 설계 워크플로 wf_6bfd2bb3-575 시작(사실 6렌즈 → 설계안 2 → 비평 2 → 종합, 렌즈·설계·비평은 opus). 산출물은 `design/t045-design.md`.
+- 사전 현황(agent-view, 14:4x KST): ns external-secrets = 워크로드 0 · NetworkPolicy 7(default-deny · allow-dns · allow-kube-api · allow-same-namespace · allow-apiserver-webhook · allow-egress-to-vault · allow-scrape-from-monitoring) · ESO CRD 0 · cloudflared 2/2 Ready(generation 2) · 와일드카드 인증서 Ready(notAfter 2026-12-08) · Application 20 Synced/Healthy(직전 하네스).
+- 쟁점 메모: ESO Application은 sync-wave 0, Vault는 10(재부트스트랩 순서) · 수동 Secret 2장(cert-manager `cloudflare-dns-token` key `api-token` · cloudflared `cloudflared-tunnel` key `TUNNEL_TOKEN`) 무중단 인수 — 터널 토큰은 잠금 위험 · kv 시드는 root(PM 보관) + 게이트형 블록 · `secrets/` 동기화 Application 확인 필요.
+- **설계 개정 wf_f086eb3c-3a9 완료(3 에이전트)**: §2.14 확정(D2 · D3 조건 5 · D4=B′ 조건 5 · D6=A 조건 5 · D10 조건 5)을 본문 전 절에 반영 → 독립 검수 17건 → 전부 수정(1359 → 1898줄). 핵심: OP1 시드 블록 전면 교체(try/finally · `-cas=0` · 경로별 요약) + **정정 블록** 신설(CAS 현재 버전 덮어쓰기) · **DR1(테스트 ES 드릴)** 단계 신설(try/finally · 폴링 · kv 정리 블록) · G1p 전면 재작성(머지 = 자동 적용 → 실측 · 비상 접속 · 대기 diff · 하네스 M1이 전부 머지 전) · VD-20~23 · R-22~25 추가. §4.1–§4.3은 개정 전후 동일(G1 스냅샷 유효).
+- **G0 완료**: gitops PR #23 → `d562bd9`. sourceRepos ESO 줄 0 · `platform-argocd` Synced/Healthy · 20/20.
+- **G1 빌드**: infra-builder(opus) — `platform/external-secrets/` 4파일. 렌더 50장(차트 43 + SA 5 + Role/RB 2) · digest 3 · `role: platform` 3 · CRD 25 · sync-options 25 · hook 0 · kubeconform Invalid 0(Skipped 25 = 전부 CRD) · validate 18/0 · gitleaks 0. 스냅샷 대비 변경 = 주석 2곳(README § 번호 · `serviceAccountTokenCreate: true` = 차트 기본 유지 명시).
+- **G1 리뷰 wf_a12d7d28-a91(8 에이전트)**: 4렌즈(스펙 · k8s 보안 · 렌더/Argo · README) → 렌즈별 반증 검증. 지적 16 / 생존 16 / 매니페스트 값 지적 0 — 전부 주석 · README. 9항목으로 묶어 수정: ①agent-view로 못 하는 `get role` → Argo `status.resources` 조회로 교체 ②PowerShell `custom-columns` 인용(쉼표 토큰 중간 따옴표는 안 벗겨져 열이 `<none>`) ③**`charts/` 캐시 서술 반증** — 캐시 키 = `charts/<name>-<version>/`, version bump = 캐시 미스 → 즉시 pull(리뷰어 2 + 빌더 독립 재현, kustomize 5.8.1 = Argo v3.5.2 번들). 가려지는 것은 같은 버전 재푸시뿐 ④**ca.key 서술 오류** — RBAC는 Secret 객체 단위라 `eso-ca-reader` Role은 이미 `pg-main-ca` 전체를 get한다. ca.key 통제는 ES 쪽(validate 3.4 · T031) + store `conditions.namespaces` ⑤전역 `serviceaccounts/token create` = **클러스터 admin 등가**(`argocd-application-controller` = `*/*/*` — 우리 v3.5.2 렌더로 컨트롤러가 직접 확인) · "Vault role은 SA 이름·ns만 본다"는 틀림(audience `vault` 바인드, TokenRequest 호출자가 audience 지정) · **G2r이 닫는 것은 TokenRequest 경로뿐** — 전역 secrets create+get = 레거시 SA 토큰(aud 없음) 경로는 남는다 ⑥cert-controller 전역 leases · endpoints 행 누락 ⑦되돌린 뒤 OutOfSync는 정상 ⑧차트 tgz sha256 대조 기록 채택(`b96e948f…7d1418` = index.yaml digest = 로컬 tgz) ⑨"ESO 1.21+" → "Vault 1.21+".
+- **G1 재검수**: 7 해소 · 2 부분 + 새 문장 5건 부정확(전부 low) → 6건 추가 수정(라벨 진단 · "(b)–(d)를 닫는다" → (d)는 남는다 · controller가 CR **본체** patch 가능 = store `conditions.namespaces`는 컨트롤러 침해 시 통제 아님 · `certController.rbac.create` 경로 존재 · eso-1..3 FAIL 단정 완화 · kustomization 주석에 라이브 미확인 단서). 컨트롤러 직접 확인: 렌더 3종 sha256 동일(`10d9cf3f…7439`) · 금지 문구 grep 0. → gitops `7d9d990` · **PR #24**(checks: validate · GitGuardian pass). 설계 §4.1 · §4.3 코드 블록을 최종 파일로 동기화.
+- **M1(하네스) `2f5aacf`**: `np-set-5`가 "아무 /32 + 포트"만 보던 것을 값 검사로 강화(D6-③). 주소는 상수가 아니라 노드 객체에서 유도(role=platform + control-plane · InternalIP · podCIDR 네트워크 주소, 유도 실패 = FAIL). webhook 3 ns = {private, flannel} · vault = {private} 정확 일치 · ports 집합 정확 일치 · **endPort 금지**(리뷰어가 찾은 가짜 PASS) · 계약 포트 밖 규칙 0 · FAIL 문구에 실패 ns 접두 + 중복 cidr 수 · 주소 원문 미노출. 오프라인 11경우 + 유도 실패 3 + 리뷰어 경계 80여 경우(기대 접두 5줄 갱신 사본) unexpected 0 · leaks 0. 라이브(2라운드 코드): HEAD 대비 바뀐 단언 = `np-set-5` 하나, 사유 = external-secrets flannel 누락뿐. 3라운드(endPort) 라이브는 **agent-view 토큰 만료로 미실행** — gitops 정책에 `endPort` 0건이라 추가 FAIL 가능성 낮음. run-all ALL PASS.
+- **환경 메모**: agent-view 토큰 만료(18:20경) · OCI `svc-verify` 세션 만료(backup-1~3 FAIL 원인, 기준선 28/9/11) → 둘 다 운영자 재발급 필요. 하네스에 2026-09-04부터 노드 A 사설 IP 리터럴 2곳(np-5 설명 · np-5-live 안내문) 존재 — 범위 밖, 정리 여부 별도 판단(인계).
+- **인계 추가**: cert-manager README §3의 `charts/` 캐시 서술(같은 오류 — 다음 bump 때 정정) · 설계 스냅샷 경로의 README § 번호 · VD-9(8081 readinessProbe가 ns 정책에 없음).
+- **G1 머지·라이브(2026-09-17 20:08 KST)**: PR #24 squash → gitops main `c227d3a`. 머지 직후 `Synced Healthy`는 **옛 리비전(빈 뼈대)** 기준이었다 — 리비전을 함께 보지 않으면 가짜 PASS(게이트 명령에 `.status.sync.revision` 병기 필요). refresh 뒤 sync 진행 중 repo-server가 같은 경로를 동시 렌더하다 `helm pull --untar … already exists`(ComparisonError)로 **2회 재시도 후 성공**(operationState retryCount 2, 자동 수렴 · 조치 불요 — kustomize helm 인플레이트의 동시 생성 경합, vault·cert-manager 때는 미관측).
+  - agent-view 게이트: rev `c227d3a` Synced/Healthy · 리소스 50 전부 Synced · deploy 3 Ready 1 · 파드 3 노드 A · restart 0 · imageID digest 3개 일치(VD: `tag@digest` 표기를 containerd가 수용) · CRD 25 `Delete=false,Prune=false` · `eso-ca-reader` SA = external-secrets, Role/RB = data · 20/20 Synced/Healthy. **VD-9 PASS**: 8081이 ns 정책에 없어도 webhook·cert-controller Ready(동일 노드 host→pod).
+  - 운영자 게이트: caBundle 길이 1596(webhook 설정 2장 모두) · **VD-1 양성** store dry-run `exit=0` + `created (server dry run)` · **VD-1 음성 대조** data 없는 ES → `exit=1` + `admission webhook "validate.externalsecret.external-secrets.io" denied the request: either data or dataFrom should be specified`(= 요청이 실제로 webhook에 도달함을 증명) · **VD-7** `selfsubjectrulesreviews create` yes(`system:basic-user`) · `get secret/pg-main-ca -n data` yes · `list secrets -n data` **no**(resourceNames + list 무효 — D12 주석과 일치) · dry-run 잔존 0.
+  - **실측 사실**: admission이 **G1p(flannel `/32`) 이전에 이미 PASS**했다 = API 서버와 webhook이 같은 노드일 때는 flannel 출발 주소 없이도 도달한다(T042 대조 실험 C의 LOCAL 예외가 ESO에서도 성립). 따라서 G1p는 기능 복구가 아니라 계약 준수 + 파드 이동 대비 선제 적용이고, **노드 간 webhook 경로는 여전히 미실측**(D6-④ 그대로).
+  - 하네스(G1 뒤): eso-1 `ClusterSecretStore set is []` · eso-2·3 `no ExternalSecret` — CRD 부재 오류에서 의미 있는 FAIL로 바뀜. ca-1 SKIP 전환. `np-set-5` FAIL = external-secrets flannel 누락 하나(3라운드 코드 라이브 확인 — endPort 조건 추가 FAIL 0). OCI 세션 유효 시 30/7/11.
+  - OCI `svc-verify` 세션 토큰 수명 60분 — 재인증 약 1시간 뒤 backup-1~3이 다시 세션 만료로 FAIL(유효할 때 PASS 3건 확인함). 긴 세션에서는 만료 전에 `oci session refresh --profile svc-verify`.
+  - **VD-5 PASS**(런타임 필드 드리프트): 11:11Z · 11:17Z · 11:27Z 세 번 모두 Synced/Healthy · 리소스 50 전부 Synced · Argo history 1건(재동기화 루프 없음) · 파드 restart 0 → cert-controller가 채우는 caBundle·webhook Secret과 selfHeal이 싸우지 않는다(ignoreDifferences 불요 — 설계 D8 확인).
+- **G1p 빌드·리뷰(2026-09-17 밤 ~ 09-18)**: infra-builder(opus) — 정책 1줄(external-secrets `from`에 `10.42.0.0/32` add-only) + validate `5.6 POL-webhook-src` 신설 + 픽스처 + 정책 README 모순 6곳. 브랜치를 G1 머지(`c227d3a`) 위로 fast-forward 해 ESO README의 "G1p가 넣는다" 문단도 같은 PR에서 정정.
+  - **3렌즈 리뷰 wf_bdc5aed0-348(6 에이전트)**: 지적 22 / 생존 20 / 매니페스트 값 지적 0. 두 묶음 — ①G1 머지·라이브 실측으로 낡은 주석("빈 뼈대라 노출 델타 0" · "통과할 수 있다" · "ESO 배포 직후 프로브로 재확인" · 노드 A 워크로드 열거 · "계약에 값이 있다") ②5.6의 가짜 PASS(원본만 봄 → `patches`로 렌더만 넓히면 통과 · 표 밖 ns 동명 정책을 5.2가 잡는다는 주석이 거짓(EXCLUSIVE 없음) · 중복 cidr · 한 문자열 cidr · 혼합 peer · 문자열 port · protocol).
+  - **재검수 wf_a8c4d1f5-ba7(2 에이전트, 적대 입력 30여 변형)**: 렌더에서 정책의 **이름이나 ns를 바꾸거나 `kind: List`로 감싸면** 5.6·5.2·5.0이 모두 PASS(전체 `결과: PASS`)하는 구멍 3종 + 빈 문자열/RS(0x1e) cidr 2종 → 렌더 소스에 (a) 표 밖 ns 출현 FAIL (b) 4개 ns 존재 확인 FAIL + "순수 ipBlock peer 수 ≠ 파싱된 cidr 수" FAIL로 막고 부정 픽스처(`render-shape/`)로 고정. PASS 줄에 `원본 N · 렌더 M`을 붙여 SKIP 모드의 렌더 미검사를 드러냄. FAIL 문구의 계약 귀속 오류("계약 webhook 행은 TCP만" — 계약은 protocol을 명시하지 않는다) 정정. `usage()` sed 범위 기존 결함(끝 2줄 누락)도 해소.
+  - 컨트롤러 확인: 자기검사 **34 케이스 · 실패 0**(Windows에서 10분 초과 — 백그라운드 실행) · 실제 트리 **PASS 19 · FAIL 0** · 비주석 매니페스트 변경 = external-secrets `from` 한 곳 · ESO 렌더 main과 바이트 동일. → gitops `044ca5b` · **draft PR #25**.
+  - **컨트롤러 오류 정정**: 설계 단계 5 사전 ①·VD-19·§1.3이 값 확정에 "`ip route get <webhook 파드 IP>`의 src"를 쓰게 돼 있었다. ESO webhook은 API 서버와 같은 노드 A라 그 경로는 flannel 터널을 타지 않는다 → 그대로 실행하면 장치 주소와 어긋나 **가짜 중단**이 난다. 값 확정 대상은 **노드 B 파드**(cert-manager webhook, T042 VD-W와 동일)로 고치고, ESO webhook 쪽 `ip route get` · `--src-type LOCAL` 행 · conntrack은 "G1p 없이도 동일 노드 admission이 PASS한 이유"의 참고 기록으로 돌렸다. §2·§2.14의 결정 기록 원문은 두고 §2.14 아래에 실행 메모를 달았다.
+  - 환경: Bash 복합 명령에 `rm -rf`가 들어가면 권한 거부 — 삭제 없이 새 디렉터리를 쓰는 식으로 나눈다. `git archive … | tar -x`로 기준 렌더 사본을 만든다.
+  - **대기**: 운영자 노드 A 실측(장치 주소 = 노드 B 파드로 가는 route src = podCIDR 네트워크 주소) → 비상 SSH 세션 → `kubectl diff` → PR #25 ready·머지 → `np-set-5` FAIL→PASS 전환 확인.
+- **G1p 머지·라이브(2026-09-18 10:3x KST)**: 머지 전 노드 A 실측 — flannel-wg `10.42.0.0/32` · `ip route get 10.42.1.14`(노드 B cert-manager webhook) `dev flannel-wg src 10.42.0.0` · podCIDR `10.42.0.0/24` → **세 값 일치, 값 확정**. 참고: 같은 노드 ESO webhook 파드(`10.42.0.31`)로는 `dev cni0 src 10.42.0.1`(설계 원문대로 webhook 파드 IP로 확정했다면 가짜 중단) · `KUBE-POD-FW-*` 체인에 `--src-type LOCAL -j ACCEPT` 1행 실물 확인(코드 근거 → 실측) · conntrack 미설치. `kubectl diff`(kustomize는 스크래치패드 bin 경로, `diff`는 Git usr/bin을 PATH 끝에 — `KUBECTL_EXTERNAL_DIFF`는 공백 경로에서 잘림) = ipBlock 1개 + generation. 실측 반영 커밋 `d504922` → ready → squash 머지 **`16ab0c6`**(PR #25). 적용 확인: `platform-policies` Synced/Healthy · 라이브 from = private + flannel · 20/20 · **`np-set-5` FAIL → PASS 전환**(28/8/12; 남은 FAIL = argo-4 · eso-1~3 · reloader-1 · backup-1~3(OCI 세션 만료)). agent-view 토큰 8h 만료로 재발급 1회.
+- **G2 빌드·리뷰(2026-09-18)**: infra-builder(opus) — `platform/secret-stores/`(kustomization + ClusterSecretStore 5 + README) · Application `platform-secret-stores` · `WAVE_TABLE` `secret-stores 15 external-secrets` · apps README·platform README 갱신. 렌더 5장 · namespace 전부 null · SA ns/audiences 4행 일치 · kubeconform **CRD 스키마 주입으로 Skipped 0**(단 CRD 유래 스키마에 `additionalProperties`가 없어 키 오타는 못 잡음 — T047 후보) · validate PASS 19(Application 21 · 디렉터리 20) · 자기검사 34/0. 빌더가 찾은 설계 오류: 하네스 `ca-1`은 T056 전 **SKIP**(설계는 FAIL로 적음).
+  - **3렌즈 리뷰 wf_d99f5767-8b2(6 에이전트)**: 지적 15 / 생존 15 / 반증 0 / spec 지적 0. 설계 전제를 뒤집은 것 2건: ①**namespace 생략 vault store는 `Ready=True/Valid/store validated`** — ESO 2.10.0 소스(provider.go referent 분기 → setAuth 생략, validate.go `(Unknown, nil)`, common.go는 err≠nil일 때만 ValidationUnknown)로 재확인. 설계·계약 초안의 "ValidationUnknown = 가짜 PASS"는 반대였고, reason으로는 구분 불가 → 판정에 spec `serviceAccountRef.namespace` 4장 전수 추가(G5 eso-1 강화도 동일) ②**root는 store wave에서 기다리지 않는다** — Argo v3.5.2 sync_context.go(Degraded → OperationFailed) + appcontroller retry(`SyncResult=nil`) + `ApplyOutOfSyncOnly` filterOutOfSyncTasks(이미 만들어진 CR 제외)로 재확인. 첫 operation만 실패, retry부터 다음 wave 진행, root health만 Degraded. 콜드 부트스트랩의 대기 지점은 wave 10(Vault Progressing). D2(분리)의 근거는 health 격리로 그대로 성립. → 계약 §sync-wave 15행 정정 `e9b41e2` · 설계 정정 `850f43d`(§2.14 실행 메모). 그 밖: G2r 게이트 신호는 vault store에서 `cannot find secrets bound to service account`(TokenRequest 실패 → 레거시 폴백), k8s-data-ca만 `serviceaccounts/token` · audience 오기는 `invalid audience (aud) claim` · sealed는 503 `Vault is sealed`(연결 오류 아님) · 머지 뒤 dry-run은 `created`가 아니라 `configured/unchanged` · auto-sync 실패 후 같은 revision 재시도 없음(수동 sync) · 전체 revert vs 부분 revert · 낡은 포인터 3곳(vault kustomization/README · policies/tests env) · CA 미러 ES는 2종 5장.
+  - **선행조건 D6-⑤ 재확인(2026-09-18 11:0x KST, 운영자, G1p 적용 뒤)**: store dry-run `exit=0` + `created (server dry run)` · 잔존 NotFound.
+- **G2 검사 9 신설·머지·라이브(2026-09-18 13:5x KST)**: 빌더 의문점 채택 → validate **검사 9 CSS**(9.1 위치·namespace·집합 / 9.2 vault 인증 — referent auth 금지·audiences·매핑·마운트·서버 / 9.3 kubernetes provider — auth 하나·audiences 금지·`remoteNamespace=data`·기본값 3필드 / 9.4 conditions 1항목·키 namespaces·집합 = 계약 표(vault-platform은 NS_TABLE에서 기계 유도)·중복 금지), 원본 + 렌더, 픽스처 css-auth 3트리 + positive store 5장, 자기검사 **37/0**, 실제 트리 **PASS 23**. `usage()` sed 범위를 줄 번호 없이 닫는 `# ===`까지로. 계약 §validate.yml에 G1p·G2 항목 추가 `92843f1`. → gitops `9ed847d` · **PR #26** → squash **`6122be6`**.
+  - 라이브: `platform-secret-stores` Synced/Healthy(04:54Z) · store 5장 **`True Valid store validated`** · vault 4장 spec ns `external-secrets` · **Vault 감사 로그에 `auth/kubernetes/login` role 4개 × 2회**(referent 가짜 PASS가 아니라는 증거) · 21/21 · ESO 로그 오류 0(운영자·agent-view 모두) · 하네스 **`eso-1` PASS**, `argo-1` 21개, 29/7/12(남은 FAIL = argo-4 · eso-2·3(G3) · reloader-1 · backup-1~3(OCI 세션)).
+- **G2r 빌드·머지·판정(2026-09-18 18:3x KST 머지 · 2026-09-21 판정)**: infra-builder(opus) — values `rbac.serviceAccountTokenCreate: false`(차트 `templates/rbac.yaml` 185행의 `if` 1곳이 `serviceaccounts/token create` 규칙 하나만 감쌈; cert-controller에는 이 권한 없음) + `rbac-token-create.yaml`(Role/RoleBinding `eso-token-create`, ns external-secrets, resourceNames 5 → 컨트롤러 SA `external-secrets`). ESO는 ClusterSecretStore의 `serviceAccountRef.namespace`에서 TokenRequest를 만들므로 Role 1장으로 충분. 렌더 diff = ClusterRole 규칙 6줄 제거 + Role + RoleBinding(문서 50 → 52). 리뷰어 에이전트가 시작 직후 중단(출력 0바이트) → 컨트롤러가 직접 검증(토큰 규칙 보유 객체 = Role 1개뿐 · diff 3덩어리 · Deployment SA = RoleBinding subject · validate PASS 23 · gitleaks 0). → gitops `22f02f2` · PR #27 → squash **`e42329c`**(2026-09-18 09:34Z Synced/Healthy).
+  - **판정(VD-16, 2026-09-21 01:43Z — 5분 관찰이 세션 중단으로 끊겨 사흘 뒤 확인)**: 리소스 52 전부 Synced(Role/RoleBinding 포함) · store 5장 `True Valid store validated`, **lastTransitionTime이 G2 머지 시각(09-18 04:53:26Z) 그대로 = G2r 이후 한 번도 False로 넘어가지 않음** · Vault 감사 로그 role 4개 × 6회/30분 전부 ok(5분 주기 로그인 = 축소된 Role로 TokenRequest 성공) · `k8s-data-ca` Valid(`eso-ca-reader` 토큰 발급 정상) · ESO 오류 로그 0 · 파드 재시작 0 · 21/21. **노출 창 = G1 머지 2026-09-17 20:08 KST ~ G2r 머지 2026-09-18 18:34 KST(약 22.5시간)** — report 기록 대상. 남는 잔여 위험 = 전역 secrets create+get의 레거시 SA 토큰 경로.
+  - 인계: `serviceaccounts/token` 렌더 grep = 1 자동 검사 부재(T047 후보).
+- **운영자 블록 검수 wf_ed90ef6e-0d9(6 에이전트, 2026-09-21)**: 설계 §5 단계 8·8b의 PowerShell 블록 4개를 꺼내 보니 시드 블록에 **파서 오류**(`"$k:"` — 콜론 뒤를 범위 한정자로 해석) → 3렌즈 검수 지적 39(high 2) → 수정본 v2 + 모의 vault/kubectl 하네스 → 검증자 2명. 주요 결함: `-field` 되읽기가 값 끝 개행을 잃어 "다른 값"을 "같음"으로 오판(→ JSON 되읽기) · 정정 블록의 좌표 수동 입력 = 교차 배선 가능(→ 고정 표 + 형제 경로 해시 대조) · finally의 성공 스트림 출력은 Ctrl+C에서 끊김(→ 자격 정리 먼저 + Write-Host만) · 빈 Enter 정지점은 입력 버퍼 잔여·type-ahead로 통과(→ FlushInputBuffer + 단어 입력) · `'^…$'` 정규식은 끝 개행 1개를 통과시킴(→ `\A…\z`). 검증자 A의 변이 시험 60개 중 출하 하네스가 33개를 놓침(CAS 플래그 제거 등) → **엄격판 하네스**: v2 58/58 · 변이 60/60 검출. 블록·하네스·대조군 원본을 `design/t045-blocks/`에 보존(`88d9289`·`38ddba3`). 미반영 low 항목(M1 정정 블록 출처 b 경로 결속 · M2 조회 실패를 absent로 뭉침 · 안내문 L1·L2·L6 · vault PATH 확인 · 헤더 KUBECONFIG)은 G5에서 정리.
+- **OP1 kv 시드(2026-09-21 12:20–12:26 KST, 운영자 입회, 파일 실행 `& …\op1-seed.ps1`)**: 1회차는 **클립보드 기록 ON**으로 root 토큰 입력 전에 중단(의도된 fail-closed, 쓰기 0) → 기록 OFF 뒤 재실행. VD-6 PASS(JSON stdin이 문자열 필드로 저장). **`kv/platform/cloudflare/dns-token`(03:20:12Z) · `kv/platform/cloudflare/tunnel`(03:20:19Z) · `kv/platform/oci/s3`{access_key, secret_key}(03:25:45Z — 운영자가 PM에서 키 쌍 두 절반 확인) · `kv/platform/test/t045-probe`(03:26:00Z)** 전부 `version 1` · 되읽기 해시 일치. 형식 판정 `tunnel=True · dns-token=False`(교차 배선 아님 + 정정 블록 형식 검사 신뢰 가능). 이연: Access 4경로(T077·T092) · grafana-cloud(T098). oci/s3는 "쌍이 맞는지"를 대조할 원본이 없어 T053 첫 업로드가 실증.
+- **DR1 드릴(2026-09-21 12:27–12:35 KST)**: 테스트 Secret(키 value·extra) → ES(Orphan/Retain/Periodic 5m, store vault-platform) 적용 → **UID 불변 · 값 불변 · ownerReferences 없음 · `reconcile.external-secrets.io/managed` 라벨 부착** · **`extra` 키 삭제됨 = Orphan 인수는 ES에 없는 키를 지운다**(ESO 소스 ApplyTemplate: 비-Merge면 data를 비우고 다시 채움 — 실측 일치). ES 삭제 → Secret 잔존(같은 UID·값). **VD-20: Secret 삭제 후 302초에 재생성, 직전 refreshTime 03:28:25Z → 새 creationTimestamp 03:33:25Z = 정확히 5분 = 주기 refresh에서만 재생성(즉시 아님)**. 정리 완료 · kv 드릴 경로 metadata delete OK.
+- **라이브 Secret 키 목록(운영자, 값 미출력)**: `cert-manager/cloudflare-dns-token` = `api-token` 1개 · `cloudflared/cloudflared-tunnel` = `TUNNEL_TOKEN` 1개 → G3·G4의 ES data 키와 일치(인수 시 소실 키 0).
+- **G3 빌드·리뷰·머지·판정(2026-09-21)**: infra-builder(opus) — `platform/secrets`(배달자) · Application `platform-secrets` · `secrets/cert-manager/` ES(Orphan · Retain · Periodic 5m · `template.metadata: {}` · `api-token` ← `platform/cloudflare/dns-token#token`) · `WAVE_TABLE` `secrets 18 -` · validate **7.3 WAVE-secrets-base**. destination.namespace는 저장소 관례(3열 `-` → `kube-system`)로 — 설계 §4.6 정정. **빌더 발견: gitops CI `validate` 워크플로는 T003 골격이라 `tests/validate.sh`를 부르지 않는다(실제 스텝 = checkout + gitleaks)** → "CI가 강제한다" 현재형 단정 8곳을 `tests/README.md` 「CI 배선 상태」 정본으로 정정(T047 전까지 강제 수단 = PR 전 로컬 실행 + 리뷰).
+  - **3렌즈 리뷰 wf_57c33522-9f8(6 에이전트)**: 지적 24 / 생존 24 / spec 지적 0. 핵심: ①**Application을 지워도 ES는 남는다** — ES의 `Delete=false`가 cascade에서 빼므로(Argo v3.5.2 `shouldBeDeleted`는 리소스 어노테이션을 앱 수준 `Delete=confirm`보다 먼저 읽는다) 인수는 계속된다. 해제는 revert(1장뿐이면 `resources: []`) → 반영 확인 → `kubectl delete externalsecret`(ESO 컨트롤러 Running · webhook Ready 필요) ②**인수 뒤 회전은 kv 먼저** — Secret만 바꾸면 5분 안에 kv의 옛 값으로 복귀, ClusterIssuer는 Ready로 남아 다음 DNS-01 갱신에서야 실패(무증상) ③실패 메시지 표 7행 중 4행이 ESO 2.10.0에 없는 문자열 → 실제 문면(`Secret does not exist` = **kv 경로** 부재 · `cannot find secret data for key: "token"` · `could not get ClusterSecretStore` · `… is not ready` · Events `owned by another ExternalSecret`) ④issuers README에 남은 옛 시드 명령(`api-token=-` — 필드 이름 오기 + `key=-`는 개행까지 저장) 제거 ⑤`created-by` 라벨은 Owner 신호(Orphan에서는 ESO가 지운다) ⑥7.3 가짜 PASS: 배달자 통째 포함 · ES 파일 복사 · 죽은 선언(파일 단위) · multi-source Application · 저장소 밖 경유 경로 · 실제 루트의 부분 트리 예외 → 전부 막고 픽스처 5트리(자기검사 **42/0** · 실제 트리 **PASS 24**). → gitops `43849b1` · PR #28 → squash **`22f96c3`**.
+  - **머지 전후 게이트(운영자, README §2 블록을 `design/t045-blocks/g3-capture.ps1`·`g3-gate.ps1`로 그대로 추출 — dot-source 실행)**: 캡처(가드: managed 라벨 없음 = 인수 전 · 키 = `api-token` 하나) → 머지 14:4x KST → root가 새 Application을 읽기까지 약 2분(05:49:28Z `22f96c3` Synced/Healthy · ES `SecretSynced` refreshTime 05:48:58Z) → **`OK 값 불변 · UID 불변 · ownerRef 없음`** · 인수 전 라벨/어노테이션 = 비어 있음 → 인수 후 = `reconcile.external-secrets.io/managed: "true"` + `…/data-hash`뿐(**Argo tracking 미복사** — `template.metadata: {}` 효과 확인) · ClusterIssuer 2종 Ready 유지 · 22/22 · 하네스 **`eso-1`·`eso-2`·`eso-3` PASS**, 31/5/12(남은 FAIL = argo-4 · reloader-1 · backup-1~3(OCI 세션)).
+  - 인계: 다른 Application 16장의 "이 Application을 지우면 … 함께 정리된다" 상용구도 소유 객체에 `Delete=false`가 있으면 같은 부정확(별도 정리) · `vault kv metadata get`이 필드 이름을 안 보여 준다는 서술은 미실측.
+
+## T050 · T051 (2026-10-07 시작 — US3 test-first)
+
+- **검사 Job의 검사 id 확장(컨트롤러 결정)**: 과제 줄 T050 · T051이 요구하는 단언 가운데 T041이 만든 검사 Job(gitops `platform/policies/tests/`)에 없는 것은 **Job에 검사 id를 더해** 단언한다(로그 계약 `RESULT: PASS|FAIL <id> …`는 id 추가에 호환 — `np-2-*`는 Job succeeded · SUMMARY만 본다). 테스트는 지금 그 id가 없어 FAIL이 맞다(test-first). 구현 과제에 넘긴다:
+  - **T054 몫(`job-data-assert.yaml` pg-assert 컨테이너)**: `role-attrs`(pg_roles: `identity_admin_app` · `dev_identity_admin_app` rolbypassrls=f rolsuper=f, `identity_admin_owner` · `dev_identity_admin_owner` rolbypassrls=t rolsuper=f) · `app-session-timeouts`(pg_roles.rolconfig/pg_db_role_setting: 두 app role에 `statement_timeout=15s` · `idle_in_transaction_session_timeout=30s`). 출력은 `--tail=50` 안에 들어야 한다(README §로그 계약).
+  - **T057 몫(`job-data-assert.yaml` dragonfly-assert initContainer)**: `noauth`(비인증 `redis-cli ping` → NOAUTH) · `writer-set`(`identity-admin`으로 `SET revoked:sub:assert-probe` 성공 — 프로브 키는 Job이 끝에 정리) · `reader-get`(`sample-pod`로 `GET` 성공) · `reader-set-denied`(`sample-pod`로 `SET revoked:*` → NOPERM) · `reader-cross-denied`(`sample-pod`로 `SET identity-admin:x` → NOPERM). 기존 `acl-list` · `noperm`은 그대로.
+- **버킷 실명**: 계약의 `jt-backup`은 이름 예외로 실제 `joshuatech-backup`(런북 §0; IAM 그룹 `joshuatech-s3-backup` = `svc-s3-backup`). T050 `bucket-*`는 `joshuatech-backup`의 `pg-main/` 접두를 `svc-verify` 세션으로만 읽는다. T053의 ObjectStore `destinationPath`도 `s3://joshuatech-backup/pg-main/`이어야 한다.
+- **단계 게이트는 한 곳**: T050 `env-1`(런타임 Deployment에 `-migrate` secretRef 없음)만 T049 방식의 소유 과제 게이트(T075 미체크 + Deployment 0 → SKIP)를 쓴다. 나머지 US3 단언은 전부 FAIL이 기대값이며 T052–T057이 끝나면 PASS로 바뀐다(T059 E2E).
+- **T051 왕복 5 s 기준(2026-10-08 리뷰로 교체)**: Job `kafka-assert`의 벽시계 `<n>s`는 JVM 기동 2회 + 컨슈머 `--timeout-ms 20000` 유휴 대기를 포함해 **항상 ≥ 20 s**이므로 "로그의 초 값 ≤ 5"는 영구 거짓 FAIL이다. spec AC3의 5초는 메시지 경로 기준 → **T056 몫**: Job이 roundtrip PASS 근거에 **`latency=<n>ms`**(produce 시각 → consume 수신 시각; 컨슈머 선기동 또는 `print.timestamp=true`로 측정 — apache/kafka:4.3.1 이미지에서 검증)를 찍고, T051 `job-k-3`은 그 토큰 ≤ 5000이면 PASS, 없으면 FAIL("Job does not emit it yet -- T056")로 판정한다. 벽시계 상한 30 s(`KAFKA_ROUNDTRIP_DEADLINE_S`)는 Job 자체 판정으로 그대로. **토큰 형식(T056 ↔ T051 계약)**: roundtrip PASS 근거 한 줄에 `latency=<정수>ms` 토큰이 **정확히 하나**, 앞은 공백(또는 `(` `[` 따옴표), 뒤는 줄 끝 · 공백 · `, ) ; . ] :` 가운데 하나 — 예 `RESULT: PASS roundtrip dev.identity-admin.session.revoked produce→consume 23s latency=118ms (상한 30s, JVM 기동 포함)`. 토큰이 없거나 둘 이상이면 T051 job-k-3 FAIL.
+- **T051 리뷰(2026-10-08)의 다른 인계**: ① agent-view RBAC — gitops `agent-view-extra`가 `kafka.strimzi.io` resources `*`도 이미 준다(main `f1631d9` 83–85행) → T055 추가 없음. ② T055/T056 매니페스트는 `apiVersion: kafka.strimzi.io/v1`(1.2.0은 v1만 served) · `spec.kafka.version 4.3.1` + `metadataVersion 4.3-IV0` · listener `{name tls, port 9093, tls: true, authentication.type scram-sha-512}` · `authorization.type simple` · KafkaUser `acls[].operations: [Write, Describe, …]`(단수 `operation` 금지) · `resource.patternType prefix` · 라벨 `strimzi.io/cluster: jt-kafka`. 선언 표기는 하네스가 정확 일치로 보므로 그대로 쓴다(`Delete=false,Prune=false` 순서 · `auto.create.topics.enable: false` · `--maxmemory=768mb`). ③ T055는 인증 없는 listener를 두지 않고 `superUsers`에 두 KafkaUser를 넣지 않는다(T051 kafka-2가 FAIL). ④ **후속(별도 작업)**: 세 하네스 단위 테스트(cluster · data · kafka)의 가짜 kubectl 심을 `csc.exe`로 컴파일한 exe로 바꾸면 호출당 678 ms → 40 ms, 전체 −77%(kafka 382 s → 88 s) — run-all 시간 때문에 US3 중 한 번에 적용.
+- 지시문: `.superpowers/t050/prompts/t050-brief.md` · `.superpowers/t051/prompts/t051-brief.md`(단언 ID · 판정 규칙 · 단위 테스트 · 변이 요구).
+- **T050 리뷰(2026-10-07)에서 나온 인계 · 결정**:
+  - **RBAC 우려 해소**: agent-view는 gitops `platform/policies/rbac-agent-view.yaml`의 `agent-view-extra`로 이미 `postgresql.cnpg.io`(clusters · backups · scheduledbackups · databases · databaseroles) get/list/watch를 받는다(pods · pods/log · jobs · deployments는 `view`, nodes는 extra). CNPG 차트 0.29.0(appVersion 1.30.0)의 `-view` ClusterRole 집계 라벨은 `rbac.aggregateClusterRoles`(기본 false)에 따르지만 필요 없다. T052 뒤 `kubectl auth can-i list databaseroles.postgresql.cnpg.io -n data`(agent-view)로 확인만. DatabaseRole CRD는 1.30 신규이고 차트 0.29.0 crds.yaml에 번들돼 있다.
+  - **T054 몫 추가**: DatabaseRole app role 둘(`identity_admin_app` · `dev_identity_admin_app`)에 `login: true`를 **명시**(CRD 설명 "Default is false", `default:` 키 없음 — T050 role-2가 login=true를 요구). app role도 createdb/createrole false(tasks.md 문면 · T050 role-2 단언).
+  - **T053 몫 추가(검증 후 결정)**: plugin-barman-cloud 경로에서 Cluster `status.conditions[type=ContinuousArchiving]`이 갱신되는지 T053 배포 직후 실측(`kubectl get cluster pg-main -o jsonpath='{.status.conditions}'`). T050 bucket-2는 유휴 클러스터(`archive_timeout`은 활동이 없으면 세그먼트를 전환하지 않는다 — PostgreSQL 문서)에서 거짓 FAIL을 피하려고 "최신 세그먼트 ≤ 15분 **또는** (ContinuousArchiving=True 그리고 최신 세그먼트 ≥ 최근 completed Backup의 endWal)"을 쓴다. 조건이 갱신되지 않으면 규칙을 다시 정한다(T059). ObjectStore `serverName`은 기본(= 클러스터 이름 `pg-main`)을 유지한다 — T050이 `pg-main/pg-main/{base,wals}/` 접두를 고정한다. `destinationPath s3://joshuatech-backup/pg-main/`.
+  - **US6 시점 결정(보류)**: T050 env-1은 Deployment만 본다. CronJob(celery beat) · StatefulSet의 `-migrate` 참조는 gitops validate 3.5-⑤가 정적으로 막는다 — 라이브 단언 확장은 T075 뒤 결정.
+  - ScheduledBackup · 첫 completed Backup · 버킷 base/WAL 오브젝트의 소유 과제는 **T053**이다(T054가 아님).
+
+## T052 (2026-10-08 시작 — CNPG operator · plugin-barman-cloud · ClusterImageCatalog, gitops `platform/cnpg/`)
+
+- **구현 단위(컨트롤러 결정 D1)**: 과제 문면의 "operator Application + plugin-barman-cloud Application"은 **Argo CD Application 하나**(`platform-cnpg`, T041이 만든 뼈대 — 계약 §sync-wave 단일 표의 `cnpg` 행 = "CNPG operator + barman-cloud plugin")가 적용하는 `platform/cnpg/` 디렉터리 하나로 구현한다. 근거: 표에 없는 디렉터리는 validate 7.2가 거부하고, 플러그인은 operator와 **같은 ns**에 있어야 발견된다(operator가 자기 ns의 `cnpg.io/pluginName` 라벨 Service를 찾는다). `clusters/oci-k3s/apps/platform-cnpg.yaml`은 건드리지 않는다(T042 선례).
+- **D2 설치 방식**: kustomize `helmCharts` 인플레이트 2항목(cert-manager·vault·ESO·reloader 선례) — `cloudnative-pg` 0.29.0(releaseName `cnpg` → fullname `cnpg-cloudnative-pg`) + `plugin-barman-cloud` 0.7.1(releaseName `plugin-barman-cloud`), 둘 다 `namespace: cnpg-system`, 전역 `namespace:` 변환기 금지. 차트 허용 목록(계약 §validate.yml 4 (T047) 표 · validate `HELM_CHART_TABLE`)에 두 행을 더한다 — **계약 먼저**(모노레포 `0b8917c`, 2026-10-08) → gitops PR에서 코드 사본. AppProject `platform`의 `sourceRepos` cloudnative-pg 줄은 **같은 PR에서 삭제**(D7 규칙 다섯 번째 실행 · T046 선례 — 그 줄을 `source.repoURL`로 쓰는 Application이 0).
+- **D3 CRD 삭제 보호**: 두 차트 모두 CRD를 `templates/crds/crds.yaml`로 렌더하고(cnpg 11장 · barman `objectstores.barmancloud.cnpg.io` 1장) `crds.annotations` 류 키가 **없다** → cert-manager 선례의 kustomize SMP 패치(`target: CustomResourceDefinition`)로 12장 전부에 `argocd.argoproj.io/sync-options: Delete=false,Prune=false`. 하네스 `argo-4-cnpg-crd`(그룹 `cnpg.io`·`*.cnpg.io` 전부 · 정확한 문자열)가 머지 뒤 PASS로 바뀌는 것이 완료 신호.
+- **D4 카탈로그 vendoring**: upstream `cloudnative-pg/artifacts` `image-catalogs/catalog-standard-trixie.yaml`을 **그대로**(6 major · 라벨 포함) 옮기고 머리 주석에 출처 URL · 커밋 `fd9187c535d74a3879baea19f4d45e65eb85e02a`(2026-10-05T08:40:02Z) · 파일 sha256 `4ccfce106a6fd086a46c1accae27f4ae8958728d15cbbb656f701d46ae2ad516`을 적는다. major 18 = `ghcr.io/cloudnative-pg/postgresql:18.6-202610050823-standard-trixie@sha256:79be0d10e78b7ac4520cf6c5db199a8bb7f6de53b3229f47e90cab5865528a0d`(인덱스 digest · linux/amd64+arm64 확인) — research.md의 `18.6-202608310817`은 카탈로그 갱신 전 빌드이고 **18.6 minor는 같다**(과제 문면 "18.6 digest 고정" 충족). 13–17 항목은 참조되지 않는 선언(Cluster는 `major: 18`만) — Renovate가 PR 소음을 내면 T116에서 packageRule로 거른다(trim하지 않은 이유: upstream과 바이트 대조가 되는 vendoring을 유지).
+- **D5 리소스 수준 sync-wave(저장소 첫 사용)**: 카탈로그 CR에만 `argocd.argoproj.io/sync-wave: "1"` — 같은 sync에서 CRD established + operator Deployment Healthy(validating webhook 준비) 뒤에 CR을 적용한다. Application 표의 wave 숫자를 다시 적는 것이 아니다(검사 7.1은 Application 어노테이션만 본다).
+- **D6 values 결정**: operator — `config.data.ENABLE_INSTANCE_MANAGER_INPLACE_UPDATES: "true"` · `webhook.port: 9443` 명시(validate 5.4b `HELM_PORT_KEYS cnpg .webhook.port 9443`) · `webhook.{mutating,validating}.failurePolicy: Fail` 명시 · **`rbac.aggregateClusterRoles: false` 명시**(차트는 `-view`·`-edit` ClusterRole을 항상 렌더하고 라벨만 이 키로 켠다 — 켜면 검사 13.6 기준선 "aggregate 라벨 ClusterRole 정확히 5"가 깨지고 `agent-view-view`(내장 `view`)가 넓어진다; agent-view는 이미 `agent-view-extra`로 CNPG 종류를 읽는다) · `nodeSelector role=data`(둘 다 · A14 노드 B) · `resources` operator requests 50m/200Mi · limits 400Mi, plugin requests 20m/100Mi · limits 200Mi(A14 0.2·0.1 GiB — 초기 추정, T097 실측 교정) · securityContext 두 맵 전체 명시(PSA baseline · 계약 §워크로드 강화) · `monitoring.podMonitorEnabled: false` · `service.*`는 적지 않는다(5.4c WARN) · 이미지는 태그 문자열에 `@sha256` 병기(두 차트 모두 `image.digest` 키 없음 — ESO 선례): operator `1.30.0@sha256:a2701eb97cdd2a34b1fdb2cb51987f544b706e40bec72ae7146cd8580efefebb` · plugin `v0.14.0@sha256:823a8893690980ba5830bbbb11196a35f695b0488db7d846abc33baebf32417c` · sidecar(`sidecarImage.tag` → ConfigMap `plugin-barman-cloud-config` `SIDECAR_IMAGE`) `v0.14.0@sha256:9880817c285c7afa4d195da2145064d21907405489ed6ec39abe59b1feb558a4`. cnpg 차트 `values.schema.json`은 `additionalProperties` 0곳이라 **오타가 조용히 무시된다** → 렌더 대조(README §2 표)가 유일한 그물.
+- **D7 버전 동결과 최신**: 과제 문면 0.29.0(appVersion 1.30.0) · 0.7.1(v0.14.0)로 간다. 2026-10-08 index.yaml 최신은 cloudnative-pg **0.29.1(1.30.1, 2026-09-23)** · plugin **0.8.1(v0.15.1, 2026-09-30)** — 올리는 결정은 사용자 몫(Renovate T116 · README bump 절차). tgz sha256(index `digest`): cnpg `668e065ff53508d58238788fd35b355a925060843629a951df0e6a9362e6d32f` · plugin `3b385372b21c9a5bfb12283726ef3a7a726ce1f7dbafa2c27e49aa50eb6207f2`.
+- **D8 "cert-manager 재사용"의 뜻**: 플러그인 차트 기본값 `certificate.createIssuer: true` + `issuerName: ""` → 자체 self-signed `Issuer plugin-barman-cloud-selfsigned-issuer` + Certificate `barman-cloud-server`·`barman-cloud-client`(gRPC mTLS, 공개 인증서 아님). ClusterIssuer(LE)를 쓰지 않는다. cert-manager CRD·컨트롤러는 wave 0에 이미 있다.
+- **D9 PR 단위**: PR 하나(`t052-cnpg` — kustomization · 카탈로그 · README · projects/platform.yaml 줄 삭제 · validate 표 · README 2곳). 머지는 운영자. 검증은 머지 뒤 agent-view로(Application Synced/Healthy · Deployment 2 노드 B · 이미지 3 digest · CRD 12 어노테이션 · Certificate 2 Ready · 하네스 cluster.tests.ps1 `argo-4-cnpg-crd` PASS · data.tests.ps1 사유가 "CRD not installed (T052)"에서 T053 사유로 바뀜) + VD: webhook `caBundle` 드리프트(15분 간격 2회 Synced — ESO VD-5 방식) · 플러그인 Issuer/Certificate Ready 시간 · operator 로그에 플러그인 발견 줄.
+- 실행: 지시문 `.superpowers/t052/prompts/t052-brief.md`(확정 사실 §2 · values §3 · 검증 §7) · 리뷰 `t052-review-spec.md` · `t052-review-security.md` · 수정 `t052-fix.md` · 워크플로 `wf_647eef34-299`(사본 `.superpowers/t052/workflows/t052-cnpg-build.js`) — infra-builder(`model: fable` 임시 덮어쓰기) → 두 렌즈 병렬 → high/medium 있으면 수정 → 재리뷰(최대 3라운드).
+- **빌드 결과(2026-10-08 15:05 KST, infra-builder — 세션이 리뷰 시작 직후 끊겨 리뷰어 둘은 Agent로 다시 띄움)**: `DONE_WITH_CONCERNS` · 7파일(kustomization 205줄 · 카탈로그 43줄 · README 417줄 · projects/platform.yaml · validate.sh +2행 · README 2곳) · 렌더 35장(CRD 12 · ClusterRole 4 · ClusterRoleBinding 2 · MWC 1 · VWC 1 · ClusterImageCatalog 1 · Deployment 2 · Service 2 · ServiceAccount 2 · ConfigMap 3 · Role 1 · RoleBinding 1 · Issuer 1 · Certificate 2) 전부 기대값 일치 · `validate.sh` PASS 38 · FAIL 0 · WARN 4(기존 SUC 플랜 이미지) · 자기검사 필터 25 케이스 실패 0 · kubeconform Valid 23 · Skipped 12(CRD만). 보고 원문 `.superpowers/t052/reviews/builder-report-r1.md`, 증거 `.superpowers/t052/evidence/`.
+  - **D10(빌더 제안 → 컨트롤러 수용)**: AppProject `platform` `clusterResourceWhitelist`에 `postgresql.cnpg.io/ClusterImageCatalog` 추가 — 열거형 whitelist라 클러스터 범위 CR이 없으면 sync가 `is not permitted in project`로 거부된다(지시문 누락). 같은 PR.
+  - **사실 정정(빌더 렌더 실측)**: CNPG webhook rules는 CREATE·UPDATE뿐 — DELETE는 가로채지 않는다(지시문 §3.1의 "CREATE·UPDATE·DELETE 전부 거부" 문구는 틀렸다 → 리뷰 라운드에서 문구 정정) · `clusterimagecatalogs`는 webhook 대상이 아니다(리소스 wave "1"의 실제 필요조건은 CRD established뿐 — 값은 보수적으로 유지) · plugin 차트 `values.schema.json`의 `additionalProperties` 12곳은 전부 `true`라 cnpg 차트와 같이 오타를 잡지 못한다 · cnpg 차트의 Role/RoleBinding은 `clusterWide: false`일 때만 렌더된다.
+- **리뷰 r1(2026-10-08, 두 렌즈 · Agent로 재개 — `.superpowers/t052/reviews/review-spec-r1.md` · `review-security-r1.md`)**: 둘 다 approve_with_fixes. 빌더 PASS 전부 재현(렌더 sha256 동일 · digest 4 · 카탈로그 IDENTICAL · values 키 의심 0 · validate PASS 38 · 자기검사 25/0 단독 실행). 지적 10건 = high 1(K1) · medium 1(S1=K2) · low 8(S2–S4 · K3–K6) — 전부 주석·README 문구(렌더 불변).
+  - **K1(high → T053 선행 조건으로 기록)**: 계약 `contracts/network-policy.md` 매트릭스에 **operator(cnpg-system) → 인스턴스 파드(ns data) 8000** 행이 없고 `:47`이 "CNPG operator ↔ instance"를 `allow-same-namespace` 근거로 오분류했다(operator는 cnpg-system, 인스턴스는 data). CNPG 1.30 문서(security.md "operator needs to communicate to each instance on TCP port 8000 … in case you add any network policy" · networking.md "reach every cluster pod on ports 8000 and 5432") · `pkg/management/url/url.go` StatusPort 8000(/pg/status · /pg/backup · /update = in-place update 경로). gitops policies: data ingress = allow-from-apps(jt-* 5432/9093/6379) · allow-from-identity 5432 · scrape 9187/9404 + 공통; cnpg-system egress = dns · same-ns · 6443뿐 → 양쪽 차단. T052 sync는 막히지 않으나(Cluster 없음) **T053 `pg-main`이 고착된다**. 조치: 이 PR은 README §8 인계 + VD-C10; **T053 착수 전 순서** = 계약 PR(매트릭스 행 `cnpg-system → data 8000`(+5432는 VD — 열지 않고 시작해 로그로 판정) + :47 정정) → gitops policies PR(data ingress from cnpg-system `podSelector app.kubernetes.io/name=cloudnative-pg` 8000 · cnpg-system egress to data 8000) → `cluster.tests.ps1` np 단언 갱신(np-2 목록 · 5.6 계열) → T053.
+  - **MSYS fork 함정(두 리뷰어 공통 실측)**: 같은 워크스테이션에서 validate.sh/자기검사를 **동시에 둘 이상** 돌리면 `fork: retry: Resource temporarily unavailable` · `child_info::sync: wait failed` · `dofork … 0xC000012D`로 `yq 추출 실패` 거짓 FAIL이 난다(r2 FAIL 1 · 자기검사 2회 각 1건). 단독 실행에서는 전부 PASS. 규칙: 하네스는 한 번에 하나만 · 보고에 fork 오류 유무를 적는다(도구 함정 메모리에 추가).
+  - 수정 라운드 r1: S1/K2(kustomization:80 문구) · S2(README §2 22+12+1) · S3/K4(§5 동사 분리) · S4(§6 delete 명령 분리) · K3(`cnpg-ca-secret` 4장 · 삭제 목록) · K5(CRD > 256 KiB 수동 적용 주의) · K6(§4 인증서 갱신 메커니즘 + VD-C9) · K1(§8 인계 + VD-C10). brief §3.1·§6 ⑥의 같은 오류도 정정했다.
+- **머지·라이브(2026-10-08)**: gitops PR #45 → squash `5bd6faf`(08:57:05Z) → Argo operation 09:01:57Z–09:02:23Z(머지 +4분 52초 · 26초 · 재시도 0 · 35장 Synced/Healthy · OrphanedResourceWarning 2 = operator 런타임 Secret 추정) · cert-manager 09:02:01Z 인증서 2장 발급 · 파드 2개 노드 B 재시작 0 · `t052-verify.ps1` 19항목 ALL PASS(18:09 KST) · VD-C1 PASS(한 operation) · VD-C2 PASS(+7/+10/+13/+20분 Synced, `reconciledAt` 갱신) · VD-C5 유휴 2m/27Mi · 1m/11Mi · 하네스 `argo-4-cnpg-crd` PASS 12 · data.tests 사유 T053로 이동. 정본 = 런북 `bootstrap.md` §3 T052 절.
+- **하네스 정정(T049 결정의 오류)**: np-2-* 검사 Job 소유 과제가 하네스 **작성** 과제(T050·T051·T078)로 적혀 있어 T050·T051 체크 직후 `np-2-data-assert`·`np-2-kafka-assert`가 "checked but absent" FAIL — 소유를 **Job이 존재·성공해야 하는 E2E 과제**(data-assert·kafka-assert = T059, authz-assert = T085)로 바꾸고 SKIP note에 배포 시점(T054–T057 / T055–T056 / T082)을 적었다(`cluster.tests.ps1` · 단위 테스트 168/0). 검사 Job Application(`platform/policies/tests`, AppProject `tests`)의 **생성은 T057**(data-assert 완성 시점) — T056에서 kafka-assert가 먼저 성공하려면 T056에서 만들어도 된다(그때 data-assert는 Secret 대기로 Pending — 의도된 선행 조건).
+- **마무리 run-all(2026-10-08 19:0x KST)**: 25/26 PASS — `backup-verify`(T048 스크립트 단위 테스트) V16-1/V16-2만 FAIL. 원인 = 환경: PC 재부팅 뒤 세션이 **관리자 권한**(`WindowsPrincipal.IsInRole(Administrator) = True`)으로 떠 "거부 ACE로 지울 수 없는 파일" 모의가 적용되지 않아 `bv-clean`이 PASS했다(관련 파일 오전 run-all PASS 이후 변경 0 · 단독 재실행도 같은 2건). 조치: 다음 세션은 비관리자로 띄우고 run-all로 재확인; V16은 관리자 토큰이면 SKIP하도록 보강 후보(T048 후속).
+- 사실 확인에서 바로잡은 것: ① research R5의 operator values 스니펫은 `nodeSelector role: platform`이지만 과제 문면·plan A14(3차 시정 X29)는 **노드 B(`role=data`)** — 문면이 이긴다. ② research의 플러그인 설명 "cert-manager 필수"는 CRD·컨트롤러 존재를 뜻하고 ClusterIssuer 연결이 아니다. ③ `helm pull --repo …`는 이 워크스테이션에서 `no cached repo found … traefik-index.yaml` 오류 — tgz URL을 직접 받아 index `digest`로 대조했다(도구 함정 메모리에 추가).
+
+## T053 (2026-10-13 시작 — Cluster pg-main · ObjectStore oci-backups · ScheduledBackup, gitops `platform/cnpg-cluster/`)
+
+- **선행 조건 처리(2026-10-13)**: ① 계약 `contracts/network-policy.md` — 내부 매트릭스 행 `cnpg-system`(operator pod만) → `data` 8000 추가 · `allow-same-namespace` 사유의 "CNPG operator ↔ instance" 오분류 정정 · 포트 각주 "CNPG instance manager 8000"(모노레포 `0045754`). 5432는 열지 않는다(VD — operator 로그로 판정). ② gitops 선행 PR(브랜치 `t053-k1-operator-8000`): 정책 한 쌍 `cnpg-system/allow-egress-to-data`(podSelector operator `app.kubernetes.io/name=cloudnative-pg`, egress → data 8000) · `data/allow-from-cnpg-operator`(ingress from cnpg-system + 같은 peer의 podSelector, 8000) + validate `PORT_TABLE` `data 8000 cnpg-instance-manager` + policies README 표/검산(M 31→33 · ingress 21→22 · egress 10→11) · §8 한계 행 해소 + **ES `data/oci-s3-backup`**(`secrets/data/externalsecret-oci-s3-backup.yaml`, store `vault-platform`, key `platform/oci/s3`{access_key, secret_key} → template으로 `ACCESS_KEY_ID`·`ACCESS_SECRET_KEY`·`REGION=ap-chuncheon-1` 세 키, creationPolicy Owner, `Delete=false,Prune=false`; 배달자 `platform/secrets/kustomization.yaml`에 `../../secrets/data` 1줄 — T045 D3 "2장까지만" 범위를 3장으로 넓힘: 원본 kv는 있고 소비자(ObjectStore)는 뒤 wave). 하네스 영향: np-* 단언 없음(np-3은 jt-dev/jt-prod ingress만) · eso-3는 ns data + store vault-platform + platform/ key 허용.
+- **선행 PR 실행(2026-10-13)**: gitops **PR #46**(브랜치 `t053-k1-operator-8000`, 커밋 `73b2c3e`, 19파일) — infra-builder 2슬라이스(정책 쌍 · validate 표 · README 총수 95/125/99 · positive 픽스처 → 이름 `allow-egress-to-data`로 통일 + ES `secrets/data/oci-s3-backup` + 배달자 3장) → 보안/거짓통과 리뷰 approve_with_fixes(R1 ES 주석의 값 출력 명령 → 키 전용 go-template · R2 apps/README "2장" → 3장 · R3 머지 순서 블록에 kv 시드 근거·값 미출력 확인 명령 · R4 자기검사 케이스 `pol-port-cnpg-8000`(red 실측 1회) · R5 5432 VD 유지) → 수정 반영. 검증: 렌더 NetworkPolicy 93→95 · kubeconform 125 Valid · platform/secrets ES 3 Valid · validate PASS 38/FAIL 0/WARN 4(SUC) · 자기검사 `^(positive|pol-|secrets-|es-)` 27/0. 계약 가운데 gitops-repo.md secrets 행도 3장으로(`6728960`). 보고·리뷰 원문: `.superpowers/t053/reviews/k1-*.md`. **머지·라이브(2026-10-13)**: PR #46 → squash `c53ba2d`(06:02:24Z) → 06:10:09Z 관찰에서 `platform-policies`(리소스 125) · `platform-secrets`(3) 둘 다 Synced/Healthy(≤ 7분 45초) → `t053-verify.ps1 -Stage pre` **ALL PASS**(15:11 KST): 정책 2장 모양 · ES `data/oci-s3-backup` Ready=True/SecretSynced(refreshTime 06:10:30Z — **kv 시드 실재 증명** · 키 쌍 정합은 첫 백업) · platform-secrets Synced/Healthy. 검증 스크립트 버그 1건 수정(단일 요소 파이프라인 풀림 → `$keys[0]`이 첫 글자 — 바깥 `@()`). 후속(모노레포): `cluster.tests.ps1` np-2-manual 안내문에 새 행 추가 · ESO template Replace 라이브 VD(키 전용 명령 — 운영자).
+- **D1 구현 단위**: Application `platform-cnpg-cluster`(T041 뼈대 · destination data · SSA · SkipDryRun)가 적용하는 `platform/cnpg-cluster/` 순수 매니페스트 3장 — ObjectStore(리소스 wave 0) → Cluster(1) → ScheduledBackup(2). ScheduledBackup `immediate: true`가 Cluster Healthy(Argo 내장 CNPG health lua) 뒤에 만들어져야 첫 백업이 실패하지 않는다.
+- **D2 ES 위치**: `secrets/data/`(배달자 `platform-secrets`, 계약 §디렉터리 "secrets/<ns>/ = 플랫폼 ns별 ES(platform/ 경로 · vault-platform)") — `platform/cnpg-cluster/`에 두면 validate 3.2/3.3의 위치 검사가 하나도 걸리지 않고(검사가 조용히 꺼짐), `secrets/`에 두면 3.2가 store·접두를 강제한다. 배달 wave(`secrets` 18)가 `cnpg-cluster`(30)보다 앞이라 Secret이 Cluster보다 먼저 생긴다(두 Application은 독립 sync지만 PR 순서로도 분리 — 선행 PR 먼저 머지).
+- **D3 ObjectStore**: `destinationPath s3://joshuatech-backup/pg-main/`(이름 예외) · endpointURL `https://axvjykgvo2m1.compat.objectstorage.ap-chuncheon-1.oraclecloud.com`(tofu backend.tf와 같은 도메인 — research 표기 `oci.customer-oci.com` 대신 실측값) · s3Credentials 세 키 참조(region도 Secret 키 — SigV4 리전 = AWS_DEFAULT_REGION) · wal zstd maxParallel 2 · data lz4 jobs 1 · retentionPolicy **30d**(문면 — research 14d 아님) · sidecar env AWS_REQUEST/RESPONSE_CHECKSUM=when_required · sidecar requests 50m/128Mi limits 256Mi · retentionPolicyIntervalSeconds 1800 · **serverName 미기재**(기본 = pg-main — 하네스 bucket-* 접두 `pg-main/pg-main/`) · `Delete=false,Prune=false`(삭제 시 아카이브 즉시 중단).
+- **D4 Cluster**: 문면 값 그대로 + research CNPG-D4 추가 파라미터(effective_cache_size 1536MB · work_mem 8MB · maintenance_work_mem 128MB · wal_compression zstd) · `pg_stat_statements.max`는 넣지 않음 · bootstrap initdb database `platform` owner `platform_owner` dataChecksums true(research 스니펫; pod DB 4개는 T054 Database CR) · `archive_timeout: "300"`(초) · 적지 않는 것: spec.backup(in-tree) · walStorage · managed.roles · monitoring.enablePodMonitor · certificates(자체 CA → `pg-main-ca`).
+- **D5 ScheduledBackup**: `pg-main-daily` · `0 0 17 * * *`(6필드) · immediate true · backupOwnerReference self · method plugin · pluginConfiguration.name barman-cloud.cloudnative-pg.io · suspend 미기재.
+- **D6 PR 단위**: 선행 PR(정책 + ES) → 머지·반영 확인(Secret SecretSynced · 정책 2장) → 본 PR(`platform/cnpg-cluster/`) → 머지 → 라이브 VD(첫 백업 completed · ContinuousArchiving · 오브젝트 배치 · 8000 도달 · 5432 불필요) → 하네스 data.tests 9/6/1 기대 · cluster.tests argo-4-pg-main PASS.
+- 지시문 `.superpowers/t053/prompts/t053-brief.md` · 리뷰 `t053-review-spec.md` · `t053-review-security.md` · 수정 `t053-fix.md` · 확인 스크립트 `t053-verify.ps1`.
+- **본 빌드 r1(2026-10-13, 워크플로 `wf_bc51a5b9-698`)**: infra-builder(fable) → 파일 7개 완성 · CRD 전수 대조 OK(leaf 21/29/6) · 렌더 값 지시 일치 · 자기검사 0 실패 — 그러나 **BLOCKED**: validate 검사 1(kubeconform)이 쓰는 datreeio `ObjectStore` 스키마가 2025-06-17 사본(enum bzip2·gzip·snappy)이라 `data.compression: lz4`를 거부 → PASS 37 · FAIL 1. 라이브 차트(plugin-barman-cloud 0.7.1 = v0.14.0) CRD는 lz4를 받는다(업스트림과 openAPIV3Schema 동일) = **관문의 거짓 음성**. 리뷰 2렌즈 모두 approve_with_fixes — 지시 준수 S1(high · 같은 관문) · S2–S7(low) / 보안·데이터 안전 K1(medium · 같은 관문) · **K2**(medium · Argo 다단계 sync에서 CNPG Cluster Degraded 매핑 → task Failed → 같은 리비전 자동 재시도 없음) · K3–K5(low). 수정 라운드 fix:r1 에이전트는 시작 직후 세션 압축으로 사망 → Agent 도구로 재디스패치(빌더 A 관문 → 빌더 B 수정, **순차** — 하네스 동시 실행 금지). 보고 원문 `.superpowers/t053/reviews/{builder-report-r1,review-spec-r1,review-security-r1}.md`.
+- **D7 관문(S1/K1)**: 문면 `data lz4` **유지**. `tests/validate.sh` 검사 1을 두 패스로 — 저장소 렌더에 나온 CRD에서 `<group>/<kind 소문자>_<version>.json` 스키마를 저장소 밖 임시 디렉터리에 파생해 `-schema-location` 순서 default → 파생 → datreeio(계약 §validate.yml 1 개정 — 모노레포 커밋 "T053 계약 gitops-repo"). 출처가 라이브 차트 버전과 항상 같아 드리프트가 없다(ESO·cert-manager·Traefik·Argo·CNPG CRD 전부 같은 효과). 채택하지 않은 안: `-skip ObjectStore`(kind 검증 소실) · 정적 vendoring(동기 의무) · 문면 변경(동결) · datreeio PR(관문을 지금 풀지 못함). 지시문 `t053-gate-brief.md`(빌더 A · TDD: 케이스 `crd-schema-repo-first` red → green · `crd-schema-reject`가 enum 메시지의 lz4로 적용을 증명).
+- **D8 Argo 다단계 sync(K2)**: Argo CD v3.5.2 `resource_customizations/postgresql.cnpg.io/Cluster/health.lua` 직접 수신 — Degraded = `Applying configuration` · in-place 재시작 2종 · switchover · failover · `Waiting for user action` · major 업그레이드 · `Cluster upgrade delayed` · 온라인 업그레이드 2종; Suspended 4(필수 객체 생성 불가 · 미지 플러그인 · 카탈로그 불완전 · 복구 불능); 미등재 phase = Unknown(sync 대기 지속); conditions 없음 = Progressing. 결정 = README §1 증상표 2행 + VD-11(첫 배포·첫 파라미터 변경의 operationState 전이 기록) + Application `platform-cnpg-cluster`에 `ApplyOutOfSyncOnly=true` + `retry`(limit 5 · 30s ×2 · 5m — `bootstrap/root-app.yaml` 선례 모양, 값은 CNPG 재시작 창) + 계약 §Application 규약 예외 문단. 지시문 `t053-fix-r1-brief.md`(빌더 B — 실제로는 워크플로 fix:r1/r2가 수행 · Application 파일은 컨트롤러가 직접 편집). **r2 리뷰 K6 정정(17:20)**: Argo 자동 sync operation은 **기본 retry**(limit 5 · 5s ×2 · 3m ≈ 2.6분 창)를 이미 가진다(`appcontroller.go` `RetryStrategy{Limit: 5}`) — "같은 리비전 자동 재시도 없음"은 "기본 retry 소진 뒤 같은 리비전 재시작 없음"이 정확하고, D8의 명시 retry는 새 안전망이 아니라 창을 ≈12.5분으로 넓힌 **대체**다 → 계약 문단 정정(모노레포) · gitops 문구는 fix:r2가 맞춤.
+- **D9 삭제 보호(S6)**: 계약 §삭제 보호에 `ObjectStore oci-backups` 추가(같은 모노레포 커밋). S7 = 컨트롤러의 build-notes 수정(확인 · 조치 없음) · S4 = 06:10:30Z는 컨트롤러 전달값(`t053-verify.ps1 -Stage pre`).
+- **D6 개정(PR 단위)**: 선행 PR #46(머지됨) → **본 PR 하나**에 관문 수정(`tests/**`) + 매니페스트 3장 + README + Application 예외 — CI `validate`는 PR head의 validate.sh로 돌므로 같은 PR 안에서 관문이 풀린다(별도 관문 PR은 운영자 머지 1회를 더 요구하고 두 브랜치 사이 rebase가 생긴다).
+- **사고(2026-10-13 16:05–16:35) — "죽은" 워크플로가 살아 있었다**: 세션 압축 뒤 워크플로 journal에 fix:r1 결과가 없고 그 에이전트 transcript가 22줄(16:03)이라 **죽었다고 판정**해 관문 빌더 A를 Agent 도구로 별도 디스패치했다. 그러나 fix:r1은 살아서 계속 돌았고(transcript 16:28까지 1.1 MB), 리뷰어 S1의 권고대로 **정적 vendoring**(`tests/schemas/` · `SOURCES.tsv` · `schema-vendored-*` 케이스 · validate.sh/validate.tests.sh/README 수정)으로 관문을 고치기 시작했다 — 컨트롤러 결정 D7(실행 시 파생 A′)과 충돌. 빌더 A는 같은 자리(KC_ARGS 843행 · 머리 주석 15/204행 · README 119/138행)가 실시간으로 바뀌는 것을 보고 **파일을 하나도 건드리지 않고 BLOCKED**로 보고했다(올바른 행동 — 지시문 §0 "다른 변경이 섞여 있으면 BLOCKED"). `TaskStop`은 압축 뒤 워크플로 ID·에이전트 ID를 모른다("No task found") → 중단 불가. 조치: fix:r1에 SendMessage로 되돌리기 지시(tests/** → HEAD · vendoring 산출물 삭제 · 7파일 수정만 보고 · 하네스 추가 실행 금지) + 라운드 2 이후 프롬프트 파일(`t053-fix.md` · 두 리뷰 지시문)에 **컨트롤러 공지**(관문은 별도 빌더 · tests/** 상태와 FAIL 1은 지적 금지 · Application 예외는 D8)를 넣어 워크플로가 살아 있으면 다음 라운드가 같은 길을 가지 않게 했다. **교훈**: ① 에이전트 사망 판정은 transcript **mtime이 지금과 가까운지**로 한다(journal 결과 줄 부재는 "아직 진행 중"일 수 있다); ② 한 작업 트리에 빌더 둘을 겹치지 않는다 — 겹칠 가능성이 있으면 먼저 `git status`와 transcript 생존 확인; ③ 워크플로 프롬프트를 파일 경로로 넘긴 설계 덕에 **파일 편집으로 다음 라운드를 조종**할 수 있었다(프롬프트 인라인이었다면 불가).
+- **워크플로 생존 확인 → 리뷰 r2 · 수정 r2 자동 진행(16:45–17:26)**: journal이 16:43 fix:r1 결과를 기록하고 리뷰 r2 둘을 띄웠다(컨트롤러 공지가 든 프롬프트를 읽음 — 조종 성공). 둘 다 approve_with_fixes · high 0: **K6 medium** — Argo 자동 sync는 기본 retry(limit 5 · 5s ×2 · 3m)를 이미 가지므로 "자동 재시도 없음"은 부정확(→ 계약 `eb1deb1` 정정) · **K7 medium** — README §5 데이터 손실 경로에 "노드 B 재이미지 · 부트 볼륨 교체"가 없음(→ README 항목 신설 + 모노레포 런북 §2 머리에 선행 조건 경고) · low: S1–S5(VD-11 문구 모순 · 관문 소재 통일 · 5필드 cron 오독 예시 정정 · 9187/9404 · 수치 차이는 병행 편집) · K8(`ApplyOutOfSyncOnly` 재시도 의미 · CNPG Backup `pending` 경로 — "cluster not ready" 실패가 아니라 pending 대기) · K9(상충 문구) · **K10**(8000 = `/pg/status` · in-place update — 백업 시작은 `pods/exec` → 계약 network-policy 행 정정 `eb1deb1`) · K11(버킷 versioning + lifecycle 60d) · K12(병행 편집으로 validate 재현 무효) · K13(`immediate` 의미). 수정 r2(fix:r2)가 medium 2 + low 9를 문서·주석으로 반영(렌더 sha 불변 `0a17e362…` — 매니페스트 값 무변경) · 컨트롤러 조정으로 하네스는 미실행(빌더 A 전체 자기검사와 동시 실행 금지). 보고 원문 `reviews/{review-spec-r2,review-security-r2,fix-r2-report}.md`. fix:r2가 더한 관찰 항목: VD-11에 "첫 sync 뒤 Cluster가 `Synced`로 안정되는가 — SSA + CNPG webhook 기본값으로 영구 OutOfSync면 `ApplyOutOfSyncOnly`의 단일 step 전제가 깨진다"(라이브 판정).
+- **리뷰 r3(워크플로 마지막 라운드 · 17:27–17:50) · 하네스 동시 실행 사고**: 둘 다 approve_with_fixes. **S1 medium** — fix:r2가 컨트롤러 조정 메시지(17:20)가 닿기 **전** `bash tests/validate.sh`(17:15–17:21)와 부분 자기검사(17:22–, exit 137)를 돌려 빌더 A의 전체 자기검사(17:07–)와 겹쳤다: `validate.tests.sh`의 `TMP="$HERE/.tmp"`가 고정 경로라 두 실행이 `tests/.tmp`를 **공유**(시작·종료 때 통째로 삭제) → fix:r2 쪽 `11.5 FMT-symlink` FAIL 3(빌더 A의 fixture 링크) · 빌더 A 쪽 임시 트리 케이스 실패 가능 → **양쪽 결과 모두 증거 무효** → 조치: 빌더 A 보고 뒤 **다른 하네스 0 상태에서 전체 자기검사 1회 재실행**(컨트롤러 · 백그라운드) + CI 전체 실행이 최종 판정 · 교훈 = 하네스 지시에 "실행 전 `ps`로 `bash tests/validate` 프로세스 0 확인"을 넣는다(K17). 부수 확인: fix:r2의 validate 로그에 빌더 A의 관문이 실제 트리에서 동작함이 찍혔다 — `CRD 스키마 파생: CRD 47개 → 스키마 파일 51개(그룹 8개)` · `[PASS] 1 KUST`(lz4 통과) · 자기검사 `crd-schema-repo-first`·`crd-schema-reject` PASS. **K14 medium** — 파드 QoS는 Guaranteed가 아니라 **Burstable**(플러그인 사이드카 requests ≠ limits · CPU limit 없음 → 파드 수준 조건 불충족; CNPG의 `PG_OOM_ADJUST_VALUE=0`은 Guaranteed일 때) → **D10**: 사이드카 resources는 이번 PR에서 바꾸지 않는다(사이드카 CPU 상한은 백업 압축(lz4·zstd가 사이드카 안에서 돈다)을 늦추고, requests 상향은 2 OCPU 노드 B 예산(T055·T057 동거)을 건드린다 — T097 자원 교정에서 VD-6 실측 뒤 결정) · 문서의 "Guaranteed" 주장 정정 + VD-14(`status.qosClass` 실측). low: S2(P9 셀 사실) · S3(fix-r2-report.md가 handback 판 — 워크플로 판 `fix-r2-report-workflow.md` 추가 저장) · S4(health.lua Suspended phase 증상표 행) · K15(**사이드카는 `spec.initContainers`의 native sidecar, 고정 이름 `plugin-barman-cloud`** — README jsonpath 정정) · K16(exec 경로 확정 근거 `IsManagedByInstance`) · K17(단독 실행 전제) · K18(60일 복구 창 = 실수 삭제용 — `manage objects`는 버전 삭제 허용) · K19(VD-11 ↔ `ServerSideDiff=true` 후보). 수정 r3는 Agent 도구로 디스패치(문서·주석만 · 하네스 금지 · 지시문 `t053-fix-r3-brief.md`). 워크플로 `wf_bc51a5b9-698` 종료(에이전트 9 · 2.72M 토큰 · 2시간 41분).
+- **관문 빌더 A 완료 → gitops 커밋 `63ee725`**(tests/** 9파일 · +312/−18): 기준선 재현(PASS 37 · FAIL 1 lz4) → red(새 케이스 2 실패 실측) → 구현(검사 1 두 패스 · `derive_crd_schemas` · `KC_ARGS` default → 파생 → datreeio · mktemp + EXIT trap · fail-closed) → green(부분 자기검사 4/0 · **실제 트리 PASS 38 · FAIL 0 · 325초, 파생 오버헤드 ≤ 13초 · CRD 47개 → 스키마 51개 · 그룹 8**) → 전체 자기검사 167케이스 실패 1(`helm-src-argocd-helmfoo` — fix:r2의 validate.sh와 겹친 17:18–17:21 구간의 fork 서명 → 단독 재실행 PASS). 범위 밖 발견: kubeconform `default` 카탈로그(`master`)에 CustomResourceDefinition 스키마가 없어 **CRD 문서 자체는 Skipped**(기존 동작 · 별도 과제감). 보고 `reviews/gate-report-r1.md`. 컨트롤러 검토: diff 전부 읽음 — trap은 경로 모양 확인 뒤 `rm -rf` · 이름 형식 WARN · 추출/쓰기 실패 fail · 중복 동일 무시/상이 WARN · 1b 순서 유지 — 승인.
+- **수정 r3 완료(fix:r3 · 17:56–18:11 · 문서·주석만 · 렌더 sha 불변 `0a17e362…`)**: K14 (a) — "Guaranteed" 서술 7곳 정정(파드 QoS **Burstable**: K8s QoS는 init 컨테이너 포함 전 컨테이너 조건 · CNPG `PG_OOM_ADJUST_VALUE=0`은 Guaranteed일 때(1.30 resource_management.md) → 기대하지 않음 · **VD-14** `status.qosClass` · T097 결정 입력 = VD-6) · **research CNPG-D4의 "Guaranteed QoS → PG_OOM_ADJUST_VALUE=0"은 사이드카를 빼고 본 것 — 정정 큐에 올린다**(research.md는 동결 아님이나 이번엔 build-notes 기록으로 갈음) · K15 — 사이드카 = `spec.initContainers`의 native sidecar(restartPolicy Always) 고정 이름 **`plugin-barman-cloud`**(plugin lifecycle.go:417/433/568) → README 명령·서술 전부 initContainers로 · K16 — `method: plugin` 백업도 exec 경로(`IsManagedByInstance` → `startInstanceManagerBackup` → `ExecCommand` → 인스턴스 매니저 → `/plugins` unix 소켓) 원문 줄 · K17/S2 — P9 셀에 "판정 실행은 다른 하네스 0일 때 컨트롤러 단독 1회 · fix-r2 시점 실행은 동시라 무효" · K18 — 60일 복구 창 = 실수 삭제용(`svc-s3-backup`의 `manage objects` ⊇ OBJECT_VERSION_DELETE → 키 유출 방어 아님 · 권한 분리는 infra 후속 T097/T116) · K19 — VD-11에 `ServerSideDiff=true` 1차 후보(계약 개정 뒤) + research 1860행 연결 · S4 — §1 증상표 **Suspended** 행(카탈로그 불완전 · 필수 객체 생성 불가 · 미지 플러그인 — sync 대기, Failed 아님). 에이전트 출력 파일 0바이트(메모리 함정) → 보고 글을 `reviews/fix-r3-report.md`로 직접 저장.
+- **컨트롤러 단독 관문 실측(18:13–18:19 KST · 최종 트리 · `ps` validate 0 · `tests/.tmp` 없음)**: `bash tests/validate.sh` → **PASS 38 · FAIL 0 · WARN 4 · SKIP 0 · 378초** · `CRD 스키마 파생: CRD 47개 → 스키마 파일 51개(그룹 8개)` · `[PASS] 1 KUST`(30개 · lz4 통과) · `[PASS] 1b`(22개). 로그 `evidence/validate-final-2026-10-13.log`. 전체 자기검사 단독 재실행은 PR과 병행(백그라운드 ~46분 · 로그 `evidence/selftest-final-2026-10-13.log`) — 판정은 CI(Linux 러너 · 3–6분).
+- **gitops 커밋 `6a0005f`**(8파일 · +593/−12: 매니페스트 3 · kustomization · README · platform/README · apps/README · Application 예외) → **PR #47**(브랜치 `t053-cnpg-cluster` · head `6a0005fa61df4277f293530514e8865c4dcdd8c0` · 본문 `.superpowers/t053/pr-body.md`) 18:22 KST 생성 → **CI 전부 통과(18:28 KST)**: `validate` 6m7s — 검사 `PASS 38 · FAIL 0 · WARN 4`(37초 · `CRD 스키마 파생: CRD 47개 → 스키마 파일 51개(그룹 8개)`) + **자기검사 `167 케이스, 실패 0`**(Linux 러너 ≈ 5분 — r3 S1의 "증거 무효"를 닫는 단독·깨끗한 전체 실행) · `render-diff` 코멘트 head 6a0005f = PR head ✓ · `prod-approval` pass(해당 없음) · GitGuardian pass. 머지는 운영자 전용(명령 전달 · 전체 SHA). 비교: 같은 자기검사가 Windows 로컬에서는 46분 — Linux ≈ 5분(사용자 질문 "병렬로 못 줄이나" → Git Bash 병렬은 fork 거짓 FAIL로 불가 · 병목은 프로세스 생성 비용 · 해법은 WSL2/CI).
+- **머지 · 라이브(2026-10-13)**: PR #47 → squash **`a76935980b6a07de551559e44c92d3694f5199b9`**(09:37:01Z = 18:37 KST). sync 관찰(15초 간격 · `evidence/live/sync-watch-2026-10-13.log`): 09:41:48Z operation 시작(root 폴링 ≈ 4분 45초 뒤) → `Setting up primary`(initdb Job 파드 Guaranteed) → `Waiting for the instances to become active` → **09:42:57Z Succeeded(69초 · retryCount 0 · Degraded 전이 없음 — VD-7·VD-11 첫 배포 경로 = 정상)** → 09:43:01Z `Synced/Healthy` · Cluster `Cluster in healthy state` ready 1 · Pod `pg-main-1` 노드 B · **qosClass Burstable**(VD-14 예측 일치) · ScheduledBackup `immediate` → Backup `pg-main-daily-20261013094257` **completed**(09:42:58 → 09:43:01, 3초 · backupId `20261013T094258` · endWal `000000010000000000000003`) = **kv 키 쌍 유효 · OCI S3 호환 + 체크섬 env 정상(VD-1 · VD-4)**. 머지 → Synced ≈ **6분**. `t053-verify.ps1 -Stage post -Revision a769359…` **ALL PASS**(18:44:37 KST · `evidence/live/verify-post-2026-10-13.log`): app-1~3(리소스 3 Synced) · pg-1(이미지 = 카탈로그 major 18 digest 일치) · pg-ann · **wal-1 ContinuousArchiving=True(ContinuousArchivingSuccess · 09:42:53Z — 플러그인 경로에서 갱신됨 = VD-2 PASS)** · conditions Initialized·ConsistentSystemID·Ready·ContinuousArchiving·LastBackupSucceeded 전부 True · pg-2(재시작 0) · pvc(40Gi local-path Bound) · backup-1(next 17:00Z) · backup-2. 라이브 VD 워크플로 `wf_c4a21ba1-2d9`(관찰자 + 반증 검증자 2 · 읽기 전용) — **관찰자 완료(19:06 KST · `reviews/live-vd-observer-2026-10-13.md`)**: PASS 9(VD-1·2·4·5·6·7·8·11·14) · OPERATOR 4(VD-3 OCI 만료 · VD-9/10 agent-view 범위 밖 · VD-12 exec) · NA 1(VD-13). 경고 10건 중 인계 가치: 라이브 parameters 29 vs 선언 8(webhook 기본값 합침 · Argo Synced 유지) · `firstRecoverabilityPoint`/`lastSuccessfulBackup` 비어 있음(플러그인 경로 미갱신 — 10-14 재확인에도 빈 값 · 예약 백업 뒤에도) · WAL 아카이브: 활동 뒤 300초에 한 번 더 스위치될 뿐 **진짜 유휴 7시간(09:53Z → 17:00Z)에는 WAL 0개**(10-14 버킷 실측 — 관찰자의 "유휴에도 300초마다"는 첫 15분 해석 · bucket-2 전제 유지, 활동 직후 5분만 예외 → T059 관찰 창 ≥ 10분) · `status.resources[].health` 전부 빈 값(Argo 3.x 비영속 → README §2 정정 후속) · OrphanedResourceWarning 1(ConfigMap) · 감지 지연 4분 47초 · 기동 TLS handshake 1회 = 8000 도달 증거. 반증 검증자 2명은 **세션 종료(19:13)로 미완** → 10-14 재실행. **사고 ③(10-13 19:13)**: 로컬 전체 자기검사 단독 재실행이 109케이스 뒤 `fork: retry: Resource temporarily unavailable`로 죽었다(`author-push-event-ok`) — 이번엔 하네스가 아니라 **관찰자·검증자 에이전트들의 kubectl/bash 활동**이 겹친 것 → Windows Git Bash 전체 자기검사는 "다른 에이전트 활동 0"일 때만, 아니면 WSL2/CI(판정은 이미 CI 167/0). 잔존 `tests/.tmp`는 10-14 아침에 삭제.
+- **10-14 마무리(09:50–11:1x KST)**: 하네스 단위 테스트 168/0(np-2-manual 8000 행) · run-all 26/27(infra = 운영자 자격) · tasks.md T053 [X](59/119 — 집계 regex `^\s*- \[[Xx]\] T[0-9]{3}`) · 모노레포 마무리 커밋 `14dec08` push. 운영자 토큰(18:53 KST) · OCI 재인증 뒤: **예약 백업 completed**(17:00Z · 1초) · **VD-3 PASS**(버킷 13 오브젝트 · 접두 하나 · zstd) · `firstRecoverabilityPoint` 여전히 빈 값(확정) · `data.tests` **9/6/1**(기대값) · `cluster.tests` 1차 40/1/13(mon-1 터널 리셋 일시 오류) → 재실행 **40/0/14**(= T052 기준선 + argo-4-pg-main PASS). WAL 주기 정정(위). **반증 검증자 2명 완료(resume `wf_c4a21ba1-2d9` · 에이전트 3 · 20분)**: argo-net 렌즈 26 confirmed / 6 unverifiable / 1 refuted(= 관찰자의 유휴 WAL 경고 — 이미 정정) · backup 렌즈 22 confirmed / 4 unverifiable · PASS 주장 반증 0 · VD-3 검증자도 직접 PASS. 추가 발견 → 인계: 사이드카 지표 :8080 스크레이프 불가(T098 · 정책 8080 또는 다른 경로) · operator `level=error` 2행(플러그인 재등록 경합 · 무해) + 백업 컨트롤러 requeue 노이즈 → T098 grep 거짓 양성 목록 · `status.resources[].health` 빈 값은 Application 22개 전부(Argo 3.x 기본 · `controller.resource.health.persist` 미설정) → gitops README §2 정정(docs 후속) · **Events TTL 1h → 머지 +60분 안 `events -o json` 저장을 런북 절차로** · `firstRecoverabilityPoint` 구조적 미갱신 확정. 보고 `reviews/live-vd-verifier-{backup,argo-net}-2026-10-14.md`. **T053 닫힘 — 다음 T054.**
+
+## T054 (2026-10-14 시작 — DatabaseRole 6 · Database 4 · 자격 ExternalSecret 6 · PostSync SQL Job, gitops `platform/cnpg-databases/`)
+
+- **사전 조사(11:44–12:00 KST)**: CNPG release-1.30 CRD 원문 — `DatabaseRole` spec에 **role 수준 GUC 필드 없음**(bypassrls · clientCertificate · cluster · comment · connectionLimit · createdb · createrole · databaseRoleReclaimPolicy · disablePassword · ensure · inRoles · inherit · login · name · passwordSecret · replication · superuser · validUntil) → 문면의 "`ALTER ROLE … SET`, §4 절차"는 별도 실행 주체가 필요. `Database`는 `extensions[]`(name · ensure · schema · version) · `databaseReclaimPolicy`(delete|retain, 기본 retain). Argo CD v3.5.2 `resource_customizations/postgresql.cnpg.io/`에는 **`Cluster`만** — DatabaseRole·Database는 health 없음(적용 즉시 Healthy) · ESO `ExternalSecret`은 health 있음(SecretSyncedError → Degraded). Vault 정책은 이미 허용(`eso-data`: `kv/data/{dev,prod}/db/*` · `eso-platform`: `kv/data/platform/*`) · DB 경로 kv는 **아직 없음**(T044 플레이스홀더 대상 아님) · kv 키 = `username`·`password`·`url`(data-model §8) · ns data 정책 `allow-same-namespace`로 Job → pg-main 5432 열림 · 계약 validate 3.3이 `platform/cnpg-databases/**` ES에 `vault-data`(열거 접두)·`vault-platform`(`platform/`) 둘 다 허용.
+- **하네스 기대값 정정**: T053 마무리에서 "T054 뒤 db-/role-/job- 6건 PASS"라고 적은 것은 틀렸다 — `job-1/2`는 검사 Job(`platform/policies/tests`)의 **Application이 배포돼야** PASS(소유 T059, D3-A). T054 뒤 기대 = `data.tests.ps1` **13 PASS / 2 FAIL(job-1/2) / 1 SKIP(env-1)**. T054의 검사 Job 몫은 id 두 개(`role-attrs` · `app-session-timeouts`)를 Job 스크립트에 **더하는 것**까지(build-notes 「T050 · T051」).
+- **결정(gitops — 지시문 `.superpowers/t054/prompts/t054-brief-gitops.md` §2)**: D1 한 PR(ES 6 · DatabaseRole 6 · Database 4 · PostSync Job + 검사 Job id 2 + Application 예외 + README) · D2 Secret 이름 `pg-main-<role 하이픈>` · basic-auth · `cnpg.io/reload` · `template.metadata` 명시(Argo tracking 복사 방지) · username/password만 매핑 · D3 store·경로(pod `vault-data` `{prod,dev}/db/<접두>/{owner,app}` · 공유 `vault-platform` `platform/db/{authentik,openfga}/owner`) · D4 role 6 전부 `login: true`(CRD 기본 false) · owner 2 `bypassrls: true` · 나머지 false 명시 · `databaseRoleReclaimPolicy: retain` · D5 Database 4 `retain` · **vector는 `identity_admin`·`dev_identity_admin` 둘 다**(env 패리티 — 문면은 prod만 명시) · D6 리소스 wave ES 0 → role 1 → DB 2 · 삭제 보호 어노테이션 없음(계약 목록 밖 · retain이 보호) · **D7 PostSync Job 하나가 ① 공유 DB REVOKE/GRANT CONNECT(owner 자격) ② app role 세션 기본값을 app role 자신의 자격으로 `ALTER ROLE CURRENT_USER SET`**(일반 role은 자기 세션 기본값 변경 가능 · superuser 불필요 · sync마다 멱등 재적용 → 재구축에도 유지; 수동 대체 = 런북 §4) — 자격 격리: initContainer(공유 owner 2) / 본 컨테이너(app 2) · pod DB의 REVOKE는 하지 않는다(문면 = T072 migrate Job) · D8 Application 예외 두 번째 사례 · D9 data-assert id 2개 · D10 범위 밖 목록.
+- **결정(운영자 블록 — 지시문 `t054-brief-seed.md` §2)**: S1 6경로·키·username · S2 비밀번호 = RNG 32바이트 → base64url 43자(URL·conninfo 인코딩 불필요) · S3 url 형식(pod-template 계약) · S4 Vault 접근 = T045와 같음(창 C port-forward 18200 · root 토큰 PM → Read-Host -AsSecureString) · S5 absent → `-cas=0` + JSON stdin / live → **덮어쓰지 않음**(값 비출력 검사로 live-ok 건너뜀 · live-mismatch 중단) / dead → 중단 · S6 JSON 되읽기 SHA-256 · S7 값 비노출(화면·argv·파일·클립보드·전사) · S8 붙여넣기 안전(단일 `& { }`) · S9 시드만(ALTER ROLE은 Job).
+- **계약 선행(모노레포 `8ab7ce3`)**: gitops-repo §Application 규약 예외 두 번째 사례 `platform-cnpg-databases` · data-model §7 app role 세션 기본값 적용 주체 · 비밀 행 `DatabaseRole.passwordSecret` 정정(spec FR-017의 `managed.roles` 표기는 동결 문면 — research CNPG-D5가 1.30 CRD로 바꾼 것) · vector env 패리티.
+- **실행 순서**: 빌드 워크플로 `wf_8800815c-662`(빌더 2 병렬 — gitops · 운영자 블록 / 리뷰 3렌즈 — 지시 준수 · k8s 보안 · 운영자 비밀 블록 / 수정 ≤ 2라운드, 사본 `.superpowers/t054/workflows/t054-build.js`) → **운영자 kv 시드(머지 전)** → 커밋·PR · CI → 머지(운영자) → `t054-verify.ps1 -Stage post` · 하네스 · VD. 머지 전 확인 `t054-verify.ps1 -Stage pre` **ALL PASS**(12:02 KST — pg-main · store 2 Valid · agent-view list 권한 4 + pods/log · Application 비어 있음 · 기존 role/DB 0). 스크립트 버그 1건 수정: `@($null)` = 원소 1개 → 빈 `status.resources`를 1로 셌다(null 거름).
+- **빌드 워크플로 `wf_8800815c-662` 결과(12:05–16:13 KST · 에이전트 14 · 리뷰 3라운드)**: 빌더 2(gitops · 운영자 블록) 모두 DONE_WITH_CONCERNS → 리뷰 r1(spec 6 · security 7 · operator 8 지적) → 수정 r1(둘) → r2(5 · 9 · 11) → 수정 r2(seed만) → r3(5 · 5 · 7 — **빌더 몫 high/medium 0**으로 루프 종료). 보고 원문 `.superpowers/t054/reviews/{build,review,fix}-*.md`. 빌더·리뷰가 **소스로 확인한 사실**: CNPG 1.30 `roles/runnable.go`가 Secret `username` ≠ role 이름이면 그 role을 적용하지 않는다(applied=false) · 비밀번호 앞뒤 공백을 지운 뒤 적용 · **rolconfig를 되돌리지 않는다**(적용 문장에 SET/RESET 없음 · `isAlreadyReconciled`) → D7 ② 유효 · `cnpg.io/reload`는 라벨 키만 본다 · ESO 2.10 template이 있으면 ES 메타데이터를 Secret에 복사하지 않는다 · 운영 이미지 config `User 26`(postgres) · psql은 `/usr/lib/postgresql/18/bin/psql`(`/usr/bin/psql`은 perl pg_wrapper) · Argo v3.5.2: hook은 앱 health·sync 집계에서 빠진다(PostSync 실패가 Synced/Healthy 뒤에 숨는다) · hook만 바꾼 커밋은 OutOfSync를 만들지 않아 자동 sync가 돌지 않는다 · PG 18 GUCArrayAdd는 값을 받은 그대로 저장(`15s`). 검증: 렌더 17 · kubeconform(파생 스키마) Valid 17 · `validate.sh` PASS 38 · FAIL 0 · 부분 자기검사 16/0 · PostSync Job 모의 10경우 · data-assert 모의(하네스 `Test-JobLog` 적용 — 바꾸기 전 red → 후 green) · 운영자 하네스 63 시나리오 · 2017 단언 PASS.
+- **결정 C1–C13(16:3x — `.superpowers/t054/prompts/t054-decisions-r4.md`)**: **C1** pod DB CONNECT 제한을 PostSync Job이 pod owner 자격으로 먼저(새 initContainer · migrate Job과 이중 멱등 — T059 교차 거부 증거가 T072 없이 가능) · **C2** validate 새 검사 CNPG 데이터 보존(`Database` ensure≠absent · reclaim retain 명시 · `DatabaseRole` reclaim retain 명시 — Git 변경 = DROP 경로 차단, 같은 PR) · **C3** 파생 스키마의 미지 필드 한계는 문서화(엄격화 = 별도 과제) · **C4** 허용 밖 낡은 문구 2곳 이 PR에서 정정 · **C5** PostSync 실패 장기 감시 = T059 인계(하네스 operationState 단언) · **C6** 시드 블록은 T045 v2와 같은 쓰기 보호 가드라 메모리 규칙("판정·변경 한 블록 금지") 대상 아님 — 근거 기록, **비가역 정리 블록은 규칙대로 읽기/삭제 2분할** + 저장소 하네스 · **C7** `vault-unseal.md` §0 전사 정책 키(PowerShellCore) · 모듈 로깅 · **C8** 운영자 블록 강화 O1–O7(WhatIf/Confirm 고정 · put 실패 재판정 등) · **C9** 새 LOGIN role의 postgres·platform·template1 PUBLIC CONNECT는 기록만(T097/T116) · **C10** 첫 operation의 syncPolicy 기록(VD-6) · **C11** 결정보다 강화된 검사 2건 = 의도된 편차 · **C12** `data.tests.ps1` 머리 주석은 마무리 커밋 · **C13** 수동 대체는 `kubectl exec … psql` 1순위(플러그인 가정 안 함). 계약 2차 커밋 `edc532d`(validate 3 하위 항목 · validate 1 한계 · data-model §7 접근 경계).
+- **라운드 4 워크플로 `wf_5dcb28f9-0b9`**(사본 `.superpowers/t054/workflows/t054-fix-r4.js`): gitops A(Job · 문서) → gitops B(validate 새 검사 TDD) 순차 ∥ 모노레포 시드 블록 → 리뷰 3렌즈(공지 = 결정 파일 · 반영된 지적 재지적 금지) → 필요 시 수정 1회 + 최종 리뷰. 사고 1건: 리뷰 지시문에 공지를 넣는 python 한 줄이 Bash 인용 속에서 `\t`를 탭으로 바꿔 경로가 깨졌다 → Write 도구로 만든 스크립트로 복구(메모리의 그 함정 — 한 줄 python도 예외 아님).
+- **사고 ②(10-14 16:45–17:08)**: 라운드 4 워크플로의 에이전트 6명 전부 "You've hit your weekly limit · resets 6am"(Opus 주간 한도 — 세션 모델 Opus 5.5 상속 + infra-builder `model: opus` 고정)로 실패. **정정(r4 리뷰 O3/S5/K1)**: 1차 시도(16:13 시작)는 죽기 전에 **부분 산출을 남겼다** — 모노레포 `t054-blocks/harness.ps1`(16:36 · O2 순서 단언 · postMeta 오류 모의 · 정리 블록 모의 뼈대) · gitops `job-postsync-db-access.yaml`(C1 pod-db-connect init 코드). 컨트롤러의 mtime 확인이 "16:40 이후"였고 1차 시작이 16:13이라 **놓쳤다** → 2차 빌더들이 그 위에서 이어 갔고 r4 리뷰가 정합성 결함(헤더 없는 시나리오 서술 · 미사용 함수 · `$OrigPSDPV` 복원)을 잡았다. 교훈: 실패한 실행의 잔재는 **그 실행의 시작 시각 기준**으로 mtime을 본다. 10-15 09:5x 사용자가 `/model claude-fable-5-1`로 전환 → 워크플로 스크립트의 **모든 `agent()`에 `model: 'fable'` 명시**(빌더 5 · 리뷰어 3) 뒤 새 실행으로 재개(resume은 캐시된 결과가 없어 의미 없음). 교훈(메모리 10-07 항목 재확인): Opus 한도가 걸린 주에는 리뷰어도 상속에 기대지 말고 명시한다.
+- **라운드 4 재실행 `wf_1b615b50-802`(10-15 10:06–12:2x)**: gitops A DONE_WITH_CONCERNS(C1 pod-db-connect init · C3·C4·C5·C9·C10 문서 · 렌더 주석만 변경 — 1차 시도의 C1 코드 위에서) · **gitops B DONE**(검사 `3.8 CNPG-retain` + 픽스처 6종 — red → green → 실제 트리 PASS 39 · FAIL 0) · **모노레포 시드 슬라이스 2회 모두 NEEDS_CONTEXT — 사고 ③**: 하위 에이전트가 컨트롤러 세션의 최신 사용자 메시지 「어디까지 진행됐어?」를 자기 과제로 읽고 "사용자 요청 우선"이라며 읽기 전용으로 끝냈다(파일 변경 0 · 두 번째는 상태 조사 보고만 — `reviews/fix5-seed.md`가 결정 ID별 미착수 표로 유용). 리뷰 r4(3렌즈 approve_with_fixes): gitops는 low 2(K3 README에 검사 코드 `3.8` 표기 · O6 pod DB CONNECT 수동 대체 상호 참조) · monorepo medium 4(C6·C7·C8·C13 미반영) · controller(build-notes 사고 ② 부정확 → 정정 완료 · data-model §7 "sync마다" → "전체 sync마다" 정정 완료 · **K4 `ps -W | grep validate`는 인자를 못 봐 동시 실행을 못 잡음** → 확인 방법을 `tests/.tmp` · `validate-crd-schemas.*` · pwsh `Win32_Process CommandLine`로 교체(지시문·메모리)). 대응: 시드 수정은 **Agent 도구로 직접 디스패치**(과제 출처를 첫 문단에 명시) · 워크플로의 최종 리뷰 r5는 그대로 진행(gitops 판정용 · monorepo는 재리뷰 예정). **후속(12:30)**: 직접 디스패치 빌더는 `harness.ps1`이 자기 편집 밖에서 바뀌는 것을 보고 **BLOCKED**(올바름) — 쓰는 주체는 컨트롤러의 SendMessage(12:11 "과제 출처 명시")로 **되살아난 fix5:seed 에이전트**였다(ListAgents `running` · 전사는 워크플로 디렉터리가 아닌 `subagents/agent-<id>.jsonl`에 새로 쌓임 — 그래서 처음엔 유휴로 보였다). 단일 writer 확인 → 그 에이전트가 끝내면 운영자 렌즈 재리뷰. 교훈: SendMessage로 되살린 에이전트의 활동은 **세션 `subagents/` 디렉터리**에서 확인한다(ListAgents가 가장 확실). 라이브 전제 재확인(12:15 · 새 토큰): `t054-verify.ps1 -Stage pre` **ALL PASS 10** · T053 후속 — 예약 백업 3/3 completed(10-13 09:42 · 17:00 · 10-14 17:00Z) · `firstRecoverabilityPoint` 여전히 빈 값(확정) · `platform-cnpg-cluster` Synced/Healthy 유지.
+- **라운드 4 gitops 결과(빌더 보고 · r4/r5 재현 일치)**: C1 Job = initContainer ⓪ `pod-db-connect`(pod owner Secret 2만 · 문면 SQL 한 트랜잭션 · app role이 `pg_roles`에 보일 때까지 대기) → ① `shared-db-connect` → ② `app-session-defaults`, 공유 시한 ≈ 550초 < 600 · RESULT 6 · 모의 19경우 · 렌더 17 sha256 `ef719b66…`. C2 = 검사 **`3.8 CNPG-retain`**(explode 뒤 판정 · 별칭 포함 · 원본+렌더 · fail-closed) · 픽스처 6종 18파일 · 자기검사 run_case 102 → 108(케이스 167 → 173) · 실제 트리 **PASS 39 · FAIL 0 · WARN 4** · positive 단언 「3.8 … 대상 0개 — 대상 없음」. C4 두 문장 · `platform/cnpg-cluster` sha256 불변. C5/C9/C10/K8/K13/K14/S1/S2/S3 문서 반영(hook이 도는 sync 구분 · VD-9 신설(postgres/platform/template1 PUBLIC CONNECT) · VD-6 첫 operation 정책 기록 · ESO 백오프 「늦은 시드」 상호 참조). r5(gitops): **high/medium 0** · low — K1(원본 라벨은 `!!binary` 태그 값을 못 잡음 · 렌더 라벨은 잡음) · K2(README에 검사 코드 `3.8` 표기) · O6(pod-connect FAIL의 수동 대체 상호 참조) → 소형 빌더로 정정 중. controller — K3(죽은 validate.sh가 남긴 `validate-crd-schemas.*` 빈 마커가 선행 확인 규칙을 영구 미충족으로 만들었다 → 규칙에 "빈 마커는 지우고 진행" 명시) · K4/S5(**`t054-verify.ps1` job-2가 `RESULT ≥ 4`** — C1 뒤 Job은 id 6개 고정 → 정확 집합 대조로 교정) · S6(이 기록) · S7(시드 슬라이스 — 되살린 에이전트가 작업 중 → 렌즈 3 재리뷰 예정). C11 의도된 편차 2건(role-attrs의 createdb/createrole/login 추가 대조 · live 판정의 비밀번호 문자 집합) 기록.
+- **gitops 문서 low 정정 · 최종 검증 · 커밋 · PR(10-15 12:46–13:12)**: 소형 빌더(fable · 문서·주석만 · 매니페스트 값 금지)가 K1(tests/README 「보지 않는 것」 — 원본 라벨은 `!!binary` 태그 값을 못 잡고 렌더 라벨이 잡는다) · K2(검사 코드 `3.8 CNPG-retain` + 기대 PASS 줄 전문 — README §0 P6 · §5 · kustomization · Application 머리 · apps/platform README) · O6(§1 증상표 · §2 datacl 주석 → 런북 「수동 대체 ② — pod DB CONNECT 제한」 상호 참조)을 반영(보고 `reviews/fix5-gitops-docs.md` · 두 디렉터리 렌더 sha256 불변 · 빌더 편차 4건은 수용 — 절 제목 ② 포함 인용은 시드 슬라이스 마무리 뒤 재확인 완료 :931/:939). 컨트롤러 최종 트리 `bash tests/validate.sh` 단독 실행(12:55–13:08 · **13분** — 리뷰어 2명의 읽기 활동과 겹쳐 T053의 6분보다 느렸지만 fork 사망 없음) **PASS 39 · FAIL 0 · WARN 4** · 3.8 PASS 줄이 README P6 인용과 `cmp` 동일 · 선행 확인 ①②③ 깨끗 · 실행 뒤 마커 0. 시드 블록 하네스 단독 1회(13:08:52–13:09:15) **PASS 2726/2726 · exit 0**(pwsh 출력을 bash 리디렉션으로 받으면 한글이 깨진다 — 숫자·exit 코드로 판정). 커밋(파일 이름 스테이징) **`4cfebb2`** 관문(21파일 · +427) → **`8ee2db6`** 매니페스트(14파일 · +1614/−27) · push `t054-cnpg-databases` · **PR #48** 생성(본문 `.superpowers/t054/pr-body.md` — 템플릿 4항목 + 「머지 전 선행 = kv 시드 6경로」 1항목 추가 · 비가역 = Database/DatabaseRole 신규 · Cluster 불변) · CI 관찰 중. 시드 슬라이스 r6 재리뷰 2렌즈(운영자 · 지시 준수 · 읽기 전용 · fable) 진행 중 — 결과 반영 뒤 모노레포 커밋.
+- **PR #48 CI(13:12–13:21)**: validate **pass 6m8s** · render-diff pass(main `a769359` ↔ head `8ee2db6` · 대상 31 · 바뀐 디렉터리 3 — apps directory source 변경 1 +45/−8 · `platform/cnpg-databases` 추가 17 +957 · `platform/policies/tests` 변경 2 +54/−3 · 렌더 실패 0) · render-comment pass · classify pass · prod-approval pass(범위 밖) · gate skipping(prod overlay 없음 — 기대) · GitGuardian pass → **mergeable CLEAN**(머지는 운영자 — kv 시드 뒤). CI validate 잡 안의 자기검사 = **173 케이스 · 실패 0**(run `38680080596` · `cnpg-retain-*` 6 포함 — 로컬 전체 자기검사는 돌리지 않았다 · 판정은 CI).
+- **r6 재리뷰 결과(13:22 — `reviews/review-spec-r6.md` · `review-operator-r6.md`)**: 둘 다 approve_with_fixes · high 0 · 런북 주장 = 코드 전수 일치(모듈 로깅 검사 < 토큰 · 세션 고정 3문장 · put 비 0 재판정 4분기 · 실패 표 글자 단위) · 비밀 위생 이상 없음 · 상호 참조 일치 · 빌더 남은 우려 3건 전부 "머지 안 막음". 지적: **S1=O1 medium — r4/r5 O5(정리 ①② 블록 · §0 규칙 1의 클립보드 비우기) 미반영인데 빌더 보고가 "반영"으로 표기(O3=C7과 혼동)** → fix6에서 (a) 반영 · S2 GB 라벨 · S3=O2 공유 DB 수동 대체 문장(② 안에 — 제목 보존 · gitops 인용 3곳) · O3 창 D kubeconfig 줄 건너뛰기 · O4 소요 시간 · :912 재실행 전제 · `생성 예정` 행 · `vault.exe` 경로 · O5 GA08(깨진 JSON 과도기 · 시나리오 91 → 92) · S4 수치 확정. fix6 지시문 `prompts/t054-fix-r6-seed.md` · 빌더(fable · 허용 파일 4 · op1-seed-db.ps1 불변 · 하네스는 빌더만 실행).
+- **fix6 결과(13:30–13:40 · `reviews/fix6-seed.md`)**: S1–S4 · O1–O5 전부 반영 — 정리 ①② 블록 첫머리 `try { Set-Clipboard -Value ' ' } catch { Write-Warning … }` + vault-unseal §0 규칙 1 뒤 비우기 + 하네스 R1/R2 AST 단언 · 공통 단언 "첫 Read-Host 전 clip:set ≥ 1 · 값은 공백만" · GB 라벨 = 실제 ID · 수동 대체 ② 안에 공유 DB 문단·펜스(제목 보존 → gitops 인용 3곳 유효) · 창 D kubeconfig 줄 건너뜀 · 소요 ≈ 1분 미만 · Vault 호출 ≈ 27회(실측 — 지시문 20회는 오산 · 수용) · 재실행은 `VAULT_TOKEN`·`VAULT_ADDR`만 제거 · `생성 예정` 행 · `vault.exe` 경로 확인 · GA08(깨진 JSON — 노출 0 실측 → ① 블록 try/catch 불필요). **red** 68/92 · 2746/2771(새 단언만 22 FAIL) → **green 92/92 · 2771/2771 · exit 0** · 변이 rb6(① 클립보드 줄 제거 → R1 + GA01–08만 FAIL 11). **컨트롤러 단독 재실행(13:41) PASS 2771/2771 · exit 0**(`evidence/harness-final-r6-2026-10-15.log`) · 스폿 체크 7항목 전부 존재 · 제목 `## §4`/`### T054`/`## §5` · 수동 대체 ①② 제목 불변 · 4파일 CR 0 · TAB 0 · BOM 0 · `op1-seed-db.ps1` 12:34 이후 불변. 잔여 위험(기록만): 정리 블록 `Write-Warning`은 창 `$WarningPreference`에 따른다(창 D = `pwsh -NoProfile` 새 창 전제) · GA08 Expect는 Newtonsoft 문구(바뀌면 FAIL 방향) · 공통 단언은 모든 시나리오가 Read-Host에 도달한다는 전제. 교훈: **빌더의 "반영" 표기는 리뷰 원문 ID·문장과 대조해야 닫힌 것**(fix5의 O5/O3 오기를 두 렌즈가 모두 잡았다).
+- **모노레포 커밋 `c61173b`(13:44 push) → 운영자 kv 시드(16:3x KST · 첫 실행 · 6경로 생성 v1 · 되읽기 해시 일치 · STOP 0 · agent-view 토큰 재발급 만료 10-16 00:31) → PR #48 squash 머지 `4bb185d572b9c4da785e65e1b03d655f67cc1968`(07:35:46Z = 16:35:46 KST · `--match-head-commit 8ee2db6…`)**. 머지 +1분 시점 Argo 앱은 아직 `a769359` Synced/Healthy(root 폴링 대기) → 폴러(20초 간격 · ES/DatabaseRole/Database/Job 상태 병기)가 operation 종료를 잡으면 `t054-verify.ps1 -Stage post -Revision 4bb185d…` 자동 실행 + 증거 수집(`evidence/live/` — app-post.json · events-data.txt · job-logs.txt · es-wide.txt · roles-dbs.yaml · job.yaml).
+- **라이브 결과(16:38–16:42 KST)**: 머지 07:35:46Z → Argo operation 시작 **07:38:25Z**(+2분 39초 · root 폴링) → ES 6장 SecretSynced **07:38:25–26Z** → DatabaseRole/Database 적용 → PostSync Job 파드 생성 07:38:32Z(init ⓪ `pod-db-connect` 접속 대기 — 시도 1 `Connection refused` · 시도 2 `password authentication failed`(role 비밀번호 적용 전) · **시도 4 성공** — C1의 대기 설계가 실제로 필요했다) → ① → ② → Job 완료 **07:39:08Z**(36초) → operation **Succeeded 07:39:08Z**(43초 · retryCount 0 · Degraded 전이 없음 · Warning 이벤트 0). Job 로그: `RESULT: PASS` **정확히 6 id** · `SUMMARY: pass=6 fail=0` · `EVIDENCE: … pg_extension vector=0.8.6 schema=public`(두 pod DB) · datacl `{=T/<owner>,<owner>=CTc/<owner>}`(공유) · 비밀번호/url 바늘 0. **같은 초(07:39:08Z)에 두 번째 operation**이 돌아 DatabaseRole 6장만 재적용(`operationState.syncResult.resources` = DatabaseRole 6 · `startedAt=finishedAt=07:39:08Z` · history는 같은 리비전이라 한 항목으로 갱신) → DatabaseRole **generation 3**(webhook 기본값 `inherit: true` · `connectionLimit: -1` 주입 · finalizer `cnpg.io/deleteRole`) · Database generation 1 → 이후 07:42:36Z까지 operation 없음 · Synced/Healthy 유지(**VD-7 통과 · 원인은 관찰자 몫**). `t054-verify.ps1 -Stage post` 07:39:30–40:02 **27 PASS · 1 FAIL(app-3)** — FAIL은 스크립트 기대 오류: Argo 3.x는 PostSync hook Job을 `status.resources`에 `hook: true` · status 없음으로 넣어 17 = 16 + 1 → 비-hook 16만 세도록 교정 · `hook 결과` INFO가 빈 것은 두 번째 operation이 `syncResult`를 덮은 탓(hookPhase는 다음 operation 전까지만 남는다 — README VD-4 ② 한계 실측) → Job 자체 상태로 판정. 재실행(07:44:22Z) **ALL PASS 25**. 하네스 `data.tests.ps1` **13/2/1** · `cluster.tests.ps1` **40/0/14** = 기대값 · C12 반영 뒤 단위 테스트 278/0 · 라이브 재실행 13/2/1.
+- **관찰자 VD(07:48Z · `reviews/live-vd-observer-2026-10-15.md`)**: PASS 5(VD-1 · 2 CR · 3 CR+Job · 4 ①②③④ · 6 · 7) · 운영자 몫(VD-2 pg_roles · 3 pg_extension · 5 · 8 · 9). **발견 ①** 첫 operation은 옛 syncPolicy(ApplyOutOfSyncOnly 없음 — child가 root의 Application CR 적용(07:38:35Z)보다 10초 먼저 새 리비전을 봄 · README VD-6 예고 그대로 · 영향 없음) · 두 번째 selfHeal op만 새 정책 — `operationState.operation`은 뒤 op 기록이라 Events/컨트롤러 로그가 정본(TTL 1h → 08:05Z에 JSON 저장 완료). **발견 ②** DatabaseRole gen 3의 메커니즘 = 인스턴스 매니저 finalizer 전체 `Update`가 `omitempty` bool 6종의 선언 `false`를 떨어뜨려(gen 2) Argo가 OutOfSync → selfHeal 부분 sync(skipHooks · DatabaseRole 6 · autoHealAttemptsCount 1)가 되살림(gen 3) · 재발 없음 · Database는 gen 1 대조군 — README VD-7의 "webhook 기본값" 서술은 정정 대상(인계 B · 직접 관측은 아님 — 다음 생성 때 1초 안 -o yaml로 검증). **발견 ③** PG 준비가 wave보다 25–30초 늦다(role 생성 ≈07:38:53–07:39:00 · CREATE DATABASE 11회 `does not exist` 뒤 성공) + Job ⓪ 시도 1 `Connection refused`(netpol ipset 경합 추정 · 미검증) → 즉시 접속 Job(T059 · T072)은 재시도 루프 필수(C1 대기가 두 경합을 흡수). 그 밖 F·G(requiresPruning · Orphaned 1은 T053부터 · T098 거짓 양성 목록). 반증 가능성 4.**
+- **T054 완료 체크(2026-10-15 17:0x KST · 60/119)**: tasks.md `[X]` · 런북 §3 T054 + §4 실행 기록 · data.tests.ps1 C12 · 학습 로그 2일분 · **run-all(16:58–17:30 KST · 32분) = 1 FAILED — `infra tests`(tofu plan이 운영자 자격 · `TF_VAR_budget_alert_email` 필요 · T053 마무리와 같은 기대 실패)** · 나머지 전부 PASS(hooks · codex-hooks · command-policy · scripts · codex-skill-policy-sync · platform-harness · specs-index-fresh · codex-integration · codex-parity · platform-backup · traefik-config · cloudflare-origin-pull-ca · kernel-trial · 설정 7항목 · 하네스 단위 데이터 278/0) · 후속 = gitops README 정정 PR **#49**(브랜치 `t054-docs-live-findings` · 커밋 `db7122c` · 문서 1파일 · 렌더 sha256 `ef719b66…` 불변 — §1 ②③④ 실측 · 전체 43초 · VD-6 Events 정본 · VD-7 메커니즘 · §6 T059 인계 · 운영자 머지 시점 자유 · CI 자동).
+- **T054 후속 PR #49 머지 → main `f03df46`(2026-10-16 10:59 KST · 문서만 · 렌더 불변) — T054 닫힘.**
+
+## T055 (2026-10-16 시작 — Strimzi operator 1.2.0 · `Kafka jt-kafka` · `KafkaNodePool combined`, gitops `platform/kafka/`)
+
+- **입력 대조(12:16–12:40 KST)**: 과제 문면 tasks.md :153(값의 정본 — ns **data** · 차트 helm OCI 1.2.0 · Kafka 4.3.1/4.3-IV0 · listener tls 9093 scram-sha-512 · authorization simple · RF/ISR 1 · `auto.create.topics.enable=false` · entityOperator requests 256Mi · metricsConfig strimziMetricsReporter · KafkaNodePool combined replicas 1 · jbod local-path 20Gi deleteClaim false · jvm 1g · requests 1536Mi/limits 2Gi · affinity role=platform · 어노테이션 `Delete=false,Prune=false`) · research R6 STRIMZI-D1~D11(D1의 ns `kafka`는 과제 문면 data가 우선) · 하네스 `kafka.tests.ps1` kafka-1/2 · pool-1/2(정확 표기: sync-options 문자열 · listener 하나만 · superUsers 없음 · roles 집합 · pod 노드 role=platform) · `cluster.tests.ps1` argo-4-strimzi(그룹 strimzi.io CRD 전부 + Kafka + NodePool 어노테이션) · 계약(§삭제 보호에 Kafka/KafkaNodePool 이미 있음 · wave `kafka` 30 data · 매트릭스 9093/9404 · `allow-same-namespace`가 Strimzi 내부 통신을 덮는다고 명시) · 업스트림 원본(Argo v3.5.2 `kafka.strimzi.io/Kafka` health.lua: `NotReady/True` reason ≠ Creating → Degraded · Ready → Healthy · 그 밖 Progressing · **KafkaNodePool health 없음** · Strimzi 1.2.0 single-node 예제 · 차트 values 기본값: watchNamespaces [] · watchAnyNamespace false · createGlobalResources true · createAggregateRoles false · **generateNetworkPolicy true** · resources 384Mi/384Mi · cpu 200m/1000m · securityContext restricted · operationTimeoutMs 300000).
+- **계약 선행**: `contracts/gitops-repo.md` §validate.yml 4 차트 허용 목록에 `strimzi-kafka-operator` · `oci://quay.io/strimzi-helm` · `platform/kafka`(T055) 행 추가(이 커밋). 다른 계약 개정 없음(Application 예외 불필요 — D5).
+- **결정 D1–D12(지시문 `.superpowers/t055/prompts/t055-brief-gitops.md`)**: D1 helmCharts 1항목(OCI · releaseName strimzi · ns data · includeCRDs · createAggregateRoles false · **CPU limit 제거** · nodeSelector role=platform · operator 이미지 digest 태그 병기 시도) · D2 CRD 전부 SMP 패치 삭제 보호 · D3 Kafka CR(sync-wave **"1"** 리소스 수준 — 차트 wave 0 뒤 · listener tls 하나 · superUsers 없음 · config RF 1 · `auto.create.topics.enable: "false"` · metricsConfig allowList 최소 집합 · EO 각 256Mi/384Mi · `-Xmx 256m` · affinity role=platform) · D4 NodePool(roles controller+broker · replicas 1 · jbod local-path 20Gi deleteClaim false kraftMetadata shared · requests 250m/1536Mi · limits 2Gi **CPU limit 없음**(research D4의 cpu 1은 저장소 관례로 뺀다) · jvm 1g · nodeAffinity role=platform) · **D5 Application 예외 없음**(health.lua: 첫 배포 Creating → Progressing · Kafka/NodePool이 마지막 wave라 Degraded 전이가 operation을 실패시키지 않음 · spec 불변 · 머리 주석만) · D6 관문 = HELM_CHART_TABLE 행(TDD red → green) · **D7 정책 추가 0 · `generateNetworkPolicy: false`**(정책 객체의 선언 정본은 platform/policies만 · allow-same-namespace + 매트릭스가 덮음) · D8 PSA baseline · D9 RAM requests ≈ 2.4 GiB(노드 A · T097 실측) · D10 README §0–§6 · D11 문서 행 · D12 검증 ①–⑨(렌더 · CRD 어노테이션 · CRD 스키마 전수 대조 · validate · 자기검사 부분 · 위생 · 비밀 0 · status · sha256).
+- **열린 질문(VD)**: 첫 Kafka 기동 시간 vs `operationTimeoutMs` 300s(arm64 이미지 pull 포함 — 초과하면 NotReady(reason ≠ Creating?) → Degraded 전이 가능 · 마지막 wave라 operation은 영향 없음) · 메트릭 리포터 9404 컨테이너 포트 생성 여부 · 이미지 digest 병기가 차트 템플릿에서 유효한지 · 노드 A RAM 여유.
+- **빌더 1(gitops · infra-builder · fable) 12:40–13:35 → DONE_WITH_CONCERNS**(보고 `.superpowers/t055/reviews/build-gitops.md`): 렌더 **29 문서**(CRD 10 · ClusterRole 7 · RoleBinding 4 · ClusterRoleBinding 3 · SA · ConfigMap · Deployment · Kafka · KafkaNodePool) · sha256 `d8135e36…`(컨트롤러 재현 일치) · CRD 10/10 어노테이션 · CRD 스키마 전수 대조 Kafka 33 leaf/NodePool 21 leaf bad 0 · validate **red(12.1 + 1 KUST 건너뜀 + 13.0 → FAIL 3) → green PASS 39 · FAIL 0 · WARN 4** · 부분 자기검사 17/0 · 위생 8파일 OK · 비밀 0. **차트 사실**: CRD는 `crds/` 정적 10파일 → `includeCRDs: true` 필수(cnpg·cert-manager와 다름) · `values.schema.json` 없음 · `image.digest` 키 없음(태그 병기 → `quay.io/strimzi/operator:1.2.0@sha256:77f8fa81…` 렌더 확인) · RBAC ClusterRole 7/CRB 3/RB 4 · aggregate 0 · `generateNetworkPolicy true`가 기본(우리는 false → env `STRIMZI_NETWORK_POLICY_GENERATION="false"` 렌더). **편차(수용 C6)**: ① CPU limit 제거는 `limits.cpu: null`이 통하지 않아(kustomize가 valuesInline을 mergo WithOverride로 병합 — nil로 덮어쓰지 않음 · r1 실측 1000m 잔존) JSON6902 `remove` 패치로 ② NodePool `securityContext`에 `fsGroup: 0` 추가(Strimzi `BaselinePodSecurityProvider`가 사용자 securityContext가 있으면 기본 fsGroup 0을 넣지 않는다 — 원문 :64–78) ③ `logLevel: INFO` 리터럴 ④ allowList 5 패턴(전체 일치 매칭 · 출처 대시보드 JSON + BrokerState MBean). **우려 → 결정 C1–C6**(`prompts/t055-decisions-r1.md`): C1 TO/UO/kafkaInit 이미지 digest 병기(반영 예정) · C2 AppProject `platform` sourceRepos의 strimzi 2줄(:74–75) 같은 PR에서 삭제(선례 D7) · C3 `operationTimeoutMs 300000` 유지(첫 기동이 넘기면 NotReady → Degraded 경과 가능 · 마지막 wave라 operation 무영향 · 라이브 폴러로 실측) · C4 PDB 기본 유지 · C5 verify pre에 노드 A 여유 메모리 ≥ 2432Mi 검사 추가(반영) · C6 편차 4건 수용. **리뷰 r1 3렌즈(spec · security · operator · fable · 읽기 전용) 13:45 디스패치.**
+- **리뷰 r1 결과(14:01–14:06 · `reviews/review-{spec,operator,security}-r1.md`)**: 세 렌즈 모두 렌더 sha256 `d8135e36…` · 29문서 · CRD 10/10 · health.lua 21줄 · 하네스 id 셈(kafka 17 → 7/10/0 · cluster 54 → 41/0/13)을 독립 재현 — **매니페스트 결함 0 · high 0**. spec approve_with_fixes(low 4: S1 PDB "결정 대기" 문구 · S2 금지 config 접두는 "거부"가 아니라 "무시+경고" · **S3 계약 network-policy 9404 용도 = Metrics Reporter(kafka-exporter는 SP-2) → 모노레포 `35b35e2`로 정정** · S4 templates 수) · security **APPROVE**(validate 단독 PASS 39 · 자기검사 15/0 · low 3: K1 RBAC 범위 서술 — CO·EO SA는 ns data 모든 Secret CRUD(받아들인 사실) · K2 9404 무인증 HTTP 도달 범위 기록 · K3 `allow-egress-external-443` 상속 기록) · operator NEEDS_CHANGES(medium 6 · low 8 — 문서 사실 정정: **O1 정리 주체 = Kubernetes GC(ownerReference · 0.49.0 blockOwnerDeletion)** · **O2 보존 PVC 재생성 절차(pause → `status.clusterId` 복원 → unpause) + "revert 전 `kubectl delete kafka` 금지(selfHeal 재생성)"** · **O3 브로커 인증서 Secret = 노드별 `jt-kafka-combined-0`(0.46.0+ · `-kafka-brokers` 없음) + EO RoleBinding 2개 이름 + Kafka 파드 Role/RoleBinding** · O6 NotReady 사유 분기(Invalid* = 기다려도 안 낫음) · O7 A14 대조 · O8 Ready가 EO Ready를 포함 · O9 grep 패턴 · O10 §6 3줄 · O11 주석 모순 · O12 조치 열 · O14 imageID digest · **O4/O5 컨트롤러 `t055-verify.ps1`**: `get storageclass`(agent-view Forbidden) 한 줄로 전체 중단 → 블록별 try · sc INFO · crd-1 `-eq 10` · app-3 `-eq 29` · op-1 limits.cpu 부재 + nodeSelector + image digest · op-3 imageID digest · kafka-4 kafkaMetadataState/kafkaVersion/clusterId · pods-2 fsGroup 0 · PDB INFO · np-strimzi 0 · ToMiB 접미사 대소문자(k) — **반영 완료(파서 0)** · O13 폴러에 첫 조정 종료 reason + Pulling→Pulled 시각). **fix r1(infra-builder · fable) 14:15 디스패치** — C1 · C2 + S1–S4 · O1–O3·O6–O12·O14 · K1–K3(`prompts/t055-fix-r1.md`).
+- **fix r1 결과(14:15–15:10 · `reviews/fix-r1.md` · DONE)**: 20건 전부 반영(사실은 차트·업스트림 adoc/Java/CHANGELOG 원문 재확인 — `PersistentVolumeClaimUtils.java:126–128` deleteClaim ownerRef · `proc-cluster-recovery-volume.adoc` · `ref-list-of-kafka-cluster-resources.adoc` · `StatusUtils.java:108` reason = 예외 클래스 이름 · `AbstractConfiguration.java:106` forbidden 옵션 "ignored" · `EntityOperatorReconciler.waitForDeploymentReadiness`). 렌더 kafka **`d8135e36…` → `bd1b245e…`**(env 3줄 digest만 · 29문서) · policies 렌더 불변 · bootstrap/argocd 렌더 sourceRepos 2줄만 감소(AppProject platform sourceRepos 5 · strimzi 0) · validate 단독 PASS 39 · FAIL 0 · WARN 4 · 자기검사 15/0 · 위생 10파일 OK · "결정 대기" 0. 편차 5(S2 원문 문구 · S3 :557 괄호 보충 · C2 기록 문단 6줄 · O1 `--cascade=foreground` 정확화 · O14 imageID index/플랫폼 digest 둘 기재) 수용. 남은 우려: K2 "9090/9091 mTLS 필수" 원문 미확인 → r2 security가 확정 · **CA Secret ownerReference(`generateSecretOwnerReference` 기본 true → CR 삭제 = CA 4장 삭제 → 재생성 시 새 CA)** → T056 인계. **r2 3렌즈 워크플로 `wf_849f3f3f-c45`(사본 `.superpowers/t055/workflows/t055-review-r2.js` · 구조화 출력) 15:15 시작.**
+- **r2 결과(15:37 · `reviews/review-{spec,security,operator}-r2.{md,json}`)**: 셋 다 approve_with_fixes · **r1 지적 전부 닫힘**(ID별 파일:줄 대조 · 새 문장은 업스트림 원문과 일치) · C1/C2 재현(렌더 `bd1b245e…` · env 3줄 · sourceRepos 5). **새 지적 = fix r1이 들여온 사실 오류·업스트림 adoc↔코드 불일치**: **R2-O1 high(controller)** `t055-verify.ps1` kafka-4가 1.2.0에 **없는** `status.kafkaMetadataState`(0.49.0 폐기)를 요구 → 건강해도 FAIL — `kafkaVersion` + `kafkaMetadataVersion`(4.3-IV0) + clusterId로 교정(poll-live.sh · README :136–137도) · S5=K4=R2-O2 headless Service `jt-kafka-kafka-brokers`에 9404 없음(메트릭은 컨테이너 포트만 · `getHeadlessServicePorts` :646–661) · R2-O3 브로커 컨테이너 포트 = `tcp-kafkaagent=8443 · tcp-ctrlplane=9090 · tcp-replication=9091 · tcp-clientstls=9093(하위 호환 이름) · tcp-prometheus=9404` · S6 EO RoleBinding 이름은 `-role` 접미(`KafkaResources.java` 코드가 정본 · adoc 누락) · R2-O4 §5 PVC 재생성 순서(KafkaTopic/KafkaUser 재생성이 unpause **앞** · CR이 이미 있으면 annotate pause부터) · R2-O5 PDB는 `minAvailable: 0`(custom controller) · K5 관리 경로는 9091(9090은 controller 리스너) + 내부 TLS 주체 = 묵시적 super.users(ns data Secret 읽기 = super user) · R2-O6 op-3에 arm64 플랫폼 digest `ee8d9fb0…`도 PASS(quay v2 실측). 교훈: **업스트림 adoc를 그대로 베끼면 틀린다 — 자원 이름·status 키는 코드(`KafkaResources.java` · `KafkaStatus.java` · CRD)가 정본**. 컨트롤러 스크립트 교정 완료(파서 0 · kafkaMetadataState 0) · **fix r2 지시문 `prompts/t055-fix-r2.md`(README/주석만 · 렌더 불변) 15:45**.
+- **fix r2 결과(15:50–16:10 · `reviews/fix-r2.md` · DONE)**: 8항목 전부 반영 · 렌더 `bd1b245e…` 전·중·후 동일(값 변경 0) · 소스 원문 재확인(`KafkaCluster.java` getHeadlessServicePorts :646–661 · getContainerPortList :1412–1437 · `ListenersUtils` :217–227 `tcp-clientstls` · `KafkaResources.java` :243–244/:280–281 · `PodDisruptionBudgetUtils` :73–94 · `KafkaBrokerConfigurationBuilder` :199/:314/:474–487 · `proc-cluster-recovery-volume.adoc` :14–:248 · CHANGELOG :171 · `KafkaStatus.java` :33–40 · 차트 CRD status 키 9 · quay v2 digest 4플랫폼) · grep README kafkaMetadataState 0 · "maxUnavailable 1" 0 · 위생 3파일 OK(od 바이트) · status 집합 동일. 편차 7건(문구 토큰 끊기 · pdb 열 모양은 프린터 지식 · KafkaAgent 용도는 주석 근거 · **라이브 annotate pause 뒤 Argo selfHeal이 어노테이션을 지우는지 미검증** · Bash `grep -c $'\r'` 빈 패턴 함정 재발) → r3에서 판정. **r3 운영자 1렌즈(읽기 전용 · 바뀐 문구 + 소스 독립 확인) 16:15 디스패치 · 최종 트리 `validate.sh` 단독 실행 병행(16:15 시작).**
+- **최종 트리 validate(15:55–16:01 KST · `evidence/validate-final-2026-10-16.log`) PASS 39 · FAIL 0 · WARN 4 · 5분 48초 · 마커 0.** 운영자 토큰 재발급 16:02(만료 10-17 00:02 KST · 터널 재개) → **`t055-verify.ps1 -Stage pre` ALL PASS 13**(`evidence/verify-pre-2026-10-16.log`): ns data baseline · 노드 A `joshtech-api` Ready · 정책 9(Strimzi 생성 0) · argocd-cm `--enable-helm` · `platform-kafka` 뼈대 Synced/Healthy(rev `f03df46`) · strimzi.io CRD 0 · kafka/strimzi 파드 0 · **노드 A allocatable 12931 MiB · requests 합 662 MiB · 여유 12269 MiB(≥ 2432)** · StorageClass는 agent-view 권한 밖(INFO — 예상대로). 스크립트 버그 1건 자가 발견: `"$ns에"`처럼 변수 뒤에 한글이 붙으면 PowerShell이 `$ns에`를 변수 이름으로 읽어 빈 문자열이 된다 → `${ns}에`로 교정(tool-gotchas 후보).
+- **r3 결과(16:15–16:32 · `reviews/review-operator-r3.md` · approve_with_fixes)**: r2 8항목 전부 닫힘 · 새 문장 전부 소스 원문 일치(차트 새 pull로 sha 재현) · 빌더 편차 4·5·6 원문으로 확정(`printers.go` N/A · `KafkaAgent.java` 8443 BrokerState/ready · **Argo SSD는 `argocd-controller` 비소유 어노테이션을 diff에 넣지 않는다**(`diff.go` :263–264 · :290 · `controller.diff.server.side: "true"`)). 새 지적 3(README만): **O-r3-1 high** §5 pause/unpause 흐름 — 라이브 annotate 뒤 선언 PR을 내면 공동 소유가 되어 ⑤ 라이브 해제를 selfHeal이 되돌리고 제거 PR만으로는 어노테이션이 남아 Synced인 채 paused(K8s SSA 소유권 :66 · :68–70 · :75–79) → **선언 PR 금지 · unpause = 라이브 어노테이션 제거 + jsonpath 확인 · 선언 `true` 동안 라이브 `=false` 금지** · O-r3-2 status 키 10(`clusterSecurity`) · O-r3-3 ① "CR 없음" 분기에 `KafkaNodePool combined` 원래 선언 동반(풀 이름 = PVC 이름). §5 ①–⑥ 안전 판정: 데이터 삭제 0(cluster.id 불일치는 `Formatter.doFormat` verify가 `-g`보다 먼저 → 포맷 쓰기 전 실패 · CrashLoop) · 사용자 삭제 0(② 선행). **컨트롤러가 직접 반영(16:35)**: README :139 · :294 · :298 · kafka-jt-kafka :41 · kustomization :50 · verify.ps1 :176 — 렌더 `bd1b245e…` 불변 · 위생(od) OK 재확인.
+- **커밋 · PR(16:40 KST)**: 파일 이름 스테이징 — **`c83eed3`** 관문(tests/validate.sh +1행) → **`61aca85`** 매니페스트(9파일 · +736/−18: platform/kafka 4 · Application 주석 · projects sourceRepos −2 · policies-matrix 주석 · README 2) · push `t055-strimzi-kafka` · **PR #50** 생성(`.superpowers/t055/pr-body.md` — 템플릿 4항목 · 비가역 = `Kafka jt-kafka`·`metadataVersion` 신규 · 렌더 diff 기대 2디렉터리) · **CI(16:40–16:52 KST) 전부 pass** — validate 6m14s(PASS 39 · FAIL 0 · WARN 4 · **자기검사 173/0**) · render-diff pass(main `f03df46` ↔ head `61aca85` · 바뀐 디렉터리 4 — `platform/kafka` 추가 29 +17684 · `clusters/oci-k3s/projects` 변경 1 −2 · `bootstrap/argocd` 변경 1 −2(AppProject 포함 base) · `clusters/oci-k3s/apps` 리소스 변경 0(주석 +14/−6)) · render-comment · classify · prod-approval pass · gate skipping · GitGuardian pass → **mergeable CLEAN** · 머지 전 운영자 단계 = PR 머지만(시드 없음 · pre ALL PASS 13).
+- **PR #50 squash 머지 → main `1b2beda6006a04dd08395fb1b001d7ff9f5225b0`(2026-10-16 07:24:13Z = 16:24:13 KST · `--match-head-commit 61aca85…`)**. 머지 +22초 시점 Argo 앱은 아직 `f03df46` Synced/Healthy(root 폴링 대기) → 라이브 폴러 `poll-live.sh`(20초 간격 · Kafka 조건 전이 · 파드/PVC · 이벤트 · 상한 40분)가 Kafka Ready + Synced/Healthy에서 멈추면 `t055-verify.ps1 -Stage post` → 하네스 kafka/cluster 자동 실행(`evidence/live/`).
+- **라이브 결과(16:29–16:33 KST · `evidence/live/`)**: Argo 인지 **07:29:36Z**(머지 +5분 23초 · root 폴링) → health Healthy→Missing(07:29:36)→Healthy(07:29:40)→Progressing(07:29:43 · wave 0 operator Deployment 대기) → operator 파드 Scheduled 07:29:39 · 이미지 pull **9초**(Pulled 07:29:49 · digest `77f8fa81…`) · Started 07:29:50 → Healthy 07:30:22 → **operation Succeeded 07:30:23Z(47초 · `retryCount` = 1 — 재시도 1회 · 원인은 관찰자가 컨트롤러 로그로 확정)** · syncResult 29 전부 Synced · CRD 메시지 "CRD is healthy" · Sync Synced 07:30:23 → health Progressing(Kafka `NotReady/Creating` 07:30:23Z — lua 매핑 그대로) → 브로커 파드 Scheduled 07:30:34 · Kafka 이미지 pull **9.9초**(Pulled 07:30:45) · Started 07:30:45 → EO 파드 07:31:10 → **Kafka `Ready=True` 07:31:31Z**(CR 뒤 68초 · `operationTimeoutMs` 300s 여유) → Application **Healthy 07:31:31Z**. **Degraded 전이 0 · Warning 이벤트 0** · 두 번째 operation 없음(history 1). Kafka status 키 실측 9(`clusterSecurity` 포함 · `autoRebalance` 없음 · **`kafkaMetadataState` 없음** — r2 O1 확정) · `kafkaVersion 4.3.1` · `kafkaMetadataVersion 4.3-IV0` · `operatorLastSuccessfulVersion 1.2.0` · clusterId 기록(런북). operator 로그 WARN = OpenShift API 그룹 3 + MeterRegistry 중복 1 + **`KafkaQuorumCheck` "rolling update on a controller quorum with a single node" ×2(단일 노드 정상 — T098 거짓 양성 목록)**. PDB 실측: `jt-kafka-kafka minAvailable 0`(r2 O5 확정) + **`jt-kafka-entity-operator maxUnavailable 1`(EO Deployment PDB — README 미기재 → 문서 정정 후보)**. `t055-verify.ps1 -Stage post` 1차 29 PASS · 1 FAIL(`kafka-2 superUsers=` — `@($null)` 개수 버그 · 스크립트 교정 · 재실행 아래) · 하네스 **kafka.tests 7 PASS / 10 FAIL / 0 SKIP(기대 그대로)** · cluster.tests 1차 38/3/13(FAIL 3 = backup-1..3 **OCI CLI 세션 만료**) → 운영자 `oci session authenticate` 뒤 재실행(07:48Z) **41/0/13**(argo-4-strimzi PASS 12객체 · backup 1..3 PASS). post 재실행(07:38:49Z) **ALL PASS 29**. **T055 체크 `[X]`(61/119) · 런북 §3 T055 작성 · 학습 로그 결과 추가.**
+- **관찰자 VD(07:36–07:47Z · `reviews/live-vd-observer-2026-10-16.md`)**: VD-1~10 전부 PASS. **retryCount 1 원인 확정 = repo-server kustomize helmCharts 동시 빌드 경합**(CRD 확립 → `--helm-api-versions` 변화 → manifest 캐시 키 변화 → refresh + operation 재진입 동시 미스 → 같은 체크아웃 `kustomize build` 2개 → `helm pull --untar … already exists` 실패 07:29:42Z → ComparisonError → 자동 sync 기본 재시도 10초 뒤 Attempt #1 07:29:56Z → wave 0 재적용(SSA 멱등) → wave 1 → Succeeded 07:30:23Z) — Kafka CR 적용 1회 · Degraded 0 · apply 실패 0 → **D5 유효** · "CRD 포함 helmCharts 첫 배포에 구조적으로 잠복(이전 차트는 타이밍)" · **재시도는 Events에 안 남는다 — retryCount + 컨트롤러/repo-server 로그가 정본**(T054 교훈 "Events 정본"의 예외). 정정: 이 절 위 "operator WARN KafkaQuorumCheck ×2"는 관찰 창이 짧았던 값 → **조정마다(2분)** · 함께 `KafkaRoller "Dynamic update"` + 브로커 `allowlist to [hidden]` 재적용이 매 조정 반복(≈13–14k줄/일 · 무해 · 가설 sensitive 판정 · T098 제외 목록 · 업스트림 확인 후보). RAM 노드 A requests 662 → 3,094 MiB · `kubectl top` agent-view 가능(브로커 439Mi 유휴) · OrphanedResourceWarning 2 = PVC · hookPhase Running 영구 · 문서 정정 후보 11건 → **T055 후속 문서 PR**. 관찰자 로그 사본 7개 `evidence/live/observer-*.log`(비밀 모양 0 · eo-to의 `saslPassword='********'`는 마스킹 값). 폴러에 `operationState.message` 기록 추가(A).
+- **마무리 커밋 `d120132`(17:1x KST push) → 후속 gitops 문서 PR #51(`t055-docs-followup` · `d397e49` · README 정정 10건 · CI validate 57초 pass · render-diff pass · gate skipping = 문서만) → 운영자 squash 머지 → main `3e030216cfda71624bc996022654a71eeb08f5c5`(2026-10-16 17:25:24 KST · 렌더 불변) · 로컬 브랜치 삭제 · 로컬 main 동기 — T055 닫힘.**
+
+## T056 (2026-10-16 시작 — `KafkaTopic` 4 · `KafkaUser` 2 · 비밀번호 ExternalSecret 2 · CA 미러 ExternalSecret 5, gitops `platform/kafka-topics/` + kafka-assert Job `latency=` 토큰 + 운영자 kv 시드 2경로)
+
+- **입력 대조(17:40 KST)**: tasks.md :154(문면 = 값의 정본) · data-model §6(:94–103 토픽/사용자/ACL 규칙) · §8(:136 store 둘 원칙 · :152 `kv/{env}/kafka/<pod>` 키 `password` · :166–167 vault-data 열거 · CA 미러는 kv 아님) · research STRIMZI-D5(SCRAM 선택 이유)·D6(ACL 규약 · operations enum · Create 불필요)·D7(비밀번호·CA 전달)·D11(KafkaTopic finalizer 유지) · 계약 gitops-repo.md §sync-wave 표(`kafka-topics` 40 `data` — 숫자 재기재 금지) · §ExternalSecret 규약(store 5 · 이름·인증 규약 · 공통 규칙(Periodic 5m · Owner · CA 미러 property ca.crt만) · validate.yml ES 검사 ①–⑦) · §Application 규약(예외 사례 2건 = cnpg-cluster · cnpg-databases) · network-policy :87(jt-dev/jt-prod → data 9093 — 추가 행 없음) · 하네스 kafka.tests.ps1 :56–63(topic-1 · user-1 · user-2 판정) · :148–155(상수) · :370–392(`Test-AclWritesPrefix` — topic allow · Write/All · prefix는 서로 접두 관계 · literal `*`) · :669–743(본문 — user-1은 `status.secret` 비어 있지 않음) · cluster.tests.ps1 :69–71 · :157(`$caMirrorKeys`) · :822–855(eso-3 — ns별 허용 store: jt-dev `vault-dev`·`k8s-data-ca` · jt-prod `vault-prod`·`k8s-data-ca` · data `vault-data`·`vault-platform` · identity 셋) · :887–920(ca-1 — `pg-main-ca` 3 ns · can-i get secrets가 no면 같은 이름 ES spec으로 증명: dataFrom 없음 · secretKey=property=ca.crt · key ∈ caMirrorKeys · template data 키 없음 · templateFrom 없음 · mergePolicy 미사용 · store k8s-data-ca) · gitops 현재 상태(main `3e03021` — `platform/kafka-topics/` 뼈대 `resources: []` · Application `platform-kafka-topics` wave 40 · destination data · 표준 syncPolicy(예외 없음) · `k8s-data-ca` store `conditions.namespaces [identity, jt-dev, jt-prod]` · `remoteNamespace: data` · Role `eso-ca-reader` resourceNames `[pg-main-ca, jt-kafka-cluster-ca-cert]`(T045) · Vault 정책 eso-data가 `kv/data/{dev,prod}/kafka/*` 이미 허용(infra/vault/policies.tf :40·:45 — 인프라 변경 0) · validate 3.0–3.4 ES 규칙(3.3 `RE_LOC_DATA`가 `platform/kafka-topics` 포함 · 3.4 k8s-data-ca 규칙 — 미러 ES는 ①②③⑦ 제외) · WAVE_TABLE `kafka-topics 40 data` 행 존재 · AppProject platform destinations 14 ns(identity·jt-dev·jt-prod 포함) · 차트 캐시 `platform/kafka/charts/…/crds/043·044`에서 CRD 스키마 확인(KafkaUser spec = authentication{type enum tls|tls-external|scram-sha-512 · password.valueFrom.secretKeyRef{name,key,optional}} · authorization.acls[]{type allow|deny · resource{type topic|group|cluster|transactionalId · name · patternType literal|prefix} · operations[] enum 11 · host} · quotas · template.secret; status = conditions · observedGeneration · username · secret / KafkaTopic spec = topicName · partitions · replicas · config(자유 객체); status = conditions · observedGeneration · topicName · topicId · replicasChange)) · T051 인계(build-notes :342 — **`latency=<n>ms` 토큰은 T056 몫** · 형식 = roundtrip PASS 근거에 정확히 1개 · 앞 공백/`(`/`[`/따옴표 · 뒤 끝/공백/`, ) ; . ] :`) · T055 인계(README §6 T056 bullet — bootstrap `jt-kafka-kafka-bootstrap.data.svc:9093` · ES → KafkaUser → KafkaTopic 권장 · superUsers 금지 · finalizer 절차) · `platform/policies/tests/configmap-assert-config.yaml`(KAFKA_USERNAME `dev-identity-admin` · KAFKA_GROUP **`dev-identity-admin-assert`** · 토픽 2 · KAFKA_CA `/etc/kafka-ca/ca.crt` · 주석 "컨슈머 그룹 접두 — T056에서 확인") · `externalsecret-assert-env.yaml`(KAFKA_PASSWORD ← `dev/kafka/identity-admin` property `password` — 시드 키 이름과 일치해야 한다) · `job-kafka-assert.yaml`(173줄 · 마운트 `secretName: jt-kafka-cluster-ca-cert` · 현재 roundtrip 근거 = 벽시계 `<n>s`만).
+- **발견 · 정합 판단**: ① 계약 §공통 규칙 CA 미러 문장은 두 CA 모두 3 ns — 과제 문면은 Kafka CA → `jt-dev`·`jt-prod`만(identity에 Kafka 소비자 없음) → **계약 정정(이 커밋)** + 미러 Secret 이름 = 원본 이름 명문화(Job 마운트 · ca-1이 그 이름을 본다). ② KafkaUser 이름 = SCRAM username이고 UO가 만드는 자격 Secret 이름 = KafkaUser 이름(`identity-admin`) → 비밀번호 ES의 target은 **`kafka-user-<name>`**으로 분리(충돌 방지 · `status.secret`은 UO Secret). ③ Argo CD v3.5.2에 `kafka.strimzi.io/KafkaUser`·`KafkaTopic` health.lua가 있다(T055 README 확인 — NotReady → Degraded) → CR을 **마지막 wave**에 두면 Degraded가 operation을 실패시키지 않는다(T055 D5 논리). ④ `kafka-console-producer`(Kafka ≥ 3.0 기본 idempotent)의 `InitProducerId`는 KIP-679로 **topic WRITE가 있으면 허용**(IDEMPOTENT_WRITE cluster ACL 불필요 · 브로커 ≥ 2.8) → cluster ACL 0 · VD로 T059 Job 성공이 확정. ⑤ 컨슈머 그룹 접두 계약 공백(configmap 주석) → data-model §6 `<pod>-*` 그대로 **`identity-admin-` / `dev-identity-admin-`**(prefix) — Job의 `dev-identity-admin-assert` 포함. ⑥ ESO: template을 두면 `data[]`는 템플릿 변수로만 쓰이고 mergePolicy Replace 기본이라 **template 없는 ES**(Secret 키 = data[].secretKey)로 간다 — ES 라벨·어노테이션(Argo tracking)이 Secret에 복사되는 것은 무해(T054 선례와 반대 방향의 선택 · 이유는 키 집합 단순성). ⑦ "구독 read": SP-1 identity-admin은 구독 토픽이 없고 kafka-assert가 자기 dev 토픽을 consume한다 → 자기 접두 토픽에 Read도 준다. ⑧ 관찰자 교훈(T055): 재시도는 Events에 없다 → 폴러가 `operationState.message`를 매 틱 기록.
+- **결정 D1–D14(2026-10-16 · 지시서 `.superpowers/t056/prompts/t056-brief-gitops.md` · `t056-brief-blocks.md` · `t056-brief-verify.md`)**:
+  - **D1 디렉터리** `platform/kafka-topics/` = 순수 매니페스트 **13장**: `externalsecrets-kafka-users.yaml`(ES 2 · 리소스 wave `"0"`) · `kafkausers.yaml`(KafkaUser 2 · wave `"1"`) · `kafkatopics.yaml`(KafkaTopic 4 · wave `"1"`) · `externalsecrets-ca-mirror.yaml`(ES 5 · wave `"1"`) + `kustomization.yaml`(resources 4 · 전역 namespace 변환기 없음 — ns가 넷(data·identity·jt-dev·jt-prod)이라 금지가 아니라 **불가**) + README.md. 전부 `apiVersion: kafka.strimzi.io/v1` · `external-secrets.io/v1`.
+  - **D2 비밀번호 ES 2**(ns data · store `vault-data`): `kafka-user-identity-admin` ← `prod/kafka/identity-admin` · `kafka-user-dev-identity-admin` ← `dev/kafka/identity-admin` — `data: [{secretKey: password, remoteRef: {key: <경로>, property: password}}]` · `refreshPolicy: Periodic` · `refreshInterval: 5m` · `target.name` = ES 이름 · `creationPolicy: Owner` · template 없음(발견 ⑥) · 삭제 보호 어노테이션 없음(계약 목록 밖 · T054 선례 · Application `prune: false`). KafkaUser `authentication.password.valueFrom.secretKeyRef: {name: kafka-user-<name>, key: password}`.
+  - **D3 KafkaUser 2**(ns data · 라벨 `strimzi.io/cluster: jt-kafka` · 어노테이션 sync-wave `"1"` · 삭제 보호 없음): `identity-admin` · `dev-identity-admin` — `authentication: {type: scram-sha-512, password: {valueFrom: {secretKeyRef}}}` · `authorization: {type: simple, acls: [...]}` — **ACL** = ⓐ `resource {type: topic, name: <접두>, patternType: prefix}` · `operations: [Read, Write, Describe]` · `host: "*"`(접두 = prod `identity-admin.` / dev `dev.identity-admin.` — DLQ `identity-admin.dlq`·`dev.identity-admin.dlq`도 이 접두가 덮는다) ⓑ `resource {type: group, name: <그룹 접두>, patternType: prefix}` · `operations: [Read]` · `host: "*"`(prod `identity-admin-` / dev `dev-identity-admin-`). cluster·transactionalId ACL 없음(발견 ④ · VD) · deny 규칙 없음 · quotas·template 없음. 하네스 user-2 대조: identity-admin 자기 접두 `identity-admin.` ⊂ ACL prefix 일치 · 교차 `dev.`와 접두 관계 없음 ✓ / dev 역방향 ✓(group ACL은 topic이 아니라 판정 밖).
+  - **D4 KafkaTopic 4**(ns data · 라벨 `strimzi.io/cluster: jt-kafka` · sync-wave `"1"` · 삭제 보호 없음): `metadata.name` = 토픽 이름 그대로(`identity-admin.session.revoked` · `dev.identity-admin.session.revoked` · `identity-admin.dlq` · `dev.identity-admin.dlq` — DNS 서브도메인 유효 · `spec.topicName` 생략) · `spec: {partitions: 3, replicas: 1, config: {retention.ms: 604800000, cleanup.policy: delete, min.insync.replicas: 1}}`(data-model §6 세 키 — 숫자 표기 · 하네스는 문자열/숫자 둘 다 받는다).
+  - **D5 CA 미러 ES 5**(store `k8s-data-ca` · sync-wave `"1"`): `pg-main-ca` × {identity, jt-dev, jt-prod} · `jt-kafka-cluster-ca-cert` × {jt-dev, jt-prod} — **ES 이름 = target.name = remoteRef.key = 원본 Secret 이름** · `data: [{secretKey: ca.crt, remoteRef: {key: <원본 이름>, property: ca.crt}}]` · dataFrom 없음 · template 없음 · Owner · Periodic 5m(원본 CA 갱신 추종 — Strimzi CA 갱신 창에 구 CA 병존 · CNPG CA 갱신). validate 3.4 · 하네스 ca-1 · eso-3 조건 전부 충족하는 모양. **(리뷰 r1 O1 정정: "구 CA 병존"은 틀렸다 — Strimzi 1.2.0 기본 갱신은 같은 키로 `ca.crt`만 교체하고, 구 CA가 `ca-<notAfter>.crt`로 병존하는 것은 키 교체 때 원본 Secret에만이다(`InternalCa.java` :442–462 · :729–739) — 미러는 `ca.crt`뿐이라 키 교체 창에 재접속 소비자는 TLS 실패 가능 · gitops `platform/kafka-topics/README.md` §5. 결정 자체(Periodic 5m · Owner · ca.crt만)는 불변)**
+  - **D6 Application `platform-kafka-topics` spec 불변(예외 없음)** — 근거: hook 없음 · 마지막 wave(1)의 KafkaUser/KafkaTopic/CA ES Degraded는 operation을 실패시키지 않는다(T055 D5 논리) · 유일한 "앞 wave Degraded" 경로 = wave 0 비밀번호 ES의 `SecretSyncedError`(kv 미시드) → 선행 조건 **P1 = 머지 전 시드(운영자 블록)**로 막고, 그래도 실패하면 기본 retry 5(≈2.6분) 뒤 "will not retry" → 런북 수동 전체 Sync(증상표). 머리 주석의 "현재 상태(T041 시점)" 문단만 고친다. **(리뷰 r3 B1 정정: 기본 retry 창은 ≈ 2.6분이 아니라 ≈ 5분 — 대기 10·20·40·80·160 s · `appcontroller.go` :1550 · T055 실측 첫 대기 ≈ 10초)**
+  - **D7 리소스 wave**: 비밀번호 ES `"0"` → KafkaUser · KafkaTopic · CA 미러 ES `"1"`(한 wave — Degraded 격리). Application 표의 숫자가 아니다.
+  - **D8 kafka-assert Job `latency=<n>ms`(T051 인계 이행)**: `platform/policies/tests/job-kafka-assert.yaml` roundtrip을 **컨슈머 선기동**으로 바꾼다 — ① `kafka-console-consumer.sh … --group $KAFKA_GROUP --property print.timestamp=true --timeout-ms $KAFKA_CONSUME_TIMEOUT_MS`를 백그라운드로 띄우고 각 수신 줄을 `while IFS= read -r line; do printf '%s\t%s\n' "$(date +%s%3N)" "$line"; done >/tmp/consume.log`로 수신 시각(ms) 태깅 ② 준비 확인 = `kafka-consumer-groups.sh --describe --group $KAFKA_GROUP`에 멤버·할당(파티션 행)이 보일 때까지 2초 간격 폴링(상한 60초 · 실패면 roundtrip FAIL 사유 "consumer not assigned") ③ produce(기존 옵션) ④ consume.log에서 마커 줄을 폴링(상한 = `KAFKA_ROUNDTRIP_DEADLINE_S`) → `latency` = 수신 ms − `CreateTime:<ms>`(같은 파드 시계) ⑤ 백그라운드 컨슈머 종료(kill · 또는 timeout 자연 종료) ⑥ RESULT 줄 = `roundtrip <topic> produce→consume <n>s latency=<n>ms (상한 <d>s, JVM 기동 포함)` — 토큰 **정확히 1개** · 벽시계 `<n>s`는 produce 시작 ~ 마커 수신. cross-env-denied 절 불변. README 로그 계약(줄 수 ≤ 50 재계산 · 검사 id 표 roundtrip 행에 latency 설명 · "확인이 필요한 값"의 그룹 접두 공백 해소) 갱신. 그룹 `dev-identity-admin-assert`는 D3 dev 그룹 접두 `dev-identity-admin-`에 들어간다(ConfigMap 값 불변). 라이브 효과 0(tests Application은 T059).
+  - **D9 운영자 시드 블록**(모노레포 `specs/003-platform-foundation/design/t056-blocks/`): `op1-seed-kafka.ps1` = T054 `op1-seed-db.ps1`의 파생 — 경로 **2**(`kv/prod/kafka/identity-admin` · `kv/dev/kafka/identity-admin`) · 키 = **`password`만**(username은 KafkaUser 이름 = 비밀 아님) · 값 = RNG 32바이트 base64url 43자(T054와 같은 생성기) · live-ok 규칙 = 키 집합 정확히 `{password}` · 문자열 · `\A[A-Za-z0-9_-]{43}\z` → SKIP, 그 밖은 mismatch STOP(덮어쓰기 0) · 원칙 (a)–(h) · 정지점(root 토큰 보안 입력 · `seed` 확인) · `-cas=0` JSON stdin · 되읽기 SHA-256 Ordinal + `current_version=1` · 조건부 정리 · 요약 표 전부 동일. `harness.ps1`(T054 하네스 파생 — S12 정적 관문 유지 · 시나리오를 경로 2·키 1에 맞게 조정 · 추가 시나리오: 여분 키(username) 존재 → mismatch STOP · 길이 불일치 → STOP · 런북 ① 점검/② 삭제 블록 추출 GA/GB) PASS n/n이 운영자에게 주는 조건. `README.md`(T054 README 구조). **t054-blocks는 수정하지 않는다**(닫힌 과제 — 복사·파생).
+  - **D10 런북 §4 T056 소절**(`docs/runbooks/bootstrap.md` §4 T054 소절 뒤 · §5 앞): 목적 · 언제(**머지 전**) · 경로·값 표 · 사전(vault-unseal.md §0) · 실행 · 기대 출력 · 판정 · 실패 시 표 · 정리 판단 ① 점검(읽기 전용 · 표식 `[t056-cleanup-inspect]`) · ② 삭제(표식 `[t056-cleanup-delete]`) · 머지 뒤 확인(agent-view: ES 2 SecretSynced · KafkaUser 2 Ready) · 늦은 시드 · 회전은 범위 밖 · 실행 기록 자리.
+  - **D11 README `platform/kafka-topics/README.md`**(T055 README §0–§6 모양): §0 소유(13장 표 · 런타임 객체 = UO Secret 2(`identity-admin`·`dev-identity-admin`: `password` + `sasl.jaas.config`) · Kafka 토픽 4 · SCRAM 자격 · ACL) / 비소유(Kafka CR · 정책 · kv 값(운영자) · 앱 `<pod>-env`(T072) · tests Application(T059)) · 선행 조건 P1 kv 2경로 시드(머지 전) · P2 Kafka Ready + EO Ready · P3 store k8s-data-ca Valid · P4 원본 CA Secret 2 존재 · P5 ns identity/jt-dev/jt-prod · P6 agent-view RBAC(kafkausers·kafkatopics) · §1 첫 배포 순서 + 증상표(ES SecretSyncedError → operation Failed → retry 5 → will not retry → 수동 전체 Sync · KafkaUser NotReady 사유(secret 없음 · UO 미준비) · KafkaTopic NotReady(TO · 기존 토픽 설정 충돌) · finalizer로 삭제 멈춤 · CA 미러 Degraded(RBAC resourceNames) · 미러 Secret에 ca.key 발견 = T031 FAIL) · §2 확인 명령(agent-view · 하네스 기대 **kafka.tests 10/7/0 · cluster.tests 42/0/12** — 빌더가 id로 재확인) · §3 VD(VD-1 operation 전이·retryCount · VD-2 KafkaUser Ready 소요 · VD-3 KafkaTopic Ready·topicId · VD-4 UO Secret 키(운영자) · VD-5 미러 Secret 키 = ca.crt만(운영자 또는 ES spec) · VD-6 ACL 실적용(운영자 `kafka-acls.sh --list`) · VD-7 IdempotentWrite 불필요(T059 Job) · VD-8 Synced 안정(UO/TO status 쓰기) · VD-9 회전 경로(kv → ES 5m → UO ≤ 2분) — 미실측) · §4 값 근거 표 · §5 위험·되돌리기(prune false · KafkaTopic 삭제 = 토픽 삭제(finalizer `strimzi.io/topic-operator` · TO 정지 시 제거 절차 research D11) · KafkaUser 삭제 = 자격 삭제 → 소비자 즉시 인증 실패 · ES 삭제 → Secret GC → UO NotReady · CA 갱신 추종) · §6 인계(T059 · T072 `<pod>-env` KAFKA_PASSWORD ← `kv/{env}/kafka/identity-admin` · T084 회전 · T097 · T098 · SP-2 구독/그룹 확장).
+  - **D12 문서 행**: `platform/README.md` · `clusters/oci-k3s/apps/README.md` kafka-topics 행 · Application 머리 주석 "현재 상태".
+  - **D13 확인 스크립트** `.superpowers/t056/t056-verify.ps1`(pre/post · T055 파생) + `poll-live.sh`(message 기록 포함) — 컨트롤러만 실행.
+  - **D14 비밀 취급**: 저장소에 비밀 0(ES만) · 시드 값은 kv에만 · 빌더/리뷰어 라이브 금지 · 관찰자 읽기 전용.
+- **하네스 기대(이 PR 뒤)**: kafka.tests **10 PASS / 7 FAIL / 0 SKIP**(topic-1 · user-1 · user-2가 PASS로 · FAIL = df-1·2 · job-k-1..3 · job-d-1..2) · cluster.tests **42 / 0 / 12**(ca-1 SKIP → PASS) · 렌더 13장(ES 7 · KafkaUser 2 · KafkaTopic 4).
+- **진행 계획**: 워크플로 빌드 3슬라이스 병렬(A gitops · B blocks+런북 §4 · C verify/poller) → 리뷰 3렌즈(spec · security · operator) → fix 라운드 → 운영자 시드(머지 전 · 하네스 PASS 뒤) → PR → CI → 운영자 머지 → 폴러 · post · 하네스 → 관찰자 → 런북 §3 T056 · 학습 로그 · tick 62/119.
+- **빌드 중단 · 이어받기(17:59–18:07)**: 첫 빌드 워크플로 `wf_bcb1462b-249`(`model: 'fable'`)의 세 에이전트가 **Fable 사용 한도**로 동시에 멈췄다(gitops = 브랜치만 · blocks = `op1-seed-kafka.ps1` 초안 1파일 · verify = 두 파일 초안 + 검증 도중). 사용자 `/model` → Opus 5.5 · `TaskStop` 뒤 부분 산출물 sha256을 이어받기 공지로 고정해 **`wf_30c65fc1-d05`**(`model: 'opus'` · 사본 `.superpowers/t056/workflows/t056-build-r2.js`)로 재디스패치 — 빌드 3 + 리뷰 r1 4렌즈를 한 실행으로(약 112분 · 에이전트 7 · 보고 전부 `.superpowers/t056/reviews/{build-r2-*,review-r1-*}.md`).
+- **빌드 결과(r2)**: gitops DONE_WITH_CONCERNS(렌더 13 · sha256 `1ef88036…de62` · policies/tests `450c2a6b…2acd` · CRD 잎 전수 대조 불일치 0 · validate PASS 39/0/WARN 4 · ES 23→37 · 자기검사 `^(positive|es-|wave-)` 10/0 · Job 모의 5경로 — latency 토큰은 PASS 줄에만 1개) · blocks DONE_WITH_CONCERNS(초안 문구 2줄만 수정 · 하네스 **93/93 · 2396/2396** · 변이 8 전부 잡힘 · 런북 §4 T056 +160줄 1헝크) · verify DONE(초안에서 18+7곳 수정 — 시각 UTC 처리 · 블록별 try · retryCount 0/1 Info · `-KafkaGeneration` post 필수 · kafka-roll을 operation 이후 재기동만으로 · 폴러 신원 게이트 · 벽시계 40분 상한 등 · 모의 pre 16 · post 41 ALL PASS · 결함 주입 FAIL 9).
+- **빌더 편차 수용(컨트롤러 결정 2026-10-16)**: gitops 6건 — ① 콘솔 컨슈머 새 옵션 `--command-config`·`--formatter-property`(옛 이름은 4.2부터 폐기 안내를 stdout에 찍어 수신 기록에 섞인다 · `ConsoleConsumerOptions.java` :220–223·:379–382) ② 컨슈머 `--timeout-ms` = (60 + 상한)×1000 + 유휴(110000 — 유휴 타이머가 첫 poll부터 흐른다 · `ConsoleConsumer.java` :211–217) ③ `$!`(파이프 마지막 원소) 대신 `BASHPID`+`exec`로 컨슈머 PID 기록 ④ "consumer exited before assignment" 조기 실패 경로 · 준비 확인 JVM `-Xmx128m` · EVIDENCE ≤ 1 ⑤ template 서술 정정(`template.data`/templateFrom이 있을 때만 키가 Replace) ⑥ KafkaTopic 실패 = `Ready=False`(NotReady 아님) → Argo Progressing으로 서술 · platform README 행 신설. blocks 5건(하네스 `$PATHS`에 ku·es 열 · 시나리오 추가분 · 런북 늦은 시드에 수동 전체 Sync 단계 · 실패 표 dead 행 T054 참조 · 머지 뒤 확인 이름 지정) · verify 추가 판정(vault-data store · acl-shape · topic 기대 밖 키 · es-scope/es-all · eo-pod) — 세 리뷰가 코드로 재확인해 수용 권고.
+- **리뷰 r1(19:2x–20:0x · 4렌즈 전부 approve_with_fixes · high 0 · medium 4 · low 21)**: spec S1(medium — README §6 T072 인계·:160의 dev 그룹 접두가 D3와 다름) · S2(data-model §6 ACL 행과 D3 차이 미반영) · S3(finalizer 제거 시 토픽 잔존 — 코드 근거 보강) · S4(줄 수 180→188 · ca-1 SKIP 해석 문구) · S5(하네스 job-k-3 주석·사유 "consumer idle wait"가 T056 뒤 사실과 다름) · S6(Job resources 주석 "JVM 2회") · S7(converge 인계 1번 — AppProject platform ↔ jt-dev 문장 모순에 T056 근거 추가) / security K1(medium — README에 KafkaUser ↔ ns data Secret 권한 경계(secretKeyRef로 ns data 임의 Secret 참조 · 자격 Secret 이름 = KafkaUser 이름 · K5 등급)가 없다) · K2(그룹 접두 `-` 구분자 — 미래 pod `identity-admin-x` 그룹까지 덮음) · K3(ns identity도 vault-data로 kv kafka를 읽을 수 있다 — 기존 설계 · 노출 0) · K4(줄 수) — validate 단독 PASS 39/0/WARN 4 · 366초 · fork 0 / operator O1(medium — "갱신 창에 구·신 CA 병존"이 Strimzi 1.2.0 코드와 반대: 기본 갱신 = 같은 키로 ca.crt만 교체 · 키 교체 때만 원본에 `ca-<notAfter>.crt` 병존 → 미러는 ca.crt뿐이라 키 교체 창에 재접속 소비자 TLS 실패 가능 · `InternalCa.java` :442–462·:729–739) · O2(§2 첫 명령에 revision 없음 · `retry=0`은 omitempty라 빈 값) · O3(증상표 — UO reason은 항상 `ExecutionException` · operation 메시지 문면 · ESO 정지 시 operation Running 영구 행) · O4(=S6 · 줄 수) · O5(프로듀서 send 실패가 '마커 미수신'으로 가려짐 · 옛 멤버 오인) · O6(폴러 로그 발췌 `secret` 필터가 진단 줄까지 지움) · O7(=S5) — 인용 줄 번호 ≈ 40건 대조 틀린 인용 0 / blocks H1(medium — B5 유지 목록의 token lookup 실패 시나리오 부재 · 블록 :299 분기 미시험) · H2(B3 문자 집합 '='·'.'/'~' 변이 생존 · '_' 무작위) · H3(대소문자 변형) · R1(런북 실행 명령 상대 경로) · R2(늦은 시드 UO 주기 120초 미기재) · D1(README §2 `write` 문구) · C1(prod/dev 같은 비밀번호 미검출) — 하네스 재현 93/93 · 변이 20종 중 15 포착(등가 1).
+- **수정 라운드 r1 결정(F1–F6 · 2026-10-16 20:1x)**: **F1** 컨트롤러 직접 — data-model §6 ACL 행 정정(S2: 자기 접두 Read·Write·Describe(dev/prod 대칭 — 자기가 낸 이벤트를 읽는 권한 · 검사 Job · DLQ 점검) · 그룹 접두 prod `<pod>-` / dev `dev-<pod>-` · cluster ACL 없음 KIP-679) + pod 이름 규칙 한 줄(K2: 새 pod 이름은 기존 pod 이름 + `-`로 시작하지 않는다) · 폴러 발췌 필터를 `password|jaas|secret data`로 좁힘(O6) · converge 인계 1번에 T056 근거(S7 — 아래 「converge 인계」). **F2** gitops 수정 빌더 — S1 · S2 근거 표기(data-model §6 정정 인용) · S3 · S4 · S6/O4 · S7 문장 · K1(README §4 행 + §5 bullet) · K2(§6 SP-2 bullet) · K3(§4 받아들인 사실) · O1(세 곳 + **`platform/kafka/README.md` §5 「인증서 갱신」 bullet 한 줄 — 범위 예외 허용**) · O2 · O3(a)(b)(c) · **O5 반영**(마커 미수신·produce 실패 경로에 produce.log 마지막 ERROR/Exception 줄 EVIDENCE 1줄(140자 · `password|jaas` 제외) + 실행마다 고유 `client.id`로 할당 판정 · 로그 계약 ≤ 5줄) — validate.sh는 돌리지 않는다(r2 렌즈 2 단독). **F3** blocks 수정 빌더 — H1(S14b) · H2(문자 집합 시나리오 + LIVE_PW에 '_') · H3(S09d · GB06b 추가) · R1(절대 경로) · R2(120초) · D1 · **C1 = (b) 채택**(판정 단계에서 두 경로가 모두 live-ok면 password SHA-256 Ordinal 비교 — 같으면 STOP · 값 미출력 · 쓰기 0; dev 값은 jt-dev `assert-env`로도 복사되므로 같은 값이면 dev 노출이 곧 prod SCRAM 노출이다) · 수치 갱신. **F4** 하네스 문구 빌더 — `tests/platform/kafka.tests.ps1` job-k-3 주석(:78–80 · :446–447 · :810–811)·사유 문자열(:824 · :826)을 T056 Job 정의(벽시계 = produce 시작 ~ 마커 수신 · 프로듀서 JVM 기동 포함 · 컨슈머 선기동이라 유휴 대기 없음)로 · 단위 테스트 기대 문자열(`tests/scripts/kafka-tests.tests.ps1` :334 · :462 · :695 · :751 등) 동반 수정 · 영향 케이스만 `KAFKA_HARNESS_TESTS_ONLY`로 실행. **F5** 리뷰 r2 = 4렌즈(지적 반영 확인 + 회귀 · 렌즈 2만 validate 단독). **F6** verify 슬라이스는 수정 없음(O6만 컨트롤러가 반영).
+- **converge 인계 1번 보강(S7)**: 계약 gitops-repo.md :49 AppProject 행 「`platform`에 `jt-dev`를 넣지 않는다」는 T041 이후 이미 `clusters/oci-k3s/projects/platform.yaml` :15–17과 모순이었고, **T056이 project platform 리소스(CA 미러 ES — jt-dev·jt-prod 4장 · identity 1장)를 앱 ns에 더해 모순이 커졌다** — 정정 초안은 그 파일 주석 그대로(「`platform` destinations는 §네임스페이스 표 14개 전부 · AppProject `tests`는 검사 Job Application의 권한 상한 분리용」).
+- **수정 라운드 r1 + 리뷰 r2(`wf_fcb1fe2c-aa9` · 20:1x–21:2x · 69분 · 보고 `reviews/{fix-r1-*,review-r2-*}.md`)**: 수정 3슬라이스 — gitops DONE_WITH_CONCERNS(G1–G14 전부 · kafka-topics 렌더 `1ef88036…de62` 불변 · policies/tests `c470e3de…e8b9` · Job 205줄 · 모의 9경로(신규 produce-auth-fail · stale-member — r1 스크립트는 stale-member에서 거짓 FAIL → 수정본 PASS) · 필터 변이 시 미끼 비밀번호 노출 재현으로 필터 실효 확인) · blocks DONE_WITH_CONCERNS(하네스 **100/100 · 2608/2608** · 변이 34종 중 32 포착 · 생존 2 = 등가) · harness DONE(표적 단위 테스트 92/0). 리뷰 r2 — spec **approve**(S8 events.md DLQ·그룹 dev 변형 없음 · S9 ConfigMap 머리 주석 낡음 · S10 C26b 제목) · security approve_with_fixes(**K5 — consumer_err에 password|jaas 필터가 없어 비밀번호에 따옴표가 섞이면 JAAS 파싱 오류 문구로 비밀번호 조각이 RESULT 줄에 나간다**(블록 밖 kv 쓰기에서만 · Kafka 4.3.1 `JaasConfig.java` :113–116 · 모의 재현 조각 1회) · K6 pod 이름 `dev`/`dev-…`면 prod ACL 접두가 dev 토픽·그룹을 덮는다 · K7 C1 조치가 어느 쪽 재생성인지 말하지 않음 · K8 폴러 머리 주석) · operator approve_with_fixes(O8 증상표 첫 행이 재시도 대기(phase Running · "Retrying attempt #n")와 최종(Failed · "(retried 5 times)" + SyncError 조건)을 섞음 · O9 폴러 머리 주석 · O10 build-notes D5 정정 표시 · O11 produce rc≠0 RESULT 줄이 필터 없는 `tail -n 1`) · blocks approve_with_fixes(R3 C1 조치 = 두 경로 모두 지우고 재생성(남기는 쪽도 블록 밖을 거친 값) · D2 README 하네스 줄 번호). **high · medium 0 · low 13.**
+- **r2 수정 결정(2026-10-16 21:3x)**: 컨트롤러 직접 — S8(events.md :5 DLQ prod/dev · :64 그 env의 DLQ · :70 그룹 prod `<pod>-<purpose>` / dev `dev-<pod>-<purpose>`) · K6(data-model §6 bullet에 「pod 이름은 `dev`가 아니고 `dev-`로 시작하지 않는다」 + 막는 장치 없음 = 후속 후보) · O10(D5 정정 표시) · K8/O9(폴러 머리 주석) · R3/K7(런북 실패 표 C1 행 조치 = **두 경로 모두** ② 삭제 → 재실행 · 머지 뒤 ② 삭제 금지 = 회전 T084 · 「정리 판단」 예외 문구 "두 경로" · 블록 README §1 C1 행 · §6) · D2(README 하네스 줄 번호 :55–57) · S10(단위 테스트 C26b 제목 "pre-T056") — 확인: 블록 하네스 **100/100 · 2608/2608 · 9.2초**(펜스 불변) · 단위 테스트 `C26b,C26,C02,C01` **52/0**. gitops 수정 빌더(r2) — **K5 + O11**(Job: 필수 값 확인 직후 `KAFKA_PASSWORD` base64url 형식 검사 → 아니면 값 미출력 FAIL로 닫음 + consumer_err · groups_note · produce/cross-env 꼬리 3곳에 같은 `password|jaas` 필터 헬퍼 · 모의 jaasfrag 경로) · O8 · S9(ConfigMap 주석 2줄 — 범위 예외) · K6(README §6 SP-2 줄) · S8 선택분(README §6 T072 DLQ env 줄) → 리뷰 r3 2렌즈(security = Job 비밀 경로 + validate 단독 / spec·operator 통합 = 문서·회귀).
+- **수정 r2 + 리뷰 r3(`wf_055cc8e0-dbe` · 21:3x–22:3x · 58분 · 보고 `reviews/{fix-r2-gitops,review-r3-*}.md`)**: gitops 수정 DONE_WITH_CONCERNS(K5 형식 검사 = 나열형 패턴 `*[!ABC…xyz0123456789_-]*`(범위형은 glibc UTF-8 로캘에서 전각 A · Kelvin 기호를 통과시킨다 — musl은 둘 다 거부 · Kafka 이미지 Alpine) · `safe_tail` 헬퍼(들여쓴 스택 프레임 · `password|jaas` 줄 제외 → 마지막 줄 뒤 140자 · 없으면 nodiag) 다섯 곳 · O8 · S9 · K6 · S8 · 모의 11경로 · 빨강 대조(r1 스크립트 jaasfrag 조각 1 · `\t... 5 more`) · policies/tests 렌더 `e8d156eb…6f7c`). 리뷰 r3 — **A 보안·관문 approve**(형식 변형 81종 전부 닫힘 · 미끼 5경로 누출 0 · 필터 변이 5/5 누출 → 필터 실효 · validate 단독 **PASS 39 / FAIL 0 / WARN 4 · 329초 · fork 0** · ES 37 · 자기검사 10/0) · low A1(cross-env PASS 근거 줄만 필터 밖 · 주석이 "전부"라고 과대 주장) · A2(T084 회전 인계에 base64url 조건 없음) / **B 문서·정합 approve_with_fixes** — B1(기본 retry 창 「≈ 2.6분」은 증가 전 지수로 셈한 값 — 실제 대기 10·20·40·80·160 s ≈ 5분 · `appcontroller.go` :1550 · T055 관찰자 실측 첫 대기 ≈ 10초와 일치 · 예외 retry(30s ×2 · 5m)는 ≈ 12.5분이 아니라 ≈ 17분) · B2(pod 이름 규칙이 한 방향만 — 새 pod `identity`도 `identity-admin`의 그룹을 덮는다) · B3(DLQ prod 형 표기가 data-model §4 · events.md :8 · 승인 문면에 남음) · B4(=A2). **high · medium 0.**
+- **r3 수정(컨트롤러 직접 · 2026-10-16 22:4x)**: gitops — A1 = cross-env PASS 근거 파이프에 `grep -v '^[[:space:]]' | grep -viE 'password|jaas'`(PASS 판정 `grep -qE`는 불변) + Job 머리 주석 · 스크립트 안 주석 · tests README 문구를 "다섯 곳 + PASS 근거"로 정확히 · B1 = T056 문서 5곳(README :20 · :117 ×2 · Application 머리 주석 · ES 파일 주석) · B2 = README §6 대칭 규칙 · A2/B4 = README §6 T084 형식 조건 → kafka-topics 렌더 **불변 `1ef88036…de62`** · policies/tests 렌더 **`276ddd09…8e93`** · Job 225줄 · `bash -n` OK · 모의(빌더 러너) ok · produce-auth-fail · exited · jaasfrag = 출력 · 토큰 · 누출 0 그대로 · **리뷰어 decoy-cross-pass: r2 스크립트 비밀번호 1회 → 새 스크립트 0회(빨강 → 초록)**. 모노레포 — 계약 gitops-repo.md :48 retry 창 정정(기본 ≈ 5분 · 예외 ≈ 17분 — 이전 표기 병기) · 런북 :752(T053) · :829(T054) · :1019(T056) 수치 정정 · :1173 회전 형식 조건 · data-model §4 DLQ env(:80 · :82 · :244) · §6 대칭 pod 이름 규칙 · events.md :8 쓰기 접두 env.
+- **converge · 후속 인계(r3)**: ① 승인 문면 tasks.md :186(T069) · spec.md :432의 DLQ `<pod>.dlq`는 prod 형 — dev는 `dev.<pod>.dlq`(events.md :5 · :64 · data-model §4 · §6 정정 2026-10-16 — 동결 문서라 고치지 않는다 · T069 구현자는 계약을 따른다) ② **gitops 문서 후속 PR(T056 머지 뒤)**: `platform/cnpg-cluster/{kustomization.yaml, README.md}` · `platform/cnpg-databases/README.md` · `clusters/oci-k3s/apps/{platform-cnpg-cluster,platform-cnpg-databases}.yaml` 머리 주석의 「≈ 2.6분」 → ≈ 5분 · 「≈ 12.5분」 → ≈ 17분(렌더 불변) ③ T053 build-notes D8(:389)의 「≈12.5분」도 같은 정정 대상(닫힌 과제 기록 — 이 줄로 갈음) ④ pod 이름 규칙 막는 장치(copier `pod_name` 검증기 · validate KafkaUser 규칙 — 양방향 접두 판정) = 후속 후보 ⑤ T059: Job nodiag 문구에 `password · jaas` 낱말이 있어 같은 필터로 Job 로그를 거르면 그 줄이 빠진다(fail-closed · 리뷰 r3 A 관찰) — 문구 조정 판단.
+- **커밋 · PR(2026-10-16 22:5x)**: 모노레포 `0254cc9`(계약 r3) · `a2a7829`(시드 블록 · 하네스 100/2608 · 런북 §4 T056 · 하네스 job-k-3 문구) → gitops `2ba8080`(13파일) → **PR #52**(head `2ba80803b5a122b7ed976dba27b24468e8e9891e`) · CI 전부 pass(validate 1m7s) · `t056-verify.ps1 -Stage pre` **ALL PASS 16**(22:26 KST · Kafka generation 1).
+- **⚠ 사고 — 선행 조건(kv 시드) 없이 머지(2026-10-19)**: 컨트롤러가 시드 지시와 **같은 메시지에** 조건부 머지 명령("`판정: … 준비 완료`가 나오면 머지")을 줬고, 세션이 3일 뒤(10-19) 이어지면서 운영자가 머지 명령만 실행 → **PR #52 squash → main `b232956ccf7b419344ad1ddae4e005930da4e5e1`(01:30:13Z = 10:30:13 KST)** → 자동 operation 01:32:43Z(+2:30) · wave 0 ES 2장 `SecretSyncedError` → Degraded → 재시도 시도 종료 01:32:58 · 01:33:20 · 01:34:02 · 01:35:24 · 01:38:06Z(간격 22 · 42 · 82 · 162 s — **리뷰 r3 B1의 대기 20 · 40 · 80 · 160 s를 라이브로 확인**) → Failed "(retried 5 times)" + `SyncError`. 컨트롤러는 첫 응답에서 머지 시각 · 토큰 상태를 확인했고(agent-view 만료 10-17 00:02 → 운영자 재발급 · 만료 18:32) 라이브 스냅샷으로 시드 누락을 확인 → 런북 「늦은 시드」 안내 → 운영자 시드(10:40–10:41 · 2경로 생성 v1 · 되읽기 해시 일치) → 첫 annotate는 시드 창(관리자 kubeconfig 없음)에서 실패(`NotFound`) → `--kubeconfig <관리자>`로 재실행 → ES `SecretSynced` 01:44:25–26Z → 수동 Sync(`.operation` merge patch) 01:45:12–16Z Succeeded → KafkaUser 2 · KafkaTopic 4 Ready 01:45:16–17Z · 미러 5 SecretSynced. 실해 0(소비자 미배포). **교훈 → 메모리 `feedback-operator-blocks-gated`**: 머지 명령은 선행 조건 출력을 받아 확인한 뒤에만 준다 · 세션 재개 첫 응답에서 선행 조건 상태부터 확인한다.
+- **수동 Sync 뒤 operationState 오염(관찰)**: 수동 operation의 `initiatedBy` = `{automated: true, username: operator-t056-late-seed}` · `operation.retry` = `{limit: 5}` · `operationState.retryCount` = 5 · history id 0도 같은 initiatedBy. 성공한 시도는 재시도 없음 → post `app-retry` FAIL 1은 설명된 흔적. **관찰자 판정(아래)**: "남은 `.operation` 병합" 가설 기각 — 원인은 kubectl `.operation` 직접 주입이 `SetAppOperation`의 `status.operationState` 비우기를 건너뛰고, 컨트롤러가 operationState를 JSON merge patch로 써서 omitempty 필드에 옛 값이 남은 것.
+- **라이브 결과(2026-10-19)**: `t056-verify.ps1 -Stage post -Revision b232956… -KafkaGeneration 1` **PASS 40 · FAIL 1(app-retry — 위)** · 하네스 `kafka.tests.ps1` **10/7/0**(기대 그대로) · `cluster.tests.ps1` **42/0/12**(ca-1 PASS · argo-1 22 · eso-2 16) · 폴러 17틱(01:33:10–01:46:06Z) 증거 20파일 `evidence/live/`. **T056 체크 `[X]`(62/119)** · 런북 §3 T056 · §4 T056 실행 기록 작성.
+- **관찰자 VD(2026-10-19 01:55–02:22Z · `wf_fd79686f-9c1` · 보고 `reviews/live-vd-observer-2026-10-19.md` · 로그 사본 `evidence/live/observer-*` 7파일 — 비밀 모양 0)**: VD-1 FAIL(문면 — P1 위반의 귀결 · D6 유지) · VD-2 PASS(KafkaUser Ready ≤ 2.0초) · VD-3 PASS(KafkaTopic ≤ 2.1초 · topicId · finalizer 4/4) · VD-4/5/6 운영자 몫 · VD-7 NA · VD-8 PASS(Synced 3회 · rv 불변 · SyncError 해소) · CA 미러 · Kafka CR 불변 PASS. **재시도 대기 10·20·40·80·160 s 초 단위 확인**(첫 대기는 컨트롤러 로그 01:32:46 → :56) · message `at`은 증가 전 값이라 이르다. **수동 Sync 기전 판정**(위) — `.operation`은 Failed 때 비워졌다(`appcontroller.go` :1683–1687 · autoSync 관문 통과 로그 3회) · 운영자 patch 본문은 그대로 실행됐다(`Initialized new operation` 로그) · 정상 경로 `SetAppOperation`(`util/argo/argo.go` :939–963)은 진행 중 거부 + operationState 비우기 · 잠재 위험(첫 실패를 "(retried 5 times)"로 닫음 · sync window 자동 판정 · 이벤트/RBAC 우회) → **런북 §4 T056 · T054 「늦은 시드」 4단계 정정**(ⓐ 대기 / ⓑ 수동 Sync: UI → CLI 플래그 없이 → JSON patch(test phase Failed · remove operationState · add operation) · merge patch 금지). 판정 밖: Healthy-but-OutOfSync 창(Missing 리소스는 health 집계 제외) · force-sync 어노테이션 잔존(무해) · UO/TO 노이즈(T098) · hookPhase Running 영구 · SyncError 문면 대괄호 · 폴러 필터가 결정 증거와 `could not get secret data from provider`를 지움(T057 폴러 보강) · 고아 2 = PVC + `cnpg-default-monitoring` 추정 · 다른 앱 영향 0 · D6/D7 재검토(한 wave 안은 미시드가 Synced/Degraded로 끝나 자동 회복 — 대가는 실패가 Failed로 안 보임) → **D6 유지 + 머지 관문 권고 채택**. 문서 정정 후보 16 — 런북 7–13(이 커밋) · build-notes 14(이 줄) · **gitops README 1–6 → 후속 문서 PR** · 도구 15–16(폴러 필터 · verify app-retry 잔재 분류) → T057 확인 스크립트 파생 때 반영.
+- **후속 문서 PR #53(`t056-docs-followup` · `418213a` · kafka-topics README 수동 Sync·실측 + cnpg 재시도 창 수치 · 렌더 불변 · CI validate 1m3s pass) → 운영자 squash 머지 → main `3fa4440129f38010742a0912d213596c9625c7a6`(2026-10-22 10:49:05 KST) · 로컬 브랜치 삭제 · 로컬 main 동기 — T056 닫힘.** agent-view 토큰 재발급(만료 2026-10-22 18:48 KST) → 다음 = T057.
+- **받아들인 사실 · 후속(K3)**: store `vault-data`의 `conditions.namespaces`가 [data, identity]이고 eso-data 정책이 `kv/data/{dev,prod}/kafka/*`를 열어 **ns identity도 kv kafka 2경로를 ES로 읽을 수 있다**(T045부터의 설계 · identity에 vault-data ES 0장이라 라이브 노출 0 · 노출하려면 Git PR). 후속 = T080(Authentik webhooks ES)과 함께 validate 3.3 · 하네스 eso-3에 「ns identity + vault-data → `{dev,prod}/authentik/webhooks/*`만」 규칙(컨트롤러 판단).
+
+## T057 (2026-10-22 시작 — Dragonfly `dragonfly-dev`·`dragonfly-prod` Deployment + ACL ExternalSecret 2 + PVC 2 + Service 2, gitops `platform/dragonfly/` + data-assert Job Dragonfly 검사 id 5 추가 + 운영자 kv 시드 7경로 + VD-4 실측)
+
+- **입력 대조(11:00 KST)**: tasks.md :155(문면 = 값의 정본 — 이미지 `v1.40.1@sha256:…` · 인자 4 · `requirepass` 금지 · 사용자 dev 4종/prod 3종 · `%R~revoked:*` · `terminationGracePeriodSeconds: 60` · PVC local-path 2Gi + `Delete=false,Prune=false` · Recreate · nodeSelector role=data · requests 256Mi/limits 900Mi · automount false + securityContext + `/tmp` emptyDir · Service · VD-4 옵션 A/B) · contracts/denylist.md 전문(§ACL 표 · §VD-4 · §Vault 경로 · §검증 T051) · data-model §3(:40–65 유실 창 · 정상 종료 스냅샷) · §8(:161–162 `kv/{env}/dragonfly/acl` 키 `users.acl` 파일 전문 · `kv/{env}/dragonfly/<user>` 키 `password`·`url` · admin은 ESO 소비자 없음 · :168 vault-data 열거 경로에 `dragonfly/*` 포함) · quickstart :74–77(VD-4 = `logs job/data-assert | grep -A5 'ACL LIST'`) · gitops-repo.md :51(워크로드 강화 범위에 dragonfly) · :66(wave 30 — 숫자 재기재 금지) · :79(platform 이미지 digest 병기) · :166(§3.3 vault-data 열거) · :169(§3.6 automount lint 범위 `platform/dragonfly`) · network-policy.md :87(jt-dev/jt-prod → data 6379 — 정책 변경 0) · hostnames-and-access.md :67–71(data-assert Job은 ns jt-dev · dev scope ES만) · build-notes 「T050 · T051」 T057 몫(:339 — Job id 5: noauth · writer-set · reader-get · reader-set-denied · reader-cross-denied · 기존 acl-list · noperm 유지 · 프로브 키는 Job이 끝에 정리) · 하네스 `kafka.tests.ps1` :64–71(df-1 · df-2 선언) · :156–165(상수 · `$dataJobIds` 7 · `$sampleEvidenceRow`) · :746–795(df-1/df-2 본문) · job-d-2(:820–840 — id 7 각 1줄 PASS · `%R~revoked:*`는 acl-list 근거 또는 `EVIDENCE:   user sample-pod` 행 · SUMMARY 수 = RESULT 수 · fail=0 요구 없음) · `data.tests.ps1` job-2(:86–91 — pg id 6 PASS · **fail=0** · 추적 밖 id의 FAIL도 문제 → Dragonfly id 7도 전부 PASS여야 data.tests job-2가 PASS) · `cluster.tests.ps1` argo-4-dragonfly(:57 — ns data PVC 이름에 dragonfly 또는 라벨 `app.kubernetes.io/name=dragonfly` · sync-options 정확히 `Delete=false,Prune=false`) · gitops 현재 상태: `platform/dragonfly/kustomization.yaml` = `resources: []` 뼈대 · Application `clusters/oci-k3s/apps/platform-dragonfly.yaml`(라이브 wave 30 · ns data · 표준 syncPolicy · resources 0 · Synced/Healthy) · validate.sh 접점(3.3 `RE_DATA_ENUM` dragonfly · 3.6 `RE_LOC_AUTOMOUNT` platform/dragonfly · WAVE_TABLE `dragonfly 30 data` · 4b digest WARN) · `platform/policies/tests/`(ConfigMap `DRAGONFLY_ACL_USER=sample-pod` · `DRAGONFLY_ACL_PATTERN=%R~revoked:*` · `REVOKED_PROBE_KEY=revoked:sub:assert-probe` · ES `assert-env`가 `dev/dragonfly/identity-admin`·`dev/dragonfly/sample-pod`의 `url` + **`dev/openfga/*` 2키**를 함께 읽는다 → T082 전에는 ES 전체가 SecretSyncedError) · 라이브(agent-view 11:00): 노드 `joshtech-cache`(role=data) allocatable 13241680Ki · requests 3250 MiB · limits 5922 MiB(두 인스턴스 +512Mi/+1800Mi 수용) · ns data PSA **baseline** · PVC 3장 전부 storageClass `local-path` · Reloader scoped ns = identity·jt-dev·jt-prod(**data 미감시**) · 검사 도구 = `D:\code\joshuatech_ver2\.superpowers\bin`(kustomize · kubeconform · yq · gitleaks · actionlint).
+- **1차 자료 확인(Dragonfly v1.40.1 소스 · 이미지 config — 2026-10-22, 스크래치 `dfly-src/`)**:
+  - **aclfile 로더** `src/server/acl/acl_family.cc`: `Init`(:642–656) — aclfile이 있고 `Load()`가 성공하면 끝, **실패하면 `registry_->Init()`로 기본 레지스트리(default nopass · +@all · ~* · &*)로 기동한다**(LOG(WARNING)만 — 파일 오류 = **무인증 인스턴스**가 되는 조용한 함정). `LoadToRegistryFromFile`(:293–358): 파일 읽기 실패 · 빈 파일 · materialize 실패 · 한 줄이라도 파싱 오류 → 전체 로드 실패. 사용자마다 `-@all`을 먼저 적용한 뒤 줄의 토큰을 적용. **파일에 `default`가 없으면 `DefaultUserUpdateRequest()`(nopass +@all ~* &*)로 default를 만든다**(:353–357 · `user_registry.cc` :136–145) → default 줄을 반드시 적는다. `MaterializeFileContents`(:723–745): `\n` 분리 · **빈 줄은 건너뜀** · 공백(`' '`) 분리 SkipEmpty · 첫 토큰 `USER`(대소문자 무시) · **토큰 ≥ 4가 아니면 실패**(`USER default OFF` 3토큰은 거부) · 사용자 이름 = 둘째 토큰 · 나머지는 `ParseAclSetUser(args, hashed=true)`(:321) — **`#<hex>` 해시 허용**(:1087–1092 · `user.cc` :92–104 `absl::HexStringToBytes` · 잘못된 hex는 LOG(ERROR)만 내고 그 사용자는 비밀번호 없음). 토큰 종류: `>평문` · `#해시` · `nopass` · `resetpass` · 키 `~p` `%R~p` `%W~p` `%RW~p` `allkeys` `resetkeys`(:757–780) · 채널 `&p` `allchannels` `resetchannels` · `$<db>` · `NAMESPACE:` · `ON`/`OFF`(대문자 변환 뒤 비교 :859–867 → 대소문자 무시) · `+@cat`/`-@cat` · `+cmd`/`-cmd` · 그 밖 → `Unrecognized parameter`(**CR이 붙은 `+@all\r`도 여기**) → 로드 실패. `ACL SAVE` 형식(`RegistryToString` :226–250) = `USER <name> ON|OFF #<fullsha> <keys> <pubsub> <cat/cmd> $<db>` — 로더는 이 형식을 그대로 읽는다. `ACL LIST`(:85–110)는 소문자 `user` + 해시 **15자 축약**(`PrettyPrintSha` :831–836) + 키(`AclKeysToString` :882–899 — `%R~p` 표기 유지) + 채널(`AclPubSubToString` :901–913 — 패턴 없으면 `resetchannels`) + `+@all`. `ACL LOAD`(:364–380)는 aclfile을 다시 읽는다(런타임 회전 경로).
+  - **인증**: `main_service.cc` `CreateContext`(:1869–1888) — 새 연결은 default 자격으로 시작하고 `req_auth = !AuthUser("default", "")`; `AuthUser` = `IsActive && HasPassword`(`user_registry.cc` :111–119) → **default가 OFF면 모든 비인증 명령은 `-NOAUTH Authentication required.`**(:1403–1405). NOPERM 문구 `-NOPERM <user> <msg>`(:1340).
+  - **HTTP 콘솔**: `ConfigureHttpHandlers`(:2956–2967) — `should_skip_auth = (privileged && admin_nopass) || GetPassword().empty()`, 즉 **`requirepass`가 비어 있으면 주 포트 HTTP(`/` 콘솔 · `/metrics` · `/healthz`)는 무인증**(ACL 사용자는 세지 않는다). 주 포트 HTTP는 `--primary_port_http_enabled`(기본 true · `dragonfly_connection.cc` :58 · `dragonfly_listener.cc` :162–167)로 끈다. `--expose_http_api` 기본 false(명령 실행 API 없음).
+  - **스냅샷**: `server_family.cc` :111–114 `dir` · `dbfilename` 기본 **`dump-{timestamp}`** · :121 `snapshot_cron` · 기동 `LoadFromSnapshot`(:1283–1300 — 적재 실패 = **프로세스 종료**) · 종료 `Shutdown`(:1324–1343 — `save_on_shutdown_` && dbfilename 비어 있지 않으면 `DoSave()`) · `snapshot_storage.cc` `LoadPath`(:311–354 — 정확 일치 없으면 `{timestamp}`를 `*`로 바꾸고 확장자 없으면 `*`를 붙여 글롭 → mtime 정렬 → 최신 `*-summary.dfs`/`.rdb`) · `save_stages_controller.cc` `ValidateFilename`(:64–82 — 디렉터리 구분자 금지 · 확장자 규칙). 기본값으로 5분 cron이면 **스냅샷 파일이 무한 누적**(보존 정책 플래그 없음 — 2Gi PVC 소진 경로).
+  - **이미지** `ghcr.io/dragonflydb/dragonfly:v1.40.1` 인덱스 digest **`sha256:ebf3c6c213e82fb51b4521660cca13f06f3421dc5b1ed14f2f474c50b5e29986`**(application/vnd.oci.image.index.v1+json · linux/amd64 `26893a7d…` · linux/arm64 `58070cae…`). config: `User` 없음(root로 시작) · `Entrypoint ["/usr/bin/tini","--","entrypoint.sh"]` · `Cmd ["dragonfly","--logtostderr"]` · `WorkingDir /data` · `Volumes /data` · 사용자 `dfly` **uid 999 / gid 999**(history `useradd -r -g dfly -u 999 dfly`). `tools/docker/entrypoint.sh`(태그 v1.40.1): 첫 인자가 `-`로 시작하면 `dragonfly --logtostderr`를 앞에 붙인다 · root면 `/data` chown + `setpriv --reuid=dfly` · `umask 0077` · `exec "$@"`. `healthcheck.sh`는 `nc -q1 … PING`(응답 미판정). **r1 정정(2026-10-22)**: 이미지에는 `redis-tools 6.0.16`의 redis-cli가 **있다**(arm64 레이어 `usr/bin/redis-cli` · `--user`·`--askpass` 지원 — 운영자 `ACL LOAD` 경로의 근거) — 처음 적은 "redis-cli 없음"은 오류. 태그 목록에 **v1.40.2**가 있다 — 과제 문면이 v1.40.1을 못박았으므로(승인된 tasks.md) v1.40.1 유지 · Renovate 추종.
+  - **문서 vs 소스**: dragonflydb.io/docs ACL 페이지 Persistence 절은 "aclfile은 키·pub/sub DSL을 지원하지 않는다"고 적혀 있으나 v1.40.1 로더는 `%R~`를 처리한다(계약 §VD-4 기본 가정과 같다 — 문서 잔재). **외부 서비스는 실측으로 확정**(메모리 규칙): VD-4가 `ACL LIST`·NOPERM으로 잰다.
+- **결정 D1–D14(2026-10-22 · 지시서 `.superpowers/t057/prompts/t057-brief-gitops.md` · `t057-brief-blocks.md` · `t057-brief-verify.md`)**:
+  - **D1 디렉터리** `platform/dragonfly/` = 순수 매니페스트 **8장**(helm 없음): `externalsecrets-acl.yaml`(ES 2 · wave `"0"`) · `services.yaml`(Service 2 · wave `"0"`) · `pvcs.yaml`(PVC 2 · wave `"1"`) · `deployment-dev.yaml` · `deployment-prod.yaml`(Deployment 2 · wave `"1"`) + `kustomization.yaml`(resources 5 · ns는 매니페스트에 명시 `data`) + `README.md` §0–§6(kafka-topics README 구조). 이름: ES/Secret `dragonfly-<env>-acl`(키 `users.acl`) · PVC `dragonfly-<env>-data` · Service `dragonfly-<env>` · Deployment `dragonfly-<env>`. 라벨 공통 `app.kubernetes.io/name: dragonfly` · `app.kubernetes.io/instance: dragonfly-<env>` · `app.kubernetes.io/part-of: platform-dragonfly`(selector = name + instance). Application `platform-dragonfly` spec **불변**(표준 syncPolicy · 예외 없음) — 머리 주석 「현재 상태」 문단만 갱신.
+  - **D2 Deployment 형상**(dev/prod 동일 · 참조 이름만 다름): replicas 1 · `strategy.type: Recreate` · `revisionHistoryLimit: 3` · `terminationGracePeriodSeconds: 60` · `nodeSelector: {role: data}` · `automountServiceAccountToken: false` · pod securityContext `runAsNonRoot: true` · `runAsUser: 999` · `runAsGroup: 999` · `fsGroup: 999` · `seccompProfile: {type: RuntimeDefault}`(uid 999 = 이미지 `dfly` — entrypoint의 root 분기를 타지 않고 `exec dragonfly`) · 컨테이너 1 `dragonfly`: 이미지 태그+digest(위) · **`command` 없음**(tini가 SIGTERM을 전달해 종료 스냅샷이 돈다 · entrypoint가 `dragonfly --logtostderr`를 앞에 붙인다) · `args` = `--maxmemory=768mb` · `--aclfile` · `/etc/dragonfly/users.acl` · `--dir` · `/data` · `--snapshot_cron` · `*/5 * * * *`(과제 토큰 모양 그대로 — 하네스 df-1은 `=`/분리 둘 다 받는다) · `--dbfilename=dump`(D4) · `--primary_port_http_enabled=false`(D5) · 금지 토큰 0(`--requirepass` · `--flagfile` · `--fromenv` · `--tryfromenv`) · env 0 · envFrom 0 · ports `6379/redis` · probes 셋 다 `tcpSocket: redis`(startup period 2s · failureThreshold 60 = 120s 적재 여유 · readiness period 10/failure 3 · liveness period 10/timeout 5/failure 6 — 근거(r1 정정): default가 OFF라 비인증 명령은 `-NOAUTH`이고 컨테이너 env에 자격이 0이므로 자격 없는 exec 프로브는 TCP 확인과 같다(이미지에 redis-cli 6.0.16은 있다) · HTTP `/healthz`는 D5로 닫힘 · 기동 중 `-LOADING` 창은 수 ms 수준이고 소비자는 fail-closed 503) · resources requests `cpu: 100m` · `memory: 256Mi` · limits `memory: 900Mi`(CPU limit 없음 — FR-008 · limits-*) · 컨테이너 securityContext `allowPrivilegeEscalation: false` · `readOnlyRootFilesystem: true` · `capabilities.drop: [ALL]` · volumeMounts `/data`(PVC) · `/etc/dragonfly`(Secret · readOnly) · `/tmp`(emptyDir) · volumes `data`(PVC `dragonfly-<env>-data`) · `acl`(secret `dragonfly-<env>-acl` · `items: [{key: users.acl, path: users.acl}]` · `defaultMode: 0440`) · `tmp`(`emptyDir: {}`).
+  - **D3 PVC 2** `dragonfly-<env>-data`: `accessModes: [ReadWriteOnce]` · `storageClassName: local-path` · `storage: 2Gi` · 어노테이션 `argocd.argoproj.io/sync-options: Delete=false,Prune=false`(정확히 이 문자열 — argo-4-dragonfly · 계약 §삭제 보호 목록 · **Argo 경로(prune · cascade 삭제)에서 실효** — v3.5.2 `controller/appcontroller.go` :1252–1260 `shouldBeDeleted`가 객체 어노테이션 `Delete=false`를 본다 · kubectl 직접 삭제는 막지 못함 · Application `Prune=confirm`/`Delete=confirm`이 두 번째 겹 — r1 정정 F11) · 라벨 name=dragonfly. **wave `"1"`(Deployment와 같은 wave)** — K3s local-path는 `WaitForFirstConsumer`라 pod가 붙기 전 PVC는 Pending = Argo health Progressing → 낮은 wave에 두면 다음 wave로 영원히 못 넘어간다. 같은 wave 안에서 Argo는 kind 순서(PVC → Deployment)로 적용한다.
+  - **D4 스냅샷 파일 이름 고정 `--dbfilename=dump`**: 기본 `dump-{timestamp}` + 5분 cron = 파일 무한 누적(보존 플래그 없음) → 고정 이름은 `dump-summary.dfs` + 샤드 파일을 덮어쓴다(`LoadPath` 글롭 `dump*` → 최신 `-summary.dfs`). 받아들인 대가: 스냅샷 이력 없음(파생 캐시 — 계약 §쓰기 규약 30 s 무조건 재적용이 복구) · 손상 스냅샷 적재 실패 = 프로세스 종료(CrashLoop) → 런북: 캐시라서 `dump*` 삭제가 안전(README 증상표 · §3 T057).
+  - **D5 주 포트 HTTP 콘솔 닫기 `--primary_port_http_enabled=false`**: ACL만 쓰고 `requirepass`가 비면 6379의 HTTP(`/` · `/metrics` · `/healthz`)가 **무인증**이라(소스 :2956–2967) netpol이 허용하는 jt-dev/jt-prod 어느 pod든 콘솔을 읽는다 → 닫는다. 대가: `/metrics` 없음 → **T098 인계**(`--admin_port` + netpol monitoring → data 추가 또는 exporter) · probe는 tcpSocket(D2).
+  - **D6 ACL 파일 내용**(값 원천 kv · 시드 블록이 렌더 · `ACL SAVE` 형식 · **LF만 · CR/탭/주석/앞뒤 공백 0 · 줄마다 토큰 ≥ 4 · 끝 줄바꿈 1개**): dev = **`USER default OFF +auth +hello`**(F12 정정 2026-10-22 — r1 원문 `USER default OFF -@all`은 VD-4 1차 실측에서 모든 AUTH를 NOPERM으로 막았다: AUTH·HELLO는 NOAUTH 관문을 지나 **default의 ACL**로 검사된다 · `+@connection`은 등가 상위집합) / `USER admin ON #<sha256hex(pw)> ~* &* +@all` / `USER identity-admin ON #<sha256hex(pw)> ~revoked:* ~identity-admin:* +@all` / `USER sample-pod ON #<sha256hex(pw)> %R~revoked:* ~sample-pod:* +@all`; prod = 앞 3줄(sample-pod 없음). 해시 = SHA-256 **소문자 hex 64자**(`HexStringToBytes` · ACL SAVE와 같은 모양) — ns data의 Secret에 평문 비밀번호가 실리지 않고 `ACL LIST`에는 15자 축약만 보인다 · 계약 "ACL 파일의 비밀번호 = kv `<user>.password`"는 SHA-256으로 성립. default 줄은 필수(없으면 nopass default = 무인증 · 3토큰 줄은 거부되므로 권한 토큰이 필요한데, 그 토큰은 `-@all`이 아니라 **`+auth +hello`**여야 한다 — F12) → `noauth` 검사 = `-NOAUTH` · 인증 가능 증거 = `writer-set`·`reader-get`. 채널: admin `&*`(운영자 전권), identity-admin · sample-pod는 계약 표대로 채널 없음(`resetchannels`) — **인계**: Celery/Kombu fanout(pidbox · events · result pub/sub)이 채널을 쓰면 `&<pod>:*` 필요 → T062/T066/T072 실측. **실패 모양(문서화 필수)**: 파싱 오류 1건 = 파일 전체 미적재 = default nopass 기동(무인증) — 탐지 = Dragonfly 로그 `Error while parsing aclfile` · `could not load ACL file` · `Invalid password hash` + `noauth` FAIL + 확인 스크립트 post의 로그 grep.
+  - **D7 ES 2** `dragonfly-<env>-acl`(ns data · store `vault-data` · `remoteRef.key: {dev,prod}/dragonfly/acl` · `property: users.acl` · `secretKey: users.acl` · `refreshPolicy: Periodic` · `refreshInterval: 5m` · `creationPolicy: Owner` · template 없음 — T056 D2와 같은 이유(키 집합 단순성 · tracking-id 복사는 Argo가 무시) · 삭제 보호 어노테이션 없음(계약 목록 밖 · Application `prune: false`) · wave `"0"`(SecretSynced/Healthy 뒤 Deployment — kv 미시드면 T056과 같은 SyncError → **P1 = 머지 전 시드**).
+  - **D8 Service 2** `dragonfly-<env>`: ClusterIP · `port 6379` → `targetPort: redis` · selector name+instance · wave `"0"`.
+  - **D9 Reloader 미사용 · 회전 경로**: Reloader에 ns data를 더하면 data의 **모든** Secret(pg superuser · Kafka CA 키) 읽기 권한이 생겨 거부. 회전(T084 secret-rotation.md): kv `<user>`와 `acl`을 **함께** 갱신 → ESO ≤ 5분 → kubelet 파일 갱신(≤ ~2분) → 운영자 `ACL LOAD`(admin · 무중단) 또는 `kubectl rollout restart`(Recreate · 소비자는 fail-closed 503) — 어노테이션 0.
+  - **D10 data-assert Job T057 몫**(`platform/policies/tests/job-data-assert.yaml` dragonfly-assert initContainer · 이미지 불변): 출력 순서 = `noauth` → `acl-list` → `writer-set` → `reader-get` → `reader-set-denied` → `reader-cross-denied` → `noperm` → `NOTE:` 정리 1줄. ConfigMap에 `DRAGONFLY_HOST: dragonfly-dev.data.svc` · `DRAGONFLY_PORT: "6379"` 추가(비인증 PING용 — 비밀이 든 URL을 파싱하지 않는다). `noauth` = `redis-cli -h $DRAGONFLY_HOST -p $DRAGONFLY_PORT -t 5 PING` 출력에 `NOAUTH` → PASS · `PONG` → FAIL(문구 "미인증 PING 통과 — aclfile 미적재(default nopass) 의심") · 그 밖 → FAIL(첫 줄 100자). `acl-list` 기존 로직 유지 + **가림 정규식 수정** `#[0-9a-f]\{16,\}` → `#[0-9a-f]\{8,\}`(ACL LIST 해시는 15자 축약이라 현재 정규식은 **절대 매치되지 않아** 해시 접두가 로그에 남는다). `writer-set` = identity-admin `SET $REVOKED_PROBE_KEY probe EX 120` → `OK`. `reader-get` = sample-pod `GET` → 정확히 `probe`. `reader-set-denied` = sample-pod `SET $REVOKED_PROBE_KEY x` → `NOPERM`. `reader-cross-denied` = sample-pod `SET identity-admin:assert-probe 1` → `NOPERM`. `noperm` 기존 유지(sample-pod `DEL` → NOPERM). 정리 = identity-admin `DEL $REVOKED_PROBE_KEY` → `NOTE: cleanup DEL <key> -> <n>`(EX 120은 2차 안전망). fail-closed: HOST/PORT/URL/SAMPLE_URL 중 하나라도 비면 **7줄 전부 FAIL**(id 수 불변). 출력되는 redis-cli 응답은 전부 `sed -E 's#redis://[^[:space:]]*#redis://<redacted>#g'`를 거친다(URL = 비밀). initContainer는 항상 exit 0. 줄 예산: initContainer ≤ 15(RESULT 7 + EVIDENCE 머리 1 + ACL 행 ≤ 6 + NOTE 1) → data-assert 최대 **22줄**(pg 6 + SUMMARY 1) ≤ 50 — tests README 로그 계약 수치 · 검사 id 표(Dragonfly 7행 · 순서) · 자격 매핑 표 갱신.
+  - **D11 운영자 시드 블록** `specs/003-platform-foundation/design/t057-blocks/op1-seed-dragonfly.ps1`(T054 3키 블록 + T056 파생 · 원칙 (a)–(h) 그대로): 경로 **7** — `kv/dev/dragonfly/admin`{password} · `kv/dev/dragonfly/identity-admin`{password,url} · `kv/dev/dragonfly/sample-pod`{password,url} · `kv/dev/dragonfly/acl`{users.acl} · `kv/prod/dragonfly/admin`{password} · `kv/prod/dragonfly/identity-admin`{password,url} · `kv/prod/dragonfly/acl`{users.acl}. password = RNG 32바이트 base64url 43자(동일 생성기) · url = `redis://<user>:<pw>@dragonfly-<env>.data.svc:6379/0` · acl = D6 렌더(그 env의 사용자 비밀번호 SHA-256 소문자 hex · LF). **판정 규칙**: 사용자 경로 live-ok = 키 집합 정확 + password 모양 + (url 경로) url이 정확히 `redis://<user>:<같은 pw>@dragonfly-<env>.data.svc:6379/0`; acl 경로 live-ok = 키 집합 `{users.acl}` + 내용이 **그 env의 live 사용자 비밀번호로 렌더한 결과와 Ordinal 일치** → SKIP, 아니면 mismatch STOP(사람 판정 · 덮어쓰기 0). 의존: acl은 그 env 사용자 경로가 전부 확정(live 또는 생성 예정)된 뒤 렌더 · 쓰기 순서 사용자 → acl(부분 실패 뒤 재실행은 live 사용자로 다시 렌더). 쌍 판정 C1 확장: **5개** 사용자 비밀번호(dev 3 + prod 2 — 7은 kv 경로 수 · r1 정정)가 전부 서로 달라야 한다(같으면 STOP). acl 내용 · 해시 · 값 미출력. 그 밖(정지점 · CAS · 되읽기 해시 · finally · 요약 표 · 창 체크리스트 · 늦은 시드) = T056. 하네스 `harness.ps1`(과도 상태 + 추가 시나리오: url 사용자/호스트 불일치 → STOP · acl 렌더 불일치 → STOP · CRLF 혼입 0 정적 관문 · 사용자 경로만 live인 상태에서 acl 생성) · README · 런북 §4 T057 소절(표식 `[t057-cleanup-inspect]` · `[t057-cleanup-delete]`).
+  - **D12 확인 스크립트** `.superpowers/t057/t057-verify.ps1`(pre/post · agent-view · T056 모양) + `poll-live.sh` 보강(관찰자 D: `:75` 필터가 `Initialized new operation` · `Initiated automated sync` · `operation (phase: …)`를 걸러낸 공백 → 보존 · `secret data` 제외 · conditions 기록). post는 Application 8장 Synced · ES 2 SecretSynced · PVC 2 Bound · Deployment 2 Available 1/1 · pod가 role=data 노드 · df-1/df-2 규칙 미러 · **pod 로그에 aclfile 오류 문구 0** · `Load snapshot` 줄 Info · retryCount(0 기대 — 순수 매니페스트 · CRD 없음) · `kubectl top` Info. 더해서 `.superpowers/t057/vd4/render-vd4.sh`: gitops main 렌더에서 ns jt-dev의 ConfigMap `assert-config` + **ES `assert-env`를 data-assert 5키(DATABASE_URL · PGUSER · PGPASSWORD · DRAGONFLY_URL · DRAGONFLY_SAMPLE_URL)로 자른 사본** + Job `data-assert`를 한 파일로 만든다(OpenFGA 키 2개는 T082 전까지 kv에 없어 원본 ES는 통째로 실패하기 때문 · kafka-assert · authz-assert 제외).
+  - **D13 VD-4 실측 절차(사용자 동석 · 머지 뒤)**: post ALL PASS → 운영자가 관리자 kubeconfig로 `kubectl apply -f .superpowers/t057/vd4/data-assert-vd4.yaml`(ns jt-dev · 3객체) → ES SecretSynced → Job 1회(pg 6 + Dragonfly 7) → 컨트롤러가 agent-view로 `kubectl -n jt-dev logs job/data-assert --tail=50` → `EVIDENCE:   user sample-pod … %R~revoked:* …` + noperm/reader-* PASS = **옵션 A 확정**(결과 한 줄을 T057 체크박스 옆 + report.md) · 로드 오류면 옵션 B(entrypoint 래퍼 — 새 설계 라운드). 끝나면 운영자가 같은 파일로 `kubectl delete -f`(Job · ES · ConfigMap — Secret은 GC). 이 수동 적용은 T059(tests Application) 전의 **임시** 실측이고 Argo 관리 밖이라 지운다.
+  - **D14 문서**: gitops `platform/dragonfly/README.md`(§0 선행 조건 P1 시드 · §1 증상표 — kv 미시드 SyncError/늦은 시드 · **aclfile 파싱 오류 = 무인증 기동** · 스냅샷 손상 CrashLoop · PVC Pending · §2 확인 명령(agent-view) · §3 VD-4 · §4 소스로 확인한 사실 · §5 되돌리기/삭제(PVC 보호 · Application cascade) · §6 후속) · Application 머리 주석 「현재 상태」 · `clusters/oci-k3s/apps/README.md` 행 · `platform/README.md` 뼈대 목록·표 · `platform/policies/tests/README.md`(D10) · 모노레포 런북 §3 T057(라이브 뒤 컨트롤러) · §4 T057(blocks 빌더) · 학습 로그 `content/tmp/003-t057/2026-10-22.md`.
+- **하네스 기대값(머지 뒤 · Job 없음)**: `kafka.tests.ps1` 10/7/0 → **12/5/0**(df-1 · df-2 PASS · 남은 FAIL = job-k-1..3 · job-d-1/2 = T059) · `cluster.tests.ps1` 42/0/12 → **43/0/11**(argo-4-dragonfly SKIP → PASS). VD-4 Job이 있는 동안은 job-d-1/2 · np-2-data-assert · data.tests job-1/2가 PASS로 바뀌고(14/3/0 · 44/0/10) 삭제 뒤 원래로. **validate.sh 기대(r1 실측으로 정정)**: `3 ES` 37 → **41**(검사 3은 파일 + 렌더를 함께 센다 — ES 2장 = +4) · `3.5 ES-⑤⑥` 워크로드 34 → **38**(Deployment 2 파일 + 렌더 · 3.6 automount는 이 줄에 합산 — 별도 3.6 출력 줄 없음) · 4b image 줄 19 → 21(digest 병기 · 새 WARN 0) · **WARN 4 = 기존 `platform/system-upgrade` k3s-upgrade 줄**(T041 이래) · PASS 39 · FAIL 0.
+- **인계(미리 적는 것)**: T098(`/metrics` — D5) · T062/T066/T072(채널 ACL 실측 · `DRAGONFLY_URL` env ← `kv/{env}/dragonfly/<pod>` url) · T084(회전 — D9 · `ACL LOAD`) · T085(SIGKILL 뒤 ≤ 30 s 복구 — D4 스냅샷 없음 경로 포함) · T059(tests Application · VD-4 Job 재실행 · `ttlSecondsAfterFinished` 7d — **병합 절 fallback 7 id는 이 과제 r1이 끝냈다 = 인계 없음**). **r1/r2에서 더해진 인계**: T098 알림 후보 = pod 로그 문구 4개(`Error while parsing aclfile` · `Error materializing acl file` · `could not load ACL file` · `Invalid password hash`) + 주기적 비인증 PING(기대 `-NOAUTH`) + `ACL LIST` 행 수·`default off` 대조(빈 aclfile은 로그 없이 무인증 기동) · T084 `ACL LOAD` 성공 = 기존 연결 전부 끊김(`acl_family.cc` :334–340 — 소비자 재접속 창 실측) · T097 vCPU/maxmemory 재계산(`maxmemory < threads × 256 MiB`면 exit 1 — vCPU 4부터). **r2(F12·F13)에서 더해진 인계**: T084 운영자 redis-cli 6.0.16 `-u` URL 함정(사용자 이름을 보내지 않는다 → `--user … --askpass`) · pod 삭제 vs `rollout restart` 확정(SSD 드리프트 여부 실측) · T059 kafka-assert·authz-assert `wait_ready` 패턴 · T098 「모든 사용자 AUTH 실패 · NOPERM default …」 증상 알림 후보(aclfile 적재 ≠ 인증 가능 — `writer-set`·`reader-get`이 증거) · ES 머리 주석 "증상표 첫 행" → 둘째 행 오기(후속 문서 PR).
+- **빌드 r1 · 리뷰 r1(2026-10-22 11:25–12:51 KST · 워크플로 `wf_3bf1dc2a-531` · 에이전트 7 · 도구 호출 759 · 1시간 26분 — 빌더 3 = Opus(메모리 규칙) · 리뷰어 4 = 세션 모델)**: 세 슬라이스 전부 `DONE_WITH_CONCERNS`(보고 `.superpowers/t057/reviews/build-r1-{gitops,blocks,verify}.md`) · 리뷰 4렌즈 전부 `approve_with_fixes`(지적 16 = spec 5 · security 4 · operator 5 · blocks 2 — **high 0 · medium 0 · low 16** · 보고 `review-r1-*.md`). 빌더 산출물: gitops 브랜치 `t057-dragonfly` 13파일(수정 7 · 신규 6 — 렌더 8장 sha256 `9335067…`, policies/tests 렌더 `02fa17a…` · yq 단언 87/87 · 모의 4경로 · validate PASS 39/FAIL 0/WARN 4(기존) · 자기검사 11/0) · 모노레포 `t057-blocks/`(블록 475줄 · 하네스 1868줄 — 시나리오 150 · 단언 4798 · 변이 19/20 포착(생존 1 = 등가) · README) + 런북 §4 T057 소절(:1227–1426) · `.superpowers/t057/{t057-verify.ps1(766줄 · 모의 9경로), poll-live.sh, vd4/render-vd4.sh, vd4/README.md}`. 리뷰어가 소스로 재확인한 것(반증 실패 = 주장 성립): entrypoint 분기 · `768mb` = 768 MiB(helio `ParseHumanReadableBytes`) · maxmemory ≥ 256MiB × 스레드(`dfly_main.cc` :318 조건 `maxmemory < threads × 256_MB` — 노드 vCPU가 **4 이상**이면 즉시 exit 1 · 3은 경계값 768 MiB = 768 MiB로 통과 · r2 A1/B1 정정) · `ValidateFilename` 확장자 없는 이름 허용 · Argo PVC 어노테이션 실효(`appcontroller.go` :1252–1260) · redis-cli 8.8.2 `--no-auth-warning`(:2731–2732 · :3085–3088).
+- **빌더가 지시와 다르게 한 것(승인)**: ① gitops — 모든 `-u` 호출에 `--no-auth-warning`(redis-cli 8.8.2는 URL/argv 비밀번호에 stderr 경고를 내 정확 일치 판정 `OK`·`probe`를 깨뜨린다 — 변이·실물 redis-cli로 확인) · 빈 응답 `(빈 응답)` 표시 `show()` · PVC 보호 문구 "Argo 경로 실효 · kubectl 못 막음 · 두 겹"(옳다 — 아래 F11) · 정합성 수정(`job-data-assert.yaml` :13 "8개 → 13개" · tests README 파일 표/가림 규칙/자격 매핑 · ConfigMap 주석 · `platform/README.md` 수치) ② blocks — B5의 생성 몫을 쓰기 단계(생성 직후 · put 전)에도 넣음(판정 단계에는 생성 값이 없다) · B4 밖(사용자 STOP + acl live)은 acl 「판정 불가」 STOP · url 사유 문구 3분류 · 하네스 추가(렌더 순수성 정적 검사 · 로더 모의 `Test-AclLoader` · S04q 계열 12) ③ verify — Reloader Deployment 이름 `reloader`(차트 `fullnameOverride`) · `rbac-log` no → FAIL · 발췌 필터를 지시보다 엄격하게(파싱 오류 줄이 파일 토큰을 싣는다 — `Unrecognized parameter <토큰>` · `Invalid password hash: <값>`) · `-max` 120 · 자격 모양만 FAIL(sed 식 자체의 `redis://`는 Info).
+- **수정 라운드 r1 결정(F1–F11 · 2026-10-22 · 지시서 `t057-fix-r1-gitops.md` · `t057-fix-r1-verify.md` · 리뷰 r2 `t057-review-r2.md`)**:
+  - **F1**(S1 · O3 · K4③) 1차 자료 "이미지에 redis-cli 없음"은 오류(`redis-tools 6.0.16` 있음 · `--user`·`--askpass`) → 위 「1차 자료 확인」·D2 근거 정정(이 커밋). 결정 D2(tcpSocket) 불변 — 근거는 "default OFF → `-NOAUTH` · env 자격 0 → 자격 없는 exec 프로브 = TCP 확인".
+  - **F2**(S2 · K4①②) validate 기대값 정정(ES +4 · 워크로드 +4 · 4b 줄 +2 · WARN 4 기존) → 위 「하네스 기대값」 정정(이 커밋) · r2 리뷰 기준에 반영.
+  - **F3**(S3 · K3 · O1) `reader-cross-denied` 프로브 키 TTL 없음 → (a)안: `SET identity-admin:assert-probe 1 EX 120`(호출 수 · 줄 수 불변 · 판정 문자열 불변) + tests README 행 갱신 → gitops 수정 G1.
+  - **F4**(S4 · O4) pg-assert 병합 절 fallback이 2 id만 FAIL + 주석 `⑦⑧` 낡음 → **범위를 열어 이번 PR에서** 7 id 루프(`noauth acl-list writer-set reader-get reader-set-denied reader-cross-denied noperm` 각 1줄 `… initContainer 결과 파일(/work/dragonfly.result)이 없다`) + 주석 `⑦–⑬` → gitops 수정 G2(fallback 경로 줄 수 = pg 6 + 7 + SUMMARY 1 = 14 ≤ 22).
+  - **F5**(S5 · O2) `Failed to open the aclfile`은 `ACL SAVE` 경로(:256–270) 문구 → verify.ps1에서 FAIL → **Info**(사유 "ACL SAVE 경로 — 적재 실패 아님 · 운영자 ACL SAVE 이력 확인 · 사람 판정") · poll-live.sh 집계는 수만(유지) · 문구 목록을 **4개**(`Error while parsing aclfile` · `Error materializing acl file` · `could not load ACL file` · `Invalid password hash`)로 gitops README §1(:140 현재 3개)·§6 · vd4 README ③ · verify 머리 주석에 통일 → verify 수정 V1 + gitops 수정 G3. 아울러 **"로그 문구 0은 적재 증거가 아니다"**(빈 aclfile은 로그 없이 무인증 기동 — :307–308) → 증거는 VD-4 `noauth` PASS뿐 — 세 문서에 같은 문장.
+  - **F6**(K1) `+@all` ⊃ `@admin`(ACL SETUSER · CONFIG · SHUTDOWN — `acl_family.cc` :1263 · `server_family.cc` :4015 · :4026) + 키 인자가 없는 `FLUSHALL`(`@keyspace`·`@write`·`@slow`·`@dangerous` — :4019 · 등록 :4053 first_key 0 · `validator.cc` :155 키 패턴 검사는 키 인자가 있는 명령만 → `%R~`로 막히지 않는다; r1 K1 원문의 "FLUSHALL ∈ @admin"은 오류 · 빌더 ③-1 정정 **승인** · r2 A2/B2) — 자격이 노출된 소비자는 런타임 ACL을 바꾸거나 캐시를 비울 수 있고, 런타임 ACL 변경은 `ACL LOAD`·재기동에서(`CONFIG SET`은 재기동에서) 사라진다 · 비운 캐시는 30 s 재적용이 채운다(계약 §ACL 표가 받아들인 사실) → gitops README §4 「받아들인 사실」 한 문장 + §6 T098 알림 후보(주기적 비인증 PING 기대 `-NOAUTH` · `ACL LIST` 행 수·default off 대조) → G4.
+  - **F7**(K2) jt-dev pod가 `dragonfly-prod.data.svc:6379`에 L4로 닿는다(매트릭스 podSelector `{}` · pg-main과 같은 기존 설계 · 정책 변경 0) — env 격리는 ACL만(5개 비밀번호 상이 B5 · prod aclfile에 sample-pod 없음 · identity-admin은 env마다 다른 비밀번호) → gitops README §0 한 문장(G5) + 런북 §4 T057 B5 근거 한 줄(컨트롤러 · 이 커밋).
+  - **F8**(O5) poll-live.sh "틱당 kubectl 8회" → 7회(컨트롤러 · 이 커밋).
+  - **F9**(R1) `t057-blocks/README.md` :125 `PASS × 15` → `× 14`(행 합 150 — 컨트롤러 · 이 커밋).
+  - **F10**(C1 · K4④) D11 "7개 사용자 비밀번호" → 5개(위 정정 · 이 커밋).
+  - **F11**(K4⑤ · 빌더 ③-5) PVC 보호 어노테이션 '표식' → Argo 경로(prune · cascade)에서 실효 · kubectl 직접 삭제는 못 막음(위 D3에 정정 · 이 커밋 — '표식' 표현은 지시서 D14에만 있었고 gitops README는 빌더가 이미 바르게 적었다).
+  - **받아들인 사실(변경 0)**: kubeconform `-strict`는 CRD 파생 스키마의 모르는 필드를 막지 못한다(ES `spec.bogusField` Valid — verify 빌더 변이 실측 · validate 검사 1도 같다 → 원본 대조가 막는다) · `users.acl`은 LF가 든 첫 kv 값(JSON stdin 왕복은 라이브 첫 사례 — 되읽기 해시가 STOP으로 잡는다 · 런북 실패 표) · 판정 단계의 live 비밀번호를 쓰기 단계까지 메모리 보관(B4 요구 · .NET 문자열은 지울 수 없다 — 그 사이 다른 기록자가 바꾸면 acl이 옛 값으로 렌더 · CAS는 acl 경로만) · 노드 vCPU ≥ 4이면 `--maxmemory=768mb`가 모자라 exit 1(3은 경계값 통과 · allocatable 2 — pre 단계 Info로 기록 · r2 정정) · 운영자가 ACL SAVE를 실행한 이력이 있으면 `Failed to open the aclfile` 로그는 정상 실패.
+- **수정 라운드 r1 · 리뷰 r2(2026-10-22 13:16–13:58 KST · `wf_fdbbf495-22c` · 에이전트 4 · 42분)**: 수정 빌더 2(gitops G1–G5 · verify V1–V3 — 둘 다 DONE_WITH_CONCERNS · 보고 `reviews/fix-r1-{gitops,verify}.md`) · 편차 승인: FLUSHALL ≠ @admin 정정 · G3 문장 ① 위치 §4 · README 정합성 수정(P1 "7개" → 5개 · §2 grep 4문구 · VD-3 문구 · T059/T084 인계 구절) · verify FAIL 사유 "무인증 기동 또는 사용자 잠김 의심 → VD-4(noauth · writer-set · reader-get)". 렌즈 A/B(보고 `reviews/review-r2-{A,B}.md`) 모두 approve_with_fixes(low 3 + 3 — README vCPU 임계 "3개 이상" → 4개 이상(`dfly_main.cc` :318 `<`) · §0 매트릭스 인용 줄 번호 정밀화(:473–477 · :517–521 + 수신 :184–192) · build-notes F6 FLUSHALL · vCPU ≥ 3 → ≥ 4 · 인계 보강 — **컨트롤러가 전부 반영**) · r1 16건 전부 「반영」 · 렌즈 A validate 단독 PASS 39 · FAIL 0 · WARN 4 · ES 41 · 워크로드 38 · 렌즈 B 하네스 재실행 150/150 · 모의 post-aclsave FAIL 0/Info 1 · post-restart FAIL 유지. **커밋**: 모노레포 `3be8e6f`(블록 · 하네스 · README · 런북 §4 T057 · build-notes) · gitops `a0cb2a0`(13파일) → **PR #54** `t057-dragonfly`(CI 전부 pass 14:05 KST — validate 1m2s · render-diff · render-comment · prod-approval · GitGuardian · classify · gate skipping = prod overlay 아님 · 로그 `evidence/ci-pr54-2026-10-22.log`). **pre 확인**(agent-view · 13:56 KST · `evidence/verify-pre-2026-10-22.log`): **ALL PASS 11 · Info 10** — Application 뼈대 Synced/Healthy · resources 0 · syncPolicy 표준 · store `vault-data` Valid · ns data PSA baseline · role=data 노드 allocatable 12931 MiB · requests 25%(계획분 반영 29%) · limits 46%(→ 60%) · `top` 2728Mi 21% · Reloader 감시 ns [identity,jt-dev,jt-prod,reloader] · Dragonfly 객체 0 · can-i(조회 8종 yes · secrets no · pods/log yes) · OrphanedResourceWarning 2(기존). **다음 = 운영자 시드(§4 T057) → 출력 확인 → 머지 명령**(P1 — 머지 명령은 시드 출력을 받은 뒤에만).
+- **머지 · 첫 배포 라이브(2026-10-22 06:25–06:31Z = 15:25–15:31 KST)**: 운영자 squash 머지 06:25:41Z → gitops main **`e2f0d2b2cd617ca1b177455d0b3220c82fb69f2f`** · 폴러(`evidence/live-20261022T062612Z/` · 4틱) — 자동 sync `OperationStarted` **06:27:38Z(+1분 57초)** → **Succeeded 06:27:41Z(3초)** · retryCount 0 · 리소스 8 전부 Synced · ES 2 SecretSynced · PVC 2 Bound(local-path · 노드 role=data) · pod 2 Running 06:27:53Z(재시작 0 · 인덱스 digest) · Deployment Available. **post 확인 ALL PASS 34 · Info 23**(15:30:51 KST · `evidence/verify-post-2026-10-22.log`): args 9토큰 정확 일치 · 로그 aclfile 오류 문구 0 · `Load snapshot: No snapshot found`(첫 기동 정상) · 5분 cron 스냅샷 `Saving "/data/dump-summary.dfs" finished`(06:30 · :35 · :40 · :45 — 0 us~1 s) · 경고 이벤트 0. 하네스: `kafka.tests.ps1` **12/5/0**(기대 그대로 · `evidence/kafka-tests-2026-10-22-post.log`) · `cluster.tests.ps1` **40/3/11**(argo-4-dragonfly SKIP → PASS ✓ · **FAIL 3 = backup-1..3 — OCI CLI 세션(svc-verify) 만료** `This CLI session has expired` · T057 무관 · 세션 재인증 뒤 43/0/11 재확인 예정 · `evidence/cluster-tests-2026-10-22-post.log`). VD-4 임시 매니페스트 `vd4/render-vd4.sh`(머지된 main · ALL PASS · WARN 0 · 442줄 · sha256 `a7d40631…`) → 운영자 `kubectl apply` 06:39Z(created 3).
+- **VD-4 1차 실측(06:39:50Z Job `data-assert-8wzr2` · `evidence/vd4-data-assert-log-2026-10-22.txt` · Job failed · SUMMARY pass=9 fail=4)**: pg 6 PASS(T059 선행 증거). Dragonfly 7 가운데 ① `noauth` · `acl-list` · `writer-set`(첫 세 호출 · 기동 직후 ≈ 1–2초) = `Could not connect to Redis at dragonfly-dev.data.svc:6379: Connection refused` ② 이후 네 호출(`reader-get` FAIL · `reader-set-denied`/`reader-cross-denied`/`noperm` PASS는 **거짓 양성** — NOPERM 문구가 AUTH 실패 문구였다 · 정리 DEL도 실패) = `AUTH failed: NOPERM default has no ACL permissions`. **판정: 두 결함.**
+  - **결함 1(설계 D6 — 심각)**: `USER default OFF -@all`은 **모든 사용자의 AUTH를 막는다**. 소스(`main_service.cc` :1403–1407): NOAUTH 관문은 `AUTH`·`HELLO`·QUIT·RESET만 통과시키고, 그 뒤 `acl::IsUserAllowedToInvokeCommand`가 **연결의 현재 사용자(default)의 ACL로 AUTH를 검사**한다(`kAuth = FAST | CONNECTION` · `kHello = FAST | CONNECTION` — `server_family.cc` :4012 · :4021 · :4045 · :4056). default가 `-@all`이면 AUTH 자체가 NOPERM → 아무도 인증 불가(fail-closed이지만 서비스 불능). 로컬 Docker 실측(같은 이미지 v1.40.1 amd64 · `scratchpad/dfly-local/` · 모의 비밀번호): 변형 A(현재) = 전 사용자 AUTH 실패(클러스터와 동일) · **변형 B `USER default OFF +@connection` · 변형 C `USER default OFF +auth +hello`** = 비인증 PING `NOAUTH` ✓ · AUTH ✓ · `ACL LIST` 행 `user sample-pod on #<15hex> %R~revoked:* ~sample-pod:* resetchannels +@all $all`(**`%R~` 적재 = 옵션 A 성립 · 로컬**) · `user default off resetchannels -@all +auth +hello $all` · identity-admin SET ✓ · sample-pod GET ✓ · SET/DEL revoked `NOPERM sample-pod has no ACL permissions` ✓ · 교차 SET NOPERM ✓ · 자기 접두 SET ✓ · RESP3 `-3`(HELLO 3 AUTH) ✓ · 틀린 비밀번호 거부 ✓ · `ACL WHOAMI` ✓. **결정 F12 = 변형 C `USER default OFF +auth +hello`**(최소 권한 — NOAUTH 관문이 다른 명령을 먼저 막으므로 default의 ACL은 AUTH/HELLO에만 쓰인다 · `+@connection`은 상위집합이라 등가지만 default가 ON으로 바뀌는 사고 때 PING/CLIENT까지 열린다). 부수 발견: 이미지 안 redis-cli 6.0.16은 `-u redis://user:pw@…` URL의 **사용자 이름을 보내지 않아**(단일 인자 AUTH) 실패한다 → 운영자 경로(`ACL LOAD` 등)는 `--user … --askpass`로 적는다(Job의 8.8.2는 URL 정상 · 클러스터 오류 문구가 NOPERM이었던 이유 = 8.8.2가 2인자 AUTH를 보냈고 서버가 default ACL로 거부).
+  - **결함 2(Job 기동 경합 — 중)**: 첫 세 호출만 `Connection refused`. Dragonfly 재시작 0 · 엔드포인트 ready · 로그 이상 0 → 서버 쪽 아님. 새 pod의 첫 1–2초에 NetworkPolicy(kube-router) 규칙이 아직 반영되지 않아 REJECT(icmp-port-unreachable = ECONNREFUSED)된 경합으로 판단(pg-assert는 init 뒤라 전부 PASS). **결정 F13** = initContainer 첫머리에 기동 유예 `wait_ready`(최대 15초 · 1초 간격 · `redis-cli -h HOST -p PORT -t 2 PING` 출력에 `Could not connect`가 없어질 때까지 · 걸린 초를 `noauth` RESULT 근거에 `wait=<n>s`로) — 줄 수 불변. T059 인계: kafka-assert · authz-assert도 같은 경합 후보.
+  - **라이브 적용 절차(운영자 · F12 뒤)**: ① 고친 시드 블록이 준비되면 `[t057-cleanup-delete]`로 **acl 2경로만** 삭제(metadata delete → absent) → 블록 재실행(사용자 5경로 live-ok SKIP · acl 2 생성 — B4ⓑ) ② ES 2장 갱신(≤ 5분 또는 `force-sync` 어노테이션 · 관리자 kubeconfig) → `kubectl -n data delete pod -l app.kubernetes.io/name=dragonfly`(RS가 재생성 · Deployment 쓰기 0 · Argo Synced 유지 — `rollout restart`는 Git 밖 템플릿 어노테이션 `restartedAt`과 새 RS 리비전을 남기므로 쓰지 않는다 · Server-Side Diff 아래 selfHeal을 부르는지는 이 Application에서 미실측(T046 VD-9 유추로는 드리프트 아님 — r3 A-R3-2/B-r3-2 정정 · 처음 적은 "selfHeal 재롤아웃"은 미실측 단정) · `ACL LOAD`는 현재 아무도 AUTH 못 해 불가) ③ gitops PR(F13 + README D6 정정) 머지 뒤 `render-vd4.sh` 재실행 → `kubectl delete job data-assert` → `apply -f` → 로그 재판정. 1차 Job 객체는 그때까지 둔다.
+- **수정 라운드 r2 결정(F12–F14 · 지시서 `t057-fix-r2-gitops.md` · `t057-fix-r2-blocks.md` · 리뷰 r3 `t057-review-r3.md`)**: **F12** D6 default 줄 `USER default OFF +auth +hello`(블록 렌더 · 하네스 기대 바이트 · README · 런북 · gitops README §0/§1/§4) **F13** Job `wait_ready` **F14** 문서: gitops README §1 증상표에 「AUTH 전부 NOPERM default …」 행(원인 = default 줄 권한 0 · 조치 = acl 재렌더 + pod 삭제) · §4 "AUTH/HELLO는 default의 ACL로 검사된다" · 운영자 redis-cli 6.0 URL 함정 · 런북 §4 T057 「ACL 파일 갱신(acl 2경로 재렌더)」 절 + 실행 기록 2차 · build-notes D6 본문 정정.
+- **수정 라운드 r2 · 리뷰 r3(2026-10-22 16:00–17:02 KST · `wf_0b451812-52e` · 에이전트 4 · 62분)**: 수정 빌더 2(gitops G6–G8 · blocks B11–B14 — 둘 다 DONE_WITH_CONCERNS · 보고 `reviews/fix-r2-{gitops,blocks}.md`). gitops: `wait_ready`(15회 · 1초 · `Could not connect`만 대기 · `wait=<n>s` 토큰) · README §0 default 줄 `+auth +hello` + §1 새 증상 행 「모든 사용자 AUTH 실패」 + §4 "AUTH/HELLO는 default ACL로 검사" + 운영자 redis-cli 6.0.16 `-u` 함정(`parseRedisUri` :412–419 "If provided, username is ignored.") + §3 1차 실측 기록 + tests README · 모의 ⓐ 13줄 `wait=0s` · ⓑ `wait=2s` · ⓒ 16회 거부 → noauth FAIL `wait=15s` · ⓓ 7 FAIL · 빨강(main · 3회 거부) 10줄 FAIL 3 = 사고 로그와 같은 id → 초록 13줄 · 하네스 AST 판정 job-d-2 PASS/FAIL 기대대로 · validate PASS 39 · FAIL 0 · WARN 4 · tests 렌더 sha256 `994ff98d…`(dragonfly 불변). blocks: 렌더 default 줄 정정(블록 :141 · 줄 수 475 불변) · 하네스 S12 default 줄 3단언 + `Acl-Old` + 로더 모의 `+auth +hello` + S37a/b → **152 시나리오 · 4923 단언 · 변이 22종 중 비등가 21 포착**(M19 default `-@all` 되돌림 124/152 · M20 주석만 151/152) · 렌더 독립 대조 dev 364B/prod 246B 일치(로컬 Docker 변형 C 파일 크기와 같다) · README · 런북 §4 T057 「ACL 파일 갱신(acl 2경로 재렌더)」 7단계(:1426–1468) + 실패 표 「정상」 행 + 실행 기록 2차 자리. **빌더 편차(승인)**: `rollout restart` 근거를 "어노테이션 diff → selfHeal 재롤아웃"(미실측 단정 · T046 VD-9와 반대)에서 "Git 밖 템플릿 어노테이션 + 새 RS 리비전 · SSD 드리프트 여부 미실측"으로 정정(두 빌더 모두 · 컨트롤러 문장이 틀렸다 — 위 적용 절차 ② 정정) · 새 증상 행을 넷째에(서수 참조 유지) · ES `refreshTime` 확인 단계 추가.
+  - **리뷰 r3**(보고 `reviews/review-r3-{A,B}.md`): 렌즈 A approve_with_fixes(medium 1 · low 4) · 렌즈 B approve_with_fixes(medium 1 · low 3). F12–F14 전부 「반영」. 렌즈 A validate 단독 PASS 39 · FAIL 0 · WARN 4 · 모의 ⓐ–ⓔ + DNS/비연결 재현 · **로컬 Docker 실바이너리로 AUTH(URL · RESP3 HELLO) · 1인자 AUTH → WRONGPASS · ACL LIST default 행** 재확인 · 렌즈 B 하네스 4923/4923 재현 · 변이 5종 재현 · 렌더 바이트 일치.
+  - **r3 지적 → 결정(F15–F17)**: **A-R3-1(medium)** 세 NOPERM 검사(`reader-set-denied` · `reader-cross-denied` · `noperm`)가 `*NOPERM*`만 보고 PASS라 `AUTH failed: NOPERM default …`도 PASS(1차 실측 거짓 양성 3건) → **F15** 이번 PR에서 PASS 갈래를 접두 `NOPERM ${DRAGONFLY_ACL_USER} `(실제 문구 `-NOPERM <authed_username> has no ACL permissions` :1340)로 좁히고 `AUTH failed` 갈래 → FAIL(gitops G9 · 모의 문구도 실제 문구로 — A-R3-5) · **B-r3-1(medium)** build-notes D6 본문 옛 줄 → 정정(이 커밋) · **A-R3-2/B-r3-2(low)** `rollout restart` 근거 → 위 ② 정정 + 런북 D9 회전 문단에 "(Git 밖 어노테이션 — T084에서 pod 삭제 vs rollout restart 확정)" 구절(컨트롤러) · **B-r3-3(low)** 런북 pod 삭제 메모에 "데이터가 있는 상태에서 재사용 시 새 pod는 마지막 cron 스냅샷(≤ 5분 전)을 싣고 옛 pod 종료 스냅샷은 반영되지 않는다 — 30 s 재적용 범위 · 그 이상은 T084 절차" 추가(컨트롤러) · **B-r3-4(low)** 「인계」 불릿 보강(이 커밋) · **A-R3-3(low)** vd4 README 기대 줄(` wait=<n>s` · default 행 모양 · 행 순서 비고정)(컨트롤러) · **A-R3-4(low)** ES 머리 주석 "첫 행" → "둘째 행"(gitops G10 · 주석만 · 렌더 불변) · **F16** 받아들인 사실: `wait_ready` 15초 상한의 충분성은 라이브 `wait=<n>s`가 확정 · 경합 원인(kube-router 반영 전 REJECT)은 추정 · DNS 실패도 같은 문구라 함께 기다린다 · DROP이면 ≈ 45 s · **F17** G9 뒤 추가 리뷰 라운드는 두지 않는다(변경 = case 갈래 2 + 주석 · 컨트롤러가 diff를 읽고 모의 ⓕ/ⓖ 원문으로 판정 · CI validate가 관문).
+- **G9 수정(2026-10-22 17:05–17:30 KST · 단일 빌더 Opus · 보고는 대화 인계)**: 세 NOPERM 검사 PASS 갈래 = `NOPERM ${DRAGONFLY_ACL_USER} ` 접두 · `AUTH failed` 갈래 FAIL(먼저) · `noperm`은 `grep -qF` if/elif · 주석 1줄 · ES 머리 주석 "첫 행" → 둘째 행 · tests README id 표 세 행 + 검증 기록 G9 + quickstart grep 주석. 모의(실제 문구 `NOPERM <user> has no ACL permissions`로 정정 · 인증 실패는 stderr `AUTH failed: …` + stdout `NOAUTH`): ⓐ 13줄 PASS 7 · **ⓕ 1차 사고 재현 = 이 수정본 FAIL 5(세 거부 검사 FAIL · 이전 코드는 거짓 PASS 3)** · ⓖ 다른 사용자 접두 → FAIL 3(이전 코드 PASS 7 · 하네스 전체 PASS 통과시켰다) · ⓕ′ 1차 서버 상태 그대로(3회 거부 + ACL LIST까지 인증 실패) → noauth PASS `wait=3s` · FAIL 6 · ⓗ `sample-pod2` 접두 충돌 → FAIL 3 · dash/`bash --posix` 바이트 동일 · 하네스 AST 판정 job-d-2/data job-2 기대대로 · validate 단독 PASS 39 · FAIL 0 · WARN 4 · 자기검사 11/0 · 렌더 tests `9213a0fe…` · dragonfly 불변. 받아들인 사실: PASS 조건이 kv `dev/dragonfly/sample-pod` url의 사용자 이름 = ConfigMap `DRAGONFLY_ACL_USER`에 기댄다(acl-list와 같다 · 의도한 엄격함) · BusyBox ash 실행은 라이브 VD-4가 최종 확인. 컨트롤러 후속: README §1 :149 "거짓 양성" 문장 → "도 FAIL(G9)"로 정정(이 커밋).
+- **gitops r2 커밋 `d12c1d5` → PR #55**(`t057-dragonfly-r2` · 4파일 · 2026-10-22 17:3x KST — Job wait_ready + NOPERM 접두 판정 + README default 줄/증상표/운영자 함정 + ES 주석 · 렌더 dragonfly 불변 · tests `9213a0fe…`). 머지 순서: 운영자 acl 재렌더 → pod 삭제(이 PR과 무관) → PR #55 머지(운영자) → `render-vd4.sh` 재생성 → 옛 Job 삭제 → apply → VD-4 재실측.
+- **PR #55 머지 → gitops main `5399d872fba4780aa69659ce96e4e28902db6f61`(2026-10-22 17:3x KST · CI 전부 pass · 렌더 dragonfly 불변이라 Application operation 없음 기대) · 로컬 브랜치 삭제 · `render-vd4.sh` 재생성 ALL PASS · WARN 0(460줄 · sha256 `98b2d45f…` · wait_ready + NOPERM 접두 판정 포함). 운영자 ACL 갱신 1–3단계 완료(acl 2경로 metadata delete → 재시드 SKIP 5 · 생성 2 · 되읽기 해시 일치 · STOP 0 — 17:1x–17:2x KST) → ESO 주기 갱신 대기 → pod 삭제 → VD-4 재실측 순.
+- **ACL 갱신 실행 · VD-4 2차 실측 · 마감(2026-10-22 17:1x–18:0x KST)**: 운영자 「ACL 파일 갱신」 7단계(§4 T057 실행 기록 2차 — 재실행 1회 live-mismatch STOP(쓰기 0 · 설계대로) · 점검 블록 1회 env 없음 exit 2 → 정정판 확인 0 → 점검 2 → 삭제 2 OK → 재시드 SKIP 5 · 생성 2 · 되읽기 해시 일치) → ESO 주기 갱신(annotate 미사용 · refreshTime prod 08:32:38Z · dev 08:34:45Z — 컨트롤러 대기 루프 1판은 epoch 상수 오기(2025년 값)로 거짓 통과 → ISO 문자열 비교로 재실행) → PR #55 머지 `5399d872fba4780aa69659ce96e4e28902db6f61`(CI 전부 pass · 렌더 불변 → Application operation 없음 · sync.revision만 갱신) → `render-vd4.sh` 재생성(460줄 · `98b2d45f…` · wait_ready + NOPERM 접두) → pod 삭제 08:47Z → 새 pod `dragonfly-dev-88dbfdb6d-qgjsl` · `dragonfly-prod-5c9f9f8588-fkwlj` Ready 08:47:53/54Z · 재시작 0 · `Loading /data/dump-summary.dfs` · `Load finished, num keys read: 0`(옛 pod의 cron 스냅샷 적재 — D4 고정 이름 동작 확인) · aclfile 오류 문구 0 · `io_uring` 비활성 → epoll WARNING(seccomp RuntimeDefault · 정보) → 옛 Job 삭제 · apply(ConfigMap/ES unchanged · Job created) → **VD-4 2차 08:50:59–08:51:04Z Job succeeded · 21줄 · `SUMMARY: pass=13 fail=0`** — `noauth … wait=1s`(유예가 거부 1회 흡수 = 경합 실재 · 15초 상한 충분) · `ACL LIST` 4행(순서 sample-pod · identity-admin · default · admin — 고정되지 않음) · `user sample-pod on #<redacted> %R~revoked:* ~sample-pod:* resetchannels +@all $all` · `user default off resetchannels -@all +auth +hello $all` · writer-set OK · reader-get probe · 세 거부 검사 `NOPERM sample-pod has no ACL permissions` · 정리 DEL 1. **VD-4 판정 = 옵션 A(`--aclfile` Secret 유지)** — 계약 §VD-4 기본 가정 성립 · default 줄만 F12로 정정. 하네스(Job 존재 중): kafka **14/3/0**(job-d-1/2 PASS) · cluster **41/3/10**(np-2-data-assert PASS · argo-4-dragonfly PASS · backup-1..3 = OCI 세션 만료) · data **13/2/1**(job-1/2 PASS · bucket-1/2 = OCI 세션 · env-1 SKIP) · post r2(rev `5399d87`) PASS 33 · FAIL 1(app-3 `syncResult.revision` = `e2f0d2b` — PR #55 operation 없음 · 설명됨 · 확인 스크립트가 "마지막 operation 리비전 ≠ sync.revision"을 구분하지 못하는 한계 · T059 폴러/verify 재사용 시 보완). 증거 `evidence/{vd4-data-assert-log-r2, vd4-job-status-r2, kafka-tests-…-vd4, cluster-tests-…-vd4, data-tests-…-vd4, verify-post-r2, render-vd4-r2, ci-pr55}-2026-10-22.*`. 임시 객체 3(Job · ES · ConfigMap) 삭제는 운영자 → 삭제 뒤 하네스 기대 kafka 12/5/0 · cluster 43/0/11(OCI 재인증 뒤) · data 13/2/1→ job-1/2 FAIL 아님 SKIP? (data.tests job-1/2는 Job 부재 시 FAIL — T050 설계 · T059까지 받아들인 FAIL).
+- **T057 완료(2026-10-22 · 63/119)**: tasks.md 체크 + VD-4 결과 한 줄(옵션 A) · 런북 §3 T057 · §4 T057 실행 기록 1·2차 · 학습 로그 `content/tmp/003-t057/2026-10-22.md` · 메모리(project-sp1 · tool-gotchas · feedback). report.md 한 줄은 /finish 때(VD-4 옵션 A · 2026-10-22).
+- **마감 확인(2026-10-22 18:1x KST)**: 운영자 `kubectl delete -f vd4/data-assert-vd4.yaml` → ConfigMap · ES · Job `deleted` 3 · agent-view 부재 확인(빈 출력 · Secret은 GC — agent-view can-i get secrets = no라 직접 확인 불가) · 하네스 `kafka.tests.ps1` **12/5/0**(df-1 · df-2 PASS · job-* 5 = T059) · `cluster.tests.ps1` **40/3/11**(argo-4-dragonfly PASS · np-2-data-assert SKIP until T059 · backup-1..3 FAIL = OCI CLI 세션(svc-verify) 만료 — 재인증 뒤 43/0/11 재확인은 T058 세션 시작 때) · 증거 `evidence/{kafka,cluster}-tests-2026-10-22-final.log`. **T057 닫힘.** 세션 종료 규칙(jt-ops): cloudflared access tcp 종료 · `%USERPROFILE%\.cloudflared\*-token*` 삭제는 운영자.
+
+## T058 (2026-10-29 시작 — 복구 런북 `docs/runbooks/restore-drill.md` + `barman-cloud-backup-list` 확인 + T050·T051 PASS)
+
+- **입력 대조(2026-10-29 오전)**: 과제 문면 tasks.md :156 · spec FR-018(PITR = 클러스터 전체 · 단일 DB = side Cluster PITR → `pg_dump` → 복원) · FR-041(런북 8종 — restore-drill 범위 · rollback.md의 K3s 순서와 `--cluster-reset` 금지 문구) · FR-047(번들 구성 · age · 복원 절차의 정본 위치 = bootstrap(K3s) · vault-unseal(Vault)) · SC-011(실연은 SP-3 — report 수용 위험) · Edge Case 노드 B 장애(PVC 손실 → restore-drill PITR · RPO ≤ 5분) · plan 롤백 문단(K3s 핀 재설치 → stop → 복호화 → `server/db/state.db`(`-wal`·`-shm` 제거)·`server/token`·`server/cred/`·`server/tls/` → start → 노드 B 재조인) · research CNPG-D8(새 Cluster `pg-main-restored` + `bootstrap.recovery.source` + `externalClusters[].plugin` · 복구 클러스터 자체 아카이브는 다른 `serverName`) · data-model §7 백업 행 · quickstart 롤백 표 · gitops `platform/cnpg-cluster/README.md` §5(삭제 = 데이터 삭제 · revert 없이 delete면 selfHeal이 **빈 DB**로 재생성 · 노드 B 재이미지 = 소실 경로 · 60일 버전 창은 실수 삭제용) · §6 T058 인계(PITR = 클러스터 전체 · 다른 serverName · 재이미지 선행 조건) · bootstrap.md §2 머리 경고(T058 전 노드 B 재이미지 금지) · build-notes 「T053」 인계(`firstRecoverabilityPoint` 플러그인 경로 빈 값 확정 · WAL은 유휴면 늘지 않음) · 「T054」 C13(수동 대체는 `kubectl exec … psql` 1순위 — 플러그인 가정 안 함) · `.claude/rules/docs.md`(런북 위치 · README 색인) · `content.md`(공개 저장소 — 비밀·내부 호스트·IP·식별자 0).
+- **소스로 확인한 사실(2026-10-29 · 설계의 근거)**:
+  1. CNPG v1.30.0 CRD(`config/crd/bases/postgresql.cnpg.io_clusters.yaml` — gitops 차트 CRD와 Cluster v1 openAPIV3Schema **JSON 동일**): `spec.bootstrap.recovery{backup, database, owner, recoveryTarget{backupID, exclusive, targetImmediate, targetLSN, targetName, targetTLI, targetTime, targetXID}, secret, source, volumeSnapshots}` · `spec.externalClusters[]{barmanObjectStore(in-tree · 1.31 제거), connectionParameters, name, password, plugin{enabled(기본 true), isWALArchiver, name(필수), parameters}, sslCert, sslKey, sslRootCert}` · `targetTime` = RFC3339 또는 PG timestamp · 시간대 없으면 UTC(문서: 항상 `Z`/`+09:00` 명시 권고) · `backupID` 비면 targetTime/LSN 기준으로 그 **이전 가장 가까운 completed** 자동 선택, 둘 다 없으면 최신 백업 + 최신 WAL까지.
+  2. webhook `cluster_webhook.go` v1.30.0: `ValidateUpdate` = `validate(new)` + `validateClusterChanges(image · configuration · storage · walStorage · tablespaces · unix perm · replication slots · wal_level · replica)` — **`bootstrap` · `externalClusters` 변경은 업데이트 거부 대상이 아니다**(생성 뒤에는 무시된다 · 라이브 미실측 = VD-1). `validateBootstrapRecoverySource`가 `recovery.source` 이름의 externalClusters 항목 존재를 요구. `cluster_defaults.go` `defaultRecovery()`: `database` 비면 `app` · `owner` 비면 database → 적지 않으면 prod에 `app` DB·role이 생긴다 → **`database: platform` · `owner: platform_owner`로 initdb와 같게 적는다**(복구 뒤 operator가 owner 비밀번호를 Secret `<cluster>-app`으로 갱신 — `platform_owner`는 소비자 0).
+  3. plugin-barman-cloud v0.14.0 `internal/cnpgi/operator/config/config.go`: 아카이브 `serverName` = `spec.plugins[].parameters.serverName`, 비면 클러스터 이름(:148–152) · 복구 소스 = `externalClusters[recovery.source].plugin.parameters{barmanObjectName, serverName}`(비면 클러스터 이름 · :157–164) · `lifecycle.go` 복구 Job 이름 `<cluster>-1-full-recovery`(사이드카 주입 · `collectSidecarResourcesForRecoveryJob`). 플러그인 문서(usage): 복구 설정만으로는 **새 클러스터의 WAL 아카이브가 켜지지 않는다** → `spec.plugins`가 없으면 버킷에 쓰지 않는다. CNPG recovery 문서: 같은 ObjectStore를 쓰는 클러스터마다 `serverName` 고유 · 빈 아카이브 검사 실패 = `Setting up primary` 고착 + "Expected empty archive" · `cnpg.io/skipEmptyWalArchiveCheck: enabled`는 **금지**(데이터 손실) · 복구는 **항상 새 Cluster**(in-place 없음) · 복구 중 역할·비밀번호는 원본 카탈로그 그대로.
+  4. 사이드카 이미지 `ghcr.io/cloudnative-pg/plugin-barman-cloud-sidecar:v0.14.0` = 인덱스 digest `sha256:9880817c285c7afa4d195da2145064d21907405489ed6ec39abe59b1feb558a4`(ghcr `Docker-Content-Digest` 실측 = gitops `SIDECAR_IMAGE`) · arm64 config `User 26:26` · `Entrypoint /manager` · `PATH=/venv/bin:…` · `Dockerfile.sidecar` = **distroless python3(nonroot) — 셸 없음** · barman 3.19.1 · boto3 1.43.56. 자격은 컨테이너 env에 **없다**(사이드카가 런타임에 Secret을 API로 읽어 하위 프로세스 env로 넘긴다 · VD-4 env 13개에 AWS 키 없음) → `kubectl exec … sh -c`로 `barman-cloud-backup-list`를 돌릴 수 없다. barman 3.19.1 `cloud_cli.py`/`cloud_backup_list.py` 인자 = `[--cloud-provider aws-s3] [--endpoint-url URL] [--read-timeout N] [--addressing-style auto|virtual|path] [-t] [--format console|json] source_url server_name`.
+  5. CNPG 기본 pg_hba(`pkg/postgres/configuration.go` :105) `local all all peer map=local` → 파드 안 OS 사용자 `postgres`(uid 26)가 `psql/pg_dump -U postgres`로 비밀 없이 superuser 접속(= `kubectl cnpg psql`의 실체 · T054 C13과 일치). `Database` CRD `allowConnections`는 nil이면 ALTER 하지 않는다(`database_controller_sql.go` :100 · :159) — 단일 DB 복구의 쓰기 정지는 CR 밖 SQL(`REVOKE CONNECT` + `pg_terminate_backend`)로 하고 되돌리는 GRANT는 PostSync Job의 멱등 SQL과 같은 문장을 쓴다.
+  6. ns `data`의 NetworkPolicy 전부 `podSelector: {}`(default-deny · allow-dns · allow-egress-external-443 · allow-kube-api · allow-from-cnpg-operator 8000 · allow-same-namespace …) → side Cluster · 복구 Job · backup-list Job도 같은 정책을 받는다(새 정책 0). AppProject `platform` `orphanedResources.warn: true` → 운영자가 수동으로 만든 Cluster/Job은 Application에 **경고 조건**만(health 아님 · 삭제 뒤 사라짐). 노드 B Allocated(10-13 `describe node`) cpu **1635m / ≈ 2000m** → T057 Dragonfly 2 × 100m 뒤 ≈ 1835m = **여유 ≈ 165m** · memory 3378Mi + 512Mi ≈ 3.9 GiB / ≈ 12.9 GiB → side Cluster는 `requests.cpu 100m`(사이드카 50m 포함 150m)까지가 상한 — 사전 점검 필수.
+  7. pwsh 7.6.9 네이티브 → 네이티브 파이프 바이트 보존 실측(`cmd /c type bin.dat | git hash-object --stdin` = 직접 해시 동일 · 256바이트 전역 + CR/LF/EOF 포함) → `kubectl exec … pg_dump -Fc | kubectl exec -i … pg_restore` 경로 성립(VD-5로 sha256 대조 변형도 둔다).
+  8. 하네스 영향: `data.tests.ps1` pg-2는 라벨 `cnpg.io/cluster=pg-main` · db/role은 `spec.cluster.name = pg-main` · backup-2는 cluster 필터 · bucket-1/2는 접두 `pg-main/pg-main/`(`$serverName = $clusterName`) · `cluster.tests.ps1` argo-4-pg-main은 Cluster `pg-main`만 → side Cluster · backup-list Job · 수동 Backup은 하네스에 보이지 않는다. **전체 PITR 뒤 serverName 세대 변경(`pg-main-r1`)만 bucket-1/2 전제를 바꾼다**(T053 인계 "기본값을 바꾸면 여기도 바꾼다").
+- **결정 D1–D14**:
+  - **D1 산출물(모노레포만 · gitops 변경 0)**: `docs/runbooks/restore-drill.md`(신규) · `docs/README.md` 색인 1행 · `tests/docs/restore-drill.tests.ps1`(정적 계약 검사 · test-first · SKIP 없음 · fail closed) · `tests/run-all.ps1` 슬롯 `restore-drill`(1n · 1m 뒤) · 런북 `bootstrap.md` §3 T058 기록(컨트롤러 · 라이브 뒤) · build-notes · 학습 로그. 복구 객체(side Cluster · Job · 수동 Backup)는 **운영자 수동 적용 · 임시**라 gitops 디렉터리를 만들지 않는다(gitops README §0 "복구 클러스터(T058)는 이 디렉터리 밖" · 계약 §sync-wave 표에 행 없음). 전체 PITR의 gitops PR은 운영자가 그때 만든다(런북에 diff 전문).
+  - **D2 런북 구조**(T114 공통 요건 목적·전제·절차·검증·되돌리기 + 시나리오 분기): §0 범위·전제·절대 규칙 · §1 복구 지점 확인(backup-list Job · Backup CR · 버킷 목록 · RPO 표) · §2 시나리오 선택표 · §3 전체 PITR(재해 복구 전용 — 경로 A 같은 이름 재생성(권장) · 경로 B 새 이름 + 참조 교체) · §4 단일 DB 복구(side Cluster → pg_dump → 복원) · §5 Vault 스냅샷(→ vault-unseal §7) · §6 K3s 번들(복호화 · 순서 · `--cluster-reset` 금지 · 정본 = bootstrap §7(T114) · rollback.md(T106)) · §7 검증 체크리스트 · §8 되돌리기 · §9 드릴·실측 기록 · §10 VD(미실측) · §11 관련 문서.
+  - **D3 `barman-cloud-backup-list` = 운영자 적용 Job**(ns data · 사이드카 이미지 digest 고정 · env `valueFrom.secretKeyRef` Secret `oci-s3-backup` 3키 → `AWS_ACCESS_KEY_ID`·`AWS_SECRET_ACCESS_KEY`·`AWS_DEFAULT_REGION` + 체크섬 env 2 · `command /venv/bin/barman-cloud-backup-list --cloud-provider aws-s3 --endpoint-url https://axvjykgvo2m1.compat.objectstorage.ap-chuncheon-1.oraclecloud.com --format console s3://joshuatech-backup/pg-main/ pg-main` · runAsNonRoot 26 · drop ALL · RuntimeDefault · readOnlyRootFilesystem + `/tmp` emptyDir · `automountServiceAccountToken false` · nodeSelector role=data · restartPolicy Never · backoffLimit 0 · activeDeadlineSeconds 300 · ttlSecondsAfterFinished 3600 · requests 50m/128Mi). 근거: 사실 4(셸 없음 · 자격 없음) — exec+python stdin 주입은 비밀이 운영자 파이프를 지나고 재현성이 낮다 · 로컬 barman 설치는 키 반출. 로그는 agent-view가 읽는다(`pods/log`). Argo OrphanedResourceWarning은 삭제 때까지 예상(무해).
+  - **D4 전체 PITR 경로 A(권장) = 같은 이름 `pg-main` 재생성**: gitops PR로 `cluster-pg-main.yaml`의 `bootstrap.initdb` → `bootstrap.recovery{source: origin, database: platform, owner: platform_owner, recoveryTarget(논리 오류일 때만)}` + `externalClusters[origin].plugin{barmanObjectName: oci-backups, serverName: pg-main}` + `spec.plugins[].parameters.serverName: pg-main-r<N>`(세대 접미 · 처음 r1) — 나머지 필드 불변. 머지 → Argo가 라이브 Cluster에 spec 적용(webhook 통과 · 효과 없음 · Synced — 사실 2 · VD-1) → 운영자 `kubectl delete cluster pg-main`(Read-Host 정지점 · 선택 = PV reclaim Retain 패치 선행으로 옛 데이터 디렉터리 보존) → Argo selfHeal 재생성 → `pg-main-1-full-recovery` Job → 승격 → Healthy. **`Database`·`DatabaseRole` CR(`cluster.name: pg-main` 불변) · Service `pg-main-rw` · CA 미러 ES key · kv `url` 호스트 전부 그대로 = "앱 Secret/Service 교체" 불필요.** 순서 근거: gitops README §5 "revert 없이 delete면 selfHeal이 **빈 DB**로 재생성"의 역 — recovery spec을 먼저 머지해 selfHeal이 **복구**로 재생성하게 한다. 부수 안전망: 실수로 recovery 머지 없이 delete 해도 재생성된 initdb 클러스터(serverName pg-main)는 빈 아카이브 검사에 걸려 **옛 아카이브를 덮어쓰지 못하고 멈춘다** → 그때도 경로 A로 간다. **경로 B(새 이름 `pg-main-restored` + 검증 뒤 참조 교체)** = 옛 클러스터를 살려 둔 채 비교할 때만 — 교체 표(DatabaseRole/Database CR 재생성(불변 참조) · CA 미러 ES `remoteRef.key` · kv `url` 호스트 · PostSync Job · data-assert ConfigMap · 하네스 상수 · 옛 Cluster 삭제(PVC 보존 선택))를 런북에.
+  - **D5 복구 뒤 필수 후속**: ① 수동 `Backup`(method plugin) 1회 → 새 serverName 카탈로그의 첫 복구 지점(ScheduledBackup `pg-main-daily`는 Cluster 삭제에 살아남아 다음 17:00Z부터 새 접두로 백업) ② `database`/`databaserole` applied 재확인(인스턴스 매니저 재조정 · DatabaseRole은 kv 비밀번호를 다시 적용) ③ `pg-main-ca` 재생성 → CA 미러 ES(5m) → 소비자 pod 재시작(US6 뒤) ④ 모노레포 `data.tests.ps1 $serverName`을 새 세대로(bucket-1/2 접두) — 별도 커밋 ⑤ 옛 serverName 오브젝트(`pg-main/pg-main/`)는 새 사이드카의 보존 정리 대상이 아니다 → 30일 뒤 운영자 수동 정리 · 옛 Backup CR은 다음 보존 주기에 `deleteBackupsNotInCatalog`로 사라진다(버킷 무관) ⑥ `firstRecoverabilityPoint`는 플러그인 경로에서 빈 값(T053 확정) — 복구 지점 판단은 backup-list · Backup CR로.
+  - **D6 side Cluster(단일 DB)**: 이름 `pg-main-restore-<yyyymmdd>` · ns data · instances 1 · 같은 카탈로그 major 18 · local-path 40Gi · **requests cpu 100m / memory 1Gi · limits memory 1536Mi(CPU limit 없음)**(사실 6 — 사전 점검 `kubectl describe node -l role=data` Allocated · 모자라면 50m) · nodeSelector role=data · enableSuperuserAccess false · parameters `max_connections "100"` · `shared_buffers 128MB` · `max_parallel_workers "2"`(복구 중 hot_standby 제약 — `max_connections`·`max_worker_processes` 등은 원본 이상) · `bootstrap.recovery{source: origin, database: platform, owner: platform_owner, recoveryTarget.targetTime: "<RFC3339 Z>"}` · `externalClusters[origin].plugin{oci-backups, pg-main}` · **`spec.plugins` 없음 = 아카이브 없음**(버킷 쓰기 0 · serverName 충돌 0) · 삭제 보호 어노테이션 없음(임시 객체 · 끝나면 `kubectl delete cluster` → PVC 삭제).
+  - **D7 dump/restore = 파드 안 peer 인증 · 비밀 0**(사실 5·7): ① 되돌리기용 현재 상태 dump(`pg_dump -U postgres -Fc <db>` → side 파드 PVC 파일 또는 워크스테이션 — 되돌리기 §8) ② 쓰기 정지 = `REVOKE CONNECT ON DATABASE <db> FROM <role 목록>`(pod DB `<db>_app, <db>_owner` · 공유 DB `<db>_owner`) + `pg_terminate_backend`(해당 datname) ③ `kubectl exec <side>-1 -c postgres -- pg_dump -U postgres -Fc --exclude-extension='*' <db>` | `kubectl exec -i pg-main-1 -c postgres -- pg_restore -U postgres -d <db> --clean --if-exists --no-owner --role=<db>_owner --single-transaction --exit-on-error`(원자적 · 확장은 Database CR/superuser 소유라 dump에서 제외 — owner 역할로 DROP/CREATE EXTENSION이 실패하지 않게) ④ `GRANT CONNECT ON DATABASE <db> TO <role 목록>`(PostSync Job 문장 그대로) + `ANALYZE` ⑤ 검증(표 수 · 행 수 표본 · 소비자 `/ready`). 큰 DB 변형 = 파일 + `sha256sum` 대조 + 2단계. 결과 = 그 DB만 targetTime 상태 · 다른 DB · Kafka · Dragonfly는 그대로(outbox 재발행은 소비자 `(consumer_group, id)` 멱등 · 거부 목록은 30초 beat 재적용 — events.md · data-model §3) — 결과 절에 명시.
+  - **D8 K3s·Vault 절 = 입구 + 포인터**: 공통 = `oci --profile svc-verify --auth security_token os object list/get`(읽기만) → `age -d -i '<오프라인 보관 경로>\joshuatech-age.key'`(경로 미기재) → 무결성(`scripts/backup-verify.ps1` — T048 13항목) · Vault = vault-unseal.md §7 그대로(같은 KMS 키 · root/OIDC admin · `-force` 의미 · ESO 되감기) · K3s = FR-041 순서(`INSTALL_K3S_VERSION` 핀 재설치 → `systemctl stop k3s` → `tar -C /var/lib/rancher/k3s -xf k3s-<ts>.tar`(번들은 `server/` 접두 그대로 — platform-backup.sh 「번들 레이아웃」) → `server/db/state.db-wal`·`-shm` 잔재 제거 → `systemctl start k3s` → 노드 B 재조인 확인 · **`k3s server --cluster-reset` 금지**(SQLite → etcd 비가역 전환)) · 정본 위치 = bootstrap.md §7(T114 작성) · rollback.md(T106 작성) — 그때까지 이 절이 안내.
+  - **D9 비밀·경로 위생**: age 개인키 경로 미기재 · 토큰·해시·IP·OCID 0 · 운영자 전용 명령은 `--kubeconfig <admin>` 명시(agent-view 명령과 구분) · 파괴 단계(Cluster 삭제 · `pg_restore --clean` · REVOKE)는 `Read-Host 'yes'` 정지점 + 직전 확인 출력 요구(vault-unseal §7 4단계 선례) · 판정과 변경은 다른 블록.
+  - **D10 정적 검사 `tests/docs/restore-drill.tests.ps1`**(madr.tests 구조 · Assert/Test-Group · 요약 `N passed, 0 failed` · SKIP 없음 · fail closed): rd-1 파일 존재 · 첫 줄 `# Runbook: restore-drill` · BOM 0 · CR 0 · TAB 0 · rd-2 절 제목(ATX) — `목적` `전제` `절차` `검증` `되돌리기` 포함 + §1 복구 지점 · §3 전체 PITR · §4 단일 DB · §5 Vault · §6 K3s · §9 기록 · §10 VD · rd-3 필수 어구 — `bootstrap.recovery` · `externalClusters` · `recoveryTarget` · `targetTime` · `serverName` · `barman-cloud-backup-list` · `pg_dump` · `pg_restore` · `--single-transaction` · `cnpg.io/skipEmptyWalArchiveCheck`(금지 문맥 — 같은 줄에 `금지`) · `k3s server --cluster-reset`(같은 줄에 `금지`) · `age -d` · `svc-verify` · rd-4 YAML 블록(```yaml) 추출 → 문서마다 `apiVersion` `kind` `metadata.name` · Cluster 블록: `source:` 값 = externalClusters `name:` 값 · `plugin.name: barman-cloud.cloudnative-pg.io` · `barmanObjectName: oci-backups` · 원본 `serverName: pg-main` 존재 · 전체 PITR 블록은 `serverName:` 2개 값이 서로 다름 · `imageName:` 0 · `skipEmptyWalArchiveCheck: enabled` 0 · `enableSuperuserAccess: false` · Job 블록: 이미지 `plugin-barman-cloud-sidecar:v0.14.0@sha256:[0-9a-f]{64}` · `secretKeyRef` name `oci-s3-backup` · key 3종 · `runAsNonRoot: true` · `restartPolicy: Never` · `ttlSecondsAfterFinished` · `barman-cloud-backup-list` · `s3://joshuatech-backup/pg-main/` · rd-5 비밀 모양 0(`AGE-SECRET-KEY` · `BEGIN .*PRIVATE KEY` · `eyJhbGciOi` · `#[0-9a-f]{16,}` · `redis://[^ ]+:[^ ]+@` · `postgresql://[^ ]+:[^ ]+@` · 사설 IP · `C:\\.ssh`) · rd-6 `docs/README.md`에 `](runbooks/restore-drill.md)` 1행 · rd-7 상호 참조 어구(`vault-unseal.md` + `§7` · `bootstrap.md` + `§2` · `rollback.md`) · rd-8 kubeconform(선택 — `.superpowers/bin/kubeconform.exe`와 `.superpowers/t058/schemas`가 있을 때만 YAML 블록 전부 `-strict` Valid · 없으면 그 단언만 `INFO skip`(합계 밖) — 저장소 밖 도구라 PASS 조건에 넣지 않는다). run-all 슬롯 1n = 1l과 같은 규율.
+  - **D11 라이브(이 과제에서 실측)**: backup-list Job 1회(운영자 apply → 컨트롤러 로그 읽기 → 운영자 delete) → backup id · 종료 시각 · 수를 런북 §9 첫 행 + bootstrap.md §3 T058에 · 하네스 `data.tests.ps1` 13/2/1 · `kafka.tests.ps1` 12/5/0 · `cluster.tests.ps1` 43/0/11(OCI 재인증 뒤). 복원 실연은 하지 않는다(SC-011 → SP-3).
+  - **D12 VD(미실측 → SP-3 드릴에서 닫는다)**: VD-1 webhook이 라이브 Cluster의 bootstrap→recovery 변경을 받는가(소스 근거 있음) · VD-2 selfHeal 재생성이 recovery로 가는가(폴링 지연 · Failed 경로) · VD-3 복구 Job 자원(side 100m)·소요(RTO) · VD-4 `pg_dump -U postgres` peer · VD-5 파이프 바이트(sha256) · VD-6 Database/DatabaseRole 재조정·비밀번호 재적용 · VD-7 CA 교체 전파·소비자 영향 · VD-8 Argo OrphanedResourceWarning 모양 · VD-9 복구 뒤 `firstRecoverabilityPoint` · VD-10 side Cluster 삭제 뒤 PVC/PV 정리 · VD-11 PV Retain 데이터 디렉터리 재사용 가능성(포렌식 전용으로 둔다).
+  - **D13 하네스 영향 0**(사실 8) — 전체 PITR 뒤 `$serverName` 세대만(D5 ④).
+  - **D14 빌더·리뷰**: 워크플로 `t058-build.js` — 빌더 1(infra-builder · opus · **테스트 먼저 red → 런북·색인·슬롯 → green**) → 리뷰 3렌즈 병렬(A 정본·소스 대조 · B k8s 보안·데이터 안전 · C 운영자 실행 가능성) → 수정 ≤ 2라운드 → 컨트롤러 검수 → 라이브(D11). 지시문 `.superpowers/t058/prompts/` · 스키마 `.superpowers/t058/schemas/`(CNPG v1.30.0 CRD → JSON 5종 + ObjectStore — kubeconform용 · 컨트롤러 생성 · 라이브 매니페스트 3장 Valid 스모크 통과).
+- **라이브 기준선(2026-10-29 12:25–13:46 KST · 운영자 터널·agent-view 토큰(만료 20:26 KST)·OCI svc-verify 세션)**: 1차 하네스(13:38–13:41) cluster 40/3/11 · data 11/4/1 · kafka **12/5/0** — FAIL 5 = OCI 세션 만료(12:25 발급 · 60분 수명 · `oci session refresh` 불가 "no longer valid") → 운영자 재인증(13:4x) → 재실행(13:42–13:46) **cluster 43/0/11 · data 13/2/1**(FAIL = job-1/2 T059) = T058 「T050·T051 PASS」 기준선. 버킷(`svc-verify` 읽기 · `evidence/bucket-objects-2026-10-29.json`): 오브젝트 106 · 베이스 백업 **17**(`20261013T094258` … `20261028T170000`) · WAL 세그먼트 55 · 다른 접두 0 · ≈ 201 MB · Backup CR 최신 `pg-main-daily-20261028170000` completed endWal `0…36`. 교훈: svc-verify 세션은 발급 60분 — OCI 의존 하네스는 운영자 재인증 직후에 돌린다.
+- **빌드 r1(워크플로 `wf_2c82865c-332` · 12:57–14:12 KST · 에이전트 4 · 1.73M 토큰)**: infra-builder(opus) DONE_WITH_CONCERNS — 런북 1083줄(yaml 4 · powershell 42 · bash 1) · 테스트 467줄(단언 27 + INFO rd-8) · README 1행 · run-all 1n · test-first red 9/19 → green 27/0 · kubeconform Valid 4 · 변이 25/25 포착 · 지시와 다르게 한 것 7(되돌리기 dump에도 `--exclude-extension='*'` · §4 변수화 · 테스트 강화 · VD-13 · VD-1 거부 갈래 · `kubectl create` · 리다이렉트 근거 완화 — 전부 수용). 리뷰 r1 3렌즈 전부 approve_with_fixes — **A**(정본·사실) 7건(high 1 · medium 2 · low 4) · **B**(보안·데이터 안전) 10건(medium 3 · low 7) · **C**(운영 실행 가능성) 11건(medium 3 · low 8). 보고·리뷰 원문 `.superpowers/t058/reviews/r1-workflow-result.json` · journal 사본.
+- **r1에서 정정된 설계 전제(1차 자료 — 리뷰 A가 소스로 반증)**: ① **D5 ⑤ 틀림** — 옛 세대 Backup CR은 새 사이드카가 지우지 **않는다**: plugin v0.14.0 `retention.go` `deleteBackupsNotInCatalog`는 `useSameBackupLocation`(`status.pluginMetadata.clusterUID == cluster.UID`)인 것만 지우고 같은 이름으로 재생성해도 UID가 다르다(`backup.go` :193) → 운영자 수동 삭제 절차 + 하네스 backup-2 거짓 안심 경고(런북 반영 K3). ② **D5 ② · 사실 3 과장** — DatabaseRole은 generation·Secret resourceVersion이 그대로면 재적용하지 않는다(CNPG v1.30.0 `databaserole_controller.go` `isAlreadyReconciled`) → 전체 PITR 뒤 **비밀번호 재적용을 필수 단계로**(6 role 전부 · 1순위 `comment` bump PR(세대) · 대안 Secret 6장 삭제 → ESO 재생성 → `cnpg.io/reload`) + 유출 회전의 옛 비밀번호 부활 고지(K2). ③ **D4-3 「라이브 효과 없음」은 bootstrap·externalClusters에만 맞다** — `spec.plugins[].parameters.serverName`은 플러그인이 요청마다 spec에서 읽어(config.go `NewFromCluster`) 옛 클러스터가 돌고 있으면 머지 직후부터 WAL이 새 접두로 간다 → 재생성 클러스터가 빈 아카이브 검사에 멈춘다(덮어쓰기 0 · 세대 1개 낭비). **결정 K1**: 논리 손상 갈래에 **2-c 아카이브 정지 = `kubectl annotate cluster pg-main --overwrite cnpg.io/hibernation=on`**(CNPG 1.30 선언적 hibernation — 파드 삭제 · PVC 유지 · 조건 `cnpg.io/hibernation=True Hibernated`) → 파드 0 확인 뒤 머지. 노드 B 소실 갈래는 건너뜀. Argo selfHeal이 kubectl 어노테이션을 되돌리지 않는다는 전제(desired에 없는 live 키는 diff 밖)는 VD-13. 대안(기각) = 2-PR 선언적 hibernation(머지 1회 더 · 비상 절차에 과함).
+- **그 밖의 결정 K4–K9**: K4 rd-8 = 로컬 스키마 1순위(`.superpowers/t058/schemas` — CNPG 5종 + ObjectStore + **`batch/job_v1.json`** = yannh/kubernetes-json-schema `master-standalone-strict/job-batch-v1.json` 커밋 `f7d855e49c34b039c9ef2196444910275e31e09e` 사본 2026-10-29) → `default` 폴백 → `.superpowers/kc-cache` 있으면 `-cache`(오프라인 PC에서도 FAIL 아님 · 도구 부재면 INFO) · K5 §6 ⑩ 소거 정지점 `-ne 'yes' → throw` 통일 · K6 삭제 전 `kubectl create --dry-run=server`(이름 `pg-main-dryrun` 사본 · webhook sideEffects None) + 거부 사유 분기(`Only one bootstrap method`만 4단계행 · 그 밖은 PR 수정) · K7 수동 Backup 자리(`-pre-pitr` completed = 4-b 질문 · `-post-pitr` = 5단계 첫 항목 · 노출 창 고지 — 승격 ~ 새 세대 첫 base 사이 쓰기는 2차 장애 때 복구 불능) · K8 하네스 기대값을 실측 표기로 · K9 범위 밖 = gitops README §6 T058 인계 문구(새 이름 → 같은 이름 세대) · §5/VD-13 「≈ 30 수렴」 보정 · `cluster-pg-main.yaml` 머리 주석 → 후속 gitops 문서 PR · bootstrap.md §2 node-password 한 줄은 컨트롤러가 반영(2026-10-29).
+- **수정 r1 → 리뷰 r2 워크플로 `wf_f19461ca-9b6`**(14:2x KST 시작 · 지시문 `prompts/t058-fix-r1.md`) — 결과는 아래에.
+- **라이브 — `barman-cloud-backup-list` Job 실측(2026-10-29 14:36 KST · 운영자 apply → agent-view 관찰 · VD-12)**: 운영자 `kubectl apply -f .superpowers/t058/pg-main-backup-list.yaml`(런북 §1-1 블록 추출본 · kubeconform Valid · sha256 `e6a0a7d2…`) → 파드 `pg-main-backup-list-tql84` 노드 B(joshtech-cache) 05:36:11Z 시작 → **05:36:14Z Succeeded(3초 · exit 0 · 재시작 0)** → `kubectl wait --for=condition=complete` 즉시 통과 · 로그 = console 표 5열(`Backup ID · End Time · Begin Wal · Archival Status · Name`) **17행** = `20261013T094258`(Begin Wal `0…03`) · `20261013T170000`(`0…06`) · 10-14 … 10-28 매일 17:00:0x(`0…36`) — Begin Wal이 각 Backup CR `status.endWal`과 일치 · Archival Status 전부 빈 칸(= DONE) · Name `backup-<ts>` · **End Time은 시간대 표기 없는 UTC**(Backup CR stoppedAt `17:00:02Z`와 같은 값 — VD-12 답: UTC). 로그에 자격 문자열 0. 버킷 목록(13:4x)의 base 17개와 수가 같다. 증거 `.superpowers/t058/evidence/backup-list-job-{log,events}-2026-10-29.*` · `backup-list-job-2026-10-29.yaml`. 삭제는 운영자(⑥).
+- **gitops 문서 후속 PR #56**(`a483602a2ba57c7baeabb58367e3ac9bb8b91d81` · 브랜치 `t058-docs-restore-runbook` · 문서·주석 3파일 · 렌더 sha `0a17e362…` 불변): README §0·§3 VD-13·§5·§6 T058 인계를 경로 A(같은 이름 재생성 · 세대 serverName · hibernation 선행 · 옛 Backup CR 수동 삭제 · DatabaseRole 재적용 · 하네스 `$serverName`)로 정정 · kustomization 머리 7) · ObjectStore serverName 주석. 머지 = 운영자(시점 자유).
+- **수정 r1 → 리뷰 r2 결과(`wf_f19461ca-9b6` · 14:2x–15:2x KST · 에이전트 4 · 1.55M 토큰)**: 수정 빌더 DONE_WITH_CONCERNS — 28건 + K1–K8 전부 반영(런북 1083 → 1268줄 · 테스트 467 → 543줄 · 단언 27 → 28 · 변이 39/39 포착 · **오프라인 rd-8 Valid 4**(거부 프록시 아래 — 로컬 스키마 1순위 실증) · 지시와 다르게 한 것 11 전부 안전 쪽: 2-c Read-Host 정지점 · WaitingForHealthy 분기 · C9 토큰 메모 정정(K3s 「Backup and Restore」 "same token value" — 원문 fix가 틀렸음) · 6-2 자동 선별 · 소거 4경로 · B6 상위 집합 · 5행 진입 표). 리뷰 r2: **A approve(0) · B approve(0 · low 6) · C approve_with_fixes(medium 2 = 5-b 실패 분기 없음 · 2-c WaitingForHealthy 출구 없음 · low 6)** + A §E low 7 · 1차 자료 재대조 전부 일치(hibernation `status.go` 조건 4종 · healthy 전제 · PVC ownerRef 불변 · plugin `types.go` `clusterUID` · DatabaseRole generation 재적용이 PASSWORD를 항상 낸다(`roles.Update :127`) · webhook sideEffects None). 보고 원문 `.superpowers/t058/reviews/{fix-r1-report,review-r2-A-spec,review-r2-B-security,review-r2-C-operator}.md` · `r2-workflow-result.json`.
+- **수정 r2(소형 빌더 · 15:19–15:35 KST · 지시문 `prompts/t058-fix-r2.md`)**: C-r2-1 · C-r2-2 + low 선별 14(B-L1 dry-run NotFound 확인 · A-E1/B-L2 6-2 `spec.cluster.name` 필터 · B-L3 ES 6행 직전 확인 · B-L4/A-E2 node-password Secret 1순위·Node 2순위 코드 블록 + 출처 정정 · B-L5/C-L5 소거 `REMOVED 4/4` throw 모양 · B-L6 규칙 5 열거 · A-E3/C-L2 3-a는 2-c 전에 · C-L3 어노테이션 PR 폴백 · A-E4 §5 전제 · A-E7/C-L1 §1-4 제목 · C-L4/A-E5 `<그 테이블>` 표 행 · A-E6 VD-15 agent 인증서 불일치 인계) + **VD-12 닫힘 · VD-8 일부 닫힘 · §9 첫 행** = backup-list Job 실측 → 런북 1314줄 · 테스트 28/0 · PowerShell 블록 59 파서 0 · xref 0 · 비밀 0. 빌더 해석 5곳(ⓑ 예외 4곳 · 어노테이션 제거 머지 시점 = 4-b 삭제 뒤)은 컨트롤러가 diff로 확인 — 타당. 컨트롤러 후속 2: §9 증거 글롭 정정(`backup-list-job-*2026-10-29.*` · `bucket-objects…` · 하네스 로그) · bootstrap.md §2 node-password 문장을 런북 1순위/2순위·출처 표기와 통일.
+- **마무리 검사(15:4x KST)**: 정적 테스트 **28 passed / 0 failed** · `INFO rd-8-kubeconform: Valid 4` · 7파일 BOM 0 · CR 0 · TAB 0 · 끝 LF · run-all.ps1/테스트 파서 0 · `tests/run-all.ps1` 전체 1회(결과는 아래 마감 줄).
+- **마감(2026-10-29 15:39–16:23 KST)**: `tests/run-all.ps1` 전체 1회 = 슬롯 28 중 **27 PASS · 1 FAILED**. FAIL = `platform` ← `infra tests` 34/27 — 27건 전부 `tofu plan` 의존(plan-1 `No value for required variable "budget_alert_email"` + OCI 자격 없음 → plan-2 · nsg 4 · sl · inst 2 · bucket 4 · iam 7 · dg 2 · kms 2 · lc 2 · budget = "plan JSON unavailable") = T053·T054 마감과 같은 **기대 FAIL**(운영자 자격 `TF_VAR_*`가 있어야 도는 검사 · 코드 결함 아님); `tofu.tests.ps1` 정적 34 전부 PASS(validate 6 · inst-3 · kms-2 · access-1 · cf-vars-1 · tunnel 2 · vt-1~17). 새 슬롯 **`restore-drill` PASS(28/0 · `rd-8-kubeconform: Valid 4`)** · `specs-index-fresh` PASS · `ci-gitleaks` PASS · kafka-harness 745/0 · kernel-trial 235/0. 로그 `.superpowers/t058/evidence/run-all-2026-10-29.log`(336 KB). 체크 **T058 `[X]` → 64/119**. **T058 닫힘.** 세션 종료 규칙(jt-ops): 운영자가 `cloudflared access tcp` 종료 · `%USERPROFILE%\.cloudflared\*-token*` 삭제. gitops 문서 PR #56 머지 시점은 운영자 자유 · `report.md` 행은 `/finish`에서.
+- **후속(2026-10-29 16:42 KST)**: 사용자 지시로 gitops PR #56을 squash 머지 → main `ac0340a81fee0f1f8bf2f0ca376f3f001fe4ca85`(문서만 · 렌더 불변 · Argo 22 Application 전부 Synced/Healthy 유지 · `platform-cert-manager-issuers`가 먼저 새 리비전을 반영). 로컬 gitops 체크아웃 main 동기화 · 작업 브랜치 삭제. 세션은 이어서 T059로.
+
+## T059 (2026-10-29 시작 — US3 E2E · 선행 = 검사 Job Application `platform-tests` 배포 · 세션 모델 Fable 5.1)
+
+- **과제 문면(tasks.md :160)**: `E2E: US3 AC1–AC5 — data·kafka 검사 PASS, 다른 pod app role로 교차 DB 접속 시 permission denied 증거, kcat 왕복 시간, 백업 오브젝트 목록, dev/prod 분리(접두·인스턴스)·Dragonfly ACL 거부(NOPERM) 증거 확인 — evidence recorded in the tester report`. 선례 = T049(`research/2026-10-06-e2e-us2-t049.md` — tester 1일차 판정 → 컨트롤러 후속 → 2일차 결과 → 공백 → 소유 표).
+- **소스로 확인한 사실(2026-10-29 16:4x–17:0x KST · 라이브는 agent-view 읽기만)**:
+  1. gitops `platform/policies/tests/kustomization.yaml` :14–20 = 독립 kustomization(`namespace: jt-dev`) · resources 5(ConfigMap · ES `assert-env` · Job `data-assert` · `kafka-assert` · `authz-assert`) · **이 디렉터리를 읽는 Application 없음**(설계 D3-A · README §「왜 지금 Application이 없나」). `kustomize build` 객체 5.
+  2. AppProject `tests`(`clusters/oci-k3s/projects/tests.yaml`): sourceRepos = gitops 1 · destinations = `jt-dev` 1 · `clusterResourceWhitelist: []` · 어노테이션 `Delete=false,Prune=false` — 라이브 동일. 머리 주석 "Application 생성은 그 뒤 태스크(T102 계열)"는 T041 시점 추정 — tasks.md T102는 US7 E2E라 **정정 대상**(소유 = T059: 하네스 `cluster.tests.ps1` :181 `$assertJobOwner` data-assert·kafka-assert = T059 · 2026-10-08 정정 · gitops cnpg-databases/dragonfly/kafka README §6 인계 전부 T059).
+  3. `tests/validate.sh` 7.1(:2069–2108): 이름 `root`(bootstrap/root-app.yaml만) · `platform-<comp>`(`WAVE_OF[comp]` 필수 · `want_path=platform/<comp>` · `argocd`만 `bootstrap/argocd` 예외) · `<pod>-(dev|prod)`(`APP_WAVE` 100 · `apps/<pod>/overlays/<env>`) · 그 밖 `WAVE-name` FAIL. `WAVE_TABLE`(:287–309) 행 = `<comp> <wave> <ns>`(마지막 `traefik 60 kube-system`). 7.2(:2110–2118)는 `platform/*/` **1단계**만 센다 → 중첩 `platform/policies/tests`는 무관. 자기검사 `tests/validate.tests.sh` :522–530 = 픽스처 `wave-and-app`(7.1 FAIL 문구 7종 정확 일치) · 부분 실행 `VALIDATE_TESTS_ONLY='<ERE>'`(:31–34).
+  4. ES `assert-env`(:44–80) 8키 = kv 6경로: `dev/db/dev_identity_admin/app`(url·username·password) · `dev/kafka/identity-admin`(password) · `dev/dragonfly/identity-admin`(url) · `dev/dragonfly/sample-pod`(url) · **`dev/openfga/store_id`(store_id) · `dev/openfga/preshared`(key)**. 시드 상태: db·dragonfly 3경로 = VD-4(10-22) `assert-env` SecretSynced 실증 · kafka = ns data ES `kafka-user-dev-identity-admin`(store vault-data · 같은 경로) Ready True(라이브) · **openfga 2경로 = 미시드**(bootstrap.md에 계획 언급 1회뿐 · `platform-openfga`는 뼈대 — T082) → 그대로 배포하면 ES 전체가 `SecretSyncedError`(Secret 미생성 · Job 3개 전부 기동 불가 = T056형 사고).
+  5. Job 3종: `envFrom` = `secretRef assert-env` + `configMapRef assert-config`(data-assert init :191–195 · main :378–382 · kafka :288–292 · authz 동형) · restricted 적합 securityContext · uid 65534 · `automountServiceAccountToken: false` · 이미지 digest 고정 · `backoffLimit 0` · `activeDeadlineSeconds 300` · `ttlSecondsAfterFinished 604800` · hook 어노테이션 없음 · 자원 data-assert init 25m/32Mi→64Mi · main 50m/64Mi→128Mi · kafka 100m/320Mi→640Mi(JVM 2개 동시) · authz curl. 볼륨: `pg-main-ca`(jt-dev 미러) · `jt-kafka-cluster-ca-cert`(jt-dev 미러).
+  6. ns `jt-dev`: PSA `restricted`(namespaces.yaml :112) · ResourceQuota pods 20 · requests.memory 2Gi · limits.memory 4Gi · LimitRange defaultRequest cpu 50m · default memory 512Mi(quota.yaml) · NetworkPolicy 9장(라이브) — `allow-egress-to-data` 5432·9093·6379(policies-matrix.yaml :469–477) · `allow-egress-to-identity` · `allow-dns` · `default-deny`. 지금 Job 0 · ConfigMap `kube-root-ca.crt`만.
+  7. 라이브(16:42–16:5x): ClusterSecretStore 5 Valid · jt-dev ES 2(`pg-main-ca` · `jt-kafka-cluster-ca-cert`) SecretSynced 07:45Z · data 파드 6 Running(dragonfly-dev/prod 6d22h · jt-kafka 13d · pg-main-1 15d) · Argo 22 Application Synced/Healthy · agent-view 토큰 만료 20:26 KST.
+  8. 하네스 소유·기대: cluster `np-2-data-assert`·`np-2-kafka-assert`(Job 없으면 소유 과제 체크 여부로 SKIP/FAIL — **T059를 체크하기 전에 Job이 있어야 한다** :1155–1172) · `argo-1` = 제외 목록 빈 배열 · 모든 Application Synced/Healthy(:506–519) · 헤더 단언 수 54(gate 3 + nodes 3 + argo 8 + … · PASS 후보 49 · SKIP 게이트 11 :97–102); data `job-1`(failed ≥ 1 FAIL) · `job-2`(id 6 · tail 50 · SUMMARY 수 일치 :882–905); kafka `job-k-1..3`(roundtrip `latency=<n>ms` ≤ 5000 · cross-env-denied) · `job-d-1/2`(id 7 · sample-pod 행 `%R~revoked:*`)(:159–166 · :799–852) — kafka :164 `$dataJobNewIds` 주석 "지금 Job에 없음"은 T057 뒤 낡았지만 **논리는 옳다**(id가 있으면 통과) → 코드 변경 0.
+  9. Argo CD v3.5.2: Job 헬스 내장(Complete → Healthy · Failed → Degraded · 그 밖 Progressing) · ExternalSecret 헬스 lua(Ready 조건) → 리소스 wave(ES `"0"` → Job `"1"`)가 "Secret 뒤 Job"을 보장(dragonfly 선례 wave 0/1) · Job `spec.template` immutable → 스펙 변경 PR은 완료된 Job이 있으면 SSA 거부 → operation Failed · selfHeal은 지워진 리소스를 재생성 → ttl 7d 뒤 Job 소멸 = **주간 재실행** · 표준 diff는 live-only 필드(selector · controller-uid 라벨 · 기본값)를 차이로 보지 않는다(Deployment·Service 선례가 Synced) → 완료된 Job도 Synced 기대(VD-1).
+  10. gitops 인계 문장: policies/tests README §선행 조건 체크리스트 6 · §재실행 모델 후보 A(hook)/B(일반 리소스) · §후속 결정 3(ES 분할 · authz 데이터 · ttl) · cnpg-databases README §6 T059(**C5**: argo-1은 hook 실패를 못 본다 → `operationState.phase ∈ {Failed, Error}` 단언 검토) · dragonfly README §6 T059(kafka/authz-assert 기동 경합 후보 — `wait_ready`) · cnpg-cluster README T059(VD-2 bucket-2 유휴 가지 · VD-13).
+  11. 증거 명령: quickstart §US3(:60–76) 10줄 · spec US3 AC1–AC5(:AC1 실접속 dev 방향 + 카탈로그 prod 방향 + pg_stat_ssl · AC2 Backup completed + 버킷 base/WAL · AC3 왕복 5초 + 타 사용자 write 거부 · AC4 NOAUTH + sample-pod DEL NOPERM + maxmemory 768 + 5분 스냅샷 PVC · AC5 dev 접두 분리 + dev KafkaUser prod 토픽 write 거부) · 계약 hostnames-and-access.md :61–73(검사 Job 3종 · jt-dev · dev scope만 · tester는 로그만).
+- **결정 D1–D14(컨트롤러 2026-10-29 17:0x)**:
+  - **D1 범위**: T059 = US3 E2E **+ 그 선행인 검사 Job Application 배포**(소유 근거 사실 2·8 — "T102 계열" 추정 정정). 산출물 = gitops PR 1(Application + policies/tests 갱신 + validate 7.1 + 문서) · 모노레포 커밋(계약 2행 + 하네스 `argo-5` + 기록) · tester 보고 `research/2026-10-29-e2e-us3-t059.md` · 런북 §3 T059 · 학습 로그.
+  - **D2 Application** `platform-tests`: project `tests` · source.path `platform/policies/tests` · destination `jt-dev` · **wave `70`**(새 행 — 모든 플랫폼 컴포넌트 뒤: 검사 실패(Job Failed → Application Degraded)가 root 재구축에서 wave 60 이하(터널 · Traefik · 모니터링)를 막지 않는다) · syncPolicy 플랫폼 표준(automated prune false · selfHeal true · SSA · CreateNamespace · Prune=confirm · Delete=confirm · SkipDryRunOnMissingResource) · finalizer 있음 · 예외(ApplyOutOfSyncOnly · retry) 없음 · `ignoreDifferences` 없음(VD-1).
+  - **D3 계약 → validate → Application 순서**(apps/README 「Application 추가 절차」): 계약 §Application 규약 이름 행에 예외 1(`platform-tests` ↔ `platform/policies/tests`) + §sync-wave 표 `70` 행 + 범위 문구 `-20 … 70` → `validate.sh` `WAVE_TABLE` `tests 70 jt-dev` + 7.1 `comp == tests` 경로 예외 + 머리 주석 → 자기검사 `wave-and-app` 음성 1건(`platform-tests` 잘못된 경로 → `7.1 WAVE-path … ≠ platform/policies/tests`) → Application 파일. 문자열은 두 저장소에서 **글자 그대로 같게**(지시문에 고정).
+  - **D4 authz-assert 보류**: kustomization에서 `job-authz-assert.yaml`과 authz ES를 **뺀다**(파일은 남긴다 — T085가 2줄로 재포함). 근거 사실 4(kv 미시드 → ES 전체 실패) + OpenFGA 미배포(Job 즉시 FAIL → Degraded → argo-1 FAIL). `np-2-authz-assert`는 계속 SKIP(T085).
+  - **D5 ES 분할**(README 후속 결정 1 채택): `assert-data-env`(DATABASE_URL · PGUSER · PGPASSWORD · DRAGONFLY_URL · DRAGONFLY_SAMPLE_URL) · `assert-kafka-env`(KAFKA_PASSWORD) · `assert-authz-env`(OPENFGA_STORE_ID · OPENFGA_TOKEN — 파일만 · D4 보류). 파일 셋(`externalsecret-assert-{data,kafka,authz}-env.yaml`) · 옛 `externalsecret-assert-env.yaml` 삭제 · Job `envFrom.secretRef` 이름 교체(data-assert init+main · kafka-assert · authz-assert). 근거: Job 사이 자격 격리 + 부분 실패 격리(한 ES의 경로 하나가 없어도 다른 Job은 돈다 — 사실 4의 사고 모양을 구조로 막는다). 비밀번호 환경변수 이름 · ConfigMap은 그대로(OpenFGA 비밀 아닌 값 무해).
+  - **D6 재실행 모델 B 확정**: hook 아님 · 리소스 wave ConfigMap·ES `"0"` · Job `"1"` · `ttlSecondsAfterFinished 604800` 유지(= 7일마다 소멸 → selfHeal 재생성 = 주간 재검사) · 수동 재실행 = 운영자 `kubectl -n jt-dev delete job <name>` → selfHeal(폴링 ≤ 3분) 또는 Argo Sync · **Job 스펙 변경 PR 절차** = 머지 → sync task가 `field is immutable`로 실패(재시도 창 ≈ 5분 동안 phase Running "Retrying attempt #n" — 이 동안 argo-5는 통과) → operation 메시지에서 확인 → 운영자(admin kubeconfig · `--kubeconfig` 명시) `kubectl -n jt-dev delete job <이름>` → 다음 재시도가 새 스펙으로 생성 · 창을 넘겨 Failed면(여기서 argo-5가 잡는다) Job 삭제 + 운영자 전체 수동 Sync(첫 괄호에 있던 "argo-5가 잡는다"는 r2 C-r2-1 정정). **머지 전 삭제 금지** — selfHeal이 옛 리비전의 옛 스펙 Job을 수 초 안에 다시 만들어 같은 거부가 난다(r1 정정 A1/C2 · 소스 `controller/appcontroller.go` autoSync :2342–2420 · 처음 쓴 "(또는 머지 직전 삭제)"는 틀렸다). `Replace=true,Force=true`는 두지 않는다(매 OutOfSync마다 삭제·재생성 — 거짓 차이가 있으면 무한 재실행 · VD-1 뒤 후속 검토).
+  - **D7 Job 스크립트·이미지·보안 컨텍스트 변경 0**(envFrom 이름 · wave 어노테이션 · 머리 주석 「실행 시점」만). kafka-assert `wait_ready`(dragonfly 인계)는 첫 실행 실측(VD-4) 뒤 필요하면 후속 PR — JVM 기동 수 초가 netpol 반영 창(1–2초)을 지난다는 가설.
+  - **D8 gitops 문서(같은 PR)**: policies/tests README(§파일 · §자격 매핑 ES 열 · §「왜 지금 Application이 없나」→ 「Application `platform-tests`(T059)」 · 체크리스트 6 해소 표 · §재실행 모델 확정 · §후속 결정 1 채택/2 T085/3 확정 · 검증 기록 T059) · `clusters/oci-k3s/apps/README.md` 행 추가(합계 21) · `projects/tests.yaml` 머리 정정 · `tests/README.md` 7.1 예외 문장 · validate.sh 머리. cnpg-databases/dragonfly/kafka README §6 T059 인계 줄의 정리는 **라이브 결과와 함께 후속 문서 PR**(PR #56 방식).
+  - **D9 하네스(모노레포)**: `cluster.tests.ps1` **`argo-5`** 추가 = 제외 목록 밖 모든 Application의 `status.operationState.phase`가 `Failed`·`Error`면 FAIL(이름=phase + message 앞 160자) · 없음(operation 0) 통과 · `Succeeded`·`Running`·`Terminating`**만** 통과 · 그 밖 미지 문자열(대소문자 변형 포함)은 FAIL(fail closed — r1 B5 채택 2026-10-29) · argo-1과 같은 목록 조회(캐시 공유) · 헤더 단언 수 54 → 55(argo 9 · PASS 후보 50) · 단위 테스트 `tests/scripts/cluster-tests.tests.ps1` 케이스 C16–C21 여섯(전부 Succeeded → PASS · Failed 1 → FAIL 이름+message · Error 1 → FAIL · operationState 없음 → PASS에 "without operationState" 수 · 다중 실패 · 소문자 `failed` → FAIL `unknown operation phase` — 설계 때 "케이스 4"는 r1 C16 추가 단언과 B5 C21로 6이 됐다) · test-first(red → green) · FAIL 접두 문구는 "last operation Failed/Error (…)"로 유지하고 미지 phase는 항목 문구 `unknown operation phase`로 구별한다(r2 B-r2-1/C-r2-5 — 접두 정정은 다음 하네스 변경 때 `$argo5FailPrefix` 1곳 + C16-1 · C19-1 기대 문자열 + 머리 주석 · 단위 전체 1회). data/kafka 하네스 코드 변경 0. **기대값(머지 · Job 성공 뒤)**: cluster **46/0/9**(43 + argo-5 PASS + np-2-data-assert·np-2-kafka-assert SKIP→PASS) · data **15/0/1** · kafka **17/0/0**.
+  - **D10 머지 선행 조건(T056 교훈 — 머지 명령은 선행 출력 확인 뒤)**: ① 새 kv 시드 **0**(사실 4 — openfga 제외) ② jt-dev CA 미러 ES 2 Ready(사실 7) ③ store `vault-dev` Valid ④ 대상 파드 Running(사실 7) ⑤ CI validate pass · render diff = 추가분(Application 1 · tests 렌더 ES 2 · Job 2 · CM 1)만 ⑥ 운영자 kubectl 사전 동작 0. **머지는 사용자 확인 1회 뒤**(PR #56은 명시 지시 · 이번은 라이브 Job 실행이 생기므로 다시 묻는다) — 컨트롤러 `gh pr merge --squash`.
+  - **D11 머지 뒤 관찰(agent-view)**: root 폴링 → `platform-tests` 생성 → wave 0 ES 2 SecretSynced → wave 1 Job 2 → Succeeded(기대 data-assert ≤ 2분 · kafka-assert ≤ 3분 · JVM 기동 포함) → Synced/Healthy → `logs job/…` RESULT 15(pg 6 + Dragonfly 7 + Kafka 2) + SUMMARY 3 · 하네스 3종 = D9. 실패 분기: ES SecretSyncedError(경로 없음 → 운영자 시드 → 운영자(admin kubeconfig · `--kubeconfig` 명시) `kubectl -n jt-dev annotate externalsecret assert-data-env assert-kafka-env force-sync=<epoch> --overwrite`(ESO 지수 백오프 대기 회피 — 런북 §4 T056 「늦은 시드」 2단계) → 재시도 창 안이면 다음 재시도가 Job까지(재시도 시작 때 SyncResult를 비워 wave 0부터 재평가 — `controller/appcontroller.go` :1577) · 창 밖(Failed)이면 전체 수동 Sync(§4 T056 4단계) · 사고 기록 — r2 A-r2-3/C-r2-2: 빌더 편차 ③-1 채택 · r1 C1 fix의 "ESO ≤ 5m 재조회"는 부정확) · Job Failed(RESULT FAIL id → pg = PostSync ⓪ 미적용 · Dragonfly = ACL 파일 · Kafka = ACL·CA·JAAS·할당 → 수정 PR + Job 삭제 재실행) · sync 오류(서버 거부 메시지 기록). 증거 `.superpowers/t059/evidence/`.
+  - **D12 tester**: 입력 = 피처 디렉터리 · spec User Scenarios **US3 절** · quickstart §US3 · 명령(`tests/platform/run-platform-tests.ps1` 전체 1회 또는 `{cluster,data,kafka}.tests.ps1` · `kubectl -n jt-dev logs job/{data,kafka}-assert` · `kubectl -n data get databases,databaseroles,kafkatopics,kafkausers,deploy` · `oci --profile svc-verify os object list --bucket-name joshuatech-backup --prefix pg-main/`) · 자격 = agent-view kubeconfig · svc-verify 세션(운영자 재인증 직후 60분) · 쓰기 금지(테스트 경로만) · 보고는 글로(컨트롤러가 `research/2026-10-29-e2e-us3-t059.md`에 저장 · T049 모양). 문면 증거 5항목을 표 열로 둔다(교차 DB 거부 · kcat 왕복 시간(`latency=<n>ms` + 벽시계) · 백업 오브젝트 목록 · dev/prod 분리 · NOPERM).
+  - **D13 기록·체크**: 런북 bootstrap.md §3 T059 절(마커 `(T058 이후 기록은 이하에 추가)` 앞) · build-notes · 학습 로그 `content/tmp/003-t059/2026-10-29.md` · 체크 `[X]`(65/119)는 **Job 존재·하네스 PASS 뒤**(사실 8) · `report.md` 행은 `/finish`.
+  - **D14 VD(검증 후 결정)**: VD-1 완료된 Job이 Synced로 남는가(live-only 필드) — 머지 직후 · 아니면 `ignoreDifferences`(batch Job `/spec/selector` · template 라벨) 후속 PR · VD-2 ttl 7d 뒤 selfHeal 재생성·재실행(11-05 무렵 — T098/T116 관찰) · VD-3 Job 스펙 변경 PR의 immutable 경로(다음 Job 변경 때 · argo-5 포착 여부) · VD-4 kafka-assert 기동 경합(첫 실행 로그 — `Connection refused`/`timed out` 0이면 D7 유지) · VD-5 roundtrip 실측(`latency=<n>ms` · 벽시계 `<n>s` · 할당 소요) · VD-6 root wave 70 gating — 정방향(검사 실패가 앞 행(wave ≤ 60)을 막지 않음) + 역방향(재구축 때 wave 60 child 전부 Healthy 전엔 platform-tests 미적용 · Degraded면 root operation Failed) + 앱 행(wave 100)이 생기면 70→100 게이트 — **Job 결과 게이트는 보장이 아니라 경합**(r2 A-r2-1 · 컨트롤러가 소스 사본으로 확인: `controller/health.go` "Missing resources should not affect parent app health" — live가 없는 리소스는 집계 제외 → ES 2 SecretSynced 뒤 Job 생성 전 창에서 child health = Healthy → root가 그 창을 읽으면 Job 실행을 기다리지 않고 앱 행으로 간다 · 창을 지나면 Progressing 대기 · Degraded면 그 시도 Failed → retry가 만들어진 CR을 건너뛰어 적용 · 최종 phase Succeeded · 흔적 retryCount ≥ 1 — argo-5는 retry 소진 때만) → 리허설에서 root가 그 창을 읽는지 실측 · 검사 결과로 앱 행을 막으려면 별도 설계(인계 K9) — 재구축 리허설 SP-3(r1 A7/B4/C5) · VD-7 ES wave 0 → Job wave 1 순서(첫 sync 이벤트 시각) · VD-8 ES 헬스 lua가 SecretSynced를 Healthy로 보는가(= VD-7 전제) · VD-9 Job 2개 동시 자원(노드 배치 · 쿼터 안) · VD-10 Argo `platform-tests` Degraded 시 root 헬스 전파(선택: root `ignoreDifferences` 아님 — 관찰만).
+- **순서**: 설계(이 절) → 빌드 워크플로(빌더 2 병렬: gitops · 모노레포 계약+하네스 → 리뷰 3렌즈 r1) → 수정 라운드 → gitops PR 열기 · 모노레포 커밋 → D10 출력 확인 → 사용자 머지 확인 → D11 관찰 → 하네스 → tester(D12) → 기록 · 체크(D13).
+- **빌드 r1 · 리뷰 r1 결과(`wf_5a848a04-097` · 17:03–18:26 KST · 에이전트 5 · 1.65M 토큰)**: 빌더 2 DONE_WITH_CONCERNS — gitops(14 M/D + 신규 4 · 렌더 5장 sha `f3f0cca433f9…` · validate PASS 39 / FAIL 0 / WARN 4 · 자기검사 positive·wave-and-app red→green · kubeconform 3/0/2 · 편차 8 = wave 숫자 미기재(계약 :47 "다른 곳에 wave 번호를 중복 기재하지 않는다" 준수 — 채택) · apps/README 합계 22(실측 — 채택) · ConfigMap 어노테이션(D6 귀결 — 채택) · kafka 머리 ES 이름 · tests/README 덧붙임 · 양성 픽스처 수 갱신 · **D6 "머지 직전 삭제" 배제(빌더가 옳음)** · 추가 확인) · 하네스(계약 4 hunk ordinal 일치 · `argo-5` :712–734 · 단위 C16–C20 · 전체 198/0 · 522초 · 변이 M1/M2 포착 · 편차 = 줄 상한 2000 · `Clip 160` · 케이스 5 · C16 단언 3 추가(목록 조회 1회 증명 · 머리 단언 수 = 출력 수 자동 대조)). 리뷰 r1: **A approve_with_fixes(medium 2 · low 7) · B approve_with_fixes(low 6) · C approve_with_fixes(medium 2 · low 7)** · 1차 자료 대조(Argo CD v3.5.2 소스) 전부 일치 — Job/ES 헬스 · multiStep wave 대기 · 최종 wave Degraded 비실패 · selfHeal 선택 sync · 실패 리비전 자동 sync 중단 · CreateNamespace no-op · StructuredMergeDiff(VD-1 부분 확인 — kube-apiserver가 채운 selector/라벨의 managedFields 소유자 미확인). 보고 원문 `.superpowers/t059/reviews/{build-gitops-report,build-harness-report,review-r1-A-spec,review-r1-B-security,review-r1-C-operator}.md` · `r1-workflow-result.json`.
+- **r1 결정 K1–K6(컨트롤러 18:4x KST)**: **K1** D6 정정(A1/C2 — 위 D6 문장 · 머지 전 삭제 금지) · **K2** 계약 이름 행 "유일한 예외" 문구 유지(A5 (나)) — 뜻은 `platform/<component>` 디렉터리 대응 규칙의 예외이고 `platform-argocd` ↔ `bootstrap/argocd`는 계약 §디렉터리의 자기 관리 배치(7.1 별도 분기) · **K3** 하네스 기대값 46/0/9의 라이브 조건 3(C4): ① 측정은 Job 2개 Complete 뒤(실행 중은 Job Progressing → `platform-tests`·root Progressing → argo-1 일시 FAIL · Running pod가 있으면 limits-* SKIP→PASS로 47/0/8) ② 과거 Failed/Error로 끝난 뒤 새 operation이 없는 Application이 있으면 argo-5 FAIL = 의도(운영자 Sync로 해소 · 라이브 미확인) ③ VD-1 OutOfSync면 45/1/9 — tester 지시문 §1에 반영 · **K4** 지시문 ① 불일치 3(A6 — ConfigMap 허용 목록 누락 · apps/README 합계 21 · wave 숫자 기재 요구)과 :82 인용 절단(A2)은 빌더 편차 채택 + 지시문 :82 기록 정정으로 닫음 · **K5** B5 채택 — argo-5 닫힌 집합(미지 phase FAIL) + 단위 C21 · **K6** 수정 r1 범위 = gitops F1–F9(계약 셀 전문 인용 · 첫 배포 단계표+증상표 · 스펙 변경 절차 ①–⑥ + 수동 Sync 1줄 · admin kubeconfig 표시 · CreateNamespace fail-closed 문장 · 뒤 행(앱) 게이트 문장 · 7.2 `platform/tests/` 금지 분기 + 음성 픽스처 · :446 문구 · 낡은 참조 4곳(secret-stores README :322 · dragonfly README :82–83 · externalsecrets-acl.yaml :13 주석 · job-data-assert :44–46 주석 — 렌더 sha 불변 조건)) · 하네스 B5 · 컨트롤러(D6 · D9 · VD-6 · `tests/run-all.ps1` :52 시간 주석 · tester 지시문 K3) — 지시문 `prompts/t059-fix-r1-{gitops,harness}.md` · r2 공통 `prompts/t059-review-r2.md`.
+- **인계(r1에서 더해진 것)**: **B1** AppProject `tests`에 `namespaceResourceBlacklist` 6종(dev/prod와 동일) + validate 신규 검사 "tests 렌더 kind ⊆ {ConfigMap, ExternalSecret, Job}"(5.0 `RE_LOC_POLICIES`가 `platform/policies/tests/`를 정책 위치로 세는 사각 포함) — **T085 전**(계약 AppProject 행 → `projects/tests.yaml` spec PR → validate) · 스크립트 `job-data-assert.yaml:105` `assert-env` 문구 = 다음 Job 스크립트 변경 PR(완료 Job 삭제 절차 동반 · D7) · `bootstrap.md` `assert-env` 5곳(:1077 · :1130 · :1269–1270 · :1315–1316) = 런북 §3 T059 작성 때(D13) · cnpg-databases/dragonfly/kafka/kafka-topics README §6 T059 인계 줄 정리 = 라이브 결과 후속 문서 PR(D8) · **VD-11** ESO가 ES 어노테이션(sync-wave · tracking-id)을 Secret에 복사한다 — Argo는 kind가 다른 복사본을 관리 대상에서 뺀다(`controller/state.go` `isSelfReferencedObj` · dragonfly 선례) → 머지 뒤 운영자 확인(agent-view는 Secret을 못 읽는다) · run-all `cluster-harness` 슬롯 소요 ≈ 9분(C16–C21 추가).
+- **수정 r1 · 리뷰 r2 결과(`wf_d639608d-8e0` · 18:34–19:35 KST · 에이전트 5 · 1.25M 토큰)**: gitops 수정 F1–F9 DONE_WITH_CONCERNS(렌더 sha 2종 불변 `f3f0cca433f9…` · dragonfly `933506782d9b…` · validate PASS 39 / FAIL 0 / WARN 4 · 자기검사 wave-and-app red→green · 편차 8 — **③-1 F2 (a) "ESO ≤ 5m 재조회" 대신 ESO 지수 백오프 사실 + force-sync annotate**(채택 — 런북 :881 · :1215 근거) · (e) 원인을 cnpg-databases DatabaseRole·PostSync ⓪–②로 확장 · (f) `wait_ready`는 data-assert에만 · 단계표 보강(argo-1 일시 FAIL · SUMMARY 기대값) · F7 문서 정합("만들면 7.2 FAIL") · 픽스처 주석 1줄 · secret-stores :322 단서 · F3 ⑤ 출처에 §4 T056 추가) · 하네스 B5 DONE_WITH_CONCERNS(닫힌 집합 :728–736 · C21 red 34/1 → green 35/0 → 전체 **203 passed, 0 failed** 545초 · 변이 `-eq` 포착 · 전제 "3 M"이 5 M이었던 것은 컨트롤러 편집(build-notes · run-all :52) — 진행 판단 옳음). 리뷰 r2: **A approve_with_fixes(medium 1 · low 2) · B approve(low 1) · C approve(low 5)** — r1 17항목 전부 닫힘(A만 F6/VD-6 "부분"). 새 발견: **A-r2-1**(medium) F6 정방향 게이트 과장 — Argo CD v3.5.2 `controller/health.go`가 live 없는 리소스를 health 집계에서 빼므로 ES SecretSynced 뒤 Job 생성 전 창에서 child가 Healthy로 읽혀 root가 Job 결과를 기다리지 않을 수 있다(경합 — 컨트롤러가 리뷰어의 소스 사본 `scratchpad/r2-A/argo-src/health.go`로 재확인) · **A-r2-2** "(argo-5)" 귀속 오류(retry 성공 시 최종 Succeeded) · **A-r2-3 / C-r2-2** D11을 force-sync로 정렬 · **C-r2-1** D6 첫 괄호 모순 · **C-r2-3** 운영자 명령 `--kubeconfig` 명시 · **C-r2-4** 단계 0 조건 4→6 + 확인 명령 줄 · **B-r2-1 / C-r2-5** argo-5 FAIL/PASS 접두 문구(후속). 보고 원문 `.superpowers/t059/reviews/{fix-r1-gitops-report,fix-r1-harness-report,review-r2-A-spec,review-r2-B-security,review-r2-C-operator}.md` · `r2-workflow-result.json` · `wf_d639608d-8e0-journal.jsonl`.
+- **r2 결정 K7–K9(컨트롤러 19:4x KST)**: **K7** A-r2-1 · A-r2-2 · C-r2-3 · C-r2-4 = 컨트롤러 직접 수정 — gitops Application 머리 주석(:21–27) · policies/tests README(§sync-wave 문장 · 단계 0 · 단계표 아래 확인 명령 줄 · 증상표 머리 `--kubeconfig` 규칙 · (a) force-sync 명령) — 문서·주석만(Application `yq -o=json` 동일 · 렌더 sha 불변 · validate 전체 1회 재확인) · **K8** build-notes D6 · D9 · D11 · VD-6 정정(위 본문) + tester 지시문 §1 ② 조치 경로 포인터 · **K9** 인계 둘 — ⓐ argo-5 FAIL/PASS 접두 문구(B-r2-1/C-r2-5)는 다음 하네스 변경 때(`$argo5FailPrefix` 1곳 + C16-1 · C19-1 + 머리 주석 · 단위 전체 1회) ⓑ 검사 결과로 앱 행을 막는 설계(A-r2-1 귀결)는 앱 행 Application이 생길 때(SP-2 — 후보: Job 완료 뒤에만 Healthy가 되는 리소스를 이 Application에 추가 · 또는 앱 Application의 PreSync 검사) · r3 리뷰 없이 PR로 간다(변경이 문장뿐 — 렌더 sha · validate · gitleaks 재실행이 대신한다).
+- **r2 뒤 커밋 · PR(10-29 19:5x–20:00)**: 컨트롤러 r2 수정 뒤 재확인(Application `yq -o=json` 동일 · 렌더 sha 2종 불변 · validate 전체 **PASS 39 · FAIL 0 · WARN 4 · SKIP 0** · gitleaks no leaks · BOM/CR/TAB 0) → 모노레포 커밋 **`756e02a`**(계약 2행 · `argo-5` · 단위 203/0 · run-all :52 · build-notes — push) · gitops 커밋 **`54ca0dc5112f873dd9c00a1398be66d601b50822`**(22항목 · 파일 이름 스테이징 — 옛 ES 파일은 `D` 스테이징이 이미 있어 `git add` 목록에서 뺐다) → **PR #57** · CI 전부 pass(validate 6m28s · render-diff 25s · classify · prod-approval · gate skipping · GitGuardian) · render-diff 코멘트 PR head 일치 · 바뀐 디렉터리 2 = `clusters/oci-k3s/apps` Application 추가 1 · `platform/policies/tests` 추가 2(ES data/kafka) 삭제 2(옛 ES · authz Job) 변경 3(ConfigMap 어노테이션 · Job 2 envFrom/wave) · mergeable CLEAN → 라이브 선행 조건 D10 ①–⑥ 19:50 확인 → **머지 질문(AskUserQuestion)에서 세션 중단(20:00 KST)**.
+- **라이브(2026-11-02 · 세션 재개 12:15 KST — 사용자 「머지」 결정)**: D10 재확인 12:1x(store 5 Valid · jt-dev CA 미러 ES 2 SecretSynced · data 파드 6 Running · Argo 22 Synced/Healthy · Failed/Error 0 · root = main `ac0340a8` · agent-view 토큰 12:14 재발급 → 20:14 만료) → **PR #57 squash 머지 12:17:55 KST → gitops main `edf285596c7bf456400ccdcf2b00f5e20463105d`**(`--match-head-commit 54ca0dc5…` · 브랜치 삭제 · 로컬 main 동기) → 폴링 15초(`.superpowers/t059/evidence/live/poll.log`): root 폴링 ≈ 3분 → **root operation 12:20:55–12:20:58(3초 · "successfully synced (all tasks run)" · 즉시 Succeeded = README 단계표 1)** → child `platform-tests` 생성 · ES 2 `Ready=True SecretSynced` 12:20:56 → Job 2 생성 12:20:58(ES → Job **2초** = 리소스 wave 순서 **VD-7 PASS** · ES Healthy 판정 **VD-8 PASS**) → `data-assert` Complete **12:21:04**(6초 · 이미지 2종 캐시) · `kafka-assert` Complete **12:21:35**(37초 · 이미지 pull 9초 · JVM 2개) → Application **Synced/Healthy** 12:21:46 확인 · root Synced/Healthy(Progressing 창 ≈ 37초 = K3 ① argo-1 일시 FAIL 구간) · `status.resources` 5 전부 Synced(완료 Job 포함 — **VD-1 PASS · `ignoreDifferences` 불필요**) · operationState retryCount 없음 · Degraded 0 · 파드 2개 같은 노드 · 쿼터 안(**VD-9 PASS**) · **VD-10 해당 없음**(Degraded 없음). 로그: data-assert `RESULT: PASS` 13(pg 6 + Dragonfly 7) · `SUMMARY: pass=13 fail=0` · kafka-assert `roundtrip … 3s latency=304ms`(**VD-5**: 벽시계 3초 · 상한 30초 · JVM 기동 포함) · `cross-env-denied … TopicAuthorizationException` · `SUMMARY: pass=2 fail=0` · 기동 경합 흔적 0(**VD-4 PASS → D7 유지 · kafka-assert `wait_ready` 불필요**). 하네스(12:23–12:28 · 한 번에 하나 · OCI svc-verify 운영자 재인증 ~12:25 뒤): **cluster 46/0/9 · data 15/0/1(SKIP env-1 T075) · kafka 17/0/0** = D9 기대값 그대로(argo-1 23 Synced/Healthy · **argo-5 PASS**(3 without operationState) · np-2-data/kafka-assert PASS · backup-1..3 PASS · bucket-1 베이스 42 · bucket-2 WAL 67 최신 3 연속 · job-k-3 304ms). **VD-11**(ESO 어노테이션 복사)은 운영자 Secret 읽기 대기 — Argo `status.resources`에 Secret이 없어 복사본이 관리 대상 밖인 것은 확인. 증거 `.superpowers/t059/evidence/{live/,harness-{cluster,data,kafka}-2026-11-02.log,merge.txt,pr57*}`. 사고 0(OCI CLI는 에이전트 셸에서 실행되지 않아 세션 확인·재인증을 운영자에게 맡김). tester 디스패치 12:29(opus · `t059-tester.md` §0 채움) + 후속 문서 PR 빌더(infra-builder · `t059-docs-followup.md` · 브랜치 `t059-docs-followup`) 병행 → 결과는 아래.
+- **tester 결과(12:29–12:39 KST · opus · 읽기 전용 · 쓰기 명령 0 · 새 파일 0 · 보고 `research/2026-10-29-e2e-us3-t059.md`)**: **US3 AC1–AC5 전부 PASS** · 예외 경로 4 PASS(Job `status.failed` 0 · 6초/37초 < 300초 · Application·ES Synced/Healthy · 로그 20줄/3줄 ≤ 50 · 측정 조건 = Job Complete 뒤 하나씩) · FAIL 0 · 하네스 재측정 **46/0/9 · 15/0/1 · 17/0/0**(12:32–12:38) · agent-view `auth can-i`(Secret get · exec · portforward · Job delete · Application patch 전부 `no`) · 버킷 직접 조회(세션 만료 전 12:30–12:32 — 베이스 42 = 21세트 × 2 · WAL 세그먼트 67 빈틈 없음 + 라벨 21 · 전체 130 = 하네스 bucket-1과 일치) · Dragonfly 5분 스냅샷 로그 확인 · 문면 5항목 전부 PASS(교차 DB 거부 · 왕복 3s/304ms · 백업 목록 · dev/prod 분리 · NOPERM). **공백 → 소유(채택)**: authz-assert = T085 · env-1 · limits-1/2 · AC1 「migrate Job 첫 단계가 REVOKE/GRANT」 경로 = T075(효과 `revoke-public`만 확인) · AC3 「identity-admin 사용자로 왕복」 · 「다른 pod 사용자 write 거부」 = SP-2(dev 자격 · dev→prod 교차로 대체 — report.md 수용 기록 후보) · AC4 prod Dragonfly 실접속 · prod aclfile `sample-pod` 미포함 = 운영자 수동(agent-view Secret 불가 · 후속 assert 소유 미정) · 문면 편차 2 = report.md(버킷 이름 `jt-backup` ↔ 실제 · 「kcat」 ↔ `apache/kafka` 콘솔 클라이언트 + Job `latency=` 토큰). → **T059 체크 `[X]`(65/119)** · 커밋 **`b9c03ae`**(런북 §3 T059 절 + §4 옛 ES 이름 3곳 · research 보고 · 학습 로그 2일분 · tick — push).
+- **후속 gitops 문서 PR #58**(`t059-docs-followup` · head `7f75fff082b787d508bd77b54ca97419d33c21fb` · infra-builder DONE_WITH_CONCERNS + 컨트롤러 kustomization 주석 6곳): README 5(cnpg-databases · dragonfly · kafka · kafka-topics · cnpg-cluster) §6 T059 인계 줄 · 앞을 보는 문장에 닫는 절 `— 완료(2026-11-02 · PR #57 → main edf28559…)` · kafka-topics **VD-7 확정**(TopicAuthorizationException · cluster ACL 0) · policies/tests README VD-1 결과 + 새 절 「검증 기록 (T059 라이브 — 첫 배포 · 2026-11-02)」 · Application 머리 VD-1 1줄 · kustomization 주석 6 + kafkausers 주석 — 13파일 +86/−34 · **문서·주석만**(렌더 sha 5디렉터리 + yq JSON 3파일 전후 동일 · validate 39/0/4 · gitleaks 0 · wave 숫자 0). 빌더 판단 유지: 날짜 박힌 검증 기록·과거 기대값은 그대로 · VD-5(cnpg-databases rolconfig 비되돌림)는 열어 둠(10-15 → 11-02 사이 PostSync 재실행 여부 미확인 — 값 15s/30s는 11-02 PASS) · VD-13 열어 둠 · VD-2 날짜 11-09 무렵으로 재계산. 머지 = 라이브 영향 0 → 사용자 확인 뒤 컨트롤러 또는 운영자. → CI 전부 pass · render-diff 객체 변경 0 → 사용자 「머지」 → **PR #58 squash 머지 13:03:23 KST → gitops main `87d223d9649f73765167c22ad33159b90a49fa38`**(브랜치 삭제 · 로컬 main 동기).
+- **마감(11-02 13:3x)**: run-all 전체 1회(12:45:54–13:29:43 · 44분 · KUBECONFIG 없음 → 라이브 슬롯 SKIP): **28 슬롯 중 27 PASS · 1 FAILED = `platform` ← `infra tests` 34/27**(tofu plan이 운영자 OCI 자격·`budget_alert_email`을 요구 — T053 · T054 · T058과 같은 기대 FAIL) · `cluster-harness` **203/0** · `restore-drill` 28/0 · `kernel-trial` 235/0 · 나머지 전부 0 failed(로그 `.superpowers/t059/evidence/run-all-2026-11-02.log`). T059 닫힘 — 커밋 `b9c03ae`(체크·기록) + 이 마감 커밋. 라이브: Argo 23 Application Synced/Healthy(PR #58 뒤 root 폴링 전 rev `edf28559` · 문서만이라 변화 0) · jt-dev Job 2 Complete(ttl 7d → **VD-2 11-09 무렵**).
+
+## T060 (2026-11-02 시작 — US6 test-first · `packages/django-common/tests/test_tenancy.py` · 세션 모델 Fable 5.1)
+
+- **과제 문면(tasks.md :174)**: `T060 [P] [US6] packages/django-common/tests/test_tenancy.py: testcontainers Postgres 18(비-superuser app role + BYPASSRLS owner role 생성, 연결 sslmode=require 이상) — A 등급(TenantModel) 테이블: tenant A 컨텍스트에서 tenant B 행 0, 컨텍스트 없음 0(fail-closed), owner role(bypassrls) 전체; B 등급(GlobalModel, 예: outbox) 테이블은 app role이 컨텍스트 없이 전체 읽기; check_rls가 FORCE RLS 없는 A 등급·허용 목록 밖 B 등급을 FAIL로 보고; set_config is_local(다음 요청 누출 없음), StreamingHttpResponse 경고`. 짝 구현 = **T068**(`django_common.tenancy` — `TenantModel` · `GlobalModel` · `TenantContextMiddleware` · `rls_policies` · `check_rls` → "T060 PASS"). 헌법 II: 구현 전에 실패하는 테스트를 먼저 쓰고 **실패를 관찰**한다.
+- **소스로 확인한 사실(2026-11-02 13:0x KST)**:
+  1. `packages/django-common/pyproject.toml` = T015 스켈레톤(`dependencies = []` · hatchling · `requires-python >=3.13` · `src/django_common/__init__.py` 독스트링만). 루트 `pyproject.toml` = uv 워크스페이스(멤버 `packages/django-common` · `apps/identity-admin` — templates는 의도적으로 제외) · `uv.lock` 패키지 2개뿐(revision 3 · `requires-python >=3.13`). `templates/django-pod` = `copier.yml` + `.gitkeep`. pytest 설정 파일 0.
+  2. 계약 `contracts/pod-template.md` §테이블 등급: A = `TenantModel`(`tenant_id` UUID NOT NULL · 인덱스 `(tenant_id, id)`) + `ENABLE` + `FORCE ROW LEVEL SECURITY` + 정책 `tenant_isolation`(`rls_policies(<table>)`) · 컨텍스트 없으면 0행; B = `GlobalModel` · 허용 목록 `tenant` · `tenant_membership` · `outbox` · `session_revocation_log` · app role이 컨텍스트 없이 읽고 쓴다; owner `bypassrls: true` 마이그레이션·시드 전용 · app `NOBYPASSRLS`; `check_rls`(CI·기동): A 전부 FORCE RLS + 정책 · RLS 없는 테이블 전부 허용 목록 — 하나라도 어긋나면 실패. §기본 테스트 1 = 같은 문장. §공개 API: `django_common.tenancy`(`TenantModel`, `GlobalModel`, `TenantContextMiddleware`, `rls_policies`, `check_rls`). 생성 트리의 `tests/conftest.py` = "testcontainers postgres(TLS, sslmode require 이상) … owner/app role 생성; pytest `-W error::DeprecationWarning` + `filterwarnings`는 자기 모듈로 한정".
+  3. plan A15: 미들웨어가 직접 `transaction.atomic()`을 열고 `SELECT set_config('app.tenant_id', %s, true)`(ATOMIC_REQUESTS는 view만 · `SET LOCAL`은 bind 불가 · pool 세션 GUC 누출) · StreamingHttpResponse에서 DB 접근 금지. ADR 0007 결정 2–3(owner/app 분리 · env별 role · A/B 등급 · 컨텍스트 없으면 0행 · StreamingHttpResponse 금지). 규칙 `.claude/rules/django-pod.md` §Table grades · §Tests(6 기본 영역 · `-W error::DeprecationWarning` · `filterwarnings` 자기 모듈 한정) · §Migrations(RLS 정책 변경은 전용 마이그레이션).
+  4. research DJANGO-D1: 템플릿 `requires-python ">=3.13,<3.14"`(3.14는 다음 사이클). R9 버전표(09-01) 대비 PyPI 11-02 확인: testcontainers **4.15.0**(= R9) · pytest-django **4.14.0**(= R9) · Django **6.1.2** · psycopg **3.3.6** · pytest **9.2.0**.
+  5. 로컬 도구: uv 0.12.6(CI 핀 0.12.8 — 로컬은 lock 생성만 · revision 호환) · 시스템 Python 3.14.2(3.13은 uv가 자동 설치 — `uv python list`에 3.13 없음 → 네트워크) · **Docker Desktop 29.8.2(context `desktop-linux` · OS Docker Desktop · x86_64)** · WSL Ubuntu-24.04에 docker CLI는 있고 **uv는 없다** → 테스트는 Windows 호스트에서 돌린다(api-builder.md의 「WSL에서 돌린다」 문구는 이 호스트에 해당 없음 — Docker Desktop이 named pipe로 닿는다). 로컬 이미지 postgres 16/17만 → `postgres:18.6-alpine` pull 필요(멀티아치 · index digest **`sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5`** · CNPG 라이브 PG 18.6과 같은 minor).
+  6. CI(`.github/workflows/ci.yml`): `uv sync --locked` + test job placeholder("US 단계에서 채움" — T060은 CI 배선을 하지 않는다 · 러너 ubuntu-24.04-arm에 Docker 있음 → 뒤 과제에서 testcontainers 가능) · run-all에 Python 슬롯 없음(T060은 run-all을 바꾸지 않는다 — Docker 의존 테스트를 run-all에 넣지 않는다).
+  7. 공식 `postgres` 이미지 entrypoint 순서: initdb → `pg_hba.conf`에 `host all all all scram-sha-256` 추가 → 임시 서버(로컬 소켓) → DB/비밀번호 설정 → `/docker-entrypoint-initdb.d/*` 실행 → 임시 서버 종료 → 본 서버(`CMD` 인자 적용). 따라서 init 스크립트가 hba를 `hostssl … scram-sha-256` + `hostnossl … reject`로 고치고 인증서가 그 전에 있으면 본 서버는 TLS 전용으로 뜬다.
+- **결정 D1–D12(컨트롤러 13:1x)**:
+  - **D1 범위 · 빨간 상태**: 산출물 = `packages/django-common/tests/**`(신규) + `pyproject.toml` 의존성·pytest 설정 + 루트 `uv.lock` 갱신. **`src/django_common/tenancy.py`는 쓰지 않는다**(T068). 빨간 상태 = `uv run pytest tests/test_tenancy.py`가 Django 설정 단계에서 `ModuleNotFoundError: No module named 'django_common.tenancy'`로 **전부 실패/에러**(testapp 모델이 `TenantModel`을 import) — 이것이 "write first, verify they FAIL"의 증거. 시험 인프라(컨테이너 · TLS · role)는 Django 없이 도는 **`tests/test_fixtures_pg.py`**(`-p no:django`)로 따로 **초록**을 확인한다(인프라가 틀려서 빨간 것과 구현이 없어서 빨간 것을 구분).
+  - **D2 PG 18 TLS 시험 이미지**: `tests/docker/pg-tls/Dockerfile` — `FROM postgres:18.6-alpine@sha256:10a5c69a…`(digest 핀) · `apk add --no-cache openssl` · 빌드 때 자가 서명 인증서(`/var/lib/postgresql/server.{crt,key}` · postgres 소유 · 0600) · `COPY 00-tls-only.sh /docker-entrypoint-initdb.d/`(hba 교체: `host all all all scram-sha-256` → `hostssl all all all scram-sha-256` + `hostnossl all all all reject`) · `CMD ["postgres","-c","ssl=on","-c","ssl_cert_file=…","-c","ssl_key_file=…"]`. testcontainers `DockerImage(path=tests/docker/pg-tls, tag="jt-django-common-pg-tls:18.6")`로 세션당 1회 빌드(레이어 캐시) → `PostgresContainer(image=tag)`. 볼륨 마운트 없음(Windows 경로 함정 회피). 클라이언트 `sslmode=require`(계약 "이상" 충족 · 자가 서명이라 verify-full은 CA 반출이 필요 — 미채택 · 사유 기록).
+  - **D3 role · DB 픽스처(세션)**: testcontainers 기본 superuser로 ① `CREATE ROLE test_owner LOGIN BYPASSRLS PASSWORD …` ② `CREATE ROLE test_app LOGIN NOBYPASSRLS PASSWORD …` ③ DB `ALTER DATABASE … OWNER TO test_owner` · `GRANT CONNECT` 둘 · `GRANT USAGE ON SCHEMA public TO test_app` · `ALTER DEFAULT PRIVILEGES FOR ROLE test_owner IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO test_app` + `GRANT USAGE, SELECT ON SEQUENCES`(owner가 만든 테이블에 app DML — ADR 0007 역할 분담). 비밀번호 = `secrets.token_urlsafe(24)` 세션마다 · 출력 0 · 파일 0. superuser는 이 픽스처 밖에서 쓰지 않는다.
+  - **D4 Django 시험 설정 · pytest-django 훅**: `tests/settings.py`(INSTALLED_APPS `django_common` · `tests.testapp` · MIDDLEWARE = 시험용 `tests.testapp.middleware.HeaderTenantMiddleware`(헤더 `X-Test-Tenant` → `request.tenant_id` — T070 JwtAuthMiddleware의 자리 대역) → `django_common.tenancy.TenantContextMiddleware` · ROOT_URLCONF `tests.testapp.urls` · DATABASES `default`(= **app role**) · `owner`(= owner role) 둘 다 `OPTIONS: {"sslmode": "require"}` · 값은 conftest가 환경변수 `JT_TEST_PG_*`로 넣고 pytest-django **`django_db_modify_db_settings`**(세션) 픽스처에서 컨테이너 값으로 채운다 · `TENANT_CONTEXT_EXEMPT_PATHS = ("/healthz", "/ready", "/health")`). **`django_db_setup` 재정의**: pytest-django의 test DB 생성(app role은 CREATEDB 없음)을 쓰지 않고 컨테이너 DB에 `call_command("migrate", database="owner")`만 실행 · 끝에 drop 없음(컨테이너가 사라진다). 테스트는 `@pytest.mark.django_db(transaction=True, databases=["default", "owner"])`.
+  - **D5 testapp**: `tests/testapp/models.py` — `Widget(TenantModel)`(A · `db_table = "widget"` · `name` text) · `GlobalThing(GlobalModel)`(B · **`db_table = "tenant"`** — 허용 목록 이름의 대역 · T069의 실제 outbox와 충돌 없음) · 마이그레이션 `0001_initial`(두 모델) · `0002_rls`(`rls_policies("widget")`만 — 규칙 §Migrations "RLS 정책 변경은 전용 마이그레이션"). `urls.py` 뷰 3: `/widgets/count`(ORM count JSON) · `/widgets/stream`(StreamingHttpResponse) · `/healthz`(200 · DB 없음).
+  - **D6 테스트 케이스(id → 단언)**: 인프라(`test_fixtures_pg.py` · Django 없음) infra-1 `SELECT version()` "PostgreSQL 18." · `SHOW ssl` on · `pg_stat_ssl` 자기 백엔드 ssl=true(`sslmode=require`) / infra-2 `sslmode=disable` 연결 → 거부(hba reject) / infra-3 `pg_roles`: owner rolbypassrls=t rolsuper=f · app rolbypassrls=f rolsuper=f · 둘 rolcanlogin=t. 본문(`test_tenancy.py`) rls-0 모델 모양(`tenant_id` UUIDField null=False · `_meta.indexes`에 `(tenant_id, id)`) / rls-1 owner로 A 2행 · B 3행 시드 → app 연결 `transaction.atomic()` 안 `set_config('app.tenant_id', A, true)` → count 2 · 전부 A / rls-2 컨텍스트 없음 → 0(fail-closed) / rls-3 owner 연결 → 5 / rls-4 ctx A에서 `tenant_id=B` INSERT → `DatabaseError`(메시지 "row-level security") = WITH CHECK / rls-5 `GlobalThing` 두 테넌트 행 → app 컨텍스트 없이 전부 / chk-1 마이그레이션 뒤 `call_command("check_rls")` 통과(`django_migrations`는 프레임워크 테이블로 허용 — T068 규칙 고정) / chk-2 owner `ALTER TABLE widget NO FORCE ROW LEVEL SECURITY`(커밋) → `CommandError`에 "widget" → 복원 / chk-3 `DROP POLICY tenant_isolation ON widget` → `CommandError` → 복원(0002의 SQL을 다시 적용 — `rls_policies` 결과를 재실행) / chk-4 owner `CREATE TABLE rogue(id int)` → `CommandError`에 "rogue" → DROP / mw-1 `Client.get("/widgets/count", HTTP_X_TEST_TENANT=A)` → 200 · count 2 / mw-2 헤더 없음 → 403 / mw-3 `/healthz` 헤더 없음 → 200(면제) / mw-4 is_local: mw-1 뒤 같은 `default` 연결에서 `current_setting('app.tenant_id', true)` → NULL 또는 '' · 이어지는 헤더 없는 요청 403 · ORM count 0 / mw-5 `/widgets/stream` → `pytest.warns(RuntimeWarning, match="StreamingHttpResponse")`. **다른 연결에서 커밋된 DDL만 보인다** → chk-2/3/4의 토글은 커밋 뒤 검사·`try/finally` 복원.
+  - **D7 미들웨어 계약 가정(T068·T070에 고정)**: `TenantContextMiddleware`는 `getattr(request, "tenant_id", None)`(UUID)을 읽는다 · 없으면 면제 경로(`settings.TENANT_CONTEXT_EXEMPT_PATHS` · 기본 헬스 3종)가 아니면 **403** · 있으면 `transaction.atomic()` 안에서 `set_config(…, true)` 후 뷰 실행 · 뷰가 `StreamingHttpResponse`를 돌려주면 `warnings.warn(…, RuntimeWarning)`(본문에 "StreamingHttpResponse" 포함 — 트랜잭션이 닫힌 뒤 스트리밍되므로 DB 접근 금지 경고). 설정 이름 `TENANT_CONTEXT_EXEMPT_PATHS`는 이 설계가 정한다(계약에 없음 — T068 때 contracts/pod-template.md §런타임 계약에 1줄 추가 후보).
+  - **D8 의존성 · pytest 설정**: `[project] requires-python = ">=3.13,<3.14"` · `dependencies = ["django>=6.1,<6.2", "psycopg[binary]>=3.3,<4"]` · `[dependency-groups] dev = ["pytest>=9,<10", "pytest-django>=4.14,<5", "testcontainers[postgres]>=4.15,<5"]` · `[tool.pytest.ini_options]`: `DJANGO_SETTINGS_MODULE = "tests.settings"` · `testpaths = ["tests"]` · `pythonpath = ["."]` · `filterwarnings = ["error::DeprecationWarning:django_common", "error::DeprecationWarning:tests"]`(규칙 — 자기 모듈 한정 · 의존 라이브러리 경고로 죽지 않게) · 루트 `uv lock` 갱신(워크스페이스 lock 1개 · CI `uv sync --locked`).
+  - **D9 실행 · 검증**: Windows 호스트 `uv run --directory packages/django-common …`(Python 3.13 자동 설치 · Docker Desktop) — ① `uv lock` → `uv sync --locked --group dev` ② `pytest tests/test_fixtures_pg.py -p no:django -q` → **3 passed**(초록 · 인프라) ③ `pytest tests/test_tenancy.py -q` → **빨강**(`ModuleNotFoundError … django_common.tenancy` · exit ≠ 0 · 마지막 15줄 보고) ④ `python -m compileall tests` · BOM/CR/TAB 0 · 비밀 패턴 0 · `docker ps -a` 잔류 컨테이너 0(Ryuk) ⑤ `git status --short` = 허용 파일만(`uv.lock` · `packages/django-common/**`). 한 번에 pytest 하나.
+  - **D10 리뷰 2렌즈**(세션 모델): A 계약·문면(T060 문장 하나하나 ↔ 테스트 id · 공개 API 이름 · A/B 의미 · 허용 목록 대역 · `filterwarnings` 한정 · 빨강이 skip이 아닌 진짜 실패 · pytest-django 훅 순서 · src/ 구현 유입 0 · uv.lock 변화 범위) · B 데이터 안전·보안(비밀번호 랜덤·미출력 · TLS 전용 hba · superuser는 부트스트랩 픽스처만 · Django default = app role · owner는 마이그레이션 alias만 · 컨테이너 정리 · 이미지 digest · Dockerfile 최소 · 저장소 위생 `__pycache__`/`.pytest_cache` ignore) → 수정 ≤ 1 → 컨트롤러 커밋 `test(django-common): T060 …`(파일 이름 스테이징) → **tick T060은 빨강 관찰 뒤**(헌법 II) · 학습 로그 `content/tmp/003-t060/2026-11-02.md`.
+  - **D11 VD**: VD-1 testcontainers 4.15 + Docker Desktop(Windows named pipe) · Ryuk 동작 · VD-2 공식 entrypoint 순서로 hba 교체가 본 서버에 적용되는가(infra-2가 증명) · VD-3 Django 6.1 + psycopg 3.3 `sslmode=require` 자가 서명 접속 · VD-4 `django_db_modify_db_settings`가 컨테이너 기동 뒤 실행되는 순서 보장(세션 픽스처 의존) · VD-5 `uv`가 3.13을 자동 설치하는 시간(네트워크).
+  - **D12 인계**: T068(`tenancy.py` — D6/D7의 모든 가정이 요구사항: 프레임워크 테이블 허용 · `TENANT_CONTEXT_EXEMPT_PATHS` · RuntimeWarning · 정책 `NULLIF(current_setting('app.tenant_id', true), '')::uuid` 비교로 빈 문자열 캐스트 오류 방지 후보) · T070(`request.tenant_id` 속성 계약) · T061–T063(같은 conftest 픽스처 재사용 — Kafka·Dragonfly 컨테이너는 그때 추가) · T072 템플릿 conftest(이 모양을 복제) · CI test job 배선(Docker 있는 러너 · 뒤 과제).
+- **순서**: 설계(이 절) → 워크플로(api-builder 1 → 리뷰 2 병렬) → 수정 → 커밋 · tick · 학습 로그 → T061.
+- **빌드 · 리뷰 r1 결과(`wf_5ea0df83-46a` · 13:3x–14:1x KST · 에이전트 3 · 0.59M 토큰)**: 빌더(api-builder opus) DONE_WITH_CONCERNS — 파일 16 + pyproject + uv.lock(24 패키지 추가 · `requires-python ==3.13.*` = 워크스페이스 교집합 · Python 3.13.15 자동 설치) · 인프라 `test_fixtures_pg.py -p no:django` **3 passed**(1 warning = `PytestConfigWarning: Unknown config option: DJANGO_SETTINGS_MODULE` — `-p no:django` 전용 · 허용) · `test_tenancy.py` **빨강**(`pytest_load_initial_conftests → django.setup()`에서 `ModuleNotFoundError: No module named 'django_common.tenancy'` · exit 1 · 컨테이너 미기동) · 편차 12 전부 채택: ③-1 인증서 경로 **`/etc/postgresql-tls/`**(공식 이미지 `VOLUME /var/lib/postgresql` + docker-py classic 빌더가 VOLUME 경로의 RUN 산출물을 버림 — 프로브로 실측) · ③-2 COPY 순서 + `chmod 755`(classic 빌더는 `COPY --chmod` 미지원) · ③-3 `testcontainers.community.postgres`(옛 경로 shim의 DeprecationWarning stacklevel=2가 우리 모듈로 귀속 → D8 필터에 걸림) · ③-4 `psycopg.sql.Literal`(CREATE ROLE은 bind 불가) · ③-5 **`TEST.MIRROR="owner"`**(TransactionTestCase teardown flush가 mirror 아닌 별칭마다 TRUNCATE → app role 권한 없음 → owner만 flush · 소스 확인 · 미실행) · ③-6 GlobalThing id 직접 정의 · ③-7 `class Meta(TenantModel.Meta)`(자식 Meta가 추상 부모 indexes를 잃지 않게) · ③-8 기동 실패 예외의 PGPASSWORD 명령 가림(`from None`) · ③-9 단언 보강(infra-2 hba 메시지 · rls-1 filter(B)=0 · rls-4 owner 0행 · mw-4 pid 동일 · mw-5 본문 소비) · ③-11 가정(PK `UUIDField(default=uuid4)` · 인덱스 이름 `widget_tenant_id_idx` · `rls_policies` 시퀀스 · chk-3 복원 = forward 재적용). 리뷰 r1: **A approve_with_fixes(medium 2 · low 2) · B approve_with_fixes(medium 1 · low 3)** — A-1 ENABLE 음성(RLS DISABLE) 테스트 누락 · A-2/B-1 `check_rls` 프레임워크 테이블 면제가 계약·규칙에 없음 · A-3 MIRROR 주석 사실 오류(`set_as_test_mirror`는 NAME만) + D7 가정 표시 없음 · A-4 규칙 "`-W error::DeprecationWarning`" 문면 ↔ 자기 모듈 한정 구현 · B-2 빌더 프로브의 익명 Docker 볼륨 1개 잔류(04:43:29Z) · B-3 MIRROR teardown 미실행(재현 필요) · B-4 고정 태그 + clean_up=True(base 재풀 · 동시 세션 경합). 문면 ↔ 테스트 대응표 전부 1:1 이상(리뷰 A extra) · 보고 정직성 표본 대조 전부 일치. 보고 원문 `.superpowers/t060/reviews/{build-report,review-r1-A-spec,review-r1-B-data}.md` · `r1-workflow-result.json`.
+- **r1 결정 K1–K9(컨트롤러 14:2x)**: **K1** A-1 채택 — `test_chk_5_check_rls_fails_when_rls_disabled`(owner `DISABLE ROW LEVEL SECURITY` → `CommandError` "widget" → finally `ENABLE`) + 모듈 docstring · **K2** A-2/B-1 — 계약 `contracts/pod-template.md` §테이블 등급 + 규칙 `.claude/rules/django-pod.md` §Table grades 개정: `check_rls`는 relrowsecurity·relforcerowsecurity 둘 다 · 카탈로그 스캔 · **프레임워크 면제 = 정확한 이름 목록 10**(`django_migrations` · `django_content_type` · `django_session` · `django_admin_log` · `auth_permission` · `auth_group` · `auth_group_permissions` · `auth_user` · `auth_user_groups` · `auth_user_user_permissions`) = `django_common.tenancy.FRAMEWORK_TABLES` 상수 · pod가 넓힐 수 없음 · 접두 규칙 금지(대안 "허용 목록에 열거"는 pod마다 집합이 달라 기각) · 시험 settings에 `django.contrib.contenttypes`(+ `DEFAULT_AUTO_FIELD`) 추가 → chk-1이 `django_content_type` 면제도 증명 · chk-1 docstring 정정 · kr 미러 `translation-pending` 표시 · **K3** A-3 채택(주석 정정 · D7 가정 표시 줄) · **K4** A-4 — 규칙 §Tests · 계약 :34 문면을 구현 형식(자기 모듈 한정 `filterwarnings` · 전역 `-W error` 금지)으로 지금 개정 · **K5** B-2 — 잔류 익명 볼륨(04:43:29Z · 참조 컨테이너 0 · 빌더 프로브 출처) 삭제 · Docker 위생 검사에 `docker volume ls -f dangling=true` 포함 · 프로브는 `--rm` · **K6** B-3 → **VD-6**(T068 첫 초록에서 teardown `permission denied`/TRUNCATE 오류 0 + `test_tenancy.py` 2회 연속 통과 · 실패 시 app에 TRUNCATE를 주지 말고 owner autouse TRUNCATE 픽스처) · **K7** B-4 → 결정 유지(clean_up=True + 고정 태그 — 「pytest 한 번에 하나」) · CI 병렬 잡 때 재검토(clean_up=False 또는 세션 접미 태그) · **K8** 빌더 편차 전부 채택 → D2(경로 `/etc/postgresql-tls/` · COPY 순서 · chmod) · D4(`TEST.MIRROR`) 정정으로 읽는다 · **K9** `apps/identity-admin/pyproject.toml` `requires-python >=3.13`은 T072/T073 때 `>=3.13,<3.14`로 정렬(lock은 이미 `==3.13.*`) · `-p no:django` PytestConfigWarning 1줄은 허용(CI 배선 때 `-W ignore` 선택).
+- **인계(T068 — 테스트가 고정하는 API)**: `TenantModel`(추상 · `tenant_id` UUID NOT NULL · `Meta.indexes` `(tenant_id, id)` · 자식이 `Meta`를 상속 가능) · `GlobalModel`(추상) · `TenantContextMiddleware`(`request.tenant_id`만 읽음 · 없으면 `settings.TENANT_CONTEXT_EXEMPT_PATHS` 밖 403 · 있으면 `transaction.atomic()` 안 `set_config(…, true)` · `StreamingHttpResponse`면 **요청 처리 중에** `RuntimeWarning`("StreamingHttpResponse")) · `rls_policies(table)` 시퀀스 · forward 재적용 가능 · 정책 비교는 `NULLIF(current_setting('app.tenant_id', true), '')::uuid`(mw-4가 `''` 캐스트 오류를 잡는다) · `check_rls`(`CommandError` + 테이블 이름 · 기본 별칭(app)으로 카탈로그 스캔 · `rogue` 비모델 테이블 포착 · relrowsecurity·relforcerowsecurity·정책 셋 다 · `FRAMEWORK_TABLES` 면제) · `0001_initial` PK·인덱스 이름 정렬(`makemigrations --check testapp` 변경 없음 기준) · VD-6 MIRROR teardown. **도구 함정**(tool-gotchas 메모): Git for Windows `grep -c $'\r'`는 CR이 없어도 모든 줄을 센다(바이트로 세기) · docker-py 빌드는 classic 빌더라 VOLUME 경로에 RUN이 쓴 파일이 버려진다 · testcontainers 4.15 옛 import 경로 shim DeprecationWarning은 import한 모듈에 귀속.
+- **마감(14:3x)**: 컨트롤러 수정 K1–K5 반영 → 빨강 재관찰(`ModuleNotFoundError: No module named 'django_common.tenancy'` · exit 1) · `compileall` 0 · 형식 0 → 커밋 **`6c11d96`**(파일 24 · push) · tick **66/119** · 학습 로그 `content/tmp/003-t060/2026-11-02.md`. 다음 = T061.
+
+## T061 (2026-11-02 14:4x 시작 — US6 test-first · `packages/django-common/tests/test_outbox.py` · 세션 모델 Fable 5.1)
+
+- **과제 문면(tasks.md :175)**: `T061 [P] [US6] packages/django-common/tests/test_outbox.py: 시그니처 publish(topic, subject, data, *, tenant_id=None)(contracts/events.md) — transaction.atomic() 밖 호출 → OutboxUsageError, 테넌트 컨텍스트도 tenant_id 인자도 없는 호출 → OutboxUsageError(tenantid 없는 봉투가 Kafka로 나가지 않음), 컨텍스트 없이 tenant_id=를 명시한 호출(웹훅·관리자 revoke 경로)은 성공하고 그 값이 봉투 tenantid와 행 partition_key가 됨; 같은 트랜잭션 INSERT → 릴레이 1회(app role, 테넌트 컨텍스트 없음 — outbox는 등급 B) → testcontainers Kafka(KRaft)에서 CloudEvents structured 봉투 수신·packages/events 스키마 통과 → 행 삭제; 테넌트 A·B 행이 모두 릴레이되고 각 봉투의 tenantid(uuid, slug 금지)·파티션 키가 각자 맞음; 프로듀서 실패 주입 → attempts 1·행 유지·last_error; max_attempts 10 초과 → <pod>.dlq 발행·dead_at 기록·outbox_dead_total 증가·이후 릴레이가 그 행을 다시 집지 않음(dead_at IS NULL만 선택); 지표 outbox_pending(dead_at IS NULL만)·outbox_oldest_pending_seconds 노출; select_for_update(skip_locked) 동시성(transactional_db) — FAIL 확인`. 짝 구현 = **T069**(`django_common.outbox` — `OutboxEvent` · `publish` · `relay_outbox` command · 지표 3종 · purge). 스키마는 **T067**(`packages/events/schemas/_envelope.json` + 토픽 6 — 지금은 `.gitkeep`만).
+- **소스로 확인한 사실(14:3x)**: ① 계약 `contracts/events.md`: 토픽 prod `<pod>.<entity>.<event>` · dev `dev.…` · DLQ dev `dev.<pod>.dlq` · 파티션 키 = `tenantid`(UUID 문자열) · 봉투(CloudEvents 1.0 structured · `id` = outbox 행 ULID · `source` = pod · `type` = 토픽 · `time` RFC 3339 · `subject` · `tenantid` 확장 · `datacontenttype application/json` · `data`) · Kafka 헤더 `ce_type` · `ce_source` · `ce_id` · `content-type: application/cloudevents+json` · `publish(topic, subject, data, *, tenant_id: UUID | str | None = None) -> OutboxEvent` · 컨텍스트도 인자도 없으면 `OutboxUsageError` · atomic 밖도 같은 예외 · 릴레이 app role · `WHERE dead_at IS NULL ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 100` · confluent-kafka idempotent · `attempts += 1` · `last_error` · 지수 백오프(최대 5분) · `attempts ≥ 10` → DLQ(+`error` 헤더) + `dead_at`(행 유지) · 지표 `outbox_pending`(dead_at IS NULL) · `outbox_oldest_pending_seconds` · `outbox_dead_total`. ② data-model §4 OutboxEvent(ULID text 26 PK · topic · partition_key · payload jsonb · created_at · attempts · last_error · dead_at · 등급 B `outbox`). ③ research DJANGO-D6(`select_for_update(skip_locked=True, of=("self",))` · autocommit에선 TransactionManagementError) · D7(confluent-kafka 2.15 · idempotence) · D8(cloudevents 2.2 `core.v1.event.CloudEvent` + `bindings.kafka.to_structured_event` · structured 모드) · **D16(testcontainers `KafkaContainer('confluentinc/cp-kafka:8.0.0').with_kraft()` · outbox 동시성은 transactional_db)**. ④ testcontainers 4.15 `community.kafka.KafkaContainer`: 기본 이미지 cp-kafka 7.6.0 · `with_kraft()`가 **태그에서 버전을 파싱**(`image.split(":")[-1]` ≥ 7.0.0) → digest 핀 불가(태그 `8.0.0`만 · 인덱스 digest `sha256:9cdc8119cb39c45f0efa6da8e2220058020c7433e3ba3a3ce11a8006a18cb336` · amd64 `2f133772…` · arm64 `60fce265…` 주석 기록) · 호스트 리스너 `PLAINTEXT://<host>:<mapped>` 광고 · `get_bootstrap_server()` · 로그 대기 "Kafka Server started". ⑤ PyPI(11-02): confluent-kafka **2.16.1**(cp313 win_amd64 · manylinux_2_28 x86_64/aarch64 wheel) · jsonschema 4.26.0 · prometheus-client 최신 0.23 계열. ⑥ `packages/events/schemas/`는 `.gitkeep`만(T067) · `rules/events.md`(봉투 · 헤더 · 토픽 · 호환성 규칙).
+- **결정 D1–D14(컨트롤러 14:4x)**:
+  - **D1 범위 · 빨강**: 산출물 = `tests/test_outbox.py` + conftest `kafka` 세션 픽스처 + `tests/test_fixtures_kafka.py`(Django 없는 왕복 스모크) + `tests/_tenant.py`(공용 `set_tenant` 헬퍼) + pyproject 의존성 + uv.lock. **`src/django_common/outbox.py`는 쓰지 않는다**(T069). 빨강 = 지금은 T060과 같은 `django.setup()` `ModuleNotFoundError: django_common.tenancy`(testapp 모델) — T068 뒤에는 `test_outbox.py` import의 `ModuleNotFoundError: django_common.outbox`로 바뀐다(둘 다 "구현 없음"이 원인 · 보고에 둘 다 적는다). 인프라 초록 = `test_fixtures_kafka.py -p no:django`.
+  - **D2 시험 토픽 = 실제 SP-1 토픽** `identity-admin.session.revoked`(`OUTBOX_SOURCE = "identity-admin"` · data `{"sub": "…", "sid": null, "nbf": <int>, "reason": "logout_all"}` — 계약 표의 required·enum 준수) → T067 스키마(`_envelope.json` · `identity-admin.session.revoked.json`)로 out-6이 검증 가능. 스키마 파일이 없으면 **`pytest.fail`**(skip 아님 — T067 선행을 드러낸다) · 경로 `Path(__file__).resolve().parents[3] / "packages" / "events" / "schemas"` · jsonschema Draft 2020-12.
+  - **D3 설정 이름(T069 가정 — 계약에 없음 · 표시)**: `OUTBOX_SOURCE`(CloudEvents `source` = pod 이름) · `OUTBOX_TOPIC_PREFIX`(릴레이가 Kafka 토픽과 DLQ에 붙이는 env 접두 — 시험 `"dev."`; Kafka 토픽 = 접두 + 논리 토픽 · DLQ = 접두 + source + `.dlq` = `dev.identity-admin.dlq`) · `OUTBOX_MAX_ATTEMPTS = 10` · `KAFKA_BOOTSTRAP_SERVERS`(픽스처가 채움) · `KAFKA_CLIENT_CONFIG = {"security.protocol": "PLAINTEXT"}`(시험 — 운영은 SASL_SSL SCRAM-SHA-512 + CA를 env에서). 봉투 `type` = **논리 토픽**(접두 없음 — 계약 예시) · `source` = `OUTBOX_SOURCE` · `time` RFC 3339 UTC `Z` · `id` ULID(Crockford base32 26자 `^[0-7][0-9A-HJKMNP-TV-Z]{25}$`) · `tenantid` = `str(uuid)` · 헤더 4종 · 키 = tenantid bytes.
+  - **D4 릴레이 API(T069 가정 — 테스트가 고정)**: `relay_once(*, producer=None, batch_size=100) -> RelayResult`(dataclass `published` · `failed` · `dead` int) — 한 배치(`dead_at IS NULL ORDER BY id FOR UPDATE SKIP LOCKED LIMIT batch_size`)를 app role로 처리 · **시간 기반 백오프 게이트 없음**(백오프는 `outbox_relay` 명령 루프의 sleep) · `producer=None`이면 설정으로 confluent-kafka Producer 생성. **프로듀서 프로토콜**: `produce(topic: str, *, key: bytes, value: bytes, headers: list[tuple[str, bytes]], on_delivery: Callable[[err, msg], None]) -> None` + `flush(timeout: float) -> int` + `poll(timeout: float) -> int`(confluent-kafka 모양) — 릴레이는 행마다 `on_delivery` 콜백으로 성공/실패를 받고 `str(err)`를 `last_error`에 기록 · 시험 fake는 `produce` 안에서 콜백을 동기 호출(실패 주입: 지정 토픽에 err 객체 · DLQ 토픽은 성공). DLQ 발행 = 원본 봉투 value 그대로 + 헤더 `error`(마지막 오류 문자열 bytes) + ce_* 헤더.
+  - **D5 지표 API(T069 가정)**: `django_common.outbox.metrics` 모듈 — `prometheus_client` 기본 REGISTRY에 `outbox_pending`(Gauge) · `outbox_oldest_pending_seconds`(Gauge) · `outbox_dead_total`(Counter) · `refresh_metrics() -> None`(DB에서 pending = `dead_at IS NULL` 수 · oldest = now − min(created_at) 재계산) · `relay_once`가 배치 뒤 dead 증가 + gauge 갱신. 테스트는 `prometheus_client.REGISTRY.get_sample_value("outbox_pending")`로 읽는다(공개 API). HTTP 9464 서버는 명령(T069)만.
+  - **D6 테스트(id → 단언)**: 인프라 `test_fixtures_kafka.py`(Django 없음 · `kafka` 픽스처 + confluent-kafka) infra-k-1 `tc-smoke` 토픽 produce 1(headers 포함) → Consumer(`auto.offset.reset=earliest`) 20 s 안 수신 · value·headers 왕복. 본문 `test_outbox.py`(`django_db(transaction=True, databases=["default","owner"])`): out-1 autocommit(atomic 밖) `publish(...)` → `OutboxUsageError` · 행 0 / out-2 atomic 안 · 컨텍스트 없음 · 인자 없음 → `OutboxUsageError` · 행 0 / out-3 atomic 안 · ctx A(`set_tenant`) · 인자 없음 → 반환 `OutboxEvent` · 행 1 · `partition_key == str(A)` · `payload` = 봉투(specversion "1.0" · id ULID 정규식 · `id == row.id` · source · type == 토픽 · subject · `tenantid == str(A)` · datacontenttype · data 동일 · time RFC3339 Z 파싱) / out-4 컨텍스트 없음 · `tenant_id=B`(UUID) → 성공 · `partition_key == str(B)` · tenantid == str(B) / out-5 `tenant_id=str(B)`(문자열)도 같은 결과 / out-6 **릴레이·수신·스키마**: A(ctx) 1행 + B(인자) 1행 → `relay_once()` → `RelayResult(published=2, failed=0, dead=0)` → Consumer가 `dev.identity-admin.session.revoked`에서 30 s 안 2건 · 각 메시지 key == tenantid bytes · 헤더 `ce_type` == 논리 토픽 · `ce_source` · `ce_id` == 행 id · `content-type == application/cloudevents+json` · 봉투 JSON이 `_envelope.json`에 통과 · `data`가 토픽 스키마에 통과 · tenantid 집합 == {A, B} · `OutboxEvent.objects.count() == 0`(삭제) / out-7 실패 주입(fake가 메인 토픽에 err) → `attempts == 1` · `last_error`에 오류 문자열 · 행 유지 · `dead_at is None` · `RelayResult(failed=1)` / out-8 **DLQ**: 같은 fake로 `relay_once` 10회 → 10번째에 `attempts == 10` · DLQ 토픽 `dev.identity-admin.dlq`로 발행(fake 기록: value == 원본 봉투 · 헤더 `error` 존재 · ce_* 존재) · `dead_at` 설정 · `RelayResult(dead=1)` · `outbox_dead_total` +1 / out-9 **dead 행 비재집**: 이어서 `relay_once()` → published 0 · fake produce 호출 0 · 행 유지(`dead_at` 그대로) / out-10 지표: pending 2행(한 행은 owner `UPDATE … created_at = now() - interval '120 seconds'`) + dead 1행 → `refresh_metrics()` → `outbox_pending == 2`(dead 제외) · `outbox_oldest_pending_seconds >= 100` / out-11 **동시성**(transactional_db): 50행 시드 → 스레드 2개가 `threading.Barrier`로 동시에 `relay_once(producer=fake, batch_size=100)`(각 스레드 자기 DB 연결 · fake는 스레드 안전 기록) → 합계 published == 50 · 기록된 id 집합 크기 50(중복 0) · 행 0 / out-12 B 등급: `issubclass(OutboxEvent, GlobalModel)` · `_meta.db_table == "outbox"` · 컨텍스트 없는 app role이 A·B 두 행을 읽음(`count() == 2`) / out-13 모델 모양: `id` CharField max_length 26 PK · `topic` · `partition_key` · `payload` JSONField · `created_at` · `attempts` default 0 · `last_error` null · `dead_at` null. **Kafka 소비 헬퍼**: confluent-kafka `Consumer({"bootstrap.servers", "group.id": f"t061-{secrets.token_hex(4)}", "auto.offset.reset": "earliest", "enable.auto.commit": False})` · subscribe → poll 루프(n건 또는 30 s) · 토픽은 auto-create(cp-kafka 기본) — 수신 전에 subscribe.
+  - **D7 Kafka 픽스처**: `conftest.py` `kafka`(세션) = `KafkaContainer("confluentinc/cp-kafka:8.0.0").with_kraft()`(태그 핀 — D 사실 ④ · 주석에 인덱스 digest) · `start(timeout=120)` · `get_bootstrap_server()` → 환경변수 `JT_TEST_KAFKA_BOOTSTRAP` + 세션 autouse 픽스처 `kafka_settings`가 `django.conf.settings.KAFKA_BOOTSTRAP_SERVERS`를 채운다(Django 테스트일 때만 — `test_fixtures_kafka.py`는 `-p no:django`) · finally `stop()` · 기동 실패 예외는 그대로(비밀 없음). 비밀 0(PLAINTEXT 시험 브로커).
+  - **D8 의존성**: 런타임 `confluent-kafka>=2.15,<3` · `prometheus-client>=0.23,<1`(릴레이·지표가 라이브러리 본체에 속함 — 계약 §릴레이) · dev `jsonschema>=4.26,<5`. `uv lock` 갱신(win_amd64 cp313 wheel 확인 — VD-3).
+  - **D9 검증**: ① `uv lock` → `uv sync --locked --group dev` ② `pytest tests/test_fixtures_kafka.py -p no:django -q` → **1 passed**(+ `test_fixtures_pg.py` 재실행 불필요) ③ `pytest tests/test_outbox.py -q` → **빨강**(`ModuleNotFoundError … django_common.tenancy` — 보고에 "T068 뒤에는 outbox import 오류" 명시) ④ `compileall` · 형식 · 비밀 grep · `docker ps -a` 잔류 0 · **`docker volume ls -f dangling=true`에 새 볼륨 0**(T060 K5) ⑤ `git status --short` = 허용 파일만. pytest 한 번에 하나.
+  - **D10 리뷰 2렌즈**: A 계약·문면(T061 문면 조각 ↔ out-1..13 · 계약 events.md 이름·의미 · D3/D4/D5 가정 표시 · 빨강 진짜 · 스키마 `pytest.fail` · 토픽 접두 규칙 · 헤더 4종) · B 데이터 안전(비밀 0 · PLAINTEXT는 시험만 · fake 프로듀서가 운영 코드 경로를 우회하지 않음 · 컨테이너·볼륨 위생 · 의존성 상한·lock 범위 · 동시성 테스트의 스레드 안전·연결 정리 · DLQ `error` 헤더에 비밀 가능성 0).
+  - **D11 인계(T069)**: D3 설정 · D4 `relay_once`/프로듀서 프로토콜/`RelayResult` · D5 지표 · ULID · 봉투 필드 · DLQ 토픽 규칙 · dead 행 비재집 · `outbox_relay` 명령(루프 500 ms · 백오프 · 9464) · purge. **T067**: `_envelope.json`이 `tenantid`(uuid format · required) · `id` · `type` 등 봉투 필수 필드를 선언해야 out-6이 성립 · `identity-admin.session.revoked.json`의 `data` 스키마(sub req · sid string|null · nbf int req · reason enum req). **T070**: `request.tenant_id`.
+  - **D12 VD**: VD-1 KafkaContainer KRaft가 Docker Desktop(Windows)에서 호스트 광고 리스너로 confluent-kafka 클라이언트와 통하는가(infra-k-1) · VD-2 cp-kafka 8.0.0 pull·기동 시간 · VD-3 confluent-kafka 2.16.1 win_amd64 cp313 wheel 설치 · VD-4 jsonschema 2020-12로 T067 스키마 검증(T067 뒤) · VD-5 동시성 테스트의 스레드별 Django 연결 정리(`connections.close_all()`).
+  - **D13 공용 헬퍼**: `tests/_tenant.py` `set_tenant(alias: str, tenant: UUID) -> None`(= T060 `_set_tenant` 일반화) — `test_tenancy.py`는 그대로 둔다(변경 0).
+  - **D14 편차 정책**: T060과 같다(실측 근거가 있으면 지시문과 달리 하고 보고 ③에 적는다 · 계약과 어긋나면 계약 우선).
+- **순서**: 설계(이 절) → 워크플로(api-builder 1 → 리뷰 2 병렬) → 수정 → 커밋 · tick · 학습 로그 → T062.
+- **빌드 · 리뷰 r1 결과(`wf_5661ecbe-1ff` · 14:4x–15:3x KST · 에이전트 3 · 0.66M 토큰)**: 빌더(api-builder opus) DONE_WITH_CONCERNS — 파일 8(신규 `test_outbox.py` 532줄 · `test_fixtures_kafka.py` · `_kafka.py` · `_tenant.py` · conftest/settings 덧붙임 · pyproject · uv.lock +101 = 패키지 7 추가: confluent-kafka 2.16.1 · prometheus-client 0.26.0 · jsonschema 4.26.0 + 전이 4) · 인프라 `test_fixtures_kafka.py -p no:django` **1 passed**(cp-kafka 8.0.0 pull 31 s · 기동 7.4–10.2 s · 수신 1.2–2.3 s — VD-1/2/3 PASS · RepoDigest `9cdc8119…` 일치 · 이미지 VOLUME `/etc/kafka/secrets` · `/var/lib/kafka/data`) · `test_outbox.py` **빨강**(`django.setup()` `ModuleNotFoundError: django_common.tenancy` · `--collect-only -p no:django`로 `django_common.outbox` 부재도 확인 — T068 뒤 빨강 원인) · 편차 8 채택: ③-1 소비 헬퍼를 `subscribed()`(컨텍스트 매니저) + `drain()` + `decode_headers()`로 분할(구독 → relay → 수신 순서) · ③-2 infra-k-1에 "구독 → 3 s 빈 수신 → produce"(최악 순서 · 기본 `topic.metadata.refresh.interval.ms` 유지) · ③-3 FakeProducer 충실도(실 `KafkaError(_MSG_TIMED_OUT)` + 실 `confluent_kafka.Message` 시험 생성자 · 실 Producer 인자 순서 · `callback` 별칭) · ③-4 **out-14 추가**(다른 트랜잭션이 FOR UPDATE로 쥔 2행을 10 s 안에 건너뜀 — SKIP LOCKED 직접 판별 · out-11은 잠금 없음만 잡음) · ③-5 단언 강화(out-3 커밋 전 0행·topic·attempts · out-6 value == 저장 payload · ce_id별 tenantid/key · owner 쿼리 0 · default 쿼리 >0 · 스키마 검증은 맨 끝 · out-8 호출 순서 [메인×10, DLQ×1] · out-9 attempts 0인 dead 행으로 조건 판별 · out-10 dead 3600 s 제외 · `oldest < 600` · out-13 타입) · ③-6 `kafka_settings` 세션 끝 원복 · `set_tenant` atomic 밖 RuntimeError · ③-7 볼륨 기준선 24(→ 24) · ③-8 진단 계측 원복(`cmp` 동일). 리뷰 r1: **A(계약·문면) approve_with_fixes(low 6) · B(데이터 안전) approve_with_fixes(medium 1 · low 3)** — 문면 15조각 ↔ out-1..14 + infra-k-1 전부 대응 · 가정 표시 전부 확인 · 빨강 진짜 · 보고 정직성 표본 전부 일치. 발견: **B-1/A-3** 비-UUID str `tenant_id`(slug) 거부 미고정 · **B-2** 컨텍스트 A + `tenant_id=B` 충돌 미정의 · **B-3** 릴레이 정지 시 스레드 행 잠금 → teardown TRUNCATE 무한 대기 · **B-4/A-4** build-notes D7 "autouse" · D6 갱신 · **A-1** out-8 경계(계약 ≥ 10 채택 · 문면 "초과" 편차 미표기) · **A-2** 키워드 전용 미고정 · **A-5** 규칙 2파일의 DLQ `<pod>.dlq`만(dev 접두 누락 — T069 오해 위험) · **A-6** time `Z` 느슨 · jsonschema date-time format 미검사. 보고 원문 `.superpowers/t061/reviews/{build-report,review-r1-A-spec,review-r1-B-data}.md` · `r1-workflow-result.json`.
+- **r1 결정 K1–K10(컨트롤러 15:4x)**: **K1** B-1/A-3 (a) 채택 — 계약 `contracts/events.md` §발행 API 보강("UUID로 파싱되지 않으면 `OutboxUsageError`") + **out-15** `tenant_id="joshuatech"` → 예외 · 행 0 · **K2** B-2 권장안 채택 — 계약 보강("컨텍스트와 인자가 둘 다 있고 다르면 `OutboxUsageError` · 같으면 허용") + **out-16**(A+B → 예외 · 행 0 / A+A → 성공) · **K3** B-3 (a) — 시험 `owner` 별칭 `OPTIONS["options"] = "-c lock_timeout=30s"`(T060 owner 딕셔너리 변경 — 컨트롤러 승인 · 시험 전용) · **K4** A-1 — out-8 docstring에 경계 해석("계약 ≥ 10 · 10번째 실패에서 같은 relay_once 안 DLQ · 문면 '10 초과' 미채택") 명시 · **K5** A-2 — out-13에 `inspect.signature` 키워드 전용 + 위치 인자 `TypeError` 단언 · **K6** A-5 — 규칙 `django-pod.md` §Outbox(DLQ prod/dev 접두 · `tenant_id` UUID·충돌 규칙) · `events.md` §Topic conventions(DLQ dev 접두) 개정 · kr 미러 2 `translation-pending` · **K7** A-6 — out-3에 `TIME_RE`(`^…T…Z$`) 단언 · date-time format 검사는 T067/VD-4 인계(dev `rfc3339-validator` 후보) · **K8** 빌더 편차 ③-1~③-8 전부 채택 → D6 += out-14·15·16 · 소비 헬퍼 분할 · fake 충실도 · D7 **`kafka_settings`는 autouse 아님**(out-6이 `usefixtures`로 명시 · 세션 끝 원복) · 볼륨 기준선 24 · **K9** 리뷰 관찰 수용(변경 0): `JT_TEST_KAFKA_BOOTSTRAP` 환경변수는 쓰기만(디버그용 · 유지) · `testcontainers[postgres,kafka]` extras 표기(kafka extra는 4.15에서 비어 있음 — 미채택) · confluent-kafka 2.16.1 신선(하한 ≥2.15 유지) · **K10** VD-5 += "릴레이 정지 시 teardown"(T069 첫 초록) · VD-4 += slug가 T067 `format: uuid`/`pattern`으로도 걸리는지.
+- **인계(T069 — 테스트가 고정하는 것 · 빌더 ④ + 리뷰)**: D3 설정 5 · `relay_once(*, producer=None, batch_size=100) -> RelayResult(published, failed, dead)` · `django_common.outbox`는 **`metrics` 하위 모듈이 있는 패키지** · 프로듀서 유무는 **`producer is None`**(실 Producer는 `__len__`이 있어 falsy 가능 — `producer or make()` 금지) · delivery 콜백은 produce 안 동기(fake)와 poll/flush 안(실제) 둘 다 견딤 · 실 Producer `produce()`의 BufferError/KafkaException 즉시 예외도 attempts/last_error로 수렴 · `flush(timeout)` 유한(`delivery.timeout.ms` 30000 안) · 10번째 패스의 `failed` 값은 미고정(`dead == 1` · `published == 0`만) · **Kafka value = 저장된 봉투 그대로**(relay에서 time/id 재생성·CloudEvents SDK 재직렬화 금지 — research DJANGO-D6/D8의 `published_at` 갱신·컬럼 분해 저장은 계약·data-model §4보다 오래됐다 → 계약 우선: 성공 DELETE · payload jsonb 봉투 전체) · 릴레이는 default 별칭만 · 설정은 호출 시점에 읽기(`kafka_settings`가 세션 도중 채움 — import 시점 상수 금지) · out-10 나이는 DB `now()` 기준(Python 시계 금지) · ULID 라이브러리 미결(직접 구현 또는 의존성 추가 — D8에 없음) · `outbox` 테이블은 django_common 앱 마이그레이션 · T060 chk-1(B 허용 목록 `outbox`) 통과 · 운영 `security.protocol` 기본값 PLAINTEXT 금지(필수 설정) · `last_error`·DLQ `error` 헤더 = `str(err)`만(payload·헤더 값 포함 금지 · 길이 상한) · `tenant_id` UUID 파싱 + 컨텍스트 충돌 규칙(K1·K2) · VD-5. **T067**: `_envelope.json`(Draft 2020-12 · 외부 `$ref` 없는 자립 파일 · `tenantid` `format: uuid` + `pattern` 8-4-4-4-12 hex · required 9 · `time` `format: date-time`) · `identity-admin.session.revoked.json`(**data만** 검증 · sub req · sid string|null · nbf int req · reason enum req) · 파일 없으면 out-6 `pytest.fail` · date-time format 검사기(`rfc3339-validator`)는 선택. **T070**: `request.tenant_id`.
+
+## T062 (2026-11-02 T061 커밋 `981ec9b` 뒤 시작 — US6 test-first · `packages/django-common/tests/test_auth.py` · 세션 모델 Fable 5.1)
+
+- **과제 문면(tasks.md :176)**: `T062 [P] [US6] packages/django-common/tests/test_auth.py: 로컬 JWKS 서버 fixture — 유효 200 / 만료 401 / aud 불일치 401 / iss 불일치 401 / AUTH_ACTOR_SUB 미설정(기본 = impersonation 모드)이면 act 클레임이 없어도 통과·설정된 경우에만 act.sub 불일치 401(VD-1 결과와 무관하게 코드는 이 한 갈래로 고정 — contracts/identity-admin-api.md §호출자 식별) / revoked:sub:{sub} nbf > iat 401 / revoked:sid:{sid} 401 / Dragonfly 조회 실패(연결 거부·socket_timeout 0.2 s 초과·NOPERM) → 비헬스 경로 503 RFC 9457 type: https://joshuatech.dev/problems/denylist-unavailable(fail-closed, 200 ms 안에 판정) / Access JWT 없음 403 / Access JWT aud가 ACCESS_AUD_M2M·ACCESS_AUD_ADMIN 중 하나면 통과·그 외 403 / Access JWT common_name이 ACCESS_EXPECTED_CN과 일치해야 통과·불일치·부재 403 / 헬스 경로 3종(/healthz·/ready·/health) 면제 / /webhooks/authentik은 Access·JWT 면제 목록의 유일한 업무 경로이고 대신 HMAC 헬퍼가 검증한다 — 서명 없음·틀림 401 webhook_signature_invalid, 본문 created가 서버 시각 ±5분 밖 401, 같은 이벤트 pk 재전송은 멱등 no-op(뷰 수준 통합 단언은 T066) — FAIL 확인`. 짝 구현 = **T070**(`django_common.auth` — `JwtAuthMiddleware` · `AccessJwtValidator` · `Denylist` · Ninja auth callable · 면제 목록 · HMAC 헬퍼).
+- **소스로 확인한 사실**: ① 계약 `contracts/denylist.md`: 키 `revoked:sub:{sub}`(값 nbf epoch 정수) · `revoked:sid:{sid}`(`1`) · TTL 330 s · 조회 = JWT 검증 뒤 `GET` + (sid 있으면) `EXISTS` 파이프라인 1회 · `nbf > iat` → 401 `session_revoked` · sid 존재 → 401 · 어떤 오류든 비헬스 503 `…/problems/denylist-unavailable` · 헬스 3종은 조회 안 함 · 결과 캐시 금지 · 지표 `denylist_lookup_seconds{result="error"}` · ACL `<pod>` = `%R~revoked:* ~<pod>:* +@all`(읽기 전용은 `%R~`만) · `identity-admin` = `~revoked:* ~identity-admin:* +@all` · VD-4 옵션 A 확정(T057). ② `contracts/identity-admin-api.md` §인증 계층 순서 Access(403 `access_required`) → Bearer(401 `invalid_token` · JWKS svc DNS 1시간 캐시 · `iss` 공개 URL · `aud=identity-admin` · `exp` · `nbf`) → 호출자 식별(`common_name == ACCESS_EXPECTED_CN` · `AUTH_ACTOR_SUB` 설정 시에만 `act.sub`) → 거부 목록 → `tenant_id` 클레임(T068 미들웨어 · 403 `tenant_required`) · 오류 슬러그 9종 · RFC 9457(`contracts/bff-api.md` 예시 `type: https://joshuatech.dev/problems/session-revoked` ← 슬러그 `session_revoked` → **규칙 `_` → `-`**). ③ `contracts/pod-template.md` §런타임 계약 env 이름 `AUTHENTIK_ISSUER`(공개) · `AUTHENTIK_JWKS_URL`(svc DNS) · `AUTHENTIK_AUDIENCE` · `ACCESS_TEAM_DOMAIN` · `ACCESS_AUD_M2M` · `ACCESS_AUD_ADMIN` · `ACCESS_EXPECTED_CN` · `AUTH_ACTOR_SUB`(빈 값 유효) · `DRAGONFLY_URL`(사용자 = pod 이름) + `.claude/rules/django-pod.md` §Auth. ④ research DJANGO-D9(PyJWT[crypto] ≥ 2.13 `PyJWKClient(cache_jwk_set=True, lifespan=3600)` · `algorithms=["RS256"]` · `options={"require": [...]}`) · D10(Access JWT를 같은 PyJWKClient로 `https://<team>.cloudflareaccess.com/cdn-cgi/access/certs` · aud = AUD 태그 · iss = 팀 도메인 URL · 서비스 토큰 `sub` 빈 문자열 · `common_name`으로 식별 · 커스텀 auth callable) · D11(redis-py 8.1 RESP3). ⑤ **실측 redis-py 8.1.0**(`uv run --no-project --with redis==8.1.0`): 기본 `Retry(ExponentialWithJitterBackoff, retries=10, ConnectionError·TimeoutError)` → 닫힌 포트 **4.687 s** · 블랙홀(listen · accept 없음) **6.783 s**; `retry=Retry(NoBackoff(), 0)` → **0.201 s · 0.216 s**. Windows에서 bind만 하고 listen하지 않은 포트는 RST가 아니라 타임아웃 경로(`TimeoutError`)로 끝난다 — 예외 종류는 OS 의존, 시간은 둘 다 0.2 s 안. ⑥ **실측 PyJWT 2.15.1 + cryptography 50.0.2**(로컬 `ThreadingHTTPServer` JWKS): `http://` URI 허용(`file:` 거부 "only 'http' and 'https'") · 두 번째 서명 키 조회에 fetch 0(hit 1 유지 — 캐시) · alg 혼동(공개키 PEM을 HS256 비밀로 수제 서명) `InvalidAlgorithmError` · unknown kid `PyJWKClientError` · aud 목록 교집합 OK · 만료 `ExpiredSignatureError` · 미래 nbf `ImmatureSignatureError` · RSA 2048 생성 0.03 s · 첫 fetch + decode 0.076 s. ⑦ **Dragonfly v1.40.1**: 인덱스 digest `sha256:ebf3c6c213e82fb51b4521660cca13f06f3421dc5b1ed14f2f474c50b5e29986`(OCI index · amd64 manifest `26893a7d…`) · `entrypoint.sh`가 `-`로 시작하는 첫 인자 앞에 `dragonfly --logtostderr`를 붙임 · 작은 호스트에선 `--proactor_threads=2 --maxmemory=512mb` 필요(없으면 "16 threads → 4.00GiB required"로 종료) · VOLUME `/data` · 런타임 `ACL SETUSER` 동작(이전 프로브: `%R~revoked:*` 사용자 GET OK · SET/DEL `NoPermissionError` · 패턴 없는 사용자 GET NOPERM · 파이프라인 GET+EXISTS OK · `ACL SETUSER default off` 뒤 미인증 `AuthenticationError` · 기존 연결 유지) · hiredis 3.5.0 cp313 win_amd64 설치 OK · testcontainers 4.15 `community.redis.RedisContainer`는 import 시 `redis` 필요(런타임 의존성으로 충족). ⑧ **authentik main `authentik/events/models.py` `NotificationTransport.send_webhook`**: body·headers 매핑을 각각 `evaluate(user=notification.user, request=None, notification=notification)`으로 평가 · `post(url, json=default_body, headers=headers)` · 헤더 매핑은 전송 본문을 받지 못함 · `lib/expression/evaluator.py` globals에 `__builtins__` 제한 없음 → 표현식 안 `import` 가능. ⑨ **Cloudflare 문서(application-token)**: 서비스 토큰 JWT `common_name` = "The Client ID of the service token (`CF-Access-Client-Id`)" · `sub` = 빈 문자열 · `nbf` 클레임 존재(있으면 검증).
+- **설계 충돌과 보정(계약·data-model·규칙만 — spec·plan·tasks 불변)**: **C1 웹훅 서명** — spec FR-036·계약·과제는 "HMAC", data-model §9는 "공유 비밀 헤더"였고 ⑧로 "원시 본문 HMAC"은 송신 불가 → **본문 JSON 정규형(`sort_keys` · `(",", ":")` · `ensure_ascii`)의 HMAC-SHA256 · 헤더 `sha256=<hex>`**로 확정(계약 §웹훅 서명 규약 신설 · data-model §9 행 · 규칙 §Auth · VD-T062-1 = T081 실측 · 옵션 B 정적 비밀 비교). **C2** `ACCESS_EXPECTED_CN` 값 = 서비스 토큰 **Client ID**(⑨) — 계약 §호출자 식별 행 보정(T073 ConfigMap · T076 E2E). **C3** 거부 목록 클라이언트 **재시도 0**(⑤) — 계약 §조회 규약 3 · 규칙 §Auth 보정. kr 미러 `django-pod_kr.md` pending 표기 갱신. **관찰(미보정 · report.md 후보)**: **O1** 문면 "`common_name` 부재 403"은 admin AUD(사람 · GitHub IdP) Access JWT에 `common_name`이 없다는 사실과 충돌 — SP-1 admin 표면은 forward-auth Outpost 뒤의 Django admin(세션)이라 이 미들웨어 경로가 아니면 무관하지만 T072/T073이 admin urlconf의 인증 경로를 정할 때 확인 · 테스트는 문면을 따른다. **O2** `tests/testapp/middleware.py`의 `request.tenant_id`(UUID) 계약을 T070도 지켜야 T068 미들웨어와 이어진다(D4).
+- **결정 D1–D15(컨트롤러)**:
+  - **D1 범위 · 빨강**: 산출물 = `tests/test_auth.py` + `tests/authapp/{__init__,urls,views}.py`(auth 전용 urlconf · `tests/testapp/**`는 불변) + `tests/_jwt.py`(세션 RSA 키 · JWK 변환 · Bearer/Access 민팅 · HS256 수제 토큰) + `conftest.py` 덧붙임(`jwks_server` · `dragonfly` · `dragonfly_clean` · `auth_settings` · `auth_client`) + `tests/test_fixtures_dragonfly.py` · `tests/test_fixtures_jwks.py`(Django 없는 인프라 초록) + `settings.py` 덧붙임 + `pyproject.toml` + 루트 `uv.lock`. **`src/django_common/auth.py`는 쓰지 않는다**(T070). 빨강 = 지금은 T060·T061과 같은 `django.setup()` `ModuleNotFoundError: django_common.tenancy`, T068 뒤에는 `test_auth.py` import의 `ModuleNotFoundError: django_common.auth`(`pytest tests/test_auth.py -p no:django --collect-only`로 지금 확인). auth 테스트는 **DB를 쓰지 않는다**(`db` 마크 없음 · `pg` 컨테이너 안 뜸 · pytest-django가 DB 접근을 막아 우연한 사용을 잡는다).
+  - **D2 로컬 JWKS 서버**: `ThreadingHTTPServer("127.0.0.1", 0)` 데몬 스레드 1개가 두 경로를 서빙 — `/application/o/identity-admin/jwks/`(Authentik 키 · kid `authentik-test-1`) · `/cdn-cgi/access/certs`(Access 키 · kid `access-test-1` · `{"keys": [...]}` — PyJWKClient는 `keys`만 읽음) · 경로별 hit 카운터(캐시 단언용) · 그 외 404. 키는 세션마다 RSA 2048 두 개를 생성(저장소에 키 자료 0). `AUTHENTIK_ISSUER`는 공개 URL **문자열**(fetch 없음) — "JWKS는 svc DNS · `iss`만 공개 URL" 분리를 그대로 재현.
+  - **D3 설정 이름(T070 가정 — `tests/settings.py`에 "D3 설계 가정" 주석)**: `AUTHENTIK_ISSUER = "https://auth.joshuatech.dev/application/o/identity-admin/"` · `AUTHENTIK_JWKS_URL = ""`(픽스처가 채움) · `AUTHENTIK_AUDIENCE = "identity-admin"` · `ACCESS_TEAM_DOMAIN = ""`(픽스처가 `http://127.0.0.1:<port>`로 채움 — **스킴이 있으면 base URL 그대로, 없으면 `https://` 접두**: certs = `<base>/cdn-cgi/access/certs` · Access `iss` = `<base>`) · `ACCESS_AUD_M2M = "aud-m2m-test"` · `ACCESS_AUD_ADMIN = "aud-admin-test"` · `ACCESS_EXPECTED_CN = "web-bff-test-client-id.access"`(Client ID 모양 · 가짜) · `AUTH_ACTOR_SUB = ""`(기본 미설정) · `DRAGONFLY_URL = ""`(픽스처가 reader URL로 채움) · `AUTHENTIK_WEBHOOK_SECRET = ""`(픽스처가 세션 랜덤 — 이름은 T073 가정 · 라이브러리 헬퍼는 `secret=` 인자). 토큰 모양 상수 0.
+  - **D4 미들웨어 · 요청 속성(T070 가정)**: `django_common.auth.JwtAuthMiddleware`(new-style) 순서 Access → Bearer → (`AUTH_ACTOR_SUB` 설정 시 `act.sub`) → 거부 목록 · 성공 시 `request.access_claims`(dict) · `request.auth_claims`(dict) · `request.tenant_id`(`tenant_id` 클레임 UUID — T060 `HeaderTenantMiddleware`의 자리 · 클레임 없으면 속성 없음 → T068 미들웨어 403 `tenant_required`) · 실패 시 미들웨어가 **직접** RFC 9457 응답(`Content-Type: application/problem+json` · `type = "https://joshuatech.dev/problems/" + slug.replace("_", "-")` · `title` · `status` · `detail`에 토큰·비밀·URL 비밀번호 없음) · 공개 `AuthError(slug, status, detail="").to_response()` · 면제 `AUTH_EXEMPT_PATHS` 기본 `("/healthz", "/ready", "/health", "/webhooks/authentik")` **정확 일치**(접두 아님) · 설정은 인스턴스 생성·요청 시점에 읽기(import 시 상수 금지 — 테스트가 `settings`로 바꾼 뒤 새 `Client`) · `Denylist`: `redis.Redis.from_url(DRAGONFLY_URL, socket_timeout=0.2, socket_connect_timeout=0.2, retry=Retry(NoBackoff(), 0))` · 파이프라인 `GET revoked:sub:{sub}` + sid 있으면 `EXISTS revoked:sid:{sid}` · 결과 캐시 없음 · 지표 `denylist_lookup_seconds` Histogram 레이블 `result`(`error`는 계약 · `ok`는 가정 — 테스트는 `error`만 단언) · JWKS 클라이언트 2개(Authentik · Access)는 미들웨어 인스턴스마다 1개씩 생성해 재사용(1h 캐시 — 요청 2회에 fetch 1).
+  - **D5 웹훅 헬퍼(T070 가정 · 계약 §웹훅 서명 규약)**: `verify_authentik_webhook(body: bytes, signature: str | None, *, secret: str, now: datetime | None = None) -> WebhookEvent`(frozen dataclass `pk: str` · `created: datetime` · `data: dict`) · 거부 → `WebhookSignatureInvalid(AuthError)`(slug `webhook_signature_invalid` · 401) · 정규형 = `json.dumps(json.loads(body), sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()` · 헤더 `sha256=<hex>` · `hmac.compare_digest` · `created` = `datetime.fromisoformat`(aware 필수) · `|now − created| > 300 s` 거부 · `now` 기본 `django.utils.timezone.now()`. 멱등 저장소는 pod(T066) — 시험 `authapp` 뷰가 모듈 집합으로 202 → 200을 보여 준다(테스트마다 비움).
+  - **D6 테스트(id → 단언)**: 인프라(Django 없음 · `-p no:django`) — `tests/test_fixtures_dragonfly.py` **infra-df-1**: writer(`identity-admin`) `SET revoked:sub:x 1 EX 30` OK · reader(`test-pod`) `GET` == `b"1"` · `EXISTS revoked:sid:y` == 0 · 파이프라인 GET+EXISTS OK · reader `SET`/`DEL revoked:sub:x` → `NoPermissionError` · reader `SET test-pod:k 1` OK · `noperm-pod` `GET revoked:sub:x` → `NoPermissionError` · 기본(default) 사용자 미인증 → `AuthenticationError`. `tests/test_fixtures_jwks.py` **infra-jwks-1**: Bearer 민팅 → `PyJWKClient(AUTHENTIK JWKS URL)` 서명 키 → `jwt.decode(aud·iss·RS256)` OK · 두 번째 조회에 hit 그대로(1); **infra-jwks-2**: Access 민팅(aud 목록 · `common_name` · `sub ""`) → `PyJWKClient(certs URL)` decode OK · Authentik 키로 서명한 토큰은 Access JWKS로 `PyJWKClientError`. 본문 `tests/test_auth.py`(`pytestmark = pytest.mark.usefixtures("auth_settings", "dragonfly_clean")` · 픽스처 `auth_client` = 설정 `MIDDLEWARE=["django_common.auth.JwtAuthMiddleware"]` · `ROOT_URLCONF="tests.authapp.urls"` 덮은 뒤 `django.test.Client()` · 헤더 `Authorization: Bearer …` · `Cf-Access-Jwt-Assertion: …`): **auth-1** 유효 Access + 유효 Bearer(`tenant_id` 클레임 A) → 200 · 뷰 echo `sub` == 토큰 sub · `tenant_id` == str(A) · `common_name` == 설정값 / **auth-2** Bearer 만료 → 401 `invalid_token` / **auth-3** Bearer aud 불일치 → 401 / **auth-4** Bearer iss 불일치 → 401 / **auth-5** Bearer `nbf` 미래 → 401 / **auth-6** (a) unknown kid → 401 · (b) alg 혼동(Authentik 공개키 PEM을 HS256 비밀로 수제 서명 · kid 유효) → 401 · (c) Access 키로 서명한 Bearer → 401 / **auth-7** Access 유효 · Bearer 없음 → 401 `invalid_token`(Bearer 형식 아닌 `Authorization: Basic …`도 401) / **auth-8** `AUTH_ACTOR_SUB=""`: `act` 없음 → 200 · `act={"sub": "anything"}` 있어도 200(검사 생략) / **auth-9** `AUTH_ACTOR_SUB="web-bff-dev"`: `act.sub` 일치 → 200 · 불일치 → 401 `invalid_token` · `act` 없음 → 401 / **auth-10** Access 없음(Bearer 유효) → 403 `access_required` · Access·Bearer 둘 다 없음 → 403(순서 = Access 먼저) / **auth-11** Access aud `[M2M]` 200 · `[ADMIN]` 200 · `["other", M2M]` 200 · `["other"]` 403 / **auth-12** `common_name` 불일치 403 · 부재 403 / **auth-13** Access 만료 403 · iss 불일치 403 · Authentik 키로 서명한 Access JWT 403 / **auth-14** writer가 `revoked:sub:{sub}` = iat+60 → 401 `session_revoked` · = iat(같음) → 200 · = iat−60 → 200 / **auth-15** writer가 `revoked:sid:{sid}` = 1 → 401 · 토큰에 `sid` 없고 키 `revoked:sid:other` 있음 → 200 / **auth-16** 캐시 없음: 같은 `auth_client`로 200 → writer SET `revoked:sub` → 바로 다음 요청 401 / **auth-17** `DRAGONFLY_URL` = 닫힌 포트(bind → 포트 번호 → close; 또는 bind-not-listen) → 503 · `type == "https://joshuatech.dev/problems/denylist-unavailable"` · `Content-Type` `application/problem+json` · **요청 전체 경과 < 0.5 s** · 본문·헤더에 reader 비밀번호·URL 없음 / **auth-18** 블랙홀(`socket.listen(1)` · accept 없음) → 503 · 경과 < 0.5 s / **auth-19** `noperm-pod` URL → 503 · 경과 < 0.5 s / **auth-20** auth-17 뒤 `REGISTRY.get_sample_value("denylist_lookup_seconds_count", {"result": "error"})` 전보다 +1 / **auth-21** 헤더 없이 `GET /healthz` · `/ready` · `/health` → 200 · `DRAGONFLY_URL` 닫힌 포트 상태에서도 `/healthz` 200 + 지표 `error` count 불변(조회 안 함) / **auth-22** 면제는 정확 일치: `/healthzz` 403 · `/health/x` 403 · `/webhooks/authentik/x` 403 / **auth-23** `POST /webhooks/authentik`(Access·Bearer 없음 · 유효 HMAC · 본문 `{"pk","created","action","sub","sid"}`) → 202 · 같은 본문 재전송 → 200(no-op) / **auth-24** 서명 헤더 없음 → 401 `webhook_signature_invalid` · 틀림 → 401 · `sha256=` 접두 없는 hex → 401 / **auth-25** `created` = now+301 s → 401 · now−301 s → 401 · now±299 s → 202 · tz 없는 `created` → 401 / **auth-26** 헬퍼 직접: 키 순서 뒤섞고 공백 넣은 본문도 같은 서명으로 통과(정규형) · `sub` 한 글자 변조 → `WebhookSignatureInvalid` · 반환 `WebhookEvent.pk/created/data` / **auth-27** 문제 본문 모양(401 하나 · 403 하나 · 503): `type` 규칙 · `title` 비어 있지 않은 str · `status` == 코드 · `detail`에 Bearer·Access 토큰 문자열 없음 / **auth-28** 같은 `auth_client`로 유효 요청 2회 → JWKS hit 1 · certs hit 1(1h 캐시 · 인스턴스당 클라이언트 1).
+  - **D7 Dragonfly 픽스처(`conftest.py`)**: `DRAGONFLY_IMAGE = "ghcr.io/dragonflydb/dragonfly@sha256:ebf3c6c2…"`(digest 핀 · 주석에 태그 v1.40.1) · `RedisContainer(image=DRAGONFLY_IMAGE, port=6379).with_command("--proactor_threads=2 --maxmemory=512mb")`(entrypoint가 `dragonfly --logtostderr`를 붙임 · RedisContainer `_connect`의 ping 대기 재사용 · 안 되면 `DockerContainer` + ping 루프 폴백 — 보고) · 기동 뒤 default 사용자로 `ACL SETUSER` 4: `admin` `on ><pw> ~* +@all` · `identity-admin` `on ><pw> ~revoked:* ~identity-admin:* +@all` · `test-pod` `on ><pw> %R~revoked:* ~test-pod:* +@all` · `noperm-pod` `on ><pw> ~noperm-pod:* +@all` → `ACL SETUSER default off` · 비밀번호 4개 세션 랜덤 · 미출력 · `DragonflyInfo(host, port, admin_url, writer_url, reader_url, noperm_url)`(url 4개 `repr=False`) · 환경변수 없음 · finally `stop()`(컨테이너 + 익명 볼륨 `/data`) · `dragonfly_clean`(함수 · admin `FLUSHALL`) · 실패 모드 3종은 테스트가 `settings.DRAGONFLY_URL`을 바꾸고 새 `Client`를 만든다(예외 종류 단언 금지 — ⑤).
+  - **D8 의존성**: 런타임 `"PyJWT[crypto]>=2.13,<3"` · `"redis[hiredis]>=8.1,<9"`(인증 미들웨어·거부 목록은 라이브러리 본체 — 계약 §인증 계층 · research D9/D11). dev 추가 0(`cryptography`는 PyJWT extra). 루트 `uv lock`(cp313 win_amd64 wheel: cryptography 50.0.2 · hiredis 3.5.0 확인).
+  - **D9 검증**: ① `uv lock` → `uv sync --locked --group dev` → `python -c "import jwt, redis, hiredis, cryptography"` 버전 ② `pytest tests/test_fixtures_dragonfly.py -p no:django -q` 초록(기동 시간 기록) ③ `pytest tests/test_fixtures_jwks.py -p no:django -q` 초록 ④ `pytest tests/test_auth.py -q` **빨강**(tenancy ModuleNotFoundError 원문) + `pytest tests/test_auth.py -p no:django --collect-only -q`(`django_common.auth` 부재 원문) ⑤ `compileall` · BOM/CR/TAB 0 · 비밀 grep 0 · `docker ps -a` 잔류 0 · `docker volume ls -f dangling=true` **24 → 24** ⑥ `git status --short` 허용 파일만. pytest 한 번에 하나.
+  - **D10 리뷰 2렌즈**: A 계약·문면(문면 조각 ↔ auth-1..28 대응표 · 계약 이름·슬러그·type 규칙 · 면제 정확 일치 · D3/D4/D5 가정 표시 · 빨강 진짜 · 보정 C1–C3 반영) · B 보안·fail-closed(alg 혼동 · 키 교차 · 토큰·비밀 노출(503 detail · 보고) · 타이밍 경계 근거(D13) · ACL 최소 권한(reader `%R`) · 재시도 0 · 정규형 HMAC의 바인딩·재생 한계 · 컨테이너·볼륨 위생 · 의존성 상한).
+  - **D11 인계**: **T070** D3·D4·D5 전부 + `retry=Retry(NoBackoff(), 0)` + 예외 종류 무관 503 + `request.tenant_id` UUID + 설정 읽기 시점 + 1h 캐시 클라이언트 재사용 + 문제 응답 `detail`에 비밀 금지 + `AUTH_EXEMPT_PATHS` 정확 일치. **T073** `AUTHENTIK_WEBHOOK_SECRET`(이름 확정) · `ACCESS_EXPECTED_CN` ConfigMap = Client ID · 멱등 저장. **T081** 웹훅 두 매핑(정규형 HMAC · env 비밀 · VD-T062-1) · Access 서비스 토큰 Client ID. **T068** `request.tenant_id` 계약 유지. **T066** 뷰 수준 웹훅 통합. **T076** `common_name` 실측.
+  - **D12 VD**: VD-1 digest 참조(`repo@sha256`)로 docker-py pull/run 동작(로컬엔 이미지 있음 — CI pull 경로는 T065/CI) · VD-2 `RedisContainer(image=dragonfly)` ping 대기 성립 · VD-3 Windows 닫힌 포트 예외 종류(⑤ — 테스트는 시간·상태만) · VD-4 Dragonfly 기동 시간 · VD-T062-1(T081 · 계약) · VD-5 `common_name` = Client ID(T076).
+  - **D13 타이밍 경계**: 요청 전체 **< 0.5 s** = 판정 0.2 s(타임아웃) + 처리 여유 0.3 s(로컬 JWKS 첫 fetch + decode 0.076 s 실측 · RSA 검증 2회 ms 단위). 기본 재시도 구현은 ≥ 4.6 s로 9배 밖이라 판별력이 크다. 느린 호스트에서 flake가 보이면 빌더가 수치를 보고하고 컨트롤러가 상한을 정한다(테스트가 임의로 늘리지 않는다).
+  - **D14 편차 정책**: T060·T061과 같다(실측 근거가 있으면 지시문과 달리 하고 보고 ③에 적는다 · 계약과 어긋나면 계약 우선).
+  - **D15 testapp 불변**: `tests/authapp/`(모델 없음 · `INSTALLED_APPS` 불필요) + `auth_client`가 pytest-django `settings`로 `ROOT_URLCONF`·`MIDDLEWARE`를 덮는다(`setting_changed`가 URL 캐시를 비움 · `Client`는 첫 요청에 미들웨어를 적재) — `tests/settings.py`의 기본 `MIDDLEWARE`·`ROOT_URLCONF`는 T060 그대로.
+- **순서**: 보정(C1–C3 · 완료) → 설계(이 절) → 워크플로(api-builder 1 → 리뷰 2 병렬) → 수정 → 커밋 · tick · 학습 로그 → T063.
+- **빌드 · 리뷰 r1 결과(`wf_f8659638-f92` · 15:5x–16:5x KST · 에이전트 3 · 0.86M 토큰)**: 빌더(api-builder opus) DONE_WITH_CONCERNS — 파일 12(신규 `test_auth.py` 639줄 · `test_fixtures_dragonfly.py` · `test_fixtures_jwks.py` · `_jwt.py` · `_secret.py`(지시 밖) · `authapp/{__init__,urls,views}.py` · conftest/settings 덧붙임 · pyproject · uv.lock +138 = pyjwt 2.15.1 · redis 8.1.0 · hiredis 3.5.0 · cryptography 50.0.2 · cffi 2.1.1 · pycparser 3.12) · 인프라 초록 infra-df-1(Dragonfly 기동 + ACL = setup 0.68–0.87 s) · infra-jwks-1/2 · 빨강 2종(`django.setup()` tenancy exit 1 · `-p no:django --collect-only` `django_common.auth` exit 2) · **지시 밖 검증**: 저장소 밖 일회용 참조 구현(D4/D5)으로 29/29 충족 + 변이 16종 전부 검출(`Redis()` 기본 재시도 변이 = 요청 6.1–6.4 s → 0.5 s 상한) · 그 과정의 사고: 노출 단언 헬퍼가 실패하자 pytest가 마지막 트레이스백 항목의 **함수 인자를 repr로 출력**해 세션 비밀번호(파기된 시험 컨테이너 것)가 스크래치 출력에 찍힘 → `tests/_secret.Secret`(str 하위 · repr만 `'***'`) 도입 · 편차 12 채택: `localhost → 127.0.0.1`(**Docker Desktop 게시 포트는 IPv4만 · `localhost`는 `::1`이 먼저 풀려 0.21 s 시간 초과 뒤 폴백** — 0.2 s 연결 예산을 다 쓴다) · `Secret` · auth-29(계약 거부 사유 나머지) · `tenant_id_is_uuid` echo · Access 기본 `nbf` · 교차 키 kid 2갈래 · 단언 보강(양성 대조 · 노출 검사 전체 응답) · infra 세부(파이프라인 2모드 · 거부 뒤 값 불변 · hit 차분) · `make_client` 팩토리 · 가림 범위 `Exception` · 기존 줄 변경 2(import 1 · pyproject 머리) · 참조 구현 검증(권한 거부로 삭제 못 함 → 컨트롤러 삭제). 리뷰 r1: **A(계약·문면) approve_with_fixes(low 4)** — 문면 18조각 ↔ auth-1..29 + infra 3 전부 대응 · 문면 밖 12건 전부 계약 파생 · 가정 표시 OK · 빨강 진짜(`:58` 실제 import 줄) · 보고 정직(줄 수 12/12 · redis-py 사실 소스 확인) / **B(보안·fail-closed) approve_with_fixes(medium 1 · low 6)**. 발견: **B-1(medium)** 필수 클레임 부재 토큰 미검사 — PyJWT 기본은 `exp` 부재도 허용(`require` 없으면 영구 유효 토큰 · iat 없으면 `nbf > iat` 판정 불가) · **B-2** auth-18 socket 시간 초과 없는 구현 = hang(상한 단언에 닿지 못함) + 노출 단언 누락 · **B-3** auth-21 "조회 안 함"의 관측 수단이 error 지표 하나(조회하되 오류를 삼키는 구현 통과) · **B-4** alg 혼동 토큰 구조 자기검사 없음(PyJWT가 PEM 모양 HMAC 비밀을 거부해 (b)는 핀 증명이 아님) · alg none · Access 경로 혼동 없음 · **B-5** 정규형 HMAC 한계 미기록 · **B-6** 비ASCII 서명 헤더 → `hmac.compare_digest(str, str)` TypeError 500 · 비문자열 pk/created · **B-7(+빌더 인계)** 계약 "redis-py ≥ 6 기본 재시도" 문구가 실제보다 넓음 — 10회는 `Redis()` 생성자 기본값 · `from_url`은 retry 미지정 시 0(소스 `client.py:285` · `connection.py:900–910`) · **A-1** 선택 클레임·require 규칙 docstring 누락 · **A-2** `ACCESS_EXPECTED_CN` 시험 값이 `<32 hex>.access` 모양 아님(컨트롤러 D3 값) · **A-3** tenant_id 없음/비-UUID 미단언 · **A-4** 스크래치 참조 구현 잔류(T070 빌더 노출 위험). 보고 원문 `.superpowers/t062/reviews/{build-report,review-r1-A-spec,review-r1-B-security}.md` · `r1-workflow-result.json`.
+- **r1 결정 K1–K12(컨트롤러 17:0x)**: **K1** B-1 채택 — **auth-30**(Bearer exp·iat·sub·aud·iss 각각 없음 → 401 · Access exp·iat·aud·iss 각각 없음 → 403) + docstring require 목록(A-1) · 규칙 §Auth에 require 문장 · **K2** B-2 ①+② — `_timed_get`을 데몬 스레드 + `join(5.0)`, 살아 있으면 `pytest.fail`(`VERDICT_HANG_LIMIT_S` · 스레드 예외 재던짐) · auth-18에 `_assert_no_leak` · **K3** B-3 — auth-21에 살아 있는 reader URL · 새 Client · 헬스 3회 동안 `CLIENT LIST` **id 차집합 ∅**(수가 아닌 id 집합 — 다른 테스트 풀 연결이 사이에 닫혀도 흔들리지 않는다 · Dragonfly `CLIENT LIST` id 필드 실측) · **K4** B-4 — `tests/_jwt.alg_none_token`(수제 `header.payload.`) · auth-6(d) alg none · auth-13 Access HS256 혼동 + alg none · **infra-jwks-3** 구조 자기검사(헤더 · 미검증 decode == claims · 서명 == HMAC 재계산 · PyJWT `InvalidAlgorithmError`) · **K5** B-5 — 웹훅 절 머리에 한계 3항(±300 s 재전송은 pk 멱등 몫 · Python json 전제 · 서버 시각 기준) · **K6** B-6 — auth-24 `upper-prefix` · `short`(63) · `non-ascii`(U+00E9 × 64 — latin-1 범위라 실제 헤더로 들어온다) · auth-29 `int-pk` · `int-created` · **K7** B-7 — 계약 §조회 규약 3 · 규칙 §Auth 문구를 "생성자 기본값 10회 · `from_url` 기본 0 · 어느 경로든 명시(기본값 변경 방어)"로 좁힘 · **K8** A-2 (b) — docstring "등호 비교만 · 모양 미검증"(시험 값은 읽기 쉬운 가짜 유지 — 토큰 모양 상수 금지) · **K9** A-3 — **auth-31**(tenant_id 없음 → 200 · 속성 없음 · `tenant_id_is_uuid` False · slug → 401 `invalid_token`) + 계약 §인증 계층 5 보강 · **K10** A-4 — 오라클·변이 사본·빌더 스크래치 출력 삭제(검증 뒤 · `find -delete`) · **K11** 빌더 편차 12 전부 채택 · **K12** 리뷰 관찰 수용(변경 0 · 인계): `ACCESS_TEAM_DOMAIN` `http://`는 loopback 한정 가드 + T070 단위 테스트(운영에 `http://` 값이 들어가면 Access certs 평문 → 우회 경로) · `Secret`은 repr만 가림(structlog JSON 렌더러는 실값 — 로그 필드 금지는 T071/pod 로깅 테스트) · Histogram은 모듈 수준 1회 등록(인스턴스마다 등록 시 Duplicated timeseries) · `_closed_port` TOCTOU · ±299 s 경계 · 0.5 s 상한은 flake 후보(수치 보고 뒤 컨트롤러 판단 · D13 유지).
+- **마감 검증(컨트롤러 17:0x)**: 오라클 대상 `test_auth.py` **31 passed** 4.59 s(auth-17 0.25 s · auth-18 0.24 s · auth-20 0.24 s · auth-27 0.29 s · 첫 setup 1.40 s) · **변이 3종 전부 검출**(`require` 제거 → auth-30 "bearer without exp" 200 ≠ 401 · 헬스 경로에서 조회 뒤 삼킴 → auth-21 새 client id · `compare_digest(str, str)` → auth-24 TypeError 500) · 인프라 `test_fixtures_jwks.py -p no:django` **3 passed** · `test_fixtures_dragonfly.py` **1 passed** · 빨강 `pytest tests/test_auth.py` exit 1 `ModuleNotFoundError: No module named 'django_common.tenancy'` · `-p no:django --collect-only` exit 2 `tests\test_auth.py:64` `django_common.auth` · compileall OK · 20파일 BOM/CR/TAB 0 · 끝 LF 1 · gitleaks no leaks(django-common · uv.lock · 학습 로그) · testcontainers 잔류 0 · dangling 볼륨 24 → 24 · 스크래치 오라클·변이·빌더 출력 삭제 · 커밋 `9985718`(설계 · 계약 보정 3 + K7/K9 문구) + 테스트 커밋(tick 68/119).
+- **인계(T070 — 테스트가 고정하는 것 · r1 반영)**: D3 설정 11 · D4 속성 3 · 면제 4경로 정확 일치(`request.path_info`) · `AuthError(slug, status, detail).to_response()` · require 목록(Bearer exp·iat·sub·aud·iss · Access exp·iat·aud·iss) · `common_name` 등호 비교 · `AUTH_ACTOR_SUB` 빈 값 = 검사 생략 · `retry=Retry(NoBackoff(), 0)` + `socket_connect_timeout` 0.2 명시 · 조회 오류 종류 무관 503 + `denylist_lookup_seconds{result="error"}`(Histogram 모듈 수준 1회) · `detail`에 URL·비밀 금지 · 비-UUID tenant_id 401 · tenant_id 없음 → 속성 없음(403은 T068) · JWKS 클라이언트 인스턴스당 1(1h 캐시) · `verify_authentik_webhook`: 헤더 `re.fullmatch(r"sha256=[0-9a-f]{64}", …)` 먼저 → `compare_digest`에는 ASCII hex만 · pk·created 문자열 검사 · `created` aware · `ACCESS_TEAM_DOMAIN` `http://`는 loopback만 · 설정값이 `tests/_secret.Secret`(str 하위)일 수 있음 — `type(x) is str` 금지. **T073** `AUTHENTIK_WEBHOOK_SECRET` 이름 확정 · `ACCESS_EXPECTED_CN` ConfigMap = Client ID · 멱등 저장 보존 ≥ 창의 2배. **T081** 매핑 두 개 정규형 HMAC(VD-T062-1 · Python json 동일 · env 비밀 이름). **T068** `request.tenant_id` UUID · 없으면 403 `tenant_required`. **T066** 뷰 수준 웹훅 통합. **T076** `common_name` 실측. **T072/T073** O1(admin AUD 사람 토큰에 `common_name` 없음).
+
+## T063 (2026-11-02 17:1x 시작 — US6 test-first · `packages/django-common/tests/test_observability.py` · 세션 모델 Fable 5.1)
+
+- **과제 문면(tasks.md :177)**: `T063 [P] [US6] packages/django-common/tests/test_observability.py: JSON 로그에 request_id(헤더 전달·생성)·tenant_id·trace_id, 로그에 authorization·cookie·x-authentik-signature 값 없음; OTel in-memory exporter에 span·attributes(샘플러 parentbased_traceidratio 0.1); /healthz 200 · DB 다운 시 /ready 503 · Kafka/Dragonfly 다운 시 /ready 200 유지 · /health 항상 200 + JSON db·dragonfly·kafka_producer 상태 — FAIL 확인`. 짝 구현 = **T071**(`django_common/{observability,health}.py` — structlog + django-structlog `RequestMiddleware` + 마스킹 processor · `configure_otel()` · `configure_sentry()` · `health_router`).
+- **소스로 확인한 사실**: ① 계약 `identity-admin-api.md` §엔드포인트: `/healthz` 200 `{status: "ok", version, git_sha}`(프로세스만 · 외부 의존 조회 없음) · `/ready` **DB만**(`SELECT 1` · app role) 200/503 `not_ready` · `/health` `{status, checks: {db, dragonfly, kafka_producer}}` 항목마다 `ok`·`fail` + 지연 ms · **항상 200**; §관측 로그 `request_id` · `tenant_id` · `sub_hash` · `route` · `status` · `duration_ms` · `trace_id` · processor가 `authorization`·`cookie`·`x-authentik-signature` 제거 + **쿼리스트링 미기록** · 메트릭 `http_requests_total{route,status}` · 트레이스 OTLP → Alloy · `traceparent` 이어받음 · `parentbased_traceidratio` 0.1 · 응답 헤더 `x-request-id` 되돌림(계약 머리). ② `pod-template.md` §런타임 계약 로그 필드 `ts level logger event request_id tenant_id sub_hash trace_id span_id` · 트레이스 OTLP → Alloy(`monitoring` 4317/4318) · :105 공개 이름 `django_common.observability(configure_logging, configure_otel, configure_sentry, RequestIdMiddleware)` · `django_common.health(health_router: /healthz·/ready·/health)`. ③ research D12(structlog 26.1.0 + django-structlog 10.1.0 `RequestMiddleware` · X-Request-ID 있으면 그대로 · JSONRenderer stdout) · D13(instrumentation-django 0.65b0 + sdk 1.44.0 · **OTLP gRPC 4317** — 과제 T071 문면은 **OTLP http** · 계약은 4317/4318 둘 다 → http(4318) 채택 · `OTEL_PYTHON_DJANGO_EXCLUDED_URLS` · tenant/user 속성은 response_hook) · D14(Sentry — T063 범위 밖) · **D15(`/ready` = django-health-check 4.5.1 DB·cache)** ↔ 계약 "`SELECT 1` DB만" **충돌**: django-health-check DB 백엔드는 자기 테이블(`health_check_db_testmodel`)에 쓰기 → B 등급 허용 목록(`check_rls` · T060 chk-4)과 충돌 + Dragonfly/Kafka를 readiness에 넣지 않는다는 계약과도 어긋남 → **라이브러리 없이 `SELECT 1`**(T071 문면의 괄호 "django-health-check DB"는 미채택 — 설계 문서로만 기록 · tasks.md 불변). ④ **설치 실측(cp313 win_amd64 · 2026-11-02)**: structlog 26.1.0 · **django-structlog 11.0.0**(연구 10.1.0 → 신판) · opentelemetry-api/sdk **1.45.2** · instrumentation-django **0.66b2**(+ wsgi 0.66b2) · exporter-otlp-proto-http 1.45.2 · django-ninja **1.7.0**(계약 정확 핀 존재) · pydantic 2.14.2 · django-health-check 4.8.0(미채택) · `InMemorySpanExporter` · `ParentBased`/`TraceIdRatioBased` import OK. ⑤ **django-structlog 11 소스**: `prepare()`가 `TRUST_UPSTREAM_REQUEST_ID`일 때만 `x-request-id`를 받고(**기본 False** → 설정 `DJANGO_STRUCTLOG_TRUST_UPSTREAM_REQUEST_ID = True` 필요) 없으면 `uuid4` · `structlog.contextvars.bind_contextvars(request_id=…)` · `request_started`(`request = f"{method} {get_full_path()}"` — **쿼리스트링 포함** → 마스킹 processor가 떼야 함 · `user_agent`) · `handle_response()`가 `bind_extra_request_finished_metadata(request, response, log_kwargs)` 시그널 뒤 `request_finished`(`code` · `request`) · `IP_LOGGING_ENABLED` 기본 True(`ip` 필드) · `USER_ID_FIELD` 기본 `pk`(request.user 없으면 생략). ⑥ **OTel instrumentation-django 0.66b2 소스**: `instrument(tracer_provider=, excluded_urls=, request_hook=, response_hook=)` kwargs · `excluded_urls` 없으면 env `OTEL_PYTHON_DJANGO_EXCLUDED_URLS` · 제외 판정 = `request.build_absolute_uri("?")`(쿼리 제거 절대 URI)에 **정규식 search** → 앵커 없는 `health`는 `/healthy-ping`·`ready`는 `/already`도 제외 → **앵커 정규식**(`^https?://[^/]+/healthz$` 꼴) 필요 · 미들웨어 `_DjangoMiddleware`를 `settings.MIDDLEWARE` 맨 앞에 삽입 · `response_hook(span, request, response)` · `TracerProvider()`가 env `OTEL_TRACES_SAMPLER=parentbased_traceidratio` · `_ARG=0.1`을 읽어 `ParentBased{root:TraceIdRatioBased{0.1},remoteParentSampled:AlwaysOnSampler,remoteParentNotSampled:AlwaysOffSampler,localParentSampled:AlwaysOnSampler,localParentNotSampled:AlwaysOffSampler}`(실측 문자열). ⑦ structlog: `add_logger_name`은 `structlog.stdlib`(stdlib `LoggerFactory` + `logging` 핸들러 경로에서 `logger` 필드가 나온다) · `TimeStamper(fmt="iso", utc=True, key="ts")`.
+- **결정 D1–D15(컨트롤러)**:
+  - **D1 범위 · 빨강**: 산출물 = `tests/test_observability.py` + `tests/obsapp/{__init__,urls,views,middleware}.py`(관측 전용 urlconf · Ninja API에 `health_router` 장착 · 로그 뷰 2 · 클레임 헬퍼 미들웨어) + `tests/_problem.py`(`assert_problem` 공용 — `test_auth.py`의 `_assert_problem`과 같은 단언 · test_auth는 바꾸지 않는다) + conftest 덧붙임(`log_sink` 세션 · `log_lines` · `obs_settings` · `otel` · `make_obs_client`/`obs_client`) + settings 덧붙임 + pyproject + 루트 uv.lock. **`src/django_common/{observability,health}.py`는 쓰지 않는다**(T071). 빨강 = 지금은 tenancy `ModuleNotFoundError`(django.setup) · `-p no:django --collect-only`로 `django_common.observability` 부재. 헬스 테스트만 DB(`django_db(transaction=True)` · `pg` 컨테이너) · 로그·OTel 테스트는 DB 0.
+  - **D2 공개 이름 · 동작(T071 가정 — :105 목록 기준)**: `configure_logging(*, stream: TextIO | None = None) -> None`(structlog + stdlib `logging` 모두 JSON 한 줄 → `stream`(기본 stdout) · processors `merge_contextvars` · `add_log_level`(`level`) · `TimeStamper(iso, utc, key="ts")` · `add_logger_name`(`logger`) · **마스킹**(키 `authorization` · `cookie` · `x-authentik-signature` — 대소문자 · `_`/`-` 무관 · **중첩 매핑 재귀** 제거 · `request`류 문자열 필드의 `?…` 제거) · **otel**(`trace_id` 32 hex · `span_id` 16 hex — 유효·기록 중인 span일 때만, 없으면 키 없음) · `JSONRenderer`) · `configure_otel(*, span_exporter: SpanExporter | None = None, excluded_urls: str | None = None) -> TracerProvider`(sampler = SDK env 파싱 · exporter 주어지면 `SimpleSpanProcessor`(동기) · 없으면 OTLP http `OTEL_EXPORTER_OTLP_ENDPOINT` + `BatchSpanProcessor` · `DjangoInstrumentor().instrument(tracer_provider=provider, excluded_urls=excluded or 기본 앵커 정규식 3종(`/healthz` · `/ready` · `/health` 정확 경로), response_hook=…)` · 이미 계측돼 있으면 uninstrument 뒤 재계측 · 전역 provider는 미설정일 때만 `set_tracer_provider`) · response_hook이 span 속성 **`tenant_id`**(str(request.tenant_id)) · **`sub_hash`** 추가 · `RequestIdMiddleware`(django-structlog `RequestMiddleware` 하위 — 응답 헤더 **`X-Request-ID`** = 바인딩된 request_id · `request_finished` log_kwargs에 `tenant_id`(있을 때) · `sub_hash`(request.auth_claims["sub"]의 해시 · 있을 때)) · `configure_sentry()`(T063 범위 밖 · T071 자체 검증) · `health_router`(ninja `Router` — `GET /healthz` `{status:"ok", version, git_sha}` 외부 조회 0 · `GET /ready` DB `SELECT 1`(default 별칭 · 유한 시간) 200 / 503 RFC 9457 `not_ready` · `GET /health` 항상 200 `{status: "ok"|"degraded", version, git_sha, checks: {db, dragonfly, kafka_producer}}` 각 `{status: "ok"|"fail", latency_ms}` — Dragonfly `PING`(`DRAGONFLY_URL` · 0.2 s · 재시도 0) · Kafka `list_topics(timeout=1.0)`(`KAFKA_BOOTSTRAP_SERVERS` + `KAFKA_CLIENT_CONFIG`) · 설정은 **요청 시점**에 읽는다(테스트가 닫힌 포트로 바꾼다)). **`sub_hash`는 알고리즘을 고정하지 않고 성질만**: hex · 16자 이상 · sub와 다름 · 같은 sub → 같은 값 · 출력에 원문 sub 없음.
+  - **D3 설정(`tests/settings.py` 덧붙임 · 가정 표시)**: `APP_VERSION = "0.0.0+test"` · `APP_GIT_SHA = "0000000"`(헬스 본문 — 이름은 T071/T072 가정 · pod는 이미지 메타에서) · **`DJANGO_STRUCTLOG_TRUST_UPSTREAM_REQUEST_ID = True`**(기본 False — 계약 "헤더가 있으면 그대로" · pod 설정도 True · T072 인계) · OTel 샘플러는 **process env**(픽스처 monkeypatch) `OTEL_TRACES_SAMPLER=parentbased_traceidratio` · `OTEL_TRACES_SAMPLER_ARG=0.1`. 기존 `KAFKA_BOOTSTRAP_SERVERS` · `KAFKA_CLIENT_CONFIG`(T061) · `DRAGONFLY_URL`(T062 — `auth_settings`가 채움 · 헬스 테스트도 `auth_settings` 요청) 재사용. 기본 `MIDDLEWARE`·`ROOT_URLCONF`는 T060 그대로.
+  - **D4 obsapp**: `urls.py` = `api = NinjaAPI(urls_namespace="obs")` · `api.add_router("", health_router)` · `urlpatterns = [path("", api.urls), path("obs/ping", views.ping), path("obs/leak", views.leak), path("obs/ready-check", views.ping)]`(헬스 3경로는 루트 `/healthz` · `/ready` · `/health`). `views.ping` = `structlog.get_logger("tests.obsapp").info("ping_handled", note="hello")` → `{"ok": true}`. `views.leak` = `log.info("leak_probe", authorization="Bearer MARK-A", cookie="sid=MARK-B", x_authentik_signature="sha256=MARK-C", headers={"Authorization": "MARK-D", "Cookie": "MARK-E", "X-Authentik-Signature": "MARK-F", "Accept": "*/*"}, nested={"inner": {"cookie": "MARK-G"}}, safe="keep-me")`(표식 문자열 — 비밀 아님) → `{"ok": true}`. `middleware.HeaderClaimsMiddleware` = `X-Test-Sub` → `request.auth_claims = {"sub": value}`(T060 `HeaderTenantMiddleware`와 같은 꼴). 체인(`obs_settings`): `["django_common.observability.RequestIdMiddleware", "tests.testapp.middleware.HeaderTenantMiddleware", "tests.obsapp.middleware.HeaderClaimsMiddleware"]` · `ROOT_URLCONF = "tests.obsapp.urls"` — OTel 미들웨어는 `instrument()`가 맨 앞에 삽입(trace가 RequestId 로그보다 바깥).
+  - **D5 픽스처**: `log_sink`(세션) = `io.StringIO()` → `configure_logging(stream=sink)` **세션 1회**(django-structlog 모듈 로거의 지연 바인딩·`cache_logger_on_first_use` 전에) → yield. `log_lines`(함수) = sink 비우고 `read() -> list[dict]`(줄마다 `json.loads` · 비-JSON 줄이 있으면 실패) 반환. `obs_settings`(함수) = pytest-django `settings`로 체인·urlconf 덮기. `otel`(함수 · `obs_settings` 뒤) = monkeypatch env 2 → `exporter = InMemorySpanExporter()` → `provider = configure_otel(span_exporter=exporter)` → yield `(provider, exporter)` → teardown `DjangoInstrumentor().uninstrument()` · `provider.shutdown()`. `make_obs_client`/`obs_client`(함수 · `obs_settings` 뒤) = `Client()` 팩토리(첫 요청에 미들웨어 적재 — `otel` 뒤에 만든다). 헬스 테스트는 `auth_settings`(reader URL) + `pg`(`django_db(transaction=True)`) + 필요 시 `kafka_settings`.
+  - **D6 테스트(id → 단언)**: **obs-1** `X-Request-ID: req-abc-123` → GET /obs/ping 200 · 로그 줄 ≥ 3(`request_started` · `ping_handled` · `request_finished`) 전부 `request_id == "req-abc-123"` · 응답 헤더 `X-Request-ID == "req-abc-123"` / **obs-2** 헤더 없음 → 세 줄 `request_id` 동일 · `uuid.UUID` 파싱 · 응답 헤더 == 그 값 · 두 번째 요청은 다른 값 / **obs-3** `X-Test-Tenant: <A>` → `request_finished` 줄 `tenant_id == str(A)` · 테넌트 없는 요청의 `request_finished`에는 `tenant_id` 키 없음 / **obs-4** `X-Test-Sub: user-sub-1` → `request_finished` 줄 `sub_hash`: `re.fullmatch("[0-9a-f]{16,}")` · != `"user-sub-1"` · 두 번째 요청 같은 값 · 출력 전체에 `user-sub-1` 없음 / **obs-5** GET /obs/leak → `leak_probe` 줄에 `authorization` · `cookie` · `x_authentik_signature` 키 없음 · `headers`에 `Authorization` · `Cookie` · `X-Authentik-Signature` 없음 · `nested.inner`에 `cookie` 없음 · 출력 전체에 `MARK-A`…`MARK-G` 없음 · `safe == "keep-me"` · `headers["Accept"] == "*/*"`(과도 삭제 아님) / **obs-6** GET `/obs/ping?access_token=QS-MARK&x=1` → `request_started`·`request_finished`의 `request == "GET /obs/ping"` · 출력 전체에 `QS-MARK` 없음 / **obs-7** 모든 줄 JSON 객체 · `ts` ISO 8601(`Z` 끝 · `datetime.fromisoformat` 파싱 · UTC) · `level` str · `event` str · `logger` str(`ping_handled` 줄은 `"tests.obsapp"`) / **obs-8** env 뒤 `configure_otel` → `provider.sampler.get_description() == ParentBased(TraceIdRatioBased(0.1)).get_description()` / **obs-9** `traceparent: 00-<32 hex>-<16 hex>-01` + 테넌트 A + sub → GET /obs/ping → `exporter.get_finished_spans()` 1 · `kind == SpanKind.SERVER` · `format(ctx.trace_id, "032x") == <32 hex>` · `format(span.parent.span_id, "016x") == <16 hex>` · `attributes["tenant_id"] == str(A)` · `attributes["sub_hash"]` hex ≥ 16 · 상태 코드 속성 200(`http.status_code` 또는 `http.response.status_code` 중 하나) / **obs-10** 플래그 `-00` → span 0 / **obs-11** sampled traceparent로 `/healthz` · `/ready` · `/health` → span 0 · `/obs/ready-check` → span 1(**앵커** — 부분 일치 제외 아님) / **obs-12** sampled 요청의 `ping_handled`·`request_finished` 줄 `trace_id == <32 hex>` · `span_id` 16 hex · `/healthz` 요청(제외)의 `request_finished` 줄에는 `trace_id` 키 없음 / **obs-13** `/healthz` 200 JSON `{"status": "ok", "version": APP_VERSION, "git_sha": APP_GIT_SHA}` · DB 쿼리 0(`CaptureQueriesContext(connections["default"])`) · Dragonfly 새 연결 0(`CLIENT LIST` id 차집합 — 로컬 헬퍼) / **obs-14** DB 정상 → `/ready` 200 · Dragonfly 새 연결 0 / **obs-15** DB 다운(`connections["default"].close()` → `settings_dict["PORT"] = 닫힌 포트` · `settings_dict["OPTIONS"]["connect_timeout"] = 1`) → `/ready` 503 problem `not_ready`(`type …/problems/not-ready` · problem+json) · 본문에 DB 비밀번호(`JT_TEST_PG_APP_PASSWORD`) 없음 · `/healthz` 200 · `/health` 200 + `checks.db.status == "fail"` · 복구(원래 settings_dict 되돌림 · close) → `/ready` 200 / **obs-16** Dragonfly·Kafka 다운(`DRAGONFLY_URL` 닫힌 포트 URL(비밀번호 세션 랜덤) · `KAFKA_BOOTSTRAP_SERVERS = "127.0.0.1:<닫힌 포트>"` · 새 Client) → `/ready` 200 · **경과 < 0.5 s** · `/health` 200 · `status == "degraded"` · `checks.db.status == "ok"` · `checks.dragonfly.status == "fail"` · `checks.kafka_producer.status == "fail"` · **경과 < 3 s** · 응답에 Dragonfly 비밀번호 없음 / **obs-17** 전부 정상(reader URL · `kafka_settings`) → `/health` 200 `status == "ok"` · 세 check `status == "ok"` · `latency_ms` 숫자 ≥ 0 · `version`·`git_sha`. 인프라 테스트 신규 0(픽스처 재사용). 변이 검증용 일회용 참조 구현은 **허용**(T062 선례 · 저장소 밖 · 보고 뒤 삭제 · 권한 거부면 컨트롤러가 삭제).
+  - **D7 의존성(런타임)**: `structlog>=26.1,<27` · `django-structlog>=11,<12` · `opentelemetry-sdk>=1.45,<2` · `opentelemetry-instrumentation-django>=0.66b2,<1` · `opentelemetry-exporter-otlp-proto-http>=1.45,<2` · `django-ninja>=1.7,<2`(라이브러리는 범위 · pod는 `==1.7.0` 정확 핀 — 계약). `sentry-sdk`는 T071이 추가. dev 추가 0. 루트 `uv lock`.
+  - **D8 검증**: ① lock/sync/import 버전 ② `pytest tests/test_observability.py -q` 빨강 원문 + `-p no:django --collect-only` 원문(`django_common.observability`) ③ compileall · 바이트 · 비밀 grep · gitleaks · Docker 잔류 0 · 볼륨 24 → 24 ④ git status. 선택: 스크래치 참조 구현으로 17/17 + 변이(마스킹 재귀 없음 · 쿼리스트링 유지 · 앵커 없는 제외 · readiness가 Dragonfly 조회 · `/health` 500 · 샘플러 미적용) 검출 보고.
+  - **D9 리뷰 2렌즈**: A 계약·문면(문면 조각 ↔ obs-1..17 · 필드 이름 · 헬스 3종 계약 · D15 미채택 근거 · 가정 표시 · 빨강 진짜) · B 보안·프라이버시(표식·비밀·PII 누출 0 · 마스킹 범위(재귀 · 대소문자 · 쿼리스트링) · `ip` 로깅 기본 · `sub_hash` 성질 · 헬스 fail-closed/open 경계와 타임아웃 · DB 다운 재현의 정리(settings_dict 복구) · 위생 · 공급망).
+  - **D10 인계(T071/T072)**: D2 전부 · `DJANGO_STRUCTLOG_TRUST_UPSTREAM_REQUEST_ID = True`(pod 설정) · 제외 URL 앵커 정규식 · OTLP http(research D13 gRPC는 옛 것) · `/ready`는 `SELECT 1`(django-health-check 미채택 — 테이블 허용 목록) · `/health` 의존 클라이언트는 요청 시점 설정 · Kafka 검사 1 s 상한 · `ip` 필드(django-structlog 기본) 프라이버시 검토 · `sub_hash` 알고리즘 결정 · Sentry 자체 검증.
+  - **D11 VD**: VD-1 `instrument()`의 `settings.MIDDLEWARE` 삽입이 pytest-django `settings` 덮기 뒤 Client 첫 요청에 반영되는가 · VD-2 `settings_dict` 포트 변조 + `connect_timeout` 1로 DB 다운 재현(refused 즉시) · VD-3 confluent-kafka `list_topics(timeout=1)` 닫힌 포트 1 s 안 예외 · VD-4 django-structlog 11 + Django 6.1 미들웨어 동작 · VD-5 Ninja 1.7 라우터 루트 장착 · VD-6 `SimpleSpanProcessor` 동기 export(요청 끝 즉시 `get_finished_spans`).
+  - **D12 타이밍 경계**: `/ready` < 0.5 s(의존 조회 없음의 보조 증거 — Kafka 조회면 ≥ 1 s) · `/health` 전부 다운 < 3 s(DB refused 즉시 · Dragonfly 0.2 · Kafka 1.0 + 여유).
+  - **D13 편차 정책**: T060–T062와 같다. **D14** `tests/testapp/**` · `tests/authapp/**` · `test_auth.py` 불변(테넌트 헬퍼 미들웨어는 재사용). **D15** `tests/_problem.py` 신설(`assert_problem(response, status, slug) -> dict` · `problem_type(slug)`) — test_auth의 중복은 뒤에 정리.
+- **순서**: 설계(이 절) → 워크플로(api-builder 1 → 리뷰 2 병렬) → 수정 → 커밋 · tick · 학습 로그 → T064.
+- **빌드 · 리뷰 r1 결과(`wf_f05b49ac-8b9` · 17:2x–18:2x KST · 에이전트 3 · 0.85M 토큰)**: 빌더(api-builder opus) DONE_WITH_CONCERNS — 파일 10(신규 `test_observability.py` 593줄 obs-1..17 · `_problem.py` · `obsapp/{__init__,urls,views,middleware}.py` · conftest +140 · settings +12 · pyproject · uv.lock +327 = 23 패키지: django-structlog 11.0.0 · structlog 26.1.0 · opentelemetry 1.45.2/0.66b2 묶음 · django-ninja **1.7.3**(범위 `>=1.7,<2`의 최신 · pod `==1.7.0` 핀은 T072 · 1.7.0 overlay 11 passed) · pydantic 2.14.2 · django-ipware) · 빨강 2종(tenancy exit 1 · `--collect-only -p no:django` `django_common.observability` :71 exit 2) · **지시 밖 검증**: 저장소 밖 일회용 참조 구현(observability.py 162줄 · health.py 97줄 · tenancy 스텁)으로 17/17 + 변이 17종 전부 검출 · 편차 12 채택: ① `CLIENT LIST` id 차집합 → **`INFO stats total_connections_received`**(요청 안에서 열고 닫는 연결은 id 차집합이 놓친다 — 변이 2종이 통과한 실측) ② DB에 닿는 요청의 예외를 `pytest.fail(pytrace=False)`로(**psycopg 3.3 `Connection.connect`가 `conninfo` 인자를 비밀번호가 든 접속 문자열로 재바인딩 → pytest 긴 트레이스백이 그 값을 출력** — 변이 1차 실행에서 일회용 PG app 비밀번호가 스크래치 출력에 찍힘 · 파일 삭제 · 컨테이너 파기) ③ obs-15 분할(DB만 다운 · HOST 127.0.0.1 — `localhost`는 ::1 먼저라 4.03 s · psycopg는 `connect_timeout` 1을 **2 s로 올린다**(소스) · Kafka 빈 bootstrap 1.01 s → 순차 합 > 3 s) ④ `_timed_get` 데몬 스레드 10 s hang 상한(`list_topics` 기본 timeout 무한) ⑤ 단언 보강(sub_hash 다른 sub · 404 쿼리 · stdlib JSON 줄 · 샘플러 ARG 0.25 재호출 · 3줄 span_id · 로그에도 비밀 부재) ⑥ `make_obs_client` 팩토리 ⑦ conftest 기존 줄 삭제 0 · pyproject 머리 주석 교체. **중요 인계**: Windows 호스트에서 pg 픽스처 HOST = `localhost` → psycopg가 `::1`에서 `connect_timeout` 없으면 **주소당 130 s** 대기(T060·T061·T063 DB 테스트 전부 · 참조 검증은 env `TESTCONTAINERS_HOST_OVERRIDE=127.0.0.1`로 우회). 리뷰 r1: **A(계약·문면) approve_with_fixes(medium 1 · low 5)** — 문면 11조각 ↔ obs-1..17 전부 대응 · 문면 밖 8건 전부 계약 파생 · 빨강 진짜 · 보고 정직 / **B(보안·프라이버시) approve_with_fixes(medium 3 · low 6)**. 발견: **A-1/B-6(medium)** `localhost` ::1 정지 · **B-1(medium)** span 속성의 토큰·헤더·원문 sub·쿼리스트링 부재 미단언(0.66b2 `http.url`에 쿼리 그대로 · redact는 AWS/GCS 서명 4키만) · **B-2(medium)** 실제 `request.headers`(Mapping · dict 아님) 마스킹 변형 없음(dict만 재귀하는 processor는 JSON repr 폴백으로 샘) · **B-3(medium)** 스위트 전역 psycopg conninfo 트레이스백 노출(T060 픽스처 · migrate · `PgInfo.connect`) · **A-2** D2 가정이 "계약:" 불릿에 섞임 · **A-3/B-9** 세 의존 동시 다운 `/health` 미검증(순차 합 3.2 s) · **A-4** `/healthz` Kafka 미조회 미단언 · **A-5** obs-4 `is None`(null 통과) · **A-6** `request`/`code` ↔ 계약 `route`/`status`/`duration_ms` 매핑 미표시 · **B-4** django-structlog 기본 `ip`·`user_agent`(PII) 미기록 · **B-5** readiness Kafka 비다이얼 증거가 시간만 · **B-7** 상류 `X-Request-ID` 무제한 신뢰(로그 증폭) · **B-8** `log_sink` 전역 설정 미복원(동작 영향 0). 보고 원문 `.superpowers/t063/reviews/{build-report,review-r1-A-spec,review-r1-B-security}.md` · `r1-workflow-result.json`.
+- **r1 결정 K1–K14(컨트롤러 18:3x)**: **K1** A-1/B-6 — conftest 모듈 수준 `if sys.platform == "win32": os.environ.setdefault("TESTCONTAINERS_HOST_OVERRIDE", "127.0.0.1")`(testcontainers `core/config.py`가 **import 시점**에 읽으므로 testcontainers import보다 앞 · Kafka advertised listener까지 127.0.0.1) + `tests/settings.py` DATABASES OPTIONS `connect_timeout: 5` 두 별칭(T060 산출물 수정 — 멈춤을 유한 실패로) · **K2** A-2/A-6/B-4 — 모듈 docstring 재구성("계약:"에는 정본 문장만 · "모양(계약이 정하지 않은 것)" 불릿 신설 · `request`/`code` 매핑 미단언 명시 · `ip`·`user_agent` PII 기록) · **K3** A-3/B-9 — **obs-18**(DB·Dragonfly·Kafka 전부 닫힌 포트 → 200 · degraded · 3 fail · **< 3 s** = 계약 §타임아웃 BFF pod fetch 3 s → 의존 검사 **병렬** 강제 · 순차 3.2 s는 FAIL) + 계약 §타임아웃 행 신설 · **K4** A-4 — obs-16에 `/healthz` 경과 < 0.5 s · **K5** A-5 — `"sub_hash" not in finished` · **K6** B-1 — **obs-19**(sampled 요청에 Authorization·Cookie·X-Authentik-Signature 표식 + `?access_token=QS-MARK` + X-Test-Sub → span 이름·속성·이벤트·링크에 표식·QS·원문 sub 없음 · URL 속성에 `?` 없음 · `url.query` 없음) + 계약 §관측 트레이스 보정(속성 `tenant_id`·`sub_hash`만 · URL 쿼리 제거 · 요청 헤더 캡처 금지) · **K7** B-2 — `/obs/leak-headers` 뷰(`headers=dict(request.headers)` · `mapping=request.headers`) + **obs-20**(두 매핑에서 세 키 부재 · Accept 유지 · MARK-H/I/J 부재) · **K8** B-3 — `pyproject` `addopts = ["--tb=short"]`(스위트 전역 · 규칙 §Tests 문장) · **K9** B-5 — `_counting_listener`(accept → close · 수락 수) 2개로 obs-16 재구성: `/ready`·`/healthz` 동안 수락 (0, 0) · `/health` 뒤 각 ≥ 1(의존을 실제로 본다는 양성 대조) · **K10** B-7 — **obs-21**(129자 · `bad id!` · 비ASCII → 생성 UUID · 응답 헤더 == 생성값 · 로그에 보낸 값 없음 · 형식 안 128자는 그대로) + 계약 머리 보정(`^[A-Za-z0-9._:-]{1,128}$`) · **K11** B-8 — docstring 유지(D5) · **K12** 빌더 인계 #3 — T062 auth-21도 **INFO stats 방식**으로(공용 `tests/_dragonfly.connections_received` 신설 · test_auth `_client_ids` 제거 — T062 산출물 수정 · 이유 기록) · **K13** 빌더 편차 12 전부 채택(django-ninja 1.7.3 포함) · **K14** 리뷰 관찰 수용(변경 0 · 인계): OTel `http.url` 쿼리는 계약 공백 → K6으로 닫음 · `_closed_port` TOCTOU · `original` 지역 변수 `--showlocals` 노출(옵트인) · Linux CI 타이밍 여유.
+- **마감 검증(컨트롤러 18:4x)**: 참조 구현(병렬 헬스 · Mapping 마스킹 · URL 속성 스크럽 · request-id 검증으로 확장) 대상 `test_observability.py` **21 passed** 23.3 s(obs-15 call 4.06 s · obs-18 2.02 s · obs-16 1.22 s · 첫 setup 7.6 s) · 변이 6종 전부 검출(`no-mapping-mask` → obs-20 · `span-url-query` → obs-19 · `no-request-id-validation` → obs-21 · `sequential-health` → obs-18 · `ready-dragonfly` → obs-16 수락 수 `(1, 0)` · `healthz-dragonfly` → obs-13 · obs-16) · cred_lines 0 · 인프라 `test_fixtures_pg.py` **3 passed 7.6 s**(127.0.0.1 고정 뒤) · `test_fixtures_kafka.py` 1 passed 12.3 s · dragonfly 1 · jwks 3 · 빨강 `pytest tests/test_observability.py` exit 1 tenancy · `-p no:django --collect-only` `test_observability.py:84` `django_common.observability` · `test_auth.py:64` `django_common.auth` 유지 · compileall OK · 16파일 BOM/CR/TAB 0 · 끝 LF 1 · gitleaks no leaks(django-common · uv.lock) · testcontainers 잔류 0 · dangling 볼륨 24 → 24 · 스크래치 참조 구현·변이·출력 삭제(K-A4 선례) · 커밋 `0c3fb0e`(설계) + 테스트 커밋(tick 69/119).
+- **인계(T071/T072 — 테스트가 고정하는 것 · r1 반영)**: D2 전부 + `configure_logging(stream=)`은 stdlib 레코드(django.request 포함)도 같은 JSON sink · 마스킹 재귀는 `collections.abc.Mapping` 전체(+ list/tuple 안) · 결과는 JSON 객체 · `request`류 문자열의 `?…` 제거(404 포함) · `sub_hash`는 sub마다 다르고 키는 있을 때만 · 샘플러는 env(하드코딩 금지) · `configure_otel` 재호출 = uninstrument 뒤 재계측 · 기본 제외 정규식 **앵커**(`^https?://[^/]+/(healthz|ready|health)$` 꼴) · response_hook: `tenant_id`·`sub_hash` 추가 + `http.url`·`http.target`·`url.full` 쿼리 제거 · 요청 헤더 캡처 env 미사용 · `RequestIdMiddleware`: 상류 `X-Request-ID` 형식 검증(`^[A-Za-z0-9._:-]{1,128}$` 밖이면 uuid4) · 응답 헤더 echo · `request_finished`에 tenant_id/sub_hash · `/healthz` 외부 조회 0 · `/ready` `SELECT 1`만(의존 다이얼 0 · django-health-check 미채택) · `/health` 의존 검사 **병렬**(ThreadPoolExecutor · 작업 스레드 DB 연결 `close_all`) + 항목별 상한(DB connect_timeout → psycopg 하한 2 s · Dragonfly 0.2 s 재시도 0 · Kafka `list_topics(timeout=1.0)`) · 의존 예외는 삼켜 `fail`(500 금지) · 설정은 요청 시점 · pod 설정 `DJANGO_STRUCTLOG_TRUST_UPSTREAM_REQUEST_ID = True` · `APP_VERSION`/`APP_GIT_SHA` 원천(이미지 메타) · `ip`·`user_agent` 로깅 프라이버시 결정 · 계약 `route`/`status`/`duration_ms` 산출 위치 결정 · Sentry 자체 검증. **T068 첫 초록 전**: K1의 host override·connect_timeout가 모든 DB 테스트의 전제(`TESTCONTAINERS_HOST_OVERRIDE` 없이 1회 실측 권고). **CI(Linux)**: 닫힌 포트 즉시 거절이라 상한 여유 커짐 · 빈 bootstrap 1 s 경로 동일.
+
+## T064 (2026-11-02 19:0x 시작 — US6 test-first · `packages/events/tests/check-compat.test.mjs`(vitest) · 세션 모델 Fable 5.1)
+
+- **과제 문면(tasks.md :178)**: `T064 [P] [US6] packages/events/tests/check-compat.test.mjs(vitest): 필드 추가 → PASS, 필드 삭제·타입 변경·required 추가 → FAIL 보고, envelope 필수 필드 검증 — FAIL 확인`. 짝 구현 = **T067**(`packages/events`: `schemas/_envelope.json` + 토픽 스키마 6(contracts/events.md 필드 · `tenantid` = uuid) + `scripts/check-compat.mjs`(main vs PR 필드 diff) + `package.json` scripts + `ci.yml` job `events-compat`).
+- **소스로 확인한 사실**: ① `contracts/events.md` §호환성 규칙(허용 = 선택 필드 추가 · enum 값 추가 / 금지 = 필드 삭제·이름 변경·타입 변경 · `required` 추가 · enum 값 삭제 / 검사 = `main`↔PR 필드 단위 비교 스크립트) · §SP-1 스키마 표(토픽 6 · subject · data 필드) · §봉투(필드 9 · `tenantid` 확장 · UUID). ② data-model §5: 파일 `schemas/<topic>.json`(JSON Schema 2020-12) · `$id = https://joshuatech.dev/events/<topic>/v1` · `x-version` semver · `_envelope.json` 공통(specversion const "1.0" · id ULID · source · type(= topic) · time RFC 3339 · subject · tenantid UUID · datacontenttype · data). ③ `.claude/rules/events.md` §Compatibility rules(CI 강제 · 우회 금지). ④ ADR 0008 결정 5(스키마 정본 = 모노레포 JSON Schema 2020-12 하나 · CI main↔PR 비교 · 위반은 새 토픽 v2). ⑤ T061 인계: `_envelope.json`은 외부 `$ref` 없는 자립 파일 · `tenantid` `format: uuid` + `pattern` · required 9 · `time` `format: date-time`; `identity-admin.session.revoked.json`은 **data만**(sub req · sid string|null · nbf int req · reason enum req) · 없으면 out-6 `pytest.fail`. ⑥ 워크스페이스: 루트 `package.json`(`packageManager pnpm@10.34.5` · engines node ≥ 24) · `pnpm-workspace.yaml`(apps/web · packages/content · packages/events) · `pnpm-lock.yaml` importers 비어 있음 · `packages/events/package.json` 스켈레톤(`@jt/events` · scripts.build echo) · `apps/web` 아직 없음(US5) · CI lint/test job은 `pnpm install --frozen-lockfile --ignore-scripts` + placeholder. 로컬 node v24.11.1 · pnpm 10.34.5. ⑦ **npm 레지스트리 실측(2026-11-02)**: vitest **5.0.5**(engines node ^22.12 || ^24 || ≥26) · ajv **8.20.0**(2020-12는 `ajv/dist/2020`) · ajv-formats 3.0.1 · @hyperjump/json-schema 1.18.0(비동기 API) · typescript 7.0.2(불필요 — `.mjs`). ⑧ plan Technical Context: vitest = packages/content·events·web 단위 테스트.
+- **설계 보정(계약 · 규칙 · kr 미러 pending)**: **C1** `required` **제거**도 금지(필드가 선택이 되면 존재를 전제한 소비자가 깨진다 — 계약은 추가만 적었다) · **C2** 타입 변경 = `type` 집합의 어떤 변화든(`string` → `["string", "null"]` 포함) · **C3** 스키마 파일 삭제(토픽 제거) 금지 · **C4** 메타데이터(`title` · `description` · `examples` · `x-version` · `$comment`)만의 변경은 위반 아님(과잉 엄격 방지) · **C5** 검사 범위 = 중첩 객체 · 배열 `items` · `_envelope.json` 포함 · CLI 종료 코드 0/1/2 · 모든 위반 보고(fail-fast 금지).
+- **결정 D1–D13(컨트롤러)**:
+  - **D1 범위 · 빨강**: 산출물 = `packages/events/tests/check-compat.test.mjs` + `packages/events/package.json`(`"type": "module"` · scripts `test: vitest run` · `check-compat: node scripts/check-compat.mjs` · devDependencies `vitest ^5.0.5` · dependencies `ajv ^8.20` · `ajv-formats ^3.0`) + `packages/events/vitest.config.mjs`(선택 — `test.include tests/**/*.test.mjs`) + 루트 `pnpm-lock.yaml` 갱신(`pnpm install` — CI는 `--frozen-lockfile`). **`scripts/check-compat.mjs` · `schemas/*.json`은 쓰지 않는다**(T067 · `.gitkeep` 유지). 빨강 = `pnpm --filter @jt/events test` → `scripts/check-compat.mjs` 모듈 없음(`ERR_MODULE_NOT_FOUND` — 수집 단계 실패 1건)과, 모듈이 생겨도 스키마 파일 부재 테스트가 실패. 보고에 둘 다 적는다.
+  - **D2 모듈 API(T067 가정 — 테스트가 고정)**: `scripts/check-compat.mjs` ESM named exports — `diffSchema(base, head, { file = "<memory>" } = {}) -> Violation[]`(Violation = `{ file, path, kind, message }` · `path`는 JSON 포인터 `#/properties/<name>[/items][/properties/...]` · `kind` ∈ `field-removed` · `type-changed` · `required-added` · `required-removed` · `enum-removed` · `schema-removed` · `message` 사람용 한 줄 · 위반 없으면 `[]`) · `compareDirectories(baseDir, headDir) -> { violations: Violation[], added: string[], checked: number }`(`head`에 없는 base 파일 → `schema-removed`(path `#`) · head에만 있는 파일 → `added` · 둘 다 있으면 `diffSchema`) · `validateEvent(envelope, { schemasDir = <패키지>/schemas } = {}) -> { ok: boolean, errors: { path, message }[] }`(`_envelope.json`으로 봉투 검증 → `type`으로 `schemas/<type>.json`을 찾아 `data` 검증 · 파일 없으면 `ok: false` + errors에 `kind: "schema-missing"`에 해당하는 message) · CLI `node scripts/check-compat.mjs --base <dir> --head <dir>` 종료 코드 0(위반 0) / 1(위반 ≥ 1 · stdout에 위반마다 `file path kind message` 한 줄) / 2(인자·디렉터리 오류 · stderr) · `import.meta.main`류 가드로 import 시 실행 안 함. 비교 규칙: 재귀(`properties` · `items` · `additionalProperties`가 스키마면 재귀) · `type`은 집합 비교(문자열 ↔ 배열 정규화) · `enum` 집합 축소 = `enum-removed`(확대 허용) · `required` 집합 추가/제거 = `required-added`/`required-removed`(path `#/required` · message에 필드 이름) · 메타데이터 키 무시. 2020-12 검증기 = ajv 8(`ajv/dist/2020` + ajv-formats · `strict: false`가 필요하면 보고).
+  - **D3 테스트(id → 단언 · vitest `describe/it` · 함수 이름 자유 · `it("compat-1 …")` 제목에 id)**: 메모리 스키마 쌍(`base`를 깊은 복사해 `head` 변형 — 토픽 data 스키마 모양: `{type: "object", properties: {sub: {type: "string"}, sid: {type: ["string","null"]}, nbf: {type: "integer"}, reason: {enum: [...]}, variants: {type: "array", items: {type: "object", properties: {name: {type: "string"}, url: {type: "string"}}}}}, required: ["sub","nbf","reason"], additionalProperties: false}` + `$id` · `x-version` · `title`): **compat-1** 선택 필드 추가(`properties.extra`) → `[]` / **compat-2** enum 값 추가 → `[]` / **compat-3** 메타데이터만 변경(`title` · `description` · `x-version` 1.0.0 → 1.1.0 · `examples`) → `[]` / **compat-4** 필드 삭제(`sid`) → 위반 1 `{kind: "field-removed", path: "#/properties/sid"}` / **compat-5** 이름 변경(`nbf` → `not_before`) → 위반 1(`field-removed` `#/properties/nbf` — 추가는 허용) / **compat-6** 타입 변경 `integer` → `string` → `type-changed` `#/properties/nbf`; `string` → `["string","null"]`(`sub`) → `type-changed`; `["string","null"]` → `string`(`sid`) → `type-changed`(어떤 변화든) / **compat-7** `required`에 `sid` 추가 → `required-added` `#/required` message에 `sid` / **compat-8** `required`에서 `reason` 제거 → `required-removed` / **compat-9** enum 값 삭제(`admin`) → `enum-removed` `#/properties/reason` / **compat-10** 중첩·배열: `variants.items.properties.url` 타입 변경 → `type-changed` `#/properties/variants/items/properties/url` · `variants.items.properties.name` 삭제 → `field-removed` 같은 접두 경로 / **compat-11** 여러 위반 한 번에(삭제 + 타입 변경 + required 추가 = 3) → 길이 3 · kind 집합 일치(fail-fast 아님) / **compat-12** `compareDirectories`(임시 디렉터리 2개 · `fs.mkdtempSync`): base에 `a.json` `b.json` `_envelope.json` · head에 `a.json`(동일) · `_envelope.json`(필드 삭제 변형) · `c.json`(신규) → `violations` = [`b.json` `schema-removed` `#`, `_envelope.json` `field-removed` …] · `added == ["c.json"]` · `checked == 2`(또는 3 — 정하자: **checked = 양쪽 모두 있는 파일 수**) / **compat-13** CLI: `spawnSync(process.execPath, [script, "--base", dirA, "--head", dirB])` 위반 있음 → status 1 · stdout에 `field-removed` 포함 · 위반 없음(같은 디렉터리) → status 0 · 디렉터리 없음 → status 2 · 인자 없음 → status 2 / **compat-14** 봉투 검증(실제 `schemas/`): 표본 봉투(계약 §봉투 예시 모양 · ULID id · `tenantid` UUID · `type` `identity-admin.session.revoked` · data `{sub, sid: null, nbf, reason: "logout_all"}`) → `ok: true` · 필수 9필드 각각 삭제 → `ok: false` + errors에 그 필드 경로 · `tenantid` slug → false · `specversion` "0.3" → false · `data.reason` enum 밖 → false(`#/data/reason`류 경로) · `type` 미지 토픽 → false(schema-missing) / **compat-15** 스키마 디렉터리 모양(실제 `schemas/`): `_envelope.json` + 계약 토픽 6 파일 전부 존재 · 각 파일 JSON 파싱 · `$schema` 2020-12 URI · `$id == https://joshuatech.dev/events/<topic>/v1`(토픽 = 파일 이름) · `x-version` semver(`^\d+\.\d+\.\d+$`) · 토픽 스키마는 `type: "object"` · `_envelope.json` required 9 집합 정확 일치 · `tenantid`에 `format: uuid` / **compat-16** `_envelope.json`의 `data`는 토픽별 스키마가 맡는다(`data`가 `type: object`만 요구 · `validateEvent`가 토픽 스키마로 검증함을 compat-14가 증명).
+  - **D4 빨강 확인 방법**: `pnpm --filter @jt/events test` → vitest가 `tests/check-compat.test.mjs` 수집 중 `Failed to load url ../scripts/check-compat.mjs`(또는 `ERR_MODULE_NOT_FOUND`) 1건 → exit 1. 인프라 초록 = vitest 자체 기동(`pnpm --filter @jt/events exec vitest --version`) + 임시 `tests/_smoke.test.mjs`(`expect(1).toBe(1)` — 확인 뒤 **삭제**)로 러너가 돈다는 것만 확인.
+  - **D5 의존성 · 잠금**: `pnpm add -D vitest@^5.0.5 --filter @jt/events` · `pnpm add ajv@^8.20.0 ajv-formats@^3.0.1 --filter @jt/events`(런타임 — `validateEvent`가 라이브러리 본체) → 루트 `pnpm-lock.yaml` 갱신(importers `packages/events` + packages). pnpm 10은 빌드 스크립트를 기본 차단(esbuild 등 "Ignored build scripts" 경고는 정상 — `onlyBuiltDependencies` 추가 금지 · 바이너리는 플랫폼 optionalDependencies로 온다). `pnpm install --frozen-lockfile --ignore-scripts`로 CI 모드 재현 1회.
+  - **D6 vitest 설정**: `vitest.config.mjs`는 두지 않고 기본 탐색(`**/*.test.mjs`)에 맡긴다 — `package.json` `"type": "module"` 필수(`.mjs`는 무관하지만 `scripts/check-compat.mjs` import 경로 해석과 일관). 테스트는 `node:fs` · `node:os` · `node:path` · `node:child_process` · `node:url`(`fileURLToPath(import.meta.url)`로 패키지 루트)만 쓴다.
+  - **D7 리뷰 2렌즈**: A 계약·문면(문면 조각 ↔ compat-1..16 · 보정 C1–C5 반영 · 봉투 필드 9 · 토픽 6 이름 · `$id`/`x-version` 규칙 · 가정 표시 · 빨강 진짜) · B 공급망·위생(npm 신규 패키지 수와 출처 · 잠금 파일 integrity · 빌드 스크립트 차단 유지 · `node_modules` 미추적 · 테스트가 네트워크·레지스트리에 안 닿음 · 임시 디렉터리 정리 · CLI spawn이 `process.execPath` · 비밀 0 · BOM/CR/TAB).
+  - **D8 인계(T067)**: D2 API 전부 · 스키마 파일 모양(D3 compat-15) · CI job `events-compat`는 `git archive origin/main packages/events/schemas | tar -x -C <tmp>` 또는 `git show`로 base 디렉터리를 만들고 CLI 종료 코드로 게이트 · 사용 오류 2 · `validateEvent`의 `schemasDir` 기본 = 패키지 `schemas/` · ajv `strict` 모드와 `x-version`/`$comment` 같은 비표준 키(strict가 모르는 키를 거부하면 `strict: false` 또는 `keywords` 등록) · ULID 패턴 `^[0-7][0-9A-HJKMNP-TV-Z]{25}$`(T061) · `format: uuid`·`date-time`은 ajv-formats.
+  - **D9 VD**: VD-1 vitest 5.0.5 + Node 24.11 Windows에서 `.mjs` 수집·spawnSync 동작 · VD-2 pnpm 10 설치에서 esbuild/rollup 플랫폼 바이너리가 스크립트 없이 오는가(`--ignore-scripts`) · VD-3 ajv 8 2020-12 + ajv-formats uuid/date-time(T067) · VD-4 CI arm64 러너에서 같은 lock으로 설치(T067 · optionalDependencies linux-arm64 포함 확인).
+  - **D10 편차 정책**: 같다. **D11** 다른 패키지(`packages/content` · 루트 `package.json`)는 바꾸지 않는다(루트 lock만 갱신). **D12** 빌더 = api-builder(이벤트 계약 담당 · Node 명령은 `pnpm`) — WSL 불필요. **D13** 참조 구현 검증 허용(저장소 밖 · 삭제).
+- **순서**: 보정(C1–C5 · 완료) → 설계(이 절) → 워크플로(api-builder 1 → 리뷰 2 병렬) → 수정 → 커밋 · tick · 학습 로그 → T065.
+- **빌드 · 리뷰 r1 결과(`wf_c3639ee4-3be` · 18:5x–19:3x KST · 에이전트 3 · 0.59M 토큰)**: 빌더(api-builder opus) DONE_WITH_CONCERNS — 파일 3(신규 `tests/check-compat.test.mjs` 620줄 · `it` 24 = 펼치면 38케이스 · compat-1..16 전 id · `package.json` type module + scripts test/check-compat + vitest ^5.0.5 dev · ajv ^8.20.0 · ajv-formats ^3.0.1 · 루트 `pnpm-lock.yaml` +671/−1 = importers `packages/events` + 패키지 66 전부 sha512 · URL 0) · 빨강 = `pnpm --filter @jt/events test` 수집 단계 `Cannot find module '../scripts/check-compat.mjs'`(vitest 5 문구 · Node 직접 import `ERR_MODULE_NOT_FOUND` 교차) exit 1 · 인프라 = vitest/5.0.5 · 스모크 1 passed(삭제) · CI 모드 `pnpm install --frozen-lockfile --ignore-scripts` 저장소 + 매니페스트·lock만 복사한 빈 트리 양쪽 exit 0 · **vitest 5 → vite 8.3.5는 esbuild 대신 rolldown 1.2.16 + lightningcss 1.33.0**(플랫폼 바이너리 optionalDependencies · linux-arm64-gnu 포함 · install 스크립트 0 → "Ignored build scripts" 경고 없음) · **지시 밖 검증**: 저장소 밖 참조 구현 + 스키마 7개로 38/38 · 변이 13종 전부 검출(failfast · metadata · enum-ignore · required-removed-ignore · no-recursion · exit-swap + enum-positional · type-string · no-json-filter · run-on-import · no-traversal-guard · ignore-schemasdir · envelope-only) · 모듈만 있고 스키마 없는 중간 상태 = 21 failed(compat-14 19 + 15 + 16) / 17 passed → 다른 이유로 통과 0 · 편차 8 채택(공통 모양 검사 · enum 순서 변경 무위반 · type 표기 정규화 it · 중첩 required 경로 `<포인터>/required` · compat-12 `_envelope.json` 위반 path 고정 + `.gitkeep` · compat-13 stdout 줄 형식 · 허용 디렉터리 exit 0 · stderr 비지 않음 · import 가드 테스트 · compat-14 id ULID/time/datacontenttype 값 검증 · `schema-missing` message에 토픽 이름(스키마 없는 중간 상태의 다른 이유 통과 방지) · schemasDir 옵션 · **경로 탈출**(`type: "../evil"`) · compat-15 x-version을 `_envelope.json`에도 · 자립(`$ref` 0) · `_` 접두 공용 파일 예외 · package.json 키 순서 pnpm 그대로) · 실측(T067용): ajv 8.20.0 기본 strict → `unknown keyword: "x-version"` 예외(addKeyword 또는 strict:false) · 한 Ajv 인스턴스에 같은 `$id` 두 번 → 예외 · Node 24.11 `import.meta.main` 동작. 리뷰 r1: **A(계약·문면) approve_with_fixes(medium 1 · low 2)** — 문면 4조각 ↔ compat-1..16 전부 · 보정 C1–C5 반영 확인 · 가정 표시 OK · 빨강 진짜 / **B(공급망·위생) approve_with_fixes(medium 1 · low 1)** — 66/66 레지스트리 integrity 실측 일치 · trusted publisher · provenance · arm64 바인딩 수록 · 설치 41 패키지 install 스크립트 0. 발견: **A-1(medium)** 토픽·봉투 스키마의 `additionalProperties: false` + "선택 필드 추가 허용" + "소비자 검증 실패 → DLQ"는 동시에 성립 불가(빌더 concern ③) · **A-2** build-notes D2/D8이 테스트 머리 주석보다 느슨(중첩 required 경로 · schema-missing 토픽 이름 · schemasDir별 Ajv · 경로 탈출 · x-version strict) · **A-3** 경로 탈출 단언 근거 미기록 · **B-1(medium)** 전이 의존성 tinybench 6.2.3이 배포 **19시간** 만에 잠금에(저장소 Renovate 정책 = npm 3일 숙성 · 직접 `pnpm add`는 그 창을 거치지 않음 · pnpm `minimumReleaseAge` 미설정 · 완화: integrity 일치 · GitHub OIDC trusted publisher · SLSA provenance) · **B-2** 빌더가 "깨끗한 트리" 규칙을 자기 판단으로 예외 처리(컨트롤러 학습 로그 untracked — 무해). 보고 원문 `.superpowers/t064/reviews/{build-report,review-r1-A-spec,review-r1-B-supply}.md` · `r1-workflow-result.json`.
+- **r1 결정 K1–K8(컨트롤러 19:4x)**: **K1** A-1 — 계약 §호환성 규칙 · 규칙 §Compatibility rules · data-model §5에 "토픽 data 스키마와 `_envelope.json`은 `additionalProperties: false`를 두지 않는다(소비자는 미지 속성 무시 — enum 미지 값 무시와 같은 원칙 · 닫힌 스키마면 옛 소비자가 전부 DLQ · 봉투 확장 속성 불가)" + compat-15에 단언 1(`additionalProperties`가 `false`인 파일 0) + BASE 표본에서 `additionalProperties: false` 제거(금지 패턴을 표본으로 보이지 않게) · 검사기 kind 추가는 미채택(스키마에 없으면 검사할 것도 없다 · 규칙 문장으로 충분) · **K2** B-1 (b) — `pnpm-workspace.yaml`에 `minimumReleaseAge: 4320`(3일 · Renovate와 같은 창 · CI frozen은 무영향) + `pnpm update tinybench -r`로 6.2.2 재해석 · lock 변경 항목 integrity 재확인 · **K3** A-2 — D2/D8을 테스트 머리 주석과 동기(아래 인계) · **K4** A-3 — 경로 탈출 단언 유지 · 근거 = `_envelope.json` `properties.type`에 §토픽 규약 문법 pattern(`^[a-z][a-z0-9-]*\.[a-z]+\.[a-z]+$`) **또는** `validateEvent`가 해석 경로의 `schemasDir` 포함 여부 확인(둘 중 하나로 통과 · T067 선택) · **K5** B-2 — 수용 기록 · 다음 지시문부터 "깨끗한 트리" 규칙에 `content/tmp/<NNN>-t<NNN>/` 컨트롤러 로그 예외 명시 · **K6** 빌더 편차 8 전부 채택 · **K7** 리뷰 관찰(변경 0): 계약 밖 변경(const · format/pattern/min·max 강화 · enum 신설 · `$ref`) 미검사 — 필요 시 다음 과제에서 kind 추가 · vitest 캐시 `node_modules/.vite`(gitignore) · **K8** 빨강 문구는 vitest 5 `Cannot find module`(지시문 예상 문구와 다름 · 원인 같음).
+- **인계(T067 — 테스트 머리 주석이 API 정본 · r1 반영)**: D2 전부 + required 위반 path = **그 스키마 포인터 + `/required`**(최상위 `#/required` · 중첩 `#/properties/variants/items/required`) · message에 필드 이름(식별자 경계 일치) · enum 위반 message에 삭제된 값 · `compareDirectories` file = 파일 이름만 · `added` 정렬 · `checked` = 공통 파일 수 · `.json`만 · CLI stdout `<file> <path> <kind> <message>` 한 줄 · exit 2 + stderr(인자 누락 · 디렉터리 없음) · `import.meta.main` 가드(Node 24.11 실측 동작) · `validateEvent`: errors path 봉투 `#` + ajv instancePath · data `#/data` + instancePath · 필수 누락은 message에 속성 이름 · **`schema-missing` message에 토픽 이름** · **schemasDir별 Ajv 인스턴스 또는 dir 포함 캐시 키**(같은 `$id` 두 번 컴파일 예외) · **경로 탈출 금지**(K4) · ajv `addKeyword("x-version")`(strict 유지) · `_envelope.json`: `$schema` 2020-12 · `x-version` semver · required 정확히 9 · `specversion` const "1.0" · `tenantid` format uuid(+pattern) · `data` type object · `id` ULID 패턴 `^[0-7][0-9A-HJKMNP-TV-Z]{25}$` · `time` format date-time · `datacontenttype` application/json(const) · 외부 `$ref` 0 · **`additionalProperties: false` 없음** · 토픽 6 파일 각 `$id https://joshuatech.dev/events/<토픽>/v1` · type object · x-version · `session.revoked`는 SAMPLE data(sid null · reason logout_all) 통과 · reason "bogus" 거부. **CI job `events-compat`**: `git archive origin/main packages/events/schemas | tar -x -C <tmp>`로 base 디렉터리 → CLI 종료 코드 게이트 · VD-4 arm64 설치는 lock의 linux-arm64-gnu 바인딩으로 가능(실측은 그 job).
+- **마감 검증(컨트롤러 19:3x)**: K1 반영 — `tests/check-compat.test.mjs` BASE 표본에서 `additionalProperties: false` 제거 + `collectClosed(node)` 헬퍼(JSON 포인터 수집 · 미니 체크: 열린 스키마 `[]` · 닫힌 스키마 `["#", "#/properties/a/items"]`) + compat-15 단언 1(`collectClosed(schema) == []` · 제목에 "열린 스키마") · `node --check` OK · 빨강 `pnpm --filter @jt/events test` → `Cannot find module '../scripts/check-compat.mjs'` · Test Files 1 failed · exit 1 유지 · K2 반영 — `pnpm-workspace.yaml` `minimumReleaseAge: 4320` + `pnpm update tinybench -r` → lock `tinybench@6.2.2`(배포 2026-10-10 · 6.2.3은 11-01T15:14Z) · `resolution.integrity` = 레지스트리 `dist.integrity` 일치 · `pnpm install --frozen-lockfile --ignore-scripts` exit 0(Already up to date) · lock diff +672/−1 · 바이트 10파일 BOM/CR/TAB 0 · 끝 LF · gitleaks `packages/events` no leaks · 스크래치 빌더 출력(red*.txt · lock-pkgs.txt) 삭제 · 참조 구현은 빌더가 삭제 · 커밋 `344caf6`(설계 · 계약 보정 C1–C5) + 테스트 커밋 `2be94c2`(tick 70/119 · 계약 보정 A-1 · pnpm 숙성 설정 포함).
+
+## T065 (2026-11-02 19:5x 시작 — US6 test-first · `templates/django-pod/tests/test_generate.py`(copier 생성 → uv → pytest → arm64 → kustomize·kubeconform 렌더 단언) · 세션 모델 Fable 5.1)
+
+- **과제 문면(tasks.md :179)**: `T065 [P] [US6] templates/django-pod/tests/test_generate.py: copier copy --defaults --data pod_name=sample-pod → uv sync --locked → 생성물 pytest -q all passed(내장 테스트 6종 + makemigrations --check + django-migration-linter, -W error::DeprecationWarning이되 filterwarnings는 생성물 자기 모듈로 한정) → docker buildx build --platform linux/arm64 성공 → kubeconform deploy/base + 렌더 단언: … — FAIL 확인`(단언 목록은 문면 원문 참조 — 아래 D6 gen-9..18이 조각마다 대응). 짝 구현 = **T072**(:189 `templates/django-pod` 완성) · 관련 **T073**(:190 identity-admin 생성 — 루트 `members` 정리) · **T076**(:196 E2E — `tests/fixtures/generated/` 생성 경로).
+- **소스로 확인한 사실**: ① `contracts/pod-template.md` — copier 질문 7(`pod_snake` 파생 · `has_celery`/`has_admin` 기본 true) · 생성 트리(pyproject · uv.lock · Dockerfile · compose.dev.yml · env.example 키 20 · manage.py · `<pod_snake>/{settings,urls,api,core,events,management/commands/outbox_relay.py}` · tests 7파일 · deploy/base kustomize) · §런타임 계약(프로브 3종 + relay TCP 9464 · RollingUpdate 1/0 · requests 4값 · securityContext 전체 · DB URL `sslmode=verify-full&sslrootcert=/etc/pg/ca.crt` + `pg-main-ca` 마운트 · 마이그레이션 Job 첫 단계 SQL · Celery beat) · §기본 테스트 6(T065). ② `.claude/rules/django-pod.md` §Template · §Tests(`filterwarnings` 자기 모듈 한정 · `--tb=short`) · §Migrations(CI 게이트). ③ research DJANGO-D1(버전) · D16(pytest-django + testcontainers) · D17(uv 멀티스테이지 trixie · `--locked --no-install-project --no-dev`) · **D18**(`_subdirectory: template` · `_min_copier_version "9.17"` · `_tasks: [["uv","lock"]]` → `--trust` 필수 · **별도 저장소 `pod-template`** 가정 — plan은 `templates/django-pod`(모노레포 안)이라 편차). ④ 템플릿 현재 상태: `copier.yml` 질문 7(T015 · `_subdirectory: template` · `_tasks`/`_min_copier_version` 없음) · `template/.gitkeep`만. 루트 `pyproject.toml` = 가상 워크스페이스(members `packages/django-common` · `apps/identity-admin` 스텁; 주석 "templates/**는 멤버가 아니다") · 루트 `uv.lock` `requires-python ==3.13.*` members 2. ⑤ `.gitignore`: `tests/fixtures/generated/`(**루트 고정** — 패턴에 `/`가 있어 `templates/django-pod/tests/fixtures/generated/`는 무시되지 않는다; 처음 적은 "깊이 무관"은 오기 · 빌더 ③-2 · 리뷰 A-6이 `git check-ignore -v`로 정정) · `.venv/` · `__pycache__/`; `.pytest_cache`는 자기 `.gitignore`. ⑥ **도구 실측(2026-11-02)**: copier **9.19.1**(`python -m copier` 동작 · `--trust` · `--defaults` · `--data` · `--vcs-ref`) — 소스 확인 `is_git_repo_root(path)` = `git rev-parse --show-toplevel` 결과 == path일 때만 참 → `templates/django-pod`는 거짓 → `get_repo` None → **작업 트리를 그대로 읽는다**(clone·태그 선택 없음 · `_commit` 없음) · uv **0.12.6**(CI 핀 0.12.8) · 관리 CPython 3.13.15 · Docker 29.8.2 + buildx v0.37.2 `desktop-linux` 플랫폼에 linux/arm64 · kustomize v5.8.1 · kubeconform v0.8.0(`.superpowers/bin` — CI kubeconform job이 같은 핀을 `$RUNNER_TEMP/bin`에 설치해 `GITHUB_PATH`) · dangling 볼륨 25. ⑦ **uv 실측(스크래치)**: 워크스페이스 루트 아래에 있지만 `members`에 없는 프로젝트 → `Found workspace root …, but project is not included` → 자기 루트로 동작 · `uv lock`이 그 디렉터리에 `uv.lock`을 만들고 루트는 건드리지 않는다 → 하네스(`templates/django-pod/pyproject.toml`)와 생성 pod 모두 독립 프로젝트로 성립. ⑧ CI: `ci.yml` lint/test job은 루트 `uv sync --locked` + placeholder · `kubeconform` job = `scripts/ci/kubeconform-deploy.sh`(경보선: `templates/django-pod/template/` 아래 배포 매니페스트가 생겼는데 `--generated`가 없으면 FAIL → T072가 생성 단계를 연결 · 머리 주석 "copier는 아직 잠금 파일에 없다 — 생성 단계를 만들 때 함께") → copier는 **T065에서 `templates/django-pod/uv.lock`**에 들어온다. ⑨ T060–T064 관행: 인프라 초록 테스트 분리(`test_fixtures_*.py`) · win32 `TESTCONTAINERS_HOST_OVERRIDE=127.0.0.1`(T063 — 생성물 conftest의 몫 → T072 인계) · 보고 파일은 글로 · 컨트롤러 학습 로그는 깨끗한 트리 규칙의 예외. ⑩ quickstart §US6(구) = `tests/fixtures/generated/sample-pod`에 생성 → `uv sync` → `docker buildx build … .`(컨텍스트 = pod 디렉터리) — django-common을 어디서 받는지 적지 않았다.
+- **설계 쟁점 → 결정(생성 pod의 django-common 의존 · 빌드 컨텍스트)**: 계약 트리의 `django-common(workspace)`는 루트 uv 워크스페이스 멤버를 뜻하지만, 멤버는 (a) 루트 lock 하나를 공유해 `apps/<pod>/uv.lock`(같은 트리 행)과 모순 · (b) `tests/fixtures/generated/…`처럼 멤버 밖에 생성한 샘플은 `workspace = true` 소스가 풀리지 않아 하네스 자체가 성립 불가 · (c) copier `_tasks: uv lock`이 루트 lock을 바꿔 CI `uv sync --locked`가 흔들린다. **결정 = 독립 프로젝트**: pod는 자기 `uv.lock`을 가진 독립 uv 프로젝트 · `tool.uv.sources.django-common = { path = "../../packages/django-common", editable = true }` · 지원 배치는 `<root>/apps/<pod>` + `<root>/packages/django-common` 하나 · 이미지 빌드 컨텍스트 = 저장소 루트(`-f apps/<pod>/Dockerfile`, `publish-pod.yml` `paths: apps/<pod>/**, packages/django-common/**`와 일관) · 루트 `members`에서 `apps/identity-admin` 스텁을 빼고 `exclude = ["apps/*", "templates/*"]`(T073). 대안 "멤버 유지 + `--package <pod>` 빌드"는 (b)·(c) 때문에 기각. **사용자 확인 항목**(T072 착수 전 되돌릴 수 있음 — 최종 보고에 표기).
+- **보정(계약 · quickstart · 규칙 · kr 미러 pending)**: **C1** 계약 머리 — 생성 명령에 `--trust --defaults --data pod_name=<pod>` · 생성 위치 규칙(`apps/<pod>` + 두 단계 위 `packages/django-common`) · copier가 작업 트리를 읽고 `_commit`이 없어 `copier update` SP-1 미지원(D18 편차 · report.md 후보) · **C2** 트리 행 `pyproject.toml · uv.lock` — path 소스 · 독립 프로젝트 · 루트 exclude(T073) · **C3** Dockerfile 행 + 이미지 행 — 컨텍스트 = 저장소 루트 · `-f apps/<pod>/Dockerfile` · 이미지 안 배치 유지 · USER 비-root · arm64 · **C4** §기본 테스트 6 — 하네스 실행법 + 생성물 검사 항목 전부(아래 D6과 1:1) · **C5** quickstart §US6 — 하네스 한 줄(`JT_SAMPLE_POD_ROOT=tests/fixtures/generated uv run --directory templates/django-pod --locked pytest -q`) + 손 절차(미니 저장소 배치 · 컨텍스트 = 미니 루트) · 규칙 §Template 5줄(독립 프로젝트 · path 소스 · 컨텍스트 · copier update 미지원 · 하네스).
+- **결정 D1–D16(컨트롤러)**:
+  - **D1 산출물 · 범위**: `templates/django-pod/pyproject.toml`(하네스 — `[project] name = "django-pod-template-tests"` · `version 0.0.0` · `requires-python ">=3.13,<3.14"` · `dependencies = []` · `[dependency-groups] dev = ["pytest>=9,<10", "copier>=9.17,<10", "pyyaml>=6,<7"]` · `[tool.uv] package = false` · `[tool.pytest.ini_options] testpaths=["tests"] · pythonpath=["."] · addopts=["--tb=short"] · filterwarnings=["error::DeprecationWarning:tests"]`) + `templates/django-pod/uv.lock`(`uv lock`) + `templates/django-pod/tests/{__init__.py, conftest.py, _render.py, _proc.py, test_fixtures_tools.py, test_render_helpers.py, test_generate.py}` + `templates/django-pod/tests/fixtures/golden-render.yaml`. **금지**: `copier.yml` · `template/**`(T072) · 루트 `pyproject.toml`/`uv.lock` · `.github/**` · `scripts/**` · `packages/**` · `apps/**` · `specs/**` · `.claude/**`. `tests/`는 `_subdirectory: template` 밖이라 copier가 복사하지 않고, 경보선 스캔 범위(`template/`)에도 없다(golden YAML은 `tests/fixtures/`).
+  - **D2 생성 배치(미니 저장소)**: 세션 픽스처 `mini_repo` — `JT_SAMPLE_POD_ROOT`가 있으면 그 디렉터리(비어 있거나 하네스 표식 파일 `.jt-sample-pod-root`가 있을 때만 사용 · 표식이 있으면 내용을 지우고 재사용 · 다른 내용이 있으면 FAIL — 임의 디렉터리를 지우지 않는다), 없으면 `tmp_path_factory.mktemp("jt-sample-pod")`. 그 아래 `packages/django-common/`에 저장소의 `packages/django-common/{pyproject.toml, src/}`를 복사(`tests` · `.venv` · `__pycache__` · `.pytest_cache` 제외) → `apps/sample-pod/`에 `python -m copier copy --trust --defaults --quiet --data pod_name=sample-pod <repo>/templates/django-pod <mini>/apps/sample-pod`(cwd = 미니 루트 · `sys.executable`). 세션 끝에 임시 디렉터리는 삭제(`JT_SAMPLE_POD_ROOT`는 보존).
+  - **D3 단계 픽스처(세션 · 실패 시 뒤 테스트는 ERROR)**: `generated`(copier exit 0 → 경로) · `synced`(`uv sync --locked` cwd=pod · exit 0) · `pod_pytest`(`uv run pytest -q -p no:cacheprovider --junit-xml=<tmp>/pod-junit.xml` → junit 집계 tests/failures/errors/skipped + 출력 꼬리) · `image`(`docker buildx build --platform linux/arm64 --progress plain -f apps/sample-pod/Dockerfile -t jt-sample-pod:t065 <mini>` → teardown `docker image rm -f`) · `rendered`(`kustomize build <pod>/deploy/base` → `yaml.safe_load_all` 문서 목록 + 원문) · `kubeconform_result`(원문을 stdin으로 `kubeconform -strict -ignore-missing-schemas -summary -kubernetes-version ${KUBECONFORM_K8S_VERSION:-master} [-cache $KUBECONFORM_CACHE]` → exit · 요약 줄 파싱 Valid/Invalid/Errors/Skipped).
+  - **D4 도구 해석(`tests/_proc.py`)**: `uv` = `$UV`(uv run이 자식에 넣는 변수) → `shutil.which("uv")` · `docker` = which · `kustomize`/`kubeconform` = `$JT_KUSTOMIZE`/`$JT_KUBECONFORM` → which(Windows는 `.exe` 자동). 없으면 **FAIL**(skip 금지 — 문면 "FAIL 확인"의 빨강이 도구 부재로 가려지지 않게 tool-N이 먼저 초록을 증명). 자식 env = 현재 env 복사에서 `VIRTUAL_ENV` 제거(하네스 venv가 생성물 uv에 경고를 내지 않게) · `PYTHONIOENCODING=utf-8`.
+  - **D5 하위 프로세스 규율**: 인자 목록(`shell=False`) · 명시 cwd · `timeout`(copier 300 s · uv sync 900 s · pod pytest 1800 s · docker 2400 s · kustomize 120 s · kubeconform 600 s · 그 외 60 s) · `capture_output` · 단언 메시지에는 출력 **꼬리 4000자**만 · 비밀 출력 없음(생성물 pytest는 `--tb=short`). 실패한 명령은 `(명령 요약, exit, 꼬리)`로 `pytest.fail`.
+  - **D6 테스트(`test_generate.py` · id 제목 · 문면 조각 ↔ id)**: **gen-1** 생성 트리 — copier exit 0 · `.copier-answers.yml`(`pod_name: sample-pod` · `pod_snake: sample_pod` 또는 파생) · 파일 존재: `pyproject.toml` `uv.lock` `Dockerfile` `compose.dev.yml` `env.example` `manage.py` `sample_pod/settings.py` `sample_pod/urls.py` `sample_pod/api.py` `sample_pod/core/` `sample_pod/events/` `sample_pod/management/commands/outbox_relay.py` `tests/conftest.py` + 테스트 7(`test_health` `test_tenant_rls` `test_outbox` `test_auth_middleware` `test_logging` `test_migrations` `test_openapi_snapshot`) + `deploy/base/kustomization.yaml` · 트리에 `*.jinja` 0 / **gen-2** `pyproject.toml`(tomllib) — `django-ninja==1.7.0` 정확 핀 · `django>=6.1` · `psycopg[` 3.3 · `celery` 5.6 · `django-common` 의존 + `tool.uv.sources.django-common.path == "../../packages/django-common"` · dev 그룹에 `django-migration-linter` · `pytest` · `pytest-django` · `testcontainers` · `tool.pytest.ini_options.filterwarnings` ∋ `error::DeprecationWarning:sample_pod`(접두 `error::DeprecationWarning:` 항목은 전부 모듈 한정 · 맨몸 `error::DeprecationWarning` 0) · `addopts`에 `-W` 없음 + `--tb=short` 있음 · `requires-python` `>=3.13` / **gen-3** `env.example` — 키 집합 ⊇ 계약 20 · 각 줄 `KEY=`(값 없음 · 주석 허용) · `DATABASE_OWNER_URL` 없음 · `EMAIL_` 접두 없음 / **gen-4** `uv sync --locked` exit 0 + `.venv` 존재 / **gen-5** 생성물 pytest — junit `failures == 0` · `errors == 0` · `skipped == 0` · `tests >= 8` + `uv run pytest --collect-only -q`에 7파일 전부 등장 + `test_migrations.py` 본문에 `makemigrations`와 `lintmigrations|django_migration_linter` 문자열(문면 "makemigrations --check + linter") / **gen-6** 이미지 — build exit 0 · `docker image inspect` `Architecture == "arm64"` · `Os == "linux"` · `Config.User` ∉ {"", "root", "0"} / **gen-7** kubeconform — kustomize exit 0 · kubeconform exit 0 · Invalid 0 · Errors 0 · Valid ≥ 1 / **gen-8** 워크로드 식별 — Deployment 정확히 2(web = 포트 8000 컨테이너 보유 · 그 pod의 relay = 포트 9464 컨테이너 · 나머지 = celery) · Job 1(`argocd.argoproj.io/hook == PreSync`) · Service ≥ 1 · ConfigMap ≥ 1 · ExternalSecret 이름 집합 ⊇ {`sample-pod-env`, `sample-pod-migrate`} · Ingress ≥ 1 / **gen-9** securityContext — 워크로드 3의 pod spec `automountServiceAccountToken is False` · `securityContext.runAsNonRoot is True` · `seccompProfile.type == RuntimeDefault`; 모든 컨테이너(init 포함) `allowPrivilegeEscalation is False` · `capabilities.drop == ["ALL"]` · `readOnlyRootFilesystem is True` · `/tmp` 마운트가 emptyDir 볼륨 / **gen-10** envFrom 분리 — web·relay·celery 컨테이너의 secret 참조(envFrom.secretRef + env.valueFrom.secretKeyRef) ∋ `sample-pod-env` · ∌ `sample-pod-migrate`; Job 컨테이너 ∋ `sample-pod-migrate` · ∌ `sample-pod-env` / **gen-11** DB URL·CA — ExternalSecret `sample-pod-env`의 `DATABASE_URL` 템플릿과 `sample-pod-migrate`의 `DATABASE_OWNER_URL` 템플릿(`spec.target.template.data` 또는 `spec.data[].remoteRef`로 조립 — 문자열 어디든)에 `sslmode=verify-full` + `sslrootcert=/etc/pg/ca.crt`; 워크로드 3 모두 `pg-main-ca` Secret 볼륨 + 4 컨테이너(web·relay·celery·migrate)에서 `/etc/pg/ca.crt`가 풀리는 마운트(`/etc/pg` 또는 `/etc/pg/ca.crt` subPath) / **gen-12** 프로브 — web `livenessProbe.httpGet.path == /healthz` · `readinessProbe.httpGet.path == /ready` · `startupProbe.httpGet.path == /ready` · `startupProbe.failureThreshold == 30` · `periodSeconds == 5`; relay `livenessProbe.tcpSocket.port` → 9464(정수 또는 이름 → containerPort 해석) · readinessProbe·startupProbe 없음; 전 워크로드 어떤 프로브도 `httpGet.path == /health` 없음 / **gen-13** 전략·affinity·자원 — Deployment 2 `strategy.type RollingUpdate` · `maxSurge == 1` · `maxUnavailable == 0` · `affinity.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution`에 `key role · In · [platform]`; requests.memory web 256Mi · relay 96Mi · celery 192Mi · migrate 256Mi; 모든 컨테이너 `resources.limits.cpu` 없음 / **gen-14** migrate SQL — Job의 첫 실행 컨테이너(`initContainers[0]` 있으면 그것, 없으면 `containers[0]`)의 `command`+`args` 결합 텍스트에 `REVOKE CONNECT ON DATABASE` · `FROM PUBLIC` · `GRANT CONNECT ON DATABASE` 포함 · `REVOKE CONNECT` 위치 < `migrate` 위치 / **gen-15** 어노테이션 — Deployment 2 `metadata.annotations["reloader.stakater.com/auto"] == "true"` · web pod 템플릿 `annotations["k8s.grafana.com/scrape"] == "true"` · relay 컨테이너 포트 9464 / **gen-16** ConfigMap — 어느 ConfigMap의 `data` 키 ⊇ {ACCESS_AUD_M2M, ACCESS_AUD_ADMIN, ACCESS_EXPECTED_CN, ADMIN_HOST, ALLOWED_HOSTS} · 그 ConfigMap을 web·celery가 envFrom.configMapRef로 참조 / **gen-17** Ingress — 전 Ingress 경로 합집합 == {`/api`, `/health`, `/session`, `/sessions`, `/tenants`} · `/healthz`·`/ready`·`/webhooks` 접두 0 / **gen-18** `.copier-answers.yml`에 `_src_path` 존재 + `copier.yml`의 `_min_copier_version`이 `9.17` 이상(템플릿 파일 읽기 — T072 문면) + `_tasks`에 `uv lock`(문면 `_tasks: uv lock`). 문면 "FAIL 확인" = 지금 gen-1 FAIL(생성물 = `.gitkeep`만 · `pyproject.toml` 없음) + gen-2.. ERROR(`uv sync --locked` "No pyproject.toml") · exit 1.
+  - **D7 인프라 초록(`test_fixtures_tools.py` · 지금 초록)**: **tool-1** `python -m copier --version` ≥ 9.17 + `import copier` · **tool-2** `uv --version` ≥ 0.12 + `$UV` 또는 which · **tool-3** `docker buildx inspect --bootstrap` Platforms ∋ `linux/arm64` · **tool-4** `kustomize version` ≥ v5 · **tool-5** `kubeconform -v` ≥ v0.6 · **tool-6** `copier copy --trust --defaults --quiet --data pod_name=probe-pod <template> <tmp>`가 exit 0(현재 템플릿으로도 생성 자체는 된다 — 빨강이 copier 실패가 아님을 증명).
+  - **D8 렌더 헬퍼 + 골든 + 변이(`_render.py` · `test_render_helpers.py` · `fixtures/golden-render.yaml` · 지금 초록)**: gen-8..17의 단언을 `_render.py` 함수(`load_docs` · `identify_workloads` · `check_security_context` · `check_env_split` · `check_db_tls` · `check_probes` · `check_strategy_resources` · `check_migrate_sql` · `check_annotations` · `check_configmap` · `check_ingress` — 위반 목록 반환, 빈 목록 = 통과)로 두고 `test_generate.py`는 그 함수를 실제 렌더에 적용한다. `golden-render.yaml` = 계약을 그대로 만족하는 합성 렌더(Deployment 2 · Job · Service · ConfigMap · ExternalSecret 2 · Ingress · 이름 `sample-pod-*`) — T072의 참고 모양이기도 하다. **render-1** 골든 → 전 검사 위반 0 · **render-2..N** 변이 ≥ 14(seccomp 삭제 · runAsNonRoot false · automount true · web에 `-migrate` envFrom 추가 · Job에 `-env` 추가 · liveness `/health` · startup failureThreshold 10 · relay readiness 추가 · CPU limit 추가 · maxUnavailable 1 · affinity 삭제 · REVOKE 삭제 · REVOKE가 migrate 뒤 · `sslmode=require` · `pg-main-ca` 마운트 삭제 · reloader 어노테이션 삭제 · scrape 삭제 · 메모리 192Mi→256Mi · `/tmp` emptyDir 삭제 · Ingress에 `/healthz` 추가 · ConfigMap 키 누락) → 해당 검사가 그 변이만 잡는다(다른 검사는 위반 0 — 검사 간 교차 오탐 방지). 골든에 kubeconform을 돌리지는 않는다(네트워크 — gen-7의 몫).
+  - **D9 빨강 확인 방법**: `uv run --directory templates/django-pod --locked pytest -q` → tool-1..6 · render-* passed · gen-1 failed(`pyproject.toml` 없음) · gen-2..18 error(`synced` 픽스처 — `uv sync --locked` "No `pyproject.toml` found") · exit 1 · 원문 저장. `-k "tool or render"`로 초록만 따로 확인.
+  - **D10 Docker 위생**: 태그 `jt-sample-pod:t065` · 빌드 후 inspect · teardown `docker image rm -f`(실패 무시) · 컨테이너 생성 0 · 빌더가 전후 `docker volume ls -f dangling=true -q | wc -l` 보고(기준 25).
+  - **D11 kubeconform 플래그** = CI 스크립트와 동일(`-strict -ignore-missing-schemas -summary -kubernetes-version` 기본 master · `KUBECONFORM_CACHE` 있으면 `-cache`) · 요약 줄 정규식(`Summary: N resources found … Valid: a, Invalid: b, Errors: c, Skipped: d`) 파싱 · 네트워크(스키마 내려받기)는 이 단계만.
+  - **D12 리뷰 2렌즈**: A 계약·문면(문면 조각 ↔ gen-1..18 · 계약 값 정확성 · 골든이 계약을 만족하는가(골든 = 계약의 거울) · 가정 표시 · 빨강 진짜 · 보정 C1–C5 반영) · B 실행 안전·위생·공급망(삭제 가드 · shell=False · timeout · 출력 꼬리 · Docker 정리 · 네트워크 범위 · `uv.lock` 전부 PyPI + 해시 · Windows/Linux 양쪽(CI arm64 Linux — 경로·`.exe`·인코딩) · 비밀 0 · BOM/CR/TAB · git status).
+  - **D13 인계(T072 · T073)**: T072 — `copier.yml`에 `_min_copier_version: "9.17"` · `_tasks: [["uv", "lock"]]` · `{{ _copier_conf.answers_file }}.jinja` · 질문 7 유지(기본값 없는 것은 `pod_name`만) / 생성 트리 D6 gen-1 목록 그대로(`.jinja` 잔여 0) / `pyproject.toml.jinja`: `tool.uv.sources.django-common = { path = "../../packages/django-common", editable = true }` · `django-ninja==1.7.0` · dev 그룹 pytest·pytest-django·testcontainers[postgres]·django-migration-linter · `filterwarnings = ["error::DeprecationWarning:{{ pod_snake }}", "error::DeprecationWarning:tests"]` · `addopts = ["--tb=short"]` · `-W` 금지 / 생성물 conftest: win32 `TESTCONTAINERS_HOST_OVERRIDE=127.0.0.1`(import 전) · DB `connect_timeout 5` · Postgres TLS 전용 이미지(django-common `tests/docker/pg-tls`와 같은 접근) / `test_migrations.py`: `makemigrations --check --dry-run` + `lintmigrations`(django-migration-linter management command) / Dockerfile: 컨텍스트 = 저장소 루트 · `COPY packages/django-common /src/packages/django-common` · `COPY apps/{{ pod_name }} /src/apps/{{ pod_name }}` · `WORKDIR /src/apps/{{ pod_name }}` · `uv sync --locked --no-install-project --no-dev` → 소스 → `uv sync --locked --no-dev` · 런타임 `python:3.13-slim-trixie@sha256:…` · `USER app`(비-root) · `--platform linux/arm64`로 빌드되어야 한다(QEMU 아래 uv 실행 시간 포함) / deploy/base: D6 gen-8..17 전부 + Job `argocd.argoproj.io/hook: PreSync` + REVOKE/GRANT SQL을 Job **첫 실행 컨테이너의 command/args 리터럴**로(ConfigMap 스크립트에 숨기지 않는다 — psql이 없으니 `python -c`로 psycopg 실행 가능 · DB 이름은 `DATABASE_OWNER_URL`에서 파생) · ExternalSecret `spec.target.template.data`에 `DATABASE_URL`/`DATABASE_OWNER_URL` 조립 · `pg-main-ca` 볼륨 4 컨테이너 마운트 · web pod 템플릿 `k8s.grafana.com/scrape` · relay 포트 9464 이름 `metrics` / CI 배선: `test` job에 kustomize·kubeconform 설치 스텝(kubeconform job과 같은 핀·sha) + `uv run --directory templates/django-pod --locked pytest -q`(Docker 있음 · arm64 네이티브) · `kubeconform-deploy.sh --generated <미니>/apps/sample-pod`(경보선 해제) · copier 잠금은 `templates/django-pod/uv.lock`. T073 — 루트 `pyproject.toml` `members`에서 `apps/identity-admin` 제거 + `exclude = ["apps/*", "templates/*"]` + 루트 `uv lock` 재생성 · identity-admin은 `apps/identity-admin/uv.lock` 독립 · publish-pod `context: .` `file: apps/identity-admin/Dockerfile`.
+  - **D14 VD**: VD-1 uv 비멤버 = 독립(실측 ✓ ⑦) · VD-2 copier 작업 트리 읽기(소스 ✓ ⑥ · 빌더가 tool-6으로 재확인) · VD-3 `python -m copier`(✓) · VD-4 buildx linux/arm64(✓) · VD-5 `--trust`가 `_tasks` 없는 템플릿에서도 무해(tool-6) · VD-6 Windows에서 `uv run` 하위 `uv sync`(VIRTUAL_ENV 제거) 경고 0(빌더) · VD-7 생성물 pytest의 Docker/testcontainers는 T072 뒤에야 실측.
+  - **D15 편차 정책**: 실측 근거가 있으면 지시문과 달리 하고 보고 ③에 적는다 · 계약과 어긋나면 계약 우선. **D16** 빌더 = api-builder(opus · Windows 호스트 · Docker Desktop · `.superpowers/bin`을 PATH 앞에 — 명령마다 명시) · 참조 구현(가짜 템플릿) 검증은 **하지 않는다**(T072 범위 — 골든+변이가 판별력을 대신한다).
+- **순서**: 보정(C1–C5 · 완료) → 설계(이 절) → 워크플로(api-builder 1 → 리뷰 2 병렬) → 수정 → 커밋 · tick 71/119 · 학습 로그 → T066.
+- **빌드 · 리뷰 r1 결과(`wf_3a8ba339-2a0` · 20:0x–20:5x KST · 에이전트 3 · 0.88M 토큰 · 55분)**: 빌더(api-builder opus) **DONE_WITH_CONCERNS** — 신규 13파일 3,465줄(`pyproject.toml` 27 · `uv.lock` 343 · `tests/__init__.py` 4 · `_layout.py` 141 · `_proc.py` 315 · `_render.py` 749 · `_tree.py` 352 · `conftest.py` 193 · `test_fixtures_tools.py` 86 · `test_render_helpers.py` 541 · `test_check_helpers.py` 410 · `test_generate.py` 217 · `fixtures/golden-render.yaml` 430) · `uv.lock` 패키지 25(PyPI 24 + virtual 1 · 아티팩트 101 전부 `files.pythonhosted.org` + sha256 · copier 9.19.1 · pytest 9.2.0 · pyyaml 6.0.3 · 루트 lock 무변경) · **빨강** = `4 failed, 148 passed, 14 errors` exit 1 — gen-1·2·3·18 FAIL(생성물 = `.gitkeep`만 · `pyproject.toml`/`env.example`/`.copier-answers.yml` 없음 · `copier.yml`에 `_min_copier_version`·`_tasks` 없음) + gen-4..17 ERROR(단계 가드 — "생성물에 pyproject.toml/Dockerfile/deploy/base가 없다 — 명령을 돌리지 않는다") · 인프라 초록 148 = tool 6 + render 70(골든 1 · 변이 67 · 표 완전성 · 동치 표기) + check 72(pyproject 1+25+4 · env 1+7 · copier 5+9+1 · 트리 3 · 해석 5 · 표식 가드 11) · Docker dangling 25→25 · 이미지 잔여 0 · 바이트 13/13 깨끗 · gitleaks no leaks. **편차 ③-1..9**: `--load`(docker-container 빌더에서는 이미지가 데몬에 안 와 inspect 실패) · `JT_SAMPLE_POD_ROOT` 상대 경로 = **저장소 루트 기준**(`uv run --directory`가 cwd를 바꿈) + 저장소 루트·상위·템플릿 아래 거부(**지시문 §3 "gitignore 깊이 무관"은 오기** — `.gitignore:46`은 루트 고정 · `git check-ignore -v`) · **단계 가드**(빈 pod에서 `uv sync`를 돌리면 uv가 상위 저장소 워크스페이스를 잡아 루트 `.venv`를 동기화한다 — 설계가 놓친 위험 · 빨강 문구를 "생성물에 pyproject.toml이 없다"로) · `Identification(workloads|None, violations)` best-effort(식별 위반은 gen-8만 · 교차 오탐 금지와 양립) · 추가 파일 3(`_layout.py` · `_tree.py` · `test_check_helpers.py` — gen-1·2·3·18·5·6·7 판정 논리도 골든+변이로) · tool-6도 django-common 복사(T072 뒤 path 소스 성립) · collect-only `-p no:cacheprovider` · `KUBECONFORM_K8S_VERSION` 빈 값 → master · 계약 근거 있는 보강 단언 9(컨테이너 단위 securityContext 덮어쓰기·capabilities.add · 런타임 볼륨/ES의 OWNER_URL · URL 키 값 검사 · web 프로브 포트 8000 · relay liveness 부재 · editable · 전역 필터 범주 · 메모리 수량 정규화 · `0:0`/`root:root`). 공정 메모: 해석기 테스트는 사후 작성(고의 고장 6/6 · 검사 비우기 67/67 검출로 보완). **리뷰 r1**: **A(계약·문면) approve_with_fixes(medium 2 · low 9)** — 문면 조각 전부 ↔ gen-1..18 대응 · 계약 값 전부 일치 · 근거 없는 추가 0 · 빨강 진짜 / **B(실행 안전·위생·공급망) approve(low 6)** — 삭제 경로 7곳 전부 가드 안 · `subprocess` 한 곳(shell=False · cwd · timeout · utf-8) · 잠금 전부 PyPI sha256 · 3일 숙성 충족 · 이식성 OK · kubeconform 0.8 요약 포맷 2종 정규식 커버. 보고 원문 `.superpowers/t065/reviews/{build-report,review-r1-A-spec,review-r1-B-safety}.md` · `r1-workflow-result.json`.
+- **r1 결정 K1–K12(컨트롤러 21:0x)**: **K1** A-1 — 골든 Ingress `/session` `pathType: Exact` → `Prefix`(Exact면 `/session/check`가 404 — 골든은 T072 참고 모양) + 머리 주석 "pathType은 검사 대상이 아니다" · **K2** A-2 — `test_generate.py` docstring에 "T072 가정 ①–⑩"(워크로드 식별 규칙 · Job 첫 컨테이너 command 리터럴 · ES 키 값 · answers 파일 · path 소스 꼴 · USER · 미니 저장소 복사 범위 · Job 컨테이너 전부 `-migrate`+CA · celery 192Mi · ConfigMap 참조 범위 + 단언하지 않는 것) · **K3** A-3 — `_tree.check_migrations_test`(같은 줄 `--check` 또는 `check=True` · linter 표식) + `test_check_helpers` 골든 1 · 변이 4 · 표기 1 · gen-5가 호출 · **K4** A-4 — 식별 실패 문구에 있던 것(`[(Deployment, [(컨테이너, [포트…])])]`) · **K5** A-5 — `<pod>-env`에 `DATABASE_OWNER_URL`이 `spec.data[].secretKey`로 들어오는 꼴도 위반(`spec.dataFrom[].extract`는 범위 밖 · docstring) + 변이 `env-secret-owner-url-via-secret-key` · **K6** A-8 — 생성물 `uv run --locked pytest` 2곳 · **K7** B-1 — 생성물 pytest 호출 argv에 `--tb=short` 2곳(addopts에 기대지 않는 방어선) · **K8** A-6 — 계약 §6 머리 · 규칙 §Template · quickstart 주석에 "상대 경로 = 저장소 루트 기준 · 루트/상위/템플릿 아래 거부 · 표식 파일 이름" + 사실 ⑤ 정정(루트 고정) · **K9** 빌더 편차 ③-1..9 전부 채택 · 추가 파일 3 채택 · **K10** 변경 0 관찰: A-7(gen-14 "한 컨테이너에서 SQL → migrate"는 계약 문면 그대로 — initContainer 분리는 계약·D13 개정이 먼저) · A-9(ConfigMap 참조 단언은 web·celery — D5 그대로 · ⑩에 기록) · A-10(**T072 문면 ↔ 계약 어긋남 3 — 계약 우선**: 문면 "`-W error::DeprecationWarning`" → 자기 모듈 한정 filterwarnings · 문면 "django-common workspace" → path 소스 · 문면 "relay 컨테이너 scrape 어노테이션" → web pod 템플릿 어노테이션; T072 빌더 지시문에 명시) · A-11(`tests >= 8`은 바닥값 · 7파일 수집 단언이 실질 하한) · B-2(CI `docker/setup-buildx-action`의 docker-container 드라이버에서 tool-3 `buildx inspect --bootstrap`가 buildkit 이미지 pull — T072 CI 배선 때 인지) · B-3(가드 2겹 유지) · B-4(timeout 시 손자 프로세스 잔존 — 수용) · B-5(`onexc` Linux 부모 권한 · tmp `ignore_errors` — 수용) · B-6(uv `exclude-newer` 정책 부재는 저장소 전체 공백 — pnpm `minimumReleaseAge`의 uv 대응은 보류) · **K11** 인계 추가(빌더 ④ 1–15): `Dockerfile.dockerignore`(미니 저장소 컨텍스트에 `apps/sample-pod/.venv`가 들어간다 — Dockerfile 옆 ignore 파일 또는 선별 COPY) · ESO 템플릿 `{{ .username }}` ↔ copier Jinja 충돌(`{% raw %}` 또는 `_envops`) · relay·migrate도 Django settings를 적재하므로 ConfigMap 참조 필요(`ALLOWED_HOSTS`·`ADMIN_HOST` 필수값 · 골든은 넣었다) · migrate Job settings는 `DATABASE_OWNER_URL`을 default alias 자격으로 받고 그 밖 필수 비밀은 선택값 또는 `<pod>-migrate`에 · celery = Deployment 하나(worker+beat · 모든 컨테이너 192Mi) · `{{ _copier_conf.answers_file }}.jinja` · `_tasks`는 PATH의 uv(하네스 `UV` 변수는 copier에 안 넘김) · 생성물은 `uv run --locked pytest` · collect-only에서도 settings 적재 · kubeconform은 CRD(ExternalSecret) 미검증(gen-10·11 키 검사가 유일) · `scripts/ci/kubeconform-deploy.sh` 머리 주석 "copier는 아직 잠금 파일에 없다" → `templates/django-pod/uv.lock` 반영(T072 CI 배선) · Windows 긴 경로면 짧은 `JT_SAMPLE_POD_ROOT` · Renovate pep621이 하네스 `pyproject`·`uv.lock`을 관리(bump PR 예상 · 정상) · **K12** 도구 함정(tool-gotchas): Bash 도구에서 `grep -c $'\r'`는 빈 패턴으로 풀려 전부 셈 · `cat -A | grep '^M'`은 한글 UTF-8 바이트 `M-^M`과 겹쳐 거짓 양성 → CR/TAB은 `od -An -tx1 -v`로 세거나 파이썬 바이트 검사 · `gitleaks dir`는 경로 **하나**만 받는다(둘 주면 cwd = 저장소 전체 · `.venv`의 시험 키 32건을 누출로 보고) · scratch의 `rm -rf <dir>`도 거부 → `find <dir> -depth -delete`.
+- **마감 검증(컨트롤러 21:0x)**: K1–K8 반영 뒤 `-k "tool or render or check"` **155 passed**(148 + render 변이 1 + check 6) · 전체 `4 failed, 155 passed, 14 errors` exit 1(빨강 유지 · 원문 scratch `full-run-r1.txt`) · 13파일 바이트 BOM/CR/TAB/줄 끝 공백 0 · 끝 LF · gitleaks `templates/django-pod/tests` + `pyproject.toml` + `uv.lock` 각각 no leaks · Docker 이미지 `jt-sample-pod` 없음 · dangling 25 · scratch 잔여물(`sample-root` · `foreign` · `probe-ctx`) `find -delete` · 커밋 `3eb5785`(설계 · 계약 보정 C1–C5) + 테스트 커밋(tick 71/119 · K1–K8 · 문서 보정 K8 포함).
+
+## T066 (2026-11-02 21:1x 착수 → 11-03 설계 확정 — US6 test-first · `apps/identity-admin/tests/test_api.py` · 세션 모델 Fable 5.1 → Opus 5.5)
+
+- **과제 문면(tasks.md :180)**: `T066 [P] [US6] apps/identity-admin/tests/test_api.py: /health 200 JSON(version·git_sha + db·dragonfly·kafka_producer 상태, 의존성 다운이어도 200), /ready(DB만: DB 다운 503, Kafka·Dragonfly 다운 200), /healthz 200, GET /session/check(active/nbf), POST /sessions/revoke(202, 로그 행, outbox 행, Dragonfly revoked:sub:{sub}=nbf·revoked:sid:{sid}=1 TTL 330 s), POST /webhooks/authentik(HMAC 서명·타임스탬프 ±5분·이벤트 pk 멱등 — 서명 없음/틀림 401, 타임스탬프 밖 401, 재전송 200 no-op; tenant_id는 본문 sub로 TenantMembership 조회, 없으면 400), GET /tenants/me(app role, B 등급 테이블만; 테넌트 B 토큰으로 조회하면 테넌트 A 데이터 0건), 거부 목록 무조건 재적용(센티널 없이 캐시를 통째로 비운 뒤 30 s 안에 expires_at > now() 행 전부 다시 SET · SET 멱등이라 TTL이 늘지 않음 · 기동 시 1회), purge_session_revocation_log(expires_at + 30 d)·outbox dead purge(dead_at + 30 d) 삭제 경계, seed_tenant --tenant-id 멱등(Tenant·TenantMembership·파생 쓰기 중복 없음), Authentik API 클라이언트 base URL = svc DNS · 공개 호스트를 부르지 않음(JWKS도 svc DNS · iss만 공개 URL), (m2m 호스트의 /webhooks·/healthz·/ready 404는 Ingress 층위 — T076), identity-m2m-* 호스트로 /admin/ → 404 · ADMIN_HOST에서만 장착 · ADMIN_HOST 빈 값(dev)이어도 정상 기동하고 admin urlconf가 아예 없음, ALLOWED_HOSTS 밖 호스트 400, OpenAPI 스냅샷(ninja minor bump 시 갱신) — FAIL 확인`. 짝 구현 = **T073**(`apps/identity-admin` copier 생성 + 모델·API·beat·시드 → "T066 PASS") · 라이브러리 T068–T071 · 템플릿 T072.
+- **소스로 확인한 사실(11-02 21:1x · 11-03 재확인)**: ① `apps/identity-admin`은 T001 스텁 `pyproject.toml`(루트 uv 워크스페이스 멤버 · 의존 0)뿐 — pod 본체·시험 환경(conftest·pytest 설정·venv)이 없다. T065 결정으로 생성 pod는 독립 uv 프로젝트이고 루트 members 제거·copier 생성은 T073 → **이 테스트는 T072·T073 전까지 저장소 안에서 실행할 수 없다**(빨강 관찰·판별력 증명은 저장소 밖 미니 저장소에서 — D10). ② 계약 identity-admin-api: 엔드포인트 6 · 인증 계층 1–5 · 웹훅 서명 규약(T062) · 이벤트 · 주기 작업 4 · 오류 슬러그 · 관측 지표 `session_revocations_total{reason}`. ③ data-model §1–3(등급 B 3테이블 · 시드 · 한 사용자 한 테넌트) · §8(Vault 키) · §9(서비스 계정 `identity-admin`/`identity-admin-ro` · dev 쓰기 플래그) · §10(FGA owner ⊂ member). ④ denylist.md §쓰기 규약(커밋 후 SET · 30 s 무조건 재적용 · 기동 시 1회) · §검증(T066 줄). ⑤ events.md §발행 API — `tenant_id` UUID 아니면·컨텍스트와 충돌하면 `OutboxUsageError`(T061 K1·K2) → **관리자 교차 테넌트 revoke는 컨텍스트 재설정이 필요**하다. ⑥ T062가 고정한 미들웨어: Access → Bearer → actor → 거부 목록 · 면제 4경로 정확 일치(`request.path_info`) · 요청 속성 3(`access_claims`·`auth_claims`·`tenant_id`) — "Access만 요구하는 경로" 개념이 없다(그러면 BFF의 `/session/check`가 Bearer 없이 401). ⑦ T060 가정 `TENANT_CONTEXT_EXEMPT_PATHS`(밖이고 `request.tenant_id` 없으면 403) → Bearer 없는 웹훅·`/session/check`도 면제 목록에 있어야 한다. ⑧ T063 헬스 모양(`status` ok|degraded · `checks.*.status` ok|fail + `latency_ms` · `/health`에도 version·git_sha) · DB 다운 재현(`connections["default"].settings_dict` 포트 변조 · `connect_timeout` 하한 2 s) · 닫힌 포트 · 시간 상한 데몬 스레드 · DB 요청 예외의 트레이스백 없는 실패(psycopg conninfo 비밀번호). ⑨ django-common 시험 인프라(TLS PG 이미지 · owner/app role · TEST MIRROR · Dragonfly ACL 4 · 로컬 JWKS · `_jwt`/`_problem`/`_secret`/`_dragonfly`) — T060 D12 인계 "T072 템플릿 conftest는 이 모양을 복제". ⑩ pytest-django는 `pytest_load_initial_conftests`(tryfirst)에서 conftest보다 **먼저** 설정 모듈을 import한다 → pydantic-settings pod의 시험 env는 설정 래퍼가 `os.environ`에 채워야 한다(하위 프로세스 기동 시험의 전제). ⑪ `setup_test_environment`가 `ALLOWED_HOSTS`에 `testserver`를 더한다 — 시험이 `ALLOWED_HOSTS`를 덮으면 요청마다 Host를 명시한다. ⑫ kubelet HTTP 프로브의 기본 Host = pod IP(`<podIP>:8000`) → `ALLOWED_HOSTS` 검증과 충돌(T065 렌더 검사는 프로브 경로·포트·수치만 본다) → 계약 보정 C13 + T072 인계. ⑬ PyJWT 2.x는 미래 `iat`를 `ImmatureSignatureError`로 거부 → "같은 초" 시험은 초 경계 정렬 대기로 만든다. ⑭ Celery: `beat_init` 신호 · `app.tasks[name].apply()`(브로커 없이 같은 프로세스) · `app.conf.beat_schedule` 원형(숫자 · `timedelta` · `schedule` · `crontab`). ⑮ Authentik·OpenFGA HTTP 모양(기억·소스 기반 — **실측 전**): groups `GET /api/v3/core/groups/?name=` · `POST …/groups/<pk>/add_user/ {"pk": <int>}` 204(멱등) · users `GET /api/v3/core/users/?uuid=` · `PATCH /api/v3/core/users/<pk>/`는 `attributes`를 통째로 바꾼다 · OpenFGA `POST /stores/<id>/write`(중복 400 `write_failed_due_to_invalid_input` "already exists" · 신버전 `on_duplicate: "ignore"`) · `read` · `check` · preshared `Authorization: Bearer` → VD-T066-1·2. ⑯ Authentik 이벤트 문맥은 토큰 `sid` 클레임(세션 키 해시)과 같은 값을 준다는 보장이 없다(이벤트 `context`·`model`에 세션 키 해시가 없다 — 기억 · VD-T066-1) → 웹훅 폐기는 사용자 단위가 안전하다.
+- **설계 쟁점 → 결정**: **(가) 실행 위치** — 저장소 안 실행 불가(①) → 검증은 scratch 미니 저장소(`<tmp>/apps/identity-admin` + `packages/django-common` 복사 · T072 시험 인프라 시제품)에서: 빌더 = 빨강(`identity_admin` 없음) + 가짜 서버 자기검사 초록 + 수집 성공 · **오라클(별도 에이전트)** = 저장소 밖 일회용 참조 구현(라이브러리 최소 + identity_admin)으로 전부 초록 + 변이 검출. 기각: 지금 `apps/identity-admin`에 pyproject·conftest를 만드는 것(T073 copier 생성과 충돌 · T065 결정 위반). **(나) 웹훅 `sid`** — 이벤트가 토큰 `sid`와 맞는다는 보장이 없어(⑯) 세션 단위로 기록하면 폐기가 안 될 수 있다 → **항상 사용자 단위**(`sid` NULL 행 + `revoked:sub`) — 다른 기기 동반 로그아웃은 SP-1에서 받아들인다(fail-safe · T085 E2E가 "세션 삭제 2초 뒤 401"로 확인). 11-02 초안 보정의 "`sid` 있으면 `revoked:sid`도"는 철회. **(다) 멱등 저장** — `session_revocation_log.event_pk`(unique) — 폐기와 같은 트랜잭션이라 원자적이고 Dragonfly 장애·SIGKILL과 무관(기각: Dragonfly TTL 키 — 캐시 유실 시 재전송이 중복 폐기·중복 이벤트). B 등급 허용 목록은 그대로(새 테이블 없음). **(라) 재적용 키 규칙** — "한 행 = 한 키"(`sid` NULL ↔ sub 키) — 행만 보고 키가 정해져 재적용이 결정적이다(웹훅 사용자 단위와 맞물림). **(마) `nbf` = epoch 초 내림 + 1** — 로그아웃을 부른 토큰이 같은 초에 발급됐어도 `nbf > iat`로 거부(내림만 쓰면 같은 초 토큰이 살아남는다). **(바) Access 전용 경로** — 라이브러리 설정 `AUTH_ACCESS_ONLY_PATHS`(기본 빈 튜플 · 정확 일치) → django-common에 **auth-32**를 test-first로 더한다(T070이 시험 없이 구현하지 않게). **(사) 시험 인프라 의존 최소화** — 템플릿(T072)에서 받는 것은 DB 설정 · `dragonfly`(admin URL) · `jwks_server` · 헬퍼 3모듈뿐, 나머지(pod용 Dragonfly 사용자 · 설정 덮기 · 가짜 Authentik/OpenFGA · DNS 가드 · 닫힌 포트 · 시간 상한)는 T066 소유 모듈. **(아) 관리자 판정** — `groups`가 목록이고 원소가 정확히 `platform-admin`(문자열 `"platform-admin"`이나 `platform-admins`는 거부 — 부분 일치 권한 상승 방지). **(자) Authentik 쓰기 플래그** — `AUTHENTIK_WRITES_ENABLED`(기본 false · prod true) — dev 서비스 계정이 read 전용이라 dev 시드도 Authentik 쓰기를 건너뛰고(한 인스턴스 · prod 시드가 쓴다) FGA(env별 store)·DB만 쓴다. **(차) OpenAPI 스냅샷** — 스냅샷 파일·갱신 절차는 템플릿 내장 `test_openapi_snapshot.py`(T072 · pod마다 하나)가 맡고, T066은 계약 구조(경로·메서드·상태 코드·본문·질의 스키마)를 단언해 스냅샷 갱신이 계약 경로를 조용히 지우지 못하게 한다(같은 API의 스냅샷 파일 2개를 두지 않는다).
+- **보정(계약 · 데이터 모델 · 규칙 · quickstart · kr 미러 pending)**: **C1** identity-admin-api §인증 계층 구현 규약 — Access 전용 경로(`AUTH_ACCESS_ONLY_PATHS` · 요청 속성 `access_claims`만) · identity-admin `TENANT_CONTEXT_EXEMPT_PATHS` = 헬스 3 + 웹훅 + `/session/check` · 관리자 판정 정확 일치 · **C2** `/session/check` 행(쿼리 3 · `active` 식 · 같은 값이면 active · `nbf`는 sub 키가 있을 때만 · 400 · 503 0.2 s) · **C3** `/sessions/revoke` 행(폐기 범위 = 한 행 한 키 · `sid` 원천 · `nbf` 내림+1 · 응답 타입 · 관리자 교차 테넌트 컨텍스트 재설정 · 요청 처리 중 Authentik 호출 금지 · 지표 · 400/403) · **C4** 웹훅 행 + §웹훅 서명 규약 업무 필드(사용자 단위 · `event_pk` · 무시 action 200 · action 누락 400 · Dragonfly 실패 202 · `sid` 미사용 근거) · **C5** `/tenants/me` 404(날짜 정리) · **C6** §주기 작업(작업 이름 4 · `beat_init` 동기 1회 · 덮어쓰기 · beat 주기 표기 · `apply()` 실행 가능) · **C7** 신설 §identity-admin 전용 설정(`AUTHENTIK_API_URL` · `AUTHENTIK_API_TOKEN` · `AUTHENTIK_WEBHOOK_SECRET` · `AUTHENTIK_WRITES_ENABLED` · `OPENFGA_API_URL` · `OPENFGA_STORE_ID` · `OPENFGA_PRESHARED_KEY` · `AUTHENTIK_JWKS_URL` — 원천 Vault 키 · 기본값 · 공개 호스트 기동 실패 · 호출 시점 읽기) · **C8** 오류 슬러그 `not_found` + 검증 실패 400(Ninja 422 금지) · **C9** 호스트 — `ADMIN_HOST` 정확 일치(빈 값은 어떤 호스트와도 불일치) · `ALLOWED_HOSTS` 밖 400을 업무 경로에서 인증보다 먼저 · **C10** data-model §1 시드 파생 쓰기 규칙(DB → 파생 · 실패 = `CommandError` · 그룹 선재 필수(만들지 않음) · `sub` = 사용자 UUID 조회 · attributes 병합 PATCH · 쓰기 플래그 · FGA 중복만 성공 · slug 충돌 실패 · 출력에 비밀 0) · **C11** data-model §3(`sid` 의미 · `nbf` 정수 초 · `event_pk` · 한 행 = 한 키 · 재적용 덮어쓰기·TTL 비복원) · **C12** data-model §9 provider Subject mode `user_uuid`(web-bff · web-bff-dev · identity-admin — BFF 토큰과 교환 토큰의 `sub` 일치 + 역조회 · VD-T066-1) · **C13** pod-template §런타임 계약 — 프로브 Host(pod IP) 문제와 해결 책임(T072) · 설정 행에 공개 호스트 기동 실패 · **오류 행 신설**(RFC 9457 · 검증 400 · 호스트 400 선행) · **C14** 규칙 django-pod §Auth(Access 전용 경로 · `ADMIN_HOST` 정확 일치 · 호스트 400·프로브 Host) · §Settings(공개 호스트 · 호출 시점 읽기) · **§Errors 신설**(kr 미러 pending — /finish) · **C15** quickstart §US6 identity-admin 실행 줄.
+- **결정 D1–D14(컨트롤러)**:
+  - **D1 산출물 · 범위**: 신규 `apps/identity-admin/tests/test_api.py`(api-1..50) · `apps/identity-admin/tests/_identity_fakes.py`(가짜 Authentik · 가짜 OpenFGA · DNS 가드 · 닫힌 포트 — Django import 0) · `apps/identity-admin/tests/test_identity_fakes.py`(fake-1..N · `-p no:django`로 돈다); 수정 `packages/django-common/tests/test_auth.py`(auth-32 덧붙임 + docstring T070 가정 한 줄) · `packages/django-common/tests/authapp/urls.py`·`views.py`(시험 경로 `access-only` 하나). **만들지 않는다**: `apps/identity-admin/tests/__init__.py`·`conftest.py`·pyproject·uv.lock(전부 T072 템플릿이 T073에서 생성 — 지금 만들면 copier 충돌) · 스텁 `apps/identity-admin/pyproject.toml` 무변경 · 루트 pyproject/uv.lock 무변경.
+  - **D2 T072 가정(생성물 시험 인프라 — test_api.py docstring에 ①–⑧로 적는다)**: ① pytest-django 설정 = pod 설정(`identity_admin.settings`를 import하는 tests 래퍼 허용) · DATABASES `default`(app role · TLS) + `owner`(owner role · `TEST.MIRROR`) · 세션 시작 owner 별칭 migrate(django-common `django_db_setup` 재정의와 같은 꼴) ② 픽스처 `dragonfly`(세션 · `.admin_url`(Secret) · `.host` · `.port` — admin = 전 키 사용자) · `jwks_server`(세션 · `.jwks_url` · `.base_url` · `.authentik_key` · `.access_key` · `.hits`) ③ 헬퍼 `tests._jwt`(`mint` · `bearer_claims` · `access_claims` · `AUTHENTIK_KID` · `ACCESS_KID` · `JWKS_PATH` · `sign_webhook` · `webhook_body`) · `tests._problem.assert_problem` · `tests._secret.Secret`(django-common과 같은 API) ④ `tests/__init__.py` · pyproject `addopts --tb=short` · `filterwarnings` 자기 모듈 한정 ⑤ win32 `TESTCONTAINERS_HOST_OVERRIDE=127.0.0.1`(testcontainers import 전) ⑥ 시험 프로세스 `os.environ`에 pod 설정이 요구하는 env 키 전부(래퍼의 `os.environ.setdefault` — 사실 ⑩ · 하위 프로세스 기동 시험이 복사) ⑦ Celery `task_always_eager` 끔(요청 경로가 Authentik을 동기로 부르는지 api-19가 본다) ⑧ 생성물은 `test_api.py` · `_identity_fakes.py` · `test_identity_fakes.py` 이름을 쓰지 않는다.
+  - **D3 T073 가정(identity-admin 이름 — docstring ①–⑫)**: ① 설정 이름·기본값 = 계약 §identity-admin 전용 설정 + 템플릿·T063 이름(`ADMIN_HOST` · `ALLOWED_HOSTS` · `AUTHENTIK_ISSUER/JWKS_URL/AUDIENCE` · `ACCESS_TEAM_DOMAIN/AUD_M2M/AUD_ADMIN/EXPECTED_CN` · `AUTH_ACTOR_SUB` · `DRAGONFLY_URL` · `KAFKA_BOOTSTRAP_SERVERS` · `APP_VERSION` · `APP_GIT_SHA`) — 전부 호출 시점에 `django.conf.settings`에서 읽는다 ② 미들웨어: `AUTH_ACCESS_ONLY_PATHS = ("/session/check",)` · `TENANT_CONTEXT_EXEMPT_PATHS` ⊇ 헬스 3 + `/webhooks/authentik` + `/session/check` · 호스트 검증이 인증보다 먼저(업무 경로) ③ 모델은 db_table `tenant` · `tenant_membership` · `session_revocation_log`(+ django-common `outbox`)로 찾는다(`apps.get_models()` — 모듈 경로 무관) · 필드 = data-model §1–3(+ `event_pk`) · `tenant_id`는 attname 대입(FK든 UUIDField든) ④ Celery 앱 `identity_admin.celery.app` · 작업 4(`identity_admin.tasks.reconcile_denylist` · `purge_session_revocation_log` · `reconcile_authentik_sessions` · `purge_dead_outbox`) · beat 주기 · `beat_init` 수신 → 같은 프로세스 동기 재적용 ⑤ 명령 `seed_tenant --tenant-id --owner-sub --member-sub` · 실패 = `CommandError` ⑥ Authentik/OpenFGA HTTP 표면 = data-model §1 시드 규칙(가짜 서버가 흉내) ⑦ `/api/openapi.json`(Bearer 경로) ⑧ admin = `django.contrib.admin` `/admin/` · `ADMIN_HOST`에서 익명 → 302 `…/admin/login/` ⑨ 뷰 오류 RFC 9457(400 `validation_error` · 403 `forbidden` · 404 `not_found`) ⑩ 지표 `session_revocations_total{reason}`(prometheus_client 기본 REGISTRY · 샘플 `_total`) ⑪ 응답 본문 모양(계약 표 그대로 · 202 `{id, nbf, expires_at}`) ⑫ `on_commit` 위임 실패(브로커 불통 등)가 응답을 500으로 만들지 않는다(robust).
+  - **D4 T066 소유 픽스처(test_api.py)**: `ia_dragonfly`(세션 — admin 연결로 `ACL SETUSER identity-admin-test on >… ~revoked:* ~identity-admin:* +@all` = 운영 identity-admin 규칙 · URL은 Secret · 템플릿 conftest의 사용자 이름과 무관) · `fake_authentik`·`fake_openfga`(세션 서버 + 함수마다 상태 초기화 autouse) · `ia_settings`(함수 autouse — pytest-django `settings`로 `AUTHENTIK_JWKS_URL`=로컬 JWKS · `ACCESS_TEAM_DOMAIN`=JWKS base · `ACCESS_AUD_*`·`ACCESS_EXPECTED_CN` 시험 값 · `AUTHENTIK_ISSUER`=공개 URL 문자열 · `AUTHENTIK_AUDIENCE` · `AUTH_ACTOR_SUB=""` · `DRAGONFLY_URL`=ia 사용자 · `AUTHENTIK_WEBHOOK_SECRET`=세션 랜덤 Secret · `ALLOWED_HOSTS`=[svc `identity-admin.jt-dev.svc` · m2m `identity-m2m-dev.joshuatech.dev` · admin `admin.joshuatech.dev`] · `ADMIN_HOST`=admin 호스트 · `AUTHENTIK_API_URL/TOKEN` · `OPENFGA_API_URL/STORE_ID/PRESHARED_KEY`=가짜 서버 · `AUTHENTIK_WRITES_ENABLED`=False(계약 기본값 · dev 꼴 — 시드 시험(api-36·37·39·40·41)과 api-19 후반만 켠다) · `KAFKA_BOOTSTRAP_SERVERS`=닫힌 포트) · `ia_flush`(함수 autouse — admin FLUSHALL) · `public_dns_guard`(함수 autouse — `socket.getaddrinfo` 감싸 `joshuatech.dev`·하위 이름 조회를 기록하고 `gaierror`로 막는다 · teardown에 기록 0 단언) · 클라이언트 팩토리(설정 덮은 뒤 새 `django.test.Client` · 요청마다 Host 명시) · 자격 헤더 헬퍼(Access M2M + Bearer(sub · tenant · sid · groups · iat)).
+  - **D5 가짜 서버(`_identity_fakes.py` · 충실도 규칙)**: `FakeAuthentik`(127.0.0.1 임시 포트 · `Authorization: Bearer <token>` 아니면 403 · groups `?name=` 목록(`{"pagination": …, "results": […]}`) · `add_user` 204(이미 소속이어도 204 · 없는 그룹/사용자 404) · users `?uuid=` · 단건 GET · PATCH `attributes` **통째 교체** · 그 밖 404 · 그룹 생성 엔드포인트 없음 · 요청 기록(메서드 · 경로 · 쿼리 · 인증 여부)) · `FakeOpenFga`(Bearer preshared 아니면 401 · 다른 store 404 · `write`: 중복이면 400 `{"code": "write_failed_due_to_invalid_input", "message": "cannot write a tuple which already exists: …"}` — `on_duplicate: "ignore"`면 200 · 형식 오류 400 `validation_error` · 다음 쓰기 실패 주입 · `read`(부분 키 일치) · `check`(owner ⊂ member — data-model §10) · 요청 기록) · `closed_port()` · `public_dns_guard()`. 자기검사 `test_identity_fakes.py`(fake-1..N · `urllib.request`만 · Django 없이 지금 초록).
+  - **D6 테스트 목록(test_api.py · 제목에 id · 문면 조각 ↔ id)**: **헬스** api-1 `/healthz`(svc 호스트 · 자격 없음 · DB 마크 없음) 200 = `{status: "ok", version, git_sha}`(설정값) · api-2 DB 정상 + Dragonfly·Kafka 닫힌 포트 → `/ready` 200 · `/health` 200 degraded(db ok · dragonfly fail · kafka_producer fail) + version·git_sha · api-3 DB 다운 → `/ready` 503 `not_ready` · `/health` 200 degraded(db fail) · `/healthz` 200 · 각 < 3 s · **`/session/check`(DB 마크 없음 — DB에 닿으면 pytest-django가 막는다)** api-4 Access만 → 200 `{active: true}`(`nbf` 키 없음) · 쓰레기 Bearer를 붙여도 200 · api-5 Access 없음·`common_name` 불일치 → 403 `access_required` · api-6 sub 키 = iat+1 → `{active: false, nbf}` · = iat → `{active: true, nbf}`(경계) · = iat-100 → active · api-7 sid 키 → `sid` 쿼리 있으면 inactive(`nbf` 없음) · 없거나 다른 sid면 active · api-8 Dragonfly 닫힌 포트 → 503 `denylist_unavailable` < 0.5 s(데몬 스레드 상한 5 s) · api-9 sub 누락·iat 누락·iat 비정수 → 400 `validation_error` · **revoke(transactional_db)** api-10 본인 `all_devices: true` `logout_all` → 202(`id` uuid = 로그 행 · `nbf` 정수 · `expires_at` ISO = nbf+330) · 로그 1행(테넌트 = 토큰 · `sid` NULL · reason · `nbf`·`expires_at` · `event_pk` NULL) · outbox 1행(topic · partition_key = 테넌트 · payload type/source/subject `user:<sub>`/tenantid · data `{sub, sid: null, nbf, reason}`) · `revoked:sub:{sub}` = nbf · TTL ∈ [325, 330] · sid 키 없음 · 지표 +1 · api-11 초 경계 정렬(소수부 < 0.3까지 대기) 뒤 그 토큰으로 revoke → 같은 토큰의 다음 요청 401 `session_revoked` · 응답 nbf > iat · api-12 `all_devices: false` → 토큰 `sid` 키 = "1" · TTL · sub 키 없음 · 로그·이벤트 sid · 같은 sub의 다른 sid 토큰은 200 · api-13 본문 `sid` 우선 · api-14 sid 없음 → 400 · 행 0 · 키 0 · api-15 관리자(테넌트 A 토큰 · `groups: ["platform-admin"]`)가 테넌트 B 소속 사용자 폐기 → 202 · 로그·이벤트 tenantid·partition_key = **B** · 대상 sub 키 · api-16 비관리자(groups 없음 · `["platform-admins"]` · 문자열 `"platform-admin"` · `["platform-admin-x"]`)가 다른 sub → 403 `forbidden` · 행 0 · 자기 sub를 적은 비관리자는 202 · api-17 관리자 + 멤버십 없는 sub → 400 · api-18 reason 범위 밖 · `all_devices` 누락 · JSON 아님 → 400 · 행 0 · api-19 `AUTHENTIK_WRITES_ENABLED=False` → 202 · 가짜 Authentik 요청 0(직후 + 0.5 s 뒤) / `True` → 202 · 응답 시점까지 가짜 Authentik 요청 0(요청 경로에서 동기 호출 금지) · **웹훅(svc 호스트 · 자격 헤더 없음)** api-20(action `logout`·`session_deleted` 파라미터) → 202 · 로그(멤버십 테넌트 · `sid` NULL(본문 sid 무시) · reason `authentik_webhook` · nbf = 본문 nbf · `event_pk` = pk) · outbox(tenantid · data sid null) · sub 키 = nbf · TTL ∈ [320, 330] · sid 키 없음 · 지표 +1 · api-21 같은 바이트·서명 재전송 → 200 · 행·이벤트·키·지표 불변 · api-22(서명 없음 · 다른 비밀 · created −301 s · +301 s) → 401 `webhook_signature_invalid` · 행 0 · 응답에 비밀 없음 · api-23 멤버십 없는 sub → 400 · 행 0 · 키 0 · api-24 action `login` → 200 · 행 0 · 키 0 / action 누락·정수 → 400 · api-25 본문 nbf 없음 → nbf ∈ [⌊t0⌋+1, ⌊t1⌋+1] · api-26 Dragonfly 닫힌 포트 → 202 · 로그·outbox 1 · 키 없음 → URL 복구 + `reconcile_denylist` apply → 키 = nbf · **/tenants/me** api-27 owner → 200 정확한 본문 · api-28 S가 A(owner)·B(member) 둘 다 → B 토큰 → B · member · 본문에 A의 id·slug 없음 · api-29 S가 A에만 → B 토큰 404 `not_found`(본문에 A 없음) · 멤버십 없는 사용자 404 · **재적용·purge·beat** api-30 FLUSHALL 뒤 행 4(sub 활성 · sid 활성 · 만료 · 낡은 값이 미리 SET된 sub) → `reconcile_denylist` → 키 3 · 값 · TTL ≈ `expires_at - DB now()`(±2 s) · 낡은 값 덮어씀 · 만료 행 키 없음 · `denylist:epoch` 없음 · api-31 두 번 실행(사이 1.2 s) → TTL 비증가 · 330 아님 · api-32 `beat_init.send(...)` → 같은 프로세스에서 키 복구(동기) · api-33 beat_schedule: 작업 4 이름 · 30 s 정확 · 일 1회 3 · `app.tasks` 등록 · api-34 로그 purge 경계(DB now 기준 −30 d −1 h 삭제 · −30 d +1 h 유지 · 활성 유지) · api-35 outbox dead purge 경계(`publish`로 3행 → dead_at −30 d −1 h 삭제 · −30 d +1 h 유지 · NULL 유지) · **seed_tenant** api-36 1회 → Tenant(id · `joshuatech` · `JoshuaTech` · active) 1 · 멤버십 {(owner-sub, owner), (member-sub, member)} · 가짜 Authentik 그룹 소속 2 · attributes 병합(기존 키 유지 + `tenant_id`) · FGA 튜플 2 · 모든 가짜 요청 인증 · 명령 출력에 토큰·키 없음 · api-37 2회 → id·행 수·가짜 상태 불변 · 성공(가짜 FGA는 중복 쓰기를 400으로 거부한다) · api-38 쓰기 플래그 False → Authentik 변경 요청(POST/PATCH/PUT/DELETE) 0 · FGA·DB는 기록 · api-39 FGA 다른 400(`validation_error`) → `CommandError` · api-40 그룹 없음 → `CommandError` · 그룹 생성 시도 0 · api-41 slug `joshuatech`가 다른 id로 있음 → `CommandError` · tenant 1행 · **호스트·admin·기동** api-42 `ADMIN_HOST` 설정 · 유효 자격 → `/admin/` m2m 404 · svc 404 · admin 호스트 302(`/admin/login/`) · api-43 `ADMIN_HOST=""` → 세 호스트 모두 404 · api-44 `ALLOWED_HOSTS` 밖 Host → `/session/check`(자격 없음 · Access만) 400 · `/tenants/me`(전 자격) 400 · svc·m2m 양성 대조 200 · api-45 공개 `iss` 토큰 요청 200 + JWKS 서버 hit 증가 + DNS 가드 기록 0 · api-46..49 하위 프로세스(`sys.executable` · cwd·`PYTHONPATH` = pod 루트 · `DJANGO_SETTINGS_MODULE=identity_admin.settings` · env = `os.environ` 복사 + 덮기 · `django.setup()` + ROOT_URLCONF import + 값 JSON 출력 · timeout 120 s · 실패 메시지는 종료 코드 + stderr 마지막 줄만) — api-46 `ADMIN_HOST=""` 기동 0 · api-47 `ADMIN_HOST` 없음 → 0 아님 + `ImproperlyConfigured` · api-48 `AUTHENTIK_API_URL`·`OPENFGA_API_URL`·`AUTHENTIK_WRITES_ENABLED` 없음 → svc DNS 기본값 2 · False · api-49(`AUTHENTIK_JWKS_URL` · `AUTHENTIK_API_URL` · `OPENFGA_API_URL` · 대문자 호스트) 공개 호스트 → 기동 실패 · **OpenAPI** api-50 `/api/openapi.json`(자격) → 경로·메서드(헬스 3 · `/session/check` GET · `/sessions/revoke` POST · `/webhooks/authentik` POST · `/tenants/me` GET) · revoke 본문(속성 4 · reason enum 3 · required ⊇ {all_devices, reason}) · 성공 코드(202 · 200 · 200 · 202) · session/check 질의(sub·iat 필수 · iat integer · sid 선택) · `/admin` 경로 없음(`$ref` 해석 헬퍼).
+  - **D7 auth-32(django-common `tests/test_auth.py` 덧붙임 — T070 가정)**: `settings.AUTH_ACCESS_ONLY_PATHS = ("/access-only",)` → 유효 Access만 → 200 · 응답 `common_name` = 설정값 · `auth_claims`·`tenant_id` 속성 없음 · 쓰레기 Bearer 무시 · Access 없음/`common_name` 불일치/aud 밖 → 403 `access_required` · `DRAGONFLY_URL` 닫힌 포트여도 200(미들웨어 거부 목록 조회 없음) · `/access-only/`(끝 슬래시)는 Access 전용 아님 → Bearer 없이 401 `invalid_token` · 설정을 두지 않으면(기본 빈 튜플) `/access-only`도 401. authapp `access-only` 뷰는 세 값을 비춘다. T062 docstring T070 가정에 한 줄.
+  - **D8 비밀·출력 위생**: 세션 비밀(ia Dragonfly 비밀번호 · 웹훅 비밀 · 가짜 서버 토큰 · preshared)은 `Secret` · 노출 단언은 bool로 접는다(본문 전체를 실패 출력에 싣지 않는다) · DB에 닿는 요청의 예외는 트레이스백 없는 실패(T063 꼴) · 하위 프로세스 실패 메시지는 종료 코드 + stderr 마지막 한 줄(가린 사본) · 시드 출력 검사.
+  - **D9 시간·경계 규율**: 경계 시각은 DB `now()`(Python 시계 금지 — T061 교훈) · TTL은 범위 단언(±5 s) · 같은 초 시험은 소수부 < 0.3 정렬 · 막힐 수 있는 요청(DB·Dragonfly·Kafka 다운)은 데몬 스레드 + 상한 · `time.sleep`은 재적용 TTL 시험의 1.2 s와 api-19의 0.5 s뿐.
+  - **D10 검증 방법(빌더 · 오라클)**: 빌더 — 저장소에 D1 파일을 쓰고, scratch 미니 저장소(`<scratch>/t066/mini/apps/identity-admin` = T072 시제품: 독립 pyproject(path 소스 django-common · ninja 1.7.0 · celery · pydantic-settings · pytest-django · testcontainers) · `tests/__init__.py` · conftest(django-common 것 이식 — pg · DB 재정의 · dragonfly · jwks_server · win32 override) · 설정 래퍼 · `_jwt`/`_problem`/`_secret`/`_dragonfly` · `docker/pg-tls`) + `packages/django-common` 복사에서 ⓐ `uv sync` ⓑ `-p no:django --collect-only tests/test_api.py` 수집 성공 ⓒ `test_identity_fakes.py -p no:django` 초록 ⓓ 전체 실행 = 빨강(`identity_admin` 없음 — 설정 import 실패) 원문 · 저장소 안 신규 파일 `py_compile` · 바이트 · gitleaks. **오라클(별도 에이전트 · api-builder opus)** — 빌더의 미니 저장소를 복사해 저장소 밖 일회용 참조 구현(django-common 최소: tenancy · outbox(모델 · publish · purge) · auth(미들웨어 · Access 전용 · 웹훅 헬퍼 · Denylist) · health / identity_admin: 설정 · urls · api · 모델·마이그레이션 · tasks · celery · seed_tenant · Authentik/FGA 클라이언트)으로 test_api.py **전부 초록** + `test_identity_fakes.py` 초록 + django-common `tests/test_auth.py`(auth-32 필수 · T062 전체는 가능한 만큼 — 충돌 탐지) → 변이 ≥ 30(설계 표 + 자체) 각각 잡는 테스트 기록 · 시험 결함은 저장소 파일을 고치지 않고 증거와 함께 보고(scratch 사본만 임시 패치 가능 · 패치 전부 보고) · 끝나면 참조 구현 삭제(`find -delete`).
+  - **D11 워크플로**: 빌더(api-builder opus) → 오라클(api-builder opus) → 리뷰 2렌즈 병렬(세션 모델) — A 계약·문면(문면 조각 ↔ api-N · 계약 값 · 가정 표시 · 판별력 근거 = 오라클 변이 표) · B 시험 안전·위생·결정성(비밀 노출 · 하위 프로세스 · DNS 가드 부작용 · 시간 의존·플레이크 · 가짜 서버 스레드 정리 · Docker · 저장소 위생 · 이식성).
+  - **D12 VD**: VD-T066-1 Authentik API 모양(users `?uuid=` · `sub_mode user_uuid`의 sub = user.uuid · groups `?name=` · add_user 멱등 204 · PATCH attributes 교체 · 이벤트 문맥과 토큰 sid 불일치) — T081 · T083 실측, 어긋나면 가짜 서버 + data-model §1 보정 · VD-T066-2 OpenFGA 중복 쓰기 코드·메시지 · `on_duplicate` 지원(chart 0.3.13의 앱 버전) — T082 · VD-T066-3 Celery 브로커 = Dragonfly ACL(`~identity-admin:*` + `global_keyprefix`) 아래 worker·beat·pidbox 채널 권한 — T073 · T075 · VD-T066-4 kubelet 프로브 Host — T072 · T075 · VD-T066-5(O1 이어짐) Django admin 사람 경로(GitHub IdP Access JWT에 `common_name` 없음 · Bearer 없음 → 현 미들웨어로는 403/401) — T072 · T073 · T084(api-42는 M2M 자격으로 "장착 여부"만 본다).
+  - **D13 인계**: **T068** `TENANT_CONTEXT_EXEMPT_PATHS`는 pod 설정(라이브러리 기본은 헬스 3) · **T069** purge 함수(템플릿 작업 `purge_dead_outbox`가 감쌀 라이브러리 함수 — `dead_at + 30 d < now()` · DB now) · **T070** `AUTH_ACCESS_ONLY_PATHS`(auth-32) · **T072** D2 ①–⑧ + 프로브 Host + 설정 공개 호스트 기동 실패 + 검증 오류 400 핸들러 + 호스트 검증 선행 + Celery 레이아웃(`<pod_snake>/celery.py` · `tasks.py`의 `purge_dead_outbox` · beat 일 1회) + admin urlconf 정확 일치 장착 + 내장 `test_openapi_snapshot.py`가 identity-admin 스냅샷을 맡는다 · **T073** D3 ①–⑫ + 관리자 교차 테넌트 컨텍스트 재설정 + `on_commit(robust)` + 스텁 pyproject 위 copier 생성(충돌 처리 · T066 시험 파일 3개 보존) + 루트 members 제거(T065) + `event_pk` 마이그레이션 · **T075** ConfigMap `AUTHENTIK_WRITES_ENABLED`(dev false · prod true) · ES env 이름(`AUTHENTIK_API_TOKEN` · `AUTHENTIK_WEBHOOK_SECRET` · `OPENFGA_STORE_ID` · `OPENFGA_PRESHARED_KEY`) · 프로브 Host · **T076** m2m 호스트의 `/webhooks`·`/healthz`·`/ready` 404 · **T081** provider 3개 `sub_mode: user_uuid` · `groups` scope mapping(목록) · 웹훅 매핑 본문 `{pk, created, action, sub(= 사용자 UUID), nbf?}` + HMAC 헤더 · login 이벤트는 200 무시 · **T082** VD-T066-2 · **T083** 시드 실행(prod = 쓰기 켬 · dev = 쓰기 끔 + dev FGA store) · **T085** 웹훅 사용자 단위 폐기(다른 기기 동반 로그아웃 — 보고서에 기록) · SIGKILL ≤ 30 s.
+  - **D14 편차 정책**: 실측 근거가 있으면 지시문과 달리 하고 보고에 적는다 · 계약과 어긋나면 계약 우선 · 계약 밖 단언을 더하려면 근거 문장을 함께 · 오라클이 찾은 시험 결함은 컨트롤러가 K-결정으로 고친다.
+- **순서**: 보정(C1–C15 · 완료) → 설계(이 절) → 커밋(설계) → 워크플로(빌더 → 오라클 → 리뷰 2) → K-결정 · 수정 → 커밋(시험) · tick 72/119 · 학습 로그 → T067.
+
+### T066 결과(r1 → r4 · 2026-11-03) — D1 · D2 · D6 · D13 정정은 이 절이 우선한다
+
+- **워크플로 4회**(지시문 `.superpowers/t066/prompts/` · 보고 `.superpowers/t066/reviews/` — gitignore): **r1** `wf_a8fa3331-773`(빌더 → 오라클 → 리뷰 A/B · 1.92M 토큰 · 2h04m) · **r2** `wf_e1cb8980-00f`(수정 빌더 → 오라클 → 리뷰 A2/B2 · 1.69M · 1h54m) · **r3** `wf_f8db7bf2-ee8`(수정 빌더 → 오라클(+ 실험 E1/E2 · Linux 탐침) → 리뷰 A3/B3 · 1.41M · 1h27m) · **r4** `wf_af118d59-d3c`(수정 빌더 → 오라클(표적) → 통합 리뷰 · 0.92M · 1h06m). 빌더 · 오라클 = api-builder(opus) · 리뷰 = 세션 모델(Opus 5.5).
+- **r1 결과**: 빌더 api-1..50(수집 60 = 50 + parametrize) + fake-1..21 + auth-32 · 오라클 81/81 · 3회 결정적 · 변이 82 중 75 검출(생존 M46 · M72 · M74 · M86–M89) · 리뷰 A approve_with_fixes(중 6 · 하 8) · B approve_with_fixes(**high 1: 가짜 Authentik에 미끼가 없어 필터 없이 `results[0]`을 쓰는 시드가 통과 — 운영이면 tenant 사용자를 `authentik Admins`(is_superuser)에 넣는다** · 중 1: 기동 실패 출력의 비밀 · 하 6) → **K1–K27**.
+- **r2 결과**: 수집 100(api 75 + fake 25) · 오라클 100/100 × 7 · 단독 12회 · r1 생존 6 전부 검출 · 서로 다른 변이 110 중 106 검출(오라클 표기 "116 중 112"는 별칭 6쌍 이중 집계) · 생존 M46(한계) · **N8**(pydantic `str(ValidationError)`는 긴 `input_value` 표현을 앞 25 + `...` + 뒤 24자로 잘라 마지막 값의 **꼬리 조각**만 싣는다 — 값 전체 단언이 놓침 · 컨트롤러 재현: 32자 비밀 전체 불일치 · 꼬리 22자 일치 · 12자 조각 일치) · **N36**(import 시점 상수 — `-k api_53` 단독에서만 생존: pytest-django가 DB 테스트를 먼저 돌려 단독 실행에서는 이 테스트가 미들웨어 첫 적재) · **N39**(Kafka 예산 0.5 s 순차 → 2.76 s < 3 s) · 리뷰 A2 · B2 approve_with_fixes(중: 조각 노출 · 상대 `STATIC_URL` 요청 단위 접두 불가 — Django 6.1 `LazySettings.__getattr__`이 첫 접근 값을 script prefix와 함께 캐시(`django/conf/__init__.py:140-145` 확인)) → **K28–K37**.
+- **r3 결과**: 수집 102(api 76 + fake 26 · fake-26 빨강 → 초록) · 오라클 102/102 × 4(연속 3 + 마지막) · 단독(api-53 ×3 · api-40 ×3 · api-24 · 기동 17) 전부 통과 · r2 생존 N8(api-47 6/6) · N36(단독) 검출 · 새 변이 N41–N45 · N47 · N54–N56 검출 — **같은 변이가 r2 시험 파일에서는 생존**(K 변경이 원인) · 통제 N46(`hide_input_in_errors` + `str(exc) from None`) · N57(validator가 직접 raise) 통과(거짓 양성 0) · 서로 다른 변이 44(잡힘 37 · 생존 7: N39 · M46 · N48 `hide_input_in_errors` 빠짐(관찰 불가) · N49 13자 꼬리(문턱) · N50 상대 `STATIC_URL` · N51 handler500 없음 · N52 호스트 밖 400도 `invalid_host`) · 누적 124(117 · 7) · **실험** E1(부모 env `SSLKEYLOGFILE` + `GIT_CONFIG_*` → 새 파일 0 — 참조 자식이 SSL 컨텍스트를 안 만들어 단독으로는 판별 불가) → E1S(자식이 `ssl.create_default_context()`): r2 시험 키 로그 18개 → r3 0 · E2(자식이 `git config --get`): r2 17 failed(거짓 양성) → r3 17 passed · **Linux 탐침**(`python:3.13-slim-bookworm` amd64 · 같은 판 고정): psycopg require/prefer 2.001 · redis 0.203–0.206 · kafka 1.002–1.006 · 순차 3.21 · 병렬 2.00 s = Windows와 같음(닫힌 포트 순차 합은 Linux ≈ 1.0 s — api-3 단독으로는 병렬성을 못 가린다는 기존 서술 확인) · 리뷰 A3 approve_with_fixes(하 5) · B3 approve_with_fixes(하 2) → **K38–K42**.
+- **r4 결과**: 수집 102(id 목록 r3와 같음) · 가짜 26 passed · fake-18 빨강(변이 가드 — finally가 getaddrinfo만 되돌림: r4 fake-18 실패 · r3 fake-18 · fake-26은 통과 = 대조) → 초록 · 미니 빨강은 r3와 바이트까지 같음 · 오라클 참조(+ handler403) 102/102 × 3 · 단독(api-54 ×2 · 기동 17 · fake-18) 통과 · 재확인 14 전부 검출(N8 · N44 · N47 · N4 · N25 + 공용 헬퍼 영향 9) · **통제 N58**(이름만 · `from None` · hide 켬 + raise 줄 끝 주석에 `input_value` 낱말) r4 통과 / r3 파일 14 failed = r3 낱말 단언의 거짓 양성이 실제로 없어짐 · N61(env 없을 때 절대 `/static/`) 통과 · N50 · N60(끝 슬래시 없음) · N59(가드 변이) 검출 · 생존 N48 · N49 · N51 · N52 · N62(handler403 없음 — 오라클 추가) 전부 한계 절 · §기본 테스트 3에 적힘 · 누적 서로 다른 변이 127(잡힘 120 · 생존 7: N39 · M46 · N48 · N49 · N51 · N52 · N62) · 통합 리뷰 approve_with_fixes(하 4 — 문서 · 계약만: R4-1 hide를 켜면 `from None` 위반(연쇄 예외)도 관찰 불가 → 한계 절 한 줄 · R4-2 표식 단언 범위 "stderr" → "stdout · stderr"(structlog는 stdout) · R4-3 정적 자산 서빙 시험 닻 없음 → §기본 테스트 3에 `/static/…` → 200 · R4-4 CSRF 실패 응답 해석 갈림 → 403 `forbidden` problem+json 확정 + `CSRF_TRUSTED_ORIGINS` 인계) → **컨트롤러 직접 반영**(단언 변경 0 · 리뷰가 재실행 · 회차 불요로 판정) → 최종 바이트로 미니 수집 102 · 가짜 26 · 빨강 동일 · 오라클 참조 102 passed · gitleaks 0 · 시험 컨테이너 0 · dangling 25 → 25.
+- **K-결정 요약**: K1 DB 마크 `databases=["default","owner"]`(MIRROR만 두면 TransactionTestCase가 flush하지 않는다) · K3 tenant_id 값 참조(FK 없음) · K4 all_devices 본문 sid 무시 · K5 api-51 관리자 단일 세션(본문 sid 필수 · 토큰 sid 금지) · K6 시드 재실행 쓰기 0 · K7 블랙홀 소켓(listen만 · accept 없음 — Linux 닫힌 포트는 즉시 RST라 순차 /health도 3 s 안) + api-52 · K8 admin 접두 api-53 · 54(BOOT_SCRIPT `script_prefix` · `<missing>` 표식) · K9 api-56 사용자 없음 · K10 웹훅 sub/nbf 타입 · K12 handler400/404 problem · K14 FLUSHALL 뒤 재전송 · K15 필수 6 parametrize · 빈 비밀 api-55 · apex · K18 미끼(`authentik Admins` is_superuser · `platform-admin` · akadmin pk 1) + 질의 단언 · K19 기동 비밀 난수 주입 + 부재 단언 · K20 Authentik 415 / FGA 관대 · K21 예열 · TTL ±5 · ±330 s · K22 `_timed` · K23 기동 DNS 가드(JT-DNS 줄 · TimeoutExpired · 긴 값부터 가림) · K24 프록시 env 끔 · K25 B-8(owner 질의 가드) 미채택 · **K28** 12자 조각 + `input_value` 낱말(bool로 접음) · **K29** 난수 64자 · `GIT_CONFIG_*`/경로형 이름 건너뜀 · `SSLKEYLOGFILE` 제거 · **K30** api-53 같은 Client 예열 · **K31** api-52 예산 가정 · N39 한계(시험 무변경) · **K32** api-40 writes 매개변수 · **K33** api-24 멤버십 "5" · **K34** T072 ① 풀 금지 · T073 ⑧ 미들웨어 · 한계 3줄 · **K35** DNS 가드 `gethostbyname` 계열 + fake-26 · **K38** 낱말 단언을 pydantic 표식 `input_value=`로 좁힘(트레이스백 소스 줄 주석 · 산문 거짓 양성 제거 · 제약을 시험 파일에 적음) · **K39** 한계 절(`hide_input_in_errors` 관찰 불가 · 12자 미만 조각 · 넣은 비밀이 아닌 설정 값 · handler403/500/그 밖의 400 → pod-template §기본 테스트 3) · **K40** api-54 접두 env가 있으면 `STATIC_URL == "/identity-admin/static/"`(env 없는 경우 무단언) · **K41** fake-18 예외 경로 네 함수 복원 · **마감 보정(컨트롤러 · 문서만)** 한계 절에 hide를 켠 구현의 연쇄 예외 관찰 불가 · 표식 단언 범위 stdout + stderr · 정적 자산 서빙 → §기본 테스트 3.
+- **계약 보정(미커밋 → 이 커밋)**: r1 — admin 경로 접두(env `FORCE_SCRIPT_NAME` → `ADMIN_SCRIPT_NAME` · ADMIN_HOST 요청 한정 · 전역 금지 · stripPrefix) · 비밀 3개 빈 값 기동 실패 · 기동 실패 메시지 이름만 `from None` · `handler400` `invalid_host` · `handler404` `not_found` · 웹훅 `sub`/`nbf` 타입 400 · 시드 조회는 쓰기 플래그 무관 · FGA 일괄 쓰기 단서 · 이벤트 data 키 4 · tenant_id 값 참조 / r2 — 정적 자산 절대 `STATIC_URL` `<ADMIN_SCRIPT_NAME>/static/`(T072 위임) · 미들웨어에서 접두 · `hide_input_in_errors=True` · `input_value` 잘림 문면 · `internal_error`(500) · 그 밖의 Django 400 → `validation_error` · urlconf마다 handler · ConfigMap `FORCE_SCRIPT_NAME` · 비밀 이름은 pod 계약이 열거 / r3 — `handler403`(`PermissionDenied` → 403 `forbidden`) · CSRF 실패 응답 꼴은 T072 · pod-template §기본 테스트 3에 Django 자체 오류(400 `invalid_host` · 그 밖의 400 `validation_error` · 403 · 404 · 500, urlconf마다) + 기동 설정 위생(이름만 · `input_value=` 없음 · `hide_input_in_errors=True` · 접두 env가 있으면 절대 `STATIC_URL`) · rules §Tests 인증 영역 · `has_admin` 행 "T066은 설정 값만(api-54)" / r4 — CSRF 실패도 403 `forbidden` problem+json(Django는 CSRF 거부를 handler403이 아니라 `CSRF_FAILURE_VIEW`로 보낸다 — 템플릿이 그 뷰를 둔다) · `has_admin` 행 `CSRF_TRUSTED_ORIGINS`에 `https://<ADMIN_HOST>`(TLS가 Traefik에서 끝나 Origin 검사의 기대값이 `http://`) · §기본 테스트 3에 CSRF 실패 403 · `has_admin` 정적 자산 `/static/…` → 200 · rules §Auth · §Errors · §Tests 동기 · kr pending 갱신.
+- **D 정정**: D1 범위 = api-1..56(+ parametrize) · fake-1..26 · D2 T072 가정 ①–⑨(⑨ handler400/404 · ① 연결 풀 금지 · ④ 기동 자식이 `tests._identity_fakes` import · ⑥ 비밀 64자 난수 · 형식 검사 금지) · D6에 api-51..56 · 함수 이름 변경 2(api-24 `webhook_body_fields` · api-47 `boot_required_missing`) · D13 인계는 아래.
+- **report.md 편차 후보**: ① tasks.md T075 · T084의 "`FORCE_SCRIPT_NAME`" = env 이름으로 재해석(Django 전역 설정 아님 — 전역이면 m2m `reverse()` · OpenAPI 경로 키에 접두) ② T075 문면에 없는 Traefik `stripPrefix` Middleware 추가 ③ 정적 자산 절대 `STATIC_URL`(T072 결정).
+- **인계**: **T070** auth-32(`AUTH_ACCESS_ONLY_PATHS`) · **T071** /health 병렬 · 예산(DB 2 s · DF 0.2 s · Kafka `list_topics(timeout=1.0)`) · obs-18이 닫힌 포트라 Linux에서 병렬성을 못 가린다 → 블랙홀로 강화 · `latency_ms` 의미 · **T072** 가정 ①–⑨ · SECRET_KEY 출처 + env.example 개수 · DATABASE_URL `sslmode` 자리값 · pytest-timeout(선택) · 프로브 Host · handler 3종(urlconf마다) · 정적 자산 서빙(stripPrefix 뒤 `/static/…`) · `hide_input_in_errors` · 기동 시 외부 연결 · 이름 조회 0 · 시험 DB 연결 풀 금지 · §기본 테스트 3 r3 항목(Django 자체 오류 400/403/404/500 · 기동 설정 위생 · 절대 `STATIC_URL`)을 내장 테스트 7파일 안에서(T065 `POD_TEST_FILES`) · 기동 실패 메시지와 트레이스백 소스 줄(raise 문 · 끝 주석)에 `input_value=` 글자 금지 · 빈 비밀 검사를 pydantic(`min_length`)로 하면 그 ValidationError 경로도 이름만(오라클 N47) · validator가 `ImproperlyConfigured`를 직접 내는 설계는 안전(N57) · `hide_input_in_errors`만으로는 부족(`errors()`에 값이 남는다) · 접두가 없을 때 상대 `"static/"`는 Django가 `/static/`으로 만든다 · 정적 자산 서빙은 시험 먼저(Django `static()`은 DEBUG가 아니면 패턴을 만들지 않고, `STATIC_URL`에서 접두를 따오는 서빙 방식은 `stripPrefix` 뒤 `/static/…`과 어긋난다 — WhiteNoise류면 접두를 따로 둔다) · `STATIC_URL` 끝 슬래시는 `django.setup()`이 아니라 `manage.py check`(`urls.E006`)가 본다 · `CSRF_FAILURE_VIEW` → 403 `forbidden` problem+json · `CSRF_TRUSTED_ORIGINS` = `https://<ADMIN_HOST>`(ADMIN_HOST가 비면 두지 않는다 — 확인은 T084) · urlconf별 handler403 확인 방법 = `set_urlconf(urlconf)` 뒤 `get_resolver(urlconf).resolve_error_handler(403)` + `response_for_exception(request, PermissionDenied())`(오라클 r4) · psycopg `connect_timeout` < 2는 두 OS 모두 2 s · librdkafka는 닫힌 포트(RST)여도 `list_topics` 자기 timeout까지 기다린다 · **T073** 가정 ①–⑫ · admin 접두 미들웨어(`request.path` · `META["SCRIPT_NAME"]` · `set_script_prefix` · finally 복원) · admin 접두는 호출마다 읽기(`__init__`에서 읽거나 첫 호출 때 캐시 금지 — 오라클 N41 · N54) · 비밀 3개 빈 값 거부 · 웹훅 `sub` str(ORM 조회 전에 `isinstance` — CharField 조회는 정수 5를 "5"로 바꿔 준다 · N56) · `nbf` int(bool 제외) · 시드는 쓰기를 꺼도 그룹을 조회하고 없으면 `CommandError`(N42 · N55) · 기동 중 `gethostbyname*` · `gethostbyaddr`에 공개 이름 금지(N45) · 시드 조회 먼저(`?name=` · `?uuid=` · JSON Content-Type · 같은 상태면 쓰지 않음) · revoke 관리자 단일 세션 본문 sid · `/session/check` 호출 시점 설정 · 웹훅 멱등 DB unique · B-8 owner 질의 가드(미채택 — 구현 리뷰 몫) · librdkafka `socket.connection.setup.timeout.ms` 최솟값 1000 · **T075/T076** stripPrefix Ingress · m2m 호스트 404 E2E · **T081–T085** VD-T066-1..5.
+- **교훈(tool-gotchas)**: 지시문에 `content/tmp/` 예외 명시 · 큰 다중 바이트 줄 grep은 `LC_ALL=C` · cp949 콘솔 출력은 `PYTHONIOENCODING=utf-8` · 외부 Temp 정리가 scratch venv 파일을 지운다(`uv sync --locked --reinstall`) · Bash 인라인 Python 문자열의 역슬래시 경로는 접힌다(슬래시로) · 같은 호스트에 다른 프로젝트 컨테이너가 뜬다(시험 컨테이너 수에서 빼고 건드리지 않는다) · 개발자 env에 상대 경로 `SSLKEYLOGFILE`을 두면 부모 pytest의 urllib opener가 cwd(pod 루트)에 키 로그를 만든다(자식은 K29로 막힘 — 오라클 r3 관찰) · 문자열 포함 단언은 트레이스백이 찍는 소스 줄 주석까지 본다 — 표식은 라이브러리 표기(`input_value=`)까지 좁힌다.
+
+## T067 (2026-11-03 시작 — US6 구현 · `packages/events` 스키마 7 · `scripts/check-compat.mjs` · CI job `events-compat` · 세션 모델 Opus 5.5)
+
+- **과제 문면(tasks.md :184)**: `packages/events`: `schemas/_envelope.json` + 토픽 스키마 6(contracts/events.md 필드 · `tenantid` = uuid) + `scripts/check-compat.mjs`(main vs PR 필드 diff) + `package.json` scripts + `ci.yml` job `events-compat` → T064 PASS.
+- **소스로 확인한 사실**:
+  - ① **API 정본은 T064 테스트 머리 주석이다**(`packages/events/tests/check-compat.test.mjs:1-36`): `diffSchema` · `compareDirectories` · `validateEvent` · CLI 0/1/2 · 진입점 가드. 지금 빨강은 수집 단계의 `Cannot find module '../scripts/check-compat.mjs'`이다(38케이스 · `it` 24).
+  - ② **compat-14–16이 실제 `schemas/`에 요구하는 것**:
+    - SAMPLE 봉투(`type` `identity-admin.session.revoked` · data `{sub: "9f2c-test", sid: null, nbf, reason: "logout_all"}`)가 통과한다.
+    - 필수 9개를 하나씩 빼면 실패한다.
+    - 아래 다섯 값은 각자 경로 `#/<필드>`에서 실패한다: `tenantid` "joshuatech" · `specversion` "0.3" · `id` "not-a-ulid" · `time` "2026-09-01" · `datacontenttype` "text/plain".
+    - `data.reason` "bogus"는 `#/data/reason`에서 실패한다.
+    - 모르는 type `nope.topic.event`는 schema-missing이고 message에 토픽 이름이 든다.
+    - schemasDir 옵션: 임시 디렉터리의 `sample.topic.event.json`(BASE)을 읽는다 — source는 `identity-admin` 그대로다(**source와 type의 접두를 맞추라고 검사하면 이 테스트가 깨진다**).
+    - `type` "../evil"은 ok false다.
+    - 파일 7개 · `$schema` 2020-12 · `x-version` semver · 외부 `$ref` 0 · `additionalProperties: false` 0 · 토픽마다 `$id` `https://joshuatech.dev/events/<토픽>/v1` · `type: object`.
+    - 봉투: required 정확히 9 · `tenantid.format` uuid · `specversion.const` "1.0" · `data.type` object.
+  - ③ **계약 표의 공백.** contracts/events.md §SP-1 표에서 타입·필수가 정해진 것은 `session.revoked`뿐이다. SP-2 토픽 5개는 필드 이름만 있다.
+    - 필수 집합은 main에 들어간 뒤로는 추가도 제거도 금지다(§호환성 규칙). 그래서 지금 정하는 값이 v1로 굳는다.
+    - 단, 이 기능이 main에 머지되기 전에는 기준(main)에 스키마가 없다. CI는 전부 "추가"로 보므로 머지 전까지는 고칠 수 있다.
+  - ④ **봉투 `type` = 논리 토픽**(env 접두 없음). 물리 토픽 = `OUTBOX_TOPIC_PREFIX` + 논리 토픽이다(T061 `packages/django-common/tests/test_outbox.py:64-66`). `validateEvent`는 `schemas/<type>.json`을 찾으므로, `type`에 `dev.`가 붙으면 schema-missing이 된다.
+  - ⑤ **Python 소비자**(T061 out-6 · test_outbox.py:194-201)는 `Draft202012Validator.check_schema` + `FORMAT_CHECKER`를 쓴다.
+    - jsonschema 4.26.0은 `uuid`를 자체 검사한다. `date-time`은 `rfc3339-validator`, `uri`는 `rfc3987`이 있어야 검사하는데, uv.lock에는 둘 다 없다 → 두 형식은 Python에서 통과로 처리된다.
+    - check_schema가 `pattern`을 Python `re`로 컴파일한다. 그래서 패턴은 JS(u 플래그)와 Python re에서 같은 뜻이어야 한다. `\d` · `\w` · `\s`는 Python에서 유니코드 숫자·글자까지 맞으므로 쓰지 않고 명시 문자 클래스만 쓴다.
+  - ⑥ **ajv 8.20.0**(T064 실측):
+    - 기본 strict에서는 `x-version`을 모르는 키워드로 보고 예외를 낸다 → `addKeyword`.
+    - 한 인스턴스에 같은 `$id`를 두 번 컴파일하면 예외다 → schemasDir마다 인스턴스를 따로 둔다.
+    - `["string", "null"]`(null을 포함한 2원소)는 strictTypes 예외로 허용된다. 테스트 출력에 strict 경고가 0인지 빌더가 확인한다.
+  - ⑦ **CI 현황**:
+    - ci.yml job은 4개(gitleaks · lint · test · kubeconform)다. 액션은 40-hex SHA로 핀한다 — kubeconform 하네스 static-2가 ci.yml의 모든 `uses:`를 단언하고, static-8이 기존 job이 남아 있음을 단언한다.
+    - 설치는 `pnpm install --frozen-lockfile --ignore-scripts`, 러너는 `ubuntu-24.04-arm`이다.
+    - job 로직은 `scripts/ci/<job>.sh`에 두고, 하네스 `tests/scripts/<job>.tests.ps1`과 `tests/run-all.ps1` 슬롯을 함께 둔다(T047 M1 kubeconform 꼴 — 도구가 없으면 첫 줄 SKIP).
+  - ⑧ **이벤트별 체크아웃**: PR 이벤트에서 체크아웃되는 것은 merge 커밋이다(HEAD^1 = base 끝 · HEAD^2 = PR head — gitleaks job이 같은 전제를 확인한다). push 이벤트의 기준은 `github.event.before`이고, 새 브랜치면 0이 40개다.
+  - ⑨ **검사기 자체의 신뢰.** 규칙 events.md는 "Never weaken or bypass this check"라고 한다. 그런데 PR 쪽 검사기로 PR 스키마를 검사하면, 같은 PR이 검사기를 약하게 고쳐 위반을 통과시킬 수 있다.
+  - ⑩ **package.json**: scripts `test` · `check-compat`는 T064가 이미 넣었다. description은 "skeleton, T015" 그대로다. `schemas/` · `scripts/`에는 `.gitkeep`만 있다.
+  - ⑪ **enum 값 추가 규칙과 소비자 검증이 충돌한다.** 소비자는 data를 `packages/events` 스키마로 검증하고, 실패하면 DLQ로 보낸다. 옛 이미지의 스키마에는 새 enum 값이 없어 거부된다. 그래서 "enum 값 추가 허용 · 소비자는 미지 값 무시"는 배포 순서 없이는 성립하지 않는다(T064 A-1 `additionalProperties`와 같은 꼴). SP-1에는 소비자가 없다.
+- **계약 보정(컨트롤러 · 이 설계와 같은 커밋 · "T067 보정 2026-11-03" 표식)**:
+  - **C1** events.md §SP-1 표 아래에 「필드 형식 · 필수(T067 확정)」 표를 둔다(토픽마다 필수 · 선택 · 타입 · 형식 — D2와 같다). 정본은 `packages/events/schemas/<토픽>.json`이고, 표와 어긋나면 표를 먼저 고친다.
+  - **C2** events.md §봉투에 필드 형식을 적는다:
+    - `id`: ULID `^[0-7][0-9A-HJKMNP-TV-Z]{25}$`
+    - `source`: pod 이름(kebab-case)
+    - `type`: 논리 토픽(env 접두 없음 — dev Kafka 토픽은 `dev.` + type)으로, 점으로 나뉜 kebab-case 토큰 셋 이상
+    - `time`: RFC 3339 date-time
+    - `subject`: `<종류>:<id>`
+    - `tenantid`: 소문자 UUID
+    - `datacontenttype`: const `application/json`
+  - **C3** events.md §호환성 규칙에 세 가지를 더한다.
+    - **CI 기준**: PR은 merge 커밋의 첫째 부모, push는 `before`(0이면 빈 기준)다. 검사기는 **기준 쪽 것**(기준 커밋의 `check-compat.mjs`)을 쓰고, 기준에 검사기가 없을 때만 이 변경의 것을 쓴다(부트스트랩). 그래서 CLI 경로는 Node 내장 모듈만 import하고, ajv는 `validateEvent`가 처음 부를 때 지연 로드한다.
+    - **검사 범위 밖의 구조**: 검사기가 비교할 수 없는 구조 키워드(`$ref` · `$defs` · `allOf` · `anyOf` · `oneOf` · `not` · `if`/`then`/`else` · `prefixItems` · `patternProperties` · `dependent*` · `unevaluated*` 등 허용 목록 밖의 키)는 쓰지 않는다. 쓰면 검사기가 2(사용·입출력 오류)로 끝난다 — 비교하지 못한 변경을 통과로 두지 않는다. 쓰려면 검사기를 먼저 넓힌다.
+    - **값 제약**: `format` · `pattern` · 길이 · 범위는 바꾸지 않는다(검사기는 보지 못한다 — 리뷰 몫 · 바꾸려면 v2). `const`의 값이 바뀌면 enum 값 삭제(`enum-removed`)로 본다.
+  - **C4** events.md §호환성 규칙에 **enum 값 추가의 배포 순서**를 적는다: 그 토픽의 소비자가 새 스키마를 담은 빌드로 먼저 배포되고, 생산자는 그다음에 새 값을 보낸다. 옛 스키마의 enum은 새 값을 거부해 DLQ로 보내기 때문이다. 소비자 도우미가 enum 위반만 따로 다룰지는 SP-2가 정한다.
+  - **C5** rules/events.md §Compatibility rules에 C3 · C4를 영어로 같이 적는다. kr 미러는 pending 줄로 둔다.
+  - **C6** data-model §5: 필드 형식의 정본은 스키마 파일, 표는 contracts/events.md 「필드 형식 · 필수」다.
+- **결정 D1–D12(컨트롤러)**:
+  - **D1 범위 · 빨강 → 초록**: 산출물은 아래와 같다.
+    - (1) `packages/events/schemas/_envelope.json` + 토픽 6
+    - (2) `packages/events/scripts/check-compat.mjs`
+    - (3) **새 테스트** `packages/events/tests/schemas.test.mjs`(T067 소유 · test-first — 토픽별 필수 집합 · 형식을 계약 C1에 묶는다)
+    - (4) `scripts/ci/events-compat.sh` + **새 하네스** `tests/scripts/events-compat.tests.ps1`(test-first) + `tests/run-all.ps1` 슬롯 1b5
+    - (5) `.github/workflows/ci.yml` job `events-compat` + 머리 주석 한 단락
+    - (6) `packages/events/package.json` description 갱신(scripts는 그대로)
+    - (7) `schemas/.gitkeep` · `scripts/.gitkeep` 삭제
+
+    순서는 새 테스트 2개를 먼저 쓰고 빨강을 확인한 뒤 구현해 초록으로 만드는 것이다. 초록 기준은 `pnpm --filter @jt/events test`의 38(T064) + schemas.test 전부 passed와 하네스 `N passed, 0 failed`다. 의존성 · lock 변경은 0이다(ajv · ajv-formats · vitest는 T064가 넣었다).
+  - **D2 스키마 내용**(공통: `$schema` 2020-12 · `$id` · `x-version` "1.0.0" · `title` = 토픽 이름(봉투는 "CloudEvents 1.0 봉투") · 한국어 `description` · `type: object` · `properties` · `required` · **모든 속성에 명시 `type`**(나중에 `type`을 더하면 type-changed가 되므로) · `additionalProperties` 없음 · `$ref` 없음 · 2칸 들여쓰기 · 끝 LF).
+
+    공통 꼴은 다음과 같다.
+    - UUID = `{"type": "string", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"}`
+    - 시각 = `{"type": "string", "format": "date-time"}`
+    - 비지 않은 문자열 = `{"type": "string", "minLength": 1}`
+
+    | 파일 | 필수 | 선택 | 속성 |
+    |---|---|---|---|
+    | `_envelope.json`(`$id` `https://joshuatech.dev/events/_envelope/v1`) | specversion · id · source · type · time · subject · tenantid · datacontenttype · data | — | specversion `{"type":"string","const":"1.0"}` · id `{"type":"string","pattern":"^[0-7][0-9A-HJKMNP-TV-Z]{25}$"}` · source `{"type":"string","pattern":"^[a-z][a-z0-9]*(-[a-z0-9]+)*$"}` · type `{"type":"string","pattern":"^[a-z][a-z0-9]*(-[a-z0-9]+)*(\\.[a-z][a-z0-9]*(-[a-z0-9]+)*){2,}$"}`(`../evil` · `/` · `..` · 대문자 · `_` 시작 불가 · `….v2` 허용) · time 시각 · subject `{"type":"string","pattern":"^[a-z][a-z0-9-]*:.+$"}` · tenantid UUID · datacontenttype `{"type":"string","const":"application/json"}` · data `{"type":"object"}` |
+    | `identity-admin.session.revoked` | sub · nbf · reason | sid | sub 비지 않은 문자열 · sid `{"type":["string","null"],"minLength":1}` · nbf `{"type":"integer","minimum":0}` · reason `{"type":"string","enum":["logout","logout_all","admin","authentik_webhook","tenant_suspended"]}` |
+    | `identity-admin.user.registered` | sub · tenant_id · role · registered_at | email_hash | email_hash `{"type":"string","pattern":"^[0-9a-f]{64}$"}`(sha256 소문자 hex — GitHub IdP 사용자는 메일이 없을 수 있다) · tenant_id UUID · role `{"type":"string","enum":["owner","member"]}`(`admin`은 SP-2 예약 — enum 값 추가로 넣는다) · registered_at 시각 |
+    | `identity-admin.tenant.created` | tenant_id · slug · display_name | — | tenant_id UUID · slug `{"type":"string","pattern":"^[a-z0-9][a-z0-9-]{1,30}$"}`(data-model §1) · display_name `{"type":"string","minLength":1,"maxLength":80}` |
+    | `portfolio-core.note.published` | slug · lang · title · tags · published_at | change | slug `{"type":"string","pattern":"^[a-z0-9]+(-[a-z0-9]+)*$"}` · lang `{"type":"string","enum":["ko","en","ja"]}` · title 비지 않은 문자열 · tags `{"type":"array","items":{"type":"string","minLength":1}}`(빈 배열 허용) · published_at 시각 · change `{"type":"string","pattern":"^[0-9]{3}-[a-z0-9-]+$"}`(study만 — data-model §11) |
+    | `engagement.comment.created` | comment_id · target · author_sub · created_at · body_excerpt | — | comment_id · author_sub 비지 않은 문자열 · target `{"type":"string","pattern":"^[a-z][a-z0-9-]*:.+$"}` · created_at 시각 · body_excerpt `{"type":"string","maxLength":200}`(코드 포인트 — ajv · Python 둘 다) |
+    | `media.object.ready` | media_id · owner_sub · kind · variants · bytes | — | media_id · owner_sub 비지 않은 문자열 · kind `{"type":"string","enum":["image","file"]}` · variants `{"type":"array","items":{"type":"object","properties":{"name":비지 않은 문자열,"url":{"type":"string","format":"uri"}},"required":["name","url"]}}`(빈 배열 허용) · bytes `{"type":"integer","minimum":0}` |
+
+    SP-2 토픽의 id(`comment_id` · `media_id`)에는 형식을 두지 않는다. 생산 pod의 id 체계가 정해지지 않았고, 나중에 형식을 두거나 풀면 소비자를 깨뜨릴 수 있다. sub류도 형식을 두지 않는다 — T061 · T064 표본이 `9f2c-test`다.
+  - **D3 `check-compat.mjs` 구현 규칙**(T064 머리 주석에 더하는 것):
+    - **import**: 모듈 머리는 `node:` 내장 모듈만 import한다(`node:fs` · `node:path` · `node:url` · `node:module` · `node:process`). ajv · ajv-formats는 `createRequire(import.meta.url)`로 `validateEvent`가 처음 부를 때 지연 로드한다(C3 — CI가 기준 쪽 사본을 패키지 밖 임시 디렉터리에서 돌린다). 머리 주석에 이 제약을 적는다.
+    - **Ajv 구성**: `Ajv2020`(`ajv/dist/2020`) `{strict: true, allErrors: true}` + `addKeyword("x-version")` + `ajv-formats`.
+      - 인스턴스는 `path.resolve(schemasDir)`마다 하나, 컴파일한 검증기는 파일 경로마다 캐시한다.
+      - 테스트 출력에 strict 경고가 없어야 한다.
+    - **validateEvent 경로 · 메시지**:
+      - errors path: `required` 오류는 `<instancePath>/<missingProperty>`, 그 밖에는 instancePath. 봉투는 `#`, data는 `#/data`를 앞에 붙인다.
+      - message는 한 줄이고 `<keyword>: <ajv message>` 꼴이다.
+      - data 검증은 봉투 오류 중 `#/type` 경로가 없고 `type`이 문자열일 때만 한다.
+      - 토픽 파일은 `path.resolve(dir, type + ".json")`이고, `path.dirname`이 `path.resolve(dir)`과 같지 않으면 거부한다(심층 방어 — 봉투 pattern이 1차 방어).
+      - 파일이 없으면 `{path: "#/type", message: "schema-missing: <토픽> …"}`.
+    - **diffSchema 비교 범위**: `properties` · `items`(단일 스키마) · `additionalProperties`(스키마일 때)를 재귀로 비교한다.
+      - JSON 포인터는 RFC 6901로 이스케이프한다(`~` → `~0` · `/` → `~1`).
+      - `type`은 집합으로 비교한다(없음 = 빈 집합).
+      - enum이 줄면 `enum-removed`다(enum 키가 아예 사라지는 것은 확대라 허용).
+      - **`const`는 값 하나짜리 enum으로 본다**(C3 — 값이 바뀌면 `enum-removed`).
+      - 메타데이터는 무시한다.
+    - **허용 키 목록**(C3): `type` · `properties` · `required` · `items` · `enum` · `const` · `format` · `pattern` · `minLength` · `maxLength` · `minimum` · `maximum` · `exclusiveMinimum` · `exclusiveMaximum` · `minItems` · `maxItems` · `uniqueItems` · `additionalProperties` + 메타데이터(`$schema` · `$id` · `$comment` · `title` · `description` · `examples` · `default` · `deprecated` · `readOnly` · `writeOnly`) + `x-` 접두.
+      - 이 밖의 키가 base나 head에 있으면 diffSchema가 `UnsupportedSchemaError`를 던지고, CLI는 2와 stderr로 끝난다.
+      - `examples` · `default`의 값 안은 훑지 않는다.
+    - **compareDirectories**: `.json`만 보고 이름순으로 처리한다. 파싱 실패는 예외로 드러내고(CLI 2), 파일 이름을 담는다.
+    - **CLI 출력**:
+      - stdout에는 위반 줄만 쓴다. 요약은 stderr에 쓴다(예: `checked N · added M · violations K`).
+      - **head 디렉터리가 없으면 2가 아니다** — CI 스크립트가 빈 디렉터리를 넘긴다(D5). CLI 자체는 T064 그대로 2다.
+  - **D4 새 테스트 `tests/schemas.test.mjs`(test-first · vitest · id `sch-1..`)**:
+    - 계약 C1의 필수 집합 상수 ↔ 각 파일 `required`가 정확히 같다.
+    - 모든 속성(중첩 · items 포함)에 `type`이 있다.
+    - 토픽마다 계약 모양의 표본 data로 `validateEvent`가 ok다(봉투는 SAMPLE에서 `type` · `subject`만 바꾼다).
+    - 필수 필드를 하나씩 빼면 ok false이고 경로는 `#/data/<필드>`다. 선택 필드는 빼도 ok다.
+    - 형식 · 값 음성 사례(각자 경로 단언):
+      - tenant_id 비-UUID · 대문자 UUID
+      - registered_at 날짜만
+      - role `admin`
+      - lang `fr`
+      - email_hash 대문자 · 63자
+      - change `3-x`
+      - slug 형식 위반
+      - body_excerpt 201자 거부 · 200자 통과(한글 200자 포함)
+      - bytes −1
+      - variants 항목 url 없음(`#/data/variants/0/url`) · url 상대 경로
+      - sid 빈 문자열
+      - nbf 실수
+    - 봉투 음성: source `Identity_Admin` · subject `9f2c`(종류 없음) · type 대문자 / `a..b.c` / `../evil` → 각 `#/<필드>`. `identity-admin.session.revoked.v2` 꼴은 봉투 pattern을 통과한다(schema-missing으로 실패 — v2 이름 허용 확인).
+    - **패턴 이식성**: 7파일의 모든 `pattern`에 `\d` · `\w` · `\s` · `\b` · `\p` · `(?<`가 없다(⑤).
+    - **CLI 자립성**: `check-compat.mjs`를 node_modules가 없는 임시 디렉터리에 복사해 CLI로 돌리면 0/1/2가 그대로 나오고, 소스 머리에 `node:` 밖 정적 import가 없다(C3 · D5의 기준 쪽 실행 전제).
+    - **허용 키 목록**: `anyOf` · `$ref` · `prefixItems`가 든 스키마 → diffSchema 예외 · CLI 2.
+    - **const**: 값이 바뀌면 `enum-removed`.
+    - 빨강: 스키마 · 스크립트가 없어 수집 또는 단언이 실패한다(원인을 보고).
+  - **D5 `scripts/ci/events-compat.sh`**(bash · `set -euo pipefail` · 머리 주석이 판정 규칙 정본 — kubeconform-deploy.sh 꼴).
+    - **사용**: `bash scripts/ci/events-compat.sh [--root <dir>] [--base <commit>]`. 인자가 없으면 GitHub 환경으로 기준을 정한다.
+      - `GITHUB_EVENT_NAME=pull_request`: `PR_HEAD_SHA`가 40/64-hex여야 하고, `HEAD^2` == `PR_HEAD_SHA`(다르면 2)일 때 기준 = `HEAD^1`.
+      - `push`: `PUSH_BEFORE`가 0만이면 빈 기준이다. 아니면 hex이고 커밋이 있어야 하고(없으면 2) 기준 = before.
+      - 그 밖의 이벤트는 2다.
+    - **기준 스키마**: `git cat-file -e <base>:packages/events/schemas`가 있으면 `git archive <base> packages/events/schemas | tar -x -C <tmp>`로 꺼내고, 없으면 빈 디렉터리를 쓴다("기준에 스키마 없음 — 전부 추가").
+    - **head 디렉터리**: `<root>/packages/events/schemas`가 없으면 빈 디렉터리를 쓴다(디렉터리 삭제 = 전부 schema-removed → 1).
+    - **검사기**: 기준에 `packages/events/scripts/check-compat.mjs`가 있으면 `git show`로 `<tmp>/checker/check-compat.mjs`에 꺼내 그것을 쓴다(패키지 밖 · node_modules 없음). 없으면 `<root>/packages/events/scripts/check-compat.mjs`를 쓴다(부트스트랩 — 그 사실을 출력한다).
+    - **실행**: `node <검사기> --base <기준 dir> --head <head dir>` → 종료 코드를 그대로 낸다(0/1/2).
+    - **출력**:
+      - 검사기 출력은 `::stop-commands::<실행마다 새 토큰>` … `::<토큰>::` 사이에 둔다(파일 이름은 PR이 고른 글자다 — gitleaks job과 같은 방어).
+      - `GITHUB_STEP_SUMMARY`가 있으면 세 줄(기준 · 검사기 출처 · 결과 · exit)을 쓴다.
+    - **정리**: 임시 디렉터리는 `mktemp -d`로 만들고 trap에서 지운다. 저장소 파일은 바꾸지 않는다. 도구(git · node · tar)가 없으면 2다(fail-closed).
+    - **신뢰 모델의 한계**(머리 주석 · 계약 C3에 적는다): GitHub `pull_request`는 PR 브랜치의 워크플로 정의로 돈다. 그래서 같은 PR이 `ci.yml`의 이 job이나 이 스크립트를 바꾸면 그 PR에서는 바뀐 것이 돈다 — 그 변경은 리뷰가 막는다(기준 쪽 검사기는 "검사기만 약하게 고친 PR"을 막는다).
+  - **D6 하네스 `tests/scripts/events-compat.tests.ps1`(test-first · kubeconform-deploy.tests.ps1 꼴)**:
+    - **도구 · 실행 방식**:
+      - bash(Git bash — WSL 런처 제외) · git · node 가운데 하나라도 없으면 첫 줄 `SKIP events-compat tests -- not found: …` + exit 0.
+      - 임시 git 저장소 픽스처를 만들고(로컬 user.name/email · `core.autocrlf false`), 저장소의 실제 `check-compat.mjs`를 복사해 넣는다. 스키마는 작은 합성 스키마다.
+      - 스크립트는 `bash <스크립트> --root <픽스처>`로 부르고, env로 이벤트를 흉내 낸다(merge 커밋은 `git merge --no-ff`로 만든다).
+      - 픽스처에 node_modules가 없으므로 검사기 자립성(C3)도 함께 증명된다.
+    - **실행 단언**:
+
+      | id | 경우 | 기대 |
+      |---|---|---|
+      | ec-1 | 부트스트랩 PR(기준에 packages/events 없음) | 0 · 부트스트랩 문구 |
+      | ec-2 | 허용 변경 | 0 |
+      | ec-3 | 필드 삭제 | 1 · stdout `<file> #/properties/x field-removed` |
+      | ec-4 | head 검사기를 항상 0으로 고치고 필드 삭제 | 1 · 기준 검사기 문구 |
+      | ec-5 | 스키마 디렉터리 삭제 | 1 · schema-removed |
+      | ec-6 | `HEAD^2` ≠ `PR_HEAD_SHA` | 2 |
+      | ec-7 | `PR_HEAD_SHA` 형식 오류 | 2 |
+      | ec-8 | push · before 0 | 0 |
+      | ec-9 | push · before 기준 · 필드 삭제 | 1 |
+      | ec-10 | push · 없는 커밋 | 2 |
+      | ec-11 | 모르는 이벤트 | 2 |
+      | ec-12 | `GITHUB_STEP_SUMMARY` | 세 줄 |
+      | ec-13 | stop-commands 토큰 | 앞뒤 짝 |
+      | ec-14 | 임시 디렉터리 | 남지 않음 |
+      | ec-15 | 픽스처 작업 트리 | 무변경(`git status --porcelain` 빈 값) |
+
+    - **정적 단언(ci.yml 줄 단위 — Get-JobBlock 꼴)**:
+      - job `events-compat`이 있다.
+      - checkout은 `fetch-depth: 0` + `persist-credentials: false`다.
+      - 설치는 `pnpm install --frozen-lockfile --ignore-scripts`다.
+      - `pnpm --filter @jt/events test` 스텝이 있다.
+      - `bash scripts/ci/events-compat.sh` 스텝이 있다.
+      - env는 `PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}` · `PUSH_BEFORE: ${{ github.event.before }}`다.
+      - `run:` 본문에 `${{`가 없다(식 주입 금지 — env로만 넘긴다).
+      - `timeout-minutes`가 있다.
+    - **run-all 슬롯 1b5 `ci-events-compat`**: 1b3과 같은 양성 증거 규율이다. SKIP 첫 줄일 때만 SKIP을 허용한다.
+  - **D7 ci.yml job `events-compat`**:
+    - runs-on `ubuntu-24.04-arm` · `timeout-minutes: 10`.
+    - 스텝:
+      1. checkout(같은 SHA · `fetch-depth: 0` · `persist-credentials: false`)
+      2. pnpm/action-setup
+      3. setup-node(`.node-version` · cache pnpm)
+      4. `pnpm install --frozen-lockfile --ignore-scripts`
+      5. `pnpm --filter @jt/events test`
+      6. `bash scripts/ci/events-compat.sh`(env `PR_HEAD_SHA` · `PUSH_BEFORE`)
+    - 머리 주석에 job 단락을 둔다. 판정 · 기준 규칙의 정본은 스크립트 머리 주석이다.
+    - ruleset required check에 넣을지는 운영자가 정한다(인계).
+  - **D8 기타**: package.json description을 "Event schemas (CloudEvents envelope + topic data, JSON Schema 2020-12) and the compatibility checker — see specs/003-platform-foundation/contracts/events.md"로 바꾼다. `.gitkeep` 2개를 지운다.
+  - **D9 검증(빌더 · 원문 꼬리 보고)**:
+    - `pnpm --filter @jt/events test`(2회 — 결정성)
+    - 하네스 `events-compat.tests.ps1`
+    - 기존 하네스 `kubeconform-deploy.tests.ps1` · `ci-gitleaks.tests.ps1`(static 단언 유지 확인 — 도구가 없으면 SKIP 그대로)
+    - Python 소비자 대조 — `uv run --directory packages/django-common python -I -c …`로 7파일 `Draft202012Validator.check_schema` + T061 표본 DATA · DATA_WEBHOOK · 봉투 검증 통과 + 음성 3
+    - `node --check` · `bash -n`(shellcheck가 있으면 함께)
+    - `pnpm install --frozen-lockfile --ignore-scripts`(lock 무변경)
+    - 바이트 위생(BOM · CR · TAB · 줄 끝 공백 0 · 끝 LF) · gitleaks(바뀐 경로)
+    - **`tests/run-all.ps1` 전체는 돌리지 않는다**(tofu plan 등 무관 슬롯 — 컨트롤러가 마감 때 필요한 슬롯만 돈다).
+  - **D10 리뷰 2렌즈**:
+    - **A(계약 · 문면 · 판별력)**: 문면 ↔ 산출물 · 스키마 ↔ C1/C2 표 · T064 API 준수 · schemas.test가 계약 표를 묶는가 · events-compat 기준 규칙의 정확성(merge 커밋 · before · 0 · 부트스트랩) · 빨강 진짜.
+    - **B(CI 보안 · 공급망 · 위생)**: 식 주입 · `persist-credentials` · 기준 검사기 신뢰 모델 · tar 해제 위치 · fail-closed 종료 코드 · stop-commands · 새 의존성 0 · lock 무변경 · 임시 디렉터리 정리 · 하네스의 Windows/Linux 이식성 · 비밀 0.
+  - **D11 인계**:
+    - **T069 릴레이**: 봉투 `type` = 논리 토픽 · `subject` `<종류>:<id>` · `time` UTC `Z` · `id` Crockford ULID 대문자 · `tenantid` 소문자.
+    - **T070/T073 생산자**: session.revoked의 sub는 비지 않음 · nbf는 정수 ≥ 0 · sid는 null이거나 비지 않은 문자열이다.
+    - **SP-2**:
+      - 소비자 도우미의 Python 형식 검사(`jsonschema[format-nongpl]` 등으로 date-time · uri를 검사할지)를 정한다.
+      - C4 배포 순서를 지킨다.
+      - user.registered `admin` 역할은 enum 값 추가로 넣는다.
+    - **운영자**: `events-compat`를 main ruleset required check에 넣을지 정한다.
+  - **D12 VD**: VD-T067-1은 GitHub에서의 첫 실행이다 — merge ref 전제 · 부트스트랩 경로 · arm64 설치(T064 VD-4)를 본다. **push는 사용자 확인 뒤에** 한다(이 브랜치는 origin보다 앞서 있다 · 초안 PR #1의 CI가 돈다).
+- **순서**:
+  1. 보정(C1–C6) + 설계(이 절)를 커밋한다.
+  2. 워크플로를 돌린다(api-builder 1 → 리뷰 2 병렬).
+  3. 수정한다.
+  4. 커밋 · tick 73/119 · 학습 로그로 마감한다.
+  5. T068로 넘어간다.
+
+### T067 결과(r1 → r8 · 2026-11-03..04) — C3 · D1 · D5–D7 · D10–D12 정정은 이 절이 우선한다
+
+- **워크플로 8회**(지시문 `.superpowers/t067/prompts/` · 보고 `.superpowers/t067/reviews/` — gitignore): **r1** `wf_555b2824-600`(빌더 → 리뷰 A/B · 1.13M 토큰 · 빌더 54분 + 리뷰 19분) · **r2** `wf_8c60e411-ede`(수정 빌더 → 리뷰 A2/B2 · 1.36M · 69분 + 24분) · **r3** `wf_b8490cdd-6ab`(1.30M · 70분 + 22분) · **r4** `wf_232a37e4-59d`(1.22M · 1시간 56분) · **r5** `wf_ab1630e7-e8b`(수정 빌더 → 통합 리뷰 · 0.82M · 2시간 18분) · **r6** `wf_9271def5-320`(수정 빌더 → 통합 리뷰 · 0.76M · 1시간 22분) · **r7** `wf_9a94d647-775`(수정 빌더 → 통합 리뷰 · 0.80M · 1시간 37분) · **r8** `wf_3ded3e9a-f8b`(수렴 — 수정 빌더 → 통합 리뷰 · 0.78M · 1시간 34분). 합계 약 8.2M 토큰. 빌더 = api-builder(opus) · 리뷰 = 세션 모델(Opus 5.5).
+- **r1 결과**: 빌더 DONE_WITH_CONCERNS — vitest 203(T064 38 + schemas.test 165) · 하네스 55/0 · 변이 M13 · S12 · C10 전부 검출. 리뷰 A approve_with_fixes(medium 2 — A-1 Python `re`의 `$`(끝 줄바꿈 앞) · `.`(CR · U+2028/2029)이 ajv가 거부하는 값을 통과(실측) · A-2 허용 값 축소(제한 없던 속성의 `enum`/`const` 신설 · `additionalProperties: false`)가 위반 0 / low 7 — A-3 `x-*` × ajv strict · A-4 `git archive`의 `export-ignore` · A-5 fail-closed 갈래 단언 없음 · A-6 적재 실패가 "위반"으로 표시 · A-7 첫 실행 기대 라벨(main에는 `packages/events` 자체가 없다) · A-8 report 후보 · A-9 `body_excerpt` 빈 문자열) · B request_changes(**B-1 high: vitest(PR 코드)가 같은 job에서 게이트 앞에 돌아 게이트 스크립트 덮어쓰기 · `git replace` · `.git/info/attributes` · `GITHUB_ENV`로 기준 쪽 검사기를 무력화** · B-2 medium = A-2 · B-3 medium 기준 추출이 "없음"과 "읽지 못함"을 가르지 못함(`cat-file -t … || true` · 중간 심볼릭 링크 rc 128 — 컨트롤러 실측: 머지된 `export-ignore` 한 줄로 이후 기준이 빈다) · B-4 low 한계 문장 · B-5 low `url`이 `javascript:` · `file:` · 내부 `http:`를 받음).
+- **r2 결정 F1–F8**: F1 job 분리(`events-compat` = checkout + setup-node + 게이트만 · `events-test` = 설치 + vitest) · F2 스크립트 심층 방어(`GITHUB_SHA` == HEAD · `GIT_NO_REPLACE_OBJECTS` 등) · F3 기준 꺼내기 재작성(`ls-tree` + `cat-file blob` · 성분 해석 · git 실패 = 2 · `.json` = blob만 · 부트스트랩 = 기준에 검사기도 스키마도 없을 때만) · F4 검사기 출력 계약(요약 줄 정확히 하나 · K 형식 · K ↔ 종료 코드 · 위반 줄 수 = K) · F5 `false` = 2 · `enum`/`const` 신설 = `enum-removed` · F6 `x-*` ajv 등록 · F7 패턴(명시 문자 클래스 · `.` 금지 · `$(?!\n)` · subject/target 제어 문자 제외 클래스 · url `^https://` + RFC 3986 글자 · `body_excerpt` 빈 문자열 허용 명시) · F8 변이.
+- **r2 결과**: 빌더 DONE_WITH_CONCERNS — vitest 256(38 + 218) · 하네스 89/0 · 두 엔진 대조 53/53 · 변이 20 전부. 리뷰 A approve_with_fixes(low 6 — A2-1 이름 규칙이 기준 쪽만 · A2-2 `x-*` 이름 꼴 · 위치 · A2-3 문구 · A2-4 자동 캐시 · A2-5 Python 쪽 pattern 시험 없음 · A2-6 컨트롤러 몫) · B request_changes(**B2-1 high: 게이트 setup-node v6.5.0 `package-manager-cache` 기본 true — PR의 `package.json`(`devEngines.packageManager` · `packageManager` = npm)이 자동 캐시를 켜고 복원 경로는 PR `.npmrc` → 같은 PR 두 번째 push에서 게이트 앞 복원(컨트롤러가 고정 SHA 원문 확인)** · B2-2 medium 변경 쪽을 작업 트리에서 읽어 PR `.gitattributes`(`ident` · `working-tree-encoding`) 변환 바이트를 검사(컨트롤러 실측 — 필터 적용 `hash-object`는 blob과 같고 `--no-filters`만 다르다) · B2-3 low 변경 쪽 모양 규칙 없음 → 머지 뒤 영구 2 · B2-4 low 한계 문장 · B2-5 low 하네스 간헐(id 미포착)).
+- **r3 결정 F9–F16**: F9 `package-manager-cache: false` · F10 CI 변경 쪽 = HEAD 커밋 객체(기준과 같은 `resolve_path` · `extract_schemas`) + 작업 트리 바이트 일치(`hash-object --no-filters` · `.json` 집합) · CI 부트스트랩 검사기 = HEAD blob · F11 변경 쪽 = 다음 기준의 모양(이름 꼴 · 일반 blob · 스키마가 있으면 검사기 필수) · F12 문구 · F13 `x-*` = `^x-[a-z0-9]+(-[a-z0-9]+)*$` · 스키마 위치에서만 등록 · F14 하네스 `failed:` 줄 + spawn 실패(-1 무출력) 1회 재시도 · F15 주석 · F16 변이.
+- **r3 결과**: 빌더 DONE — vitest 263(38 + 225) · 하네스 106/0 ×3 · 변이 23 중 21(생존 X2 · B3b = 동치). 리뷰 A approve_with_fixes(low 3 — A3-1 등록 순회의 items · additionalProperties 갈래 단언 없음 · A3-2 심층 방어 갈래 단언 없음 · A3-3 컨트롤러 몫) · B request_changes(**B3-1 high: 게이트 setup-node가 체크아웃 뒤 — `printEnvDetailsAndSetOutput`(main.ts:62 · 조건 없음)이 작업 공간 cwd에서 `yarn --version` → Yarn 1.22.22 `start()`(cli/index.js:631-661)가 `--version` 처리 전에 cwd · 상위의 `.yarnrc` · `.yarnrc.yml` `yarnPath`를 실행 → 게이트 파일을 하나도 바꾸지 않은 PR이 게이트 앞에 코드 실행(컨트롤러가 두 원문 확인)** · B3-2 low 하네스 간헐(`git: '…\mingw64\bin\git.exe' is not a git command` — 당시 cmd 런처 꼴로 봤으나 r7에서 반증) · B3-3 low 변경 쪽 검사기 경로 모양을 스키마가 있을 때만 봄 + 엄격/파손 검사기의 머지 뒤 교착).
+- **r4 결정 F17–F23**: F17 게이트 job 순서 = setup-node(빈 작업 공간 · `node-version: '24'` 고정 · `package-manager-cache: false`) → checkout → 게이트(체크아웃 뒤 스텝은 게이트 하나 — st-3 · st-3c · st-5 · st-15 · 변이 Y6–Y9). 리뷰 권고안(고정 Node tarball + sha256)은 미채택 — 같은 구멍을 막으면서 다른 job이 이미 신뢰하는 고정 SHA 액션을 재사용하고 수동 sha256 갱신을 피한다 · F18 문구(H2 · Y10) · F19 변경 쪽 검사기 경로 = 스키마 수와 무관(ec-26j · 26k · 26l · M1 · M2) · F20 심층 방어 단언(ec-29g · ec-26d 점 이름 · V1 · V2) · F21 sch-20⑥(X4 · X5) · F22 픽스처 git 런처 우회(`mingw64/bin/git.exe` — 전제(런처 탓)는 r7에서 반증 · 우회는 그대로 둔다) · F23 변이.
+- **r4 결과**: 빌더 DONE_WITH_CONCERNS — vitest 264(38 + 226) · 하네스 117/0 ×7 · 변이 26/26 · 하네스 32회 중 1회 ec-7 간헐(시험 대상 스크립트 안 `git rev-parse --show-prefix` 실패 · fail closed · 런처 탐침 900 + 900회 재현 0). 리뷰 A approve_with_fixes(low 3 — A4-1 VD (h)에 양성 대조 없음 · A4-2 한계 문장 두 조건 · A4-3 옛 문장 음성 단언이 ci.yml 머리에만) · B approve_with_fixes(low 4 — B4-1 events-test가 "패키지 밖 사본 × 실제 스키마"를 돌리지 않음 · B4-2 게이트 Node 고정값 드리프트를 CI가 막지 않음(r4가 만든 경로) · B4-3 한계 · 인계 세부(복구 경로 · 시험 실행 경로 · 호스티드 러너 전제 · events-test required) · B4-4 ec-7 잔여).
+- **r5 결정 F24–F29**: F24 문구(복구는 게이트 스크립트를 함께 고친 PR이 먼저 · 운영자 우회는 마지막 · 머지 전 방어 = sch-14 · sch-21 · sch-9 · sch-23과 그 전제 · 호스티드 러너 전제 · 인계 목록 넓힘 · events-test required) · F25 sch-14 패키지 밖 사본(실제 스키마 자기 비교 · 빈 기준 · Z1) · F26 sch-23(게이트 Node 고정값 = `.node-version` · 음성 대조 · Z2) · F27 st-11 음성 범위 = ci.yml 전체(Y11) · F28 좁은 재시도(exit 2 · stdout 빈 · stderr = git 위치 die 한 줄 · note 줄) · F29 변이. A4-1은 아래 VD (h)로 반영.
+- **r5 결과**: 빌더 DONE_WITH_CONCERNS — vitest 266(38 + 228) · 하네스 117/0 ×6 · 1b5 2회 PASS · 변이 H3 · Y11–Y13 · Z1 · Z2 · SIM1–SIM3 전부(Z1 · Z2 증거는 직접 `node …/vitest.mjs` 실행) · 빌더 독자 판단 2(ec-16d를 F28 재시도에서 제외 — 일부러 git 작업 트리가 아닌 곳을 부르는 사례 · 재시도 전 `GITHUB_STEP_SUMMARY`를 첫 시도 전 바이트로 복원 — EXIT trap이 일찍 die해도 요약을 덧붙인다)는 컨트롤러가 채택. 통합 리뷰 approve_with_fixes(**R5-1 medium: pnpm 10.34.5 vitest shim이 `NODE_PATH`에 `<root>/node_modules/.pnpm/node_modules`(ajv · ajv-formats 호이스트)를 넣어, CI 명령(`pnpm --filter @jt/events test`) 아래 패키지 밖 사본이 ajv를 해석 — sch-9(r2부터) · 새 sch-14 · sch-21이 게이트 조건을 재현하지 못하고 Z1 · 최상위 eager 변이가 CI 명령에서 생존(리뷰가 메모리 안 load hook으로 재현 · 컨트롤러가 shim 원문 확인)** · R5-2 low `pnpm --filter` 무매치 = exit 0(컨트롤러 실측 · `--fail-if-no-match`는 exit 1) · R5-3 low sch-23이 핀의 스텝 결속을 보지 않음 · R5-4 low events-test 「토큰 · 비밀 없음」 문구 · R5-5 low build-notes 대체 절 없음(→ 이 절)).
+- **r6 결정 F30–F35**: F30 패키지 밖 사본은 `NODE_PATH` · `NODE_OPTIONS`(키 대소문자 무시)를 지운 env · 전제 sch-24(그 env에서 사본 위치가 `ajv/dist/2020`을 해석 못 함) · 하네스 `Invoke-Compat`도 두 env 제거 · 변이 Z1 · Z3(최상위 eager) · Z4(전제 변이)를 **CI 명령으로** 재증명 · F31 events-test `pnpm --filter @jt/events --fail-if-no-match test`(st-3b · Y14) · F32 sch-23을 setup-node `with:`에 결속(음성 대조 · Z5) · F33 토큰 문구 · F34 문구 정렬(H4 · Y15) · F35 변이 + F14 · F28 시뮬레이션 재실행.
+- **r6 결과**: 빌더 DONE_WITH_CONCERNS — CI 명령(`pnpm --filter @jt/events --fail-if-no-match test`) 267(38 + 229 · sch-24 추가) ×2 · 하네스 117/0 ×6 · 1b5 2회 PASS · 빨강 = CI 명령에서 sch-24 `ajv/dist/2020: 사본 자리에서 해석됐다` = R5-1 재현(직접 vitest에서는 통과 — 그 셸에 `NODE_PATH`가 없다) · 변이 Z1 · Z3(CI · 직접 모두 FAIL) · Z4(CI에서만 FAIL — 전제 변이는 shim이 env를 바꾸는 명령에서만 관찰) · Z4+Z1(sch-24만 FAIL = 유일한 전제 가드) · Z5 · Y14–Y16 · H4 · SIM1 · F14 재실행 · X0/X1(`NODE_OPTIONS=--require` 상속 — r6 하네스 117/0 · r5 꼴 84/33). 통합 리뷰 approve_with_fixes — R5-1 해소를 CI 명령 + 메모리 안 hook으로 재현(사본 실행 8회 · 탐침 4회 모두 두 env 없이 · Z1 · Z3 · eager FAIL) · **R6-1 low: F32 결속이 r5가 잡던 꼴을 다시 염**(name-first · 따옴표 · 대소문자 꼴 둘째 setup-node 스텝과 `env:` 아래 `with:`가 r6 함수에서 `[]` — 이번 라운드가 만든 회귀) · R6-2 low: 시험 실행 경로 · 인계에 루트 `.npmrc`(pnpm `node-options` — 리뷰가 env 등가 `npm_config_node_options`로 시험 0개 exit 0 실측) · `.pnpmfile.cjs` 없음.
+- **r7 결정 F36–F38**: F36 sch-23 결속 회귀 수정(events-compat 블록 전체에서 setup-node `uses:`는 꼴 무관 정확히 1개 · `node-version:` 키 1개 = 핀 · `node-version-file:` 0개 · `with:`는 스텝 키 깊이만 · 도우미 블록 한정 · 음성 대조 ①–⑤ · 빨강 먼저 · 하네스 st-5도 같은 결속(Y17) · Z6) · F37 문구(시험 실행 경로에 루트 `.npmrc` · `.pnpmfile.cjs` + 「닫힌 목록 아님」 · 인계 추가 · H5) · F38 검증 · 변이. 계약 · 규칙 r7(컨트롤러).
+- **r7 결과**: 빌더 DONE_WITH_CONCERNS — 빨강 = 새 대조 ①–⑤(+ ⑥ 흐름 매핑 · ⑦ 0칸 주석 뒤 · ⑧ 홀로 선 CR 뒤)를 r6 함수가 모두 `[]`로 통과(원문) · Y17(r6 하네스 117/0 = 빈틈) → 초록 CI 명령 267 ×2 · 하네스 117/0 ×6 · 1b5 4회 중 1회 FAIL(**픽스처 git이 실제 바이너리에서도 `git: '…\mingw64\bin\git.exe' is not a git command`** — r4 F22 전제 반증) · 변이 Z6 · Y17 · Y18 · H5 · Z5 · Y15 전부 · 메모리 안 탐침 21꼴. 통합 리뷰 approve_with_fixes(low 3 — R7-1 블록 경계를 YAML 이어짐 줄 · 가짜 job 블록으로 옮기면 둘째 setup-node가 안 보임 + r7의 NEL · LS · PS 분할이 주석 꼴 하나를 새로 통과(파서 의존) · R7-2 이스케이프 · 별칭 꼴(r5부터) · 문구 「꼴과 상관없이」 과대 · R7-3 위 픽스처 git 재발).
+- **r8 결정 F39–F41(수렴 라운드)**: 컨트롤러 결정 — sch-23 · st-5 · st-15는 **줄 단위 드리프트 검사**로 범위를 고정(계약 r8): 의도적으로 꼬아 쓴 ci.yml(이어짐 줄 · 이스케이프 · 별칭 · 가짜 job 블록)은 범위 밖 · 코드 소유자 리뷰(ci.yml을 고치는 PR은 게이트를 통째로 바꿀 수 있다 — 적대적 YAML에 대한 줄 단위 검사기 강화는 라운드마다 새 꼴이 나와 수익이 줄었다). F39 범위 문구 + r7이 새로 연 파서 의존 꼴만 한 줄 가드(ci.yml에 NEL · LS · PS가 있으면 문제 · Z7 · H6) · F40 픽스처 git 「자기 경로 is not a git command」 한 줄 꼴만 1회 재시도 + note(원인 미상 — 런처 탓 아님) · F41 검증 · 변이.
+- **r8 결과**: 빌더 DONE — 빨강 = ⑨(주석 안 LS + `x: y`)를 r7 함수가 `[]`로 통과 · 하네스 needle 115/2 · F40 전 사본 + 래퍼에서 ec-1(· ec-15 연쇄) → 초록 CI 명령 267 ×2 · 하네스 117/0 ×6 · 1b5 4/4 PASS · 변이 Z7 · H6 · Y19 · Z6 · Z5 · F40 시뮬레이션(scratch에서 C#으로 만든 exe 래퍼 — `.cmd`는 `HEAD^1`의 `^`를 먹는다) A · A6(재시도 + note) · B · C · D(재시도 안 함) · E(F14 회귀 없음) · G(두 번 연속 → attempt 2) + 술어 16사례. 통합 리뷰 **approve**(R7-1 · R7-2 · R7-3 해소 · 회귀 없음 · R8-1 low 선택: 하네스 st-5 단언 **이름**의 "in any form" 2곳 → 컨트롤러가 「leading '- ', quoting, case or flow-mapping forms … a line-based drift check (contract r8)」로 직접 고침 — 판정식 · needle · 단언 수 무변경).
+- **컨트롤러 독립 검증(최종본 · 커밋 전 · 11-04 12:30–12:45)**: CI 명령 `pnpm --filter @jt/events --fail-if-no-match test` 267/267 ×2(warn · strict 0) · 하네스 117/0 ×6(레지스트리 PATH 3 · Git Bash PATH 3 · SKIP · note · failed 0 · run-all 1b5 판정식 PASS) · `ci-gitleaks.tests.ps1` 14/0 · `kubeconform-deploy.tests.ps1` 58/0(네트워크 단언 포함 · 1b3 PASS) · `node --check` ×2 · `bash -n` · actionlint 1.7.12(`./.superpowers/bin/actionlint.exe -no-color -verbose .github/workflows/ci.yml` · 0 errors) · gitleaks 8.30.1 `dir <파일>` 17파일 no leaks · 바이트 위생 17파일(BOM · CR · TAB · 줄 끝 공백 · 제어 · NEL/LS/PS · 폭 0 · NBSP 0 · UTF-8 유효 · 끝 LF · `\uXXXX` 0) · 보호 파일(lock · 루트 매니페스트 · `.node-version` · T064 시험 · kubeconform-deploy.sh · django-common · apps · templates · infra) diff 0 · **Linux 하네스**(Docker `--rm` ubuntu:24.04 amd64 · git 2.43.0 · Node v24.22.2(공식 tarball sha256 대조) · bash 5.2.21 · pwsh 7.6.9) 117/0 ×2 · SKIP 0(실제 링크) · dangling 볼륨 25 → 25. 로그 = scratch `t067-close/verify-controller.txt` · `linux-harness-run-{1,2}.txt`.
+- **계약 보정(r2–r8 · 이 커밋)**: r2 — 게이트 job 분리 · 기준 꺼내기(`ls-tree` + `cat-file blob` · 성분 해석 · git 실패 = 2) · 부트스트랩 = 검사기도 스키마도 없을 때만 · 검사기 출력 계약 · `additionalProperties: false` = 2 · `enum`/`const` 신설 = `enum-removed` · 패턴 이식성(규칙 §Schemas) · url https · `body_excerpt` 빈 문자열 / r3 — 캐시 없음(`package-manager-cache: false`) · `.json` 이름 꼴 · CI 변경 쪽 = HEAD 커밋 객체 + 작업 트리 바이트 일치 · 다음 기준의 모양 · 요약 줄 판정 전부 · 한계(머지된 게이트 파일 = 이후 모든 PR의 게이트) · `x-*` 이름 꼴 · 위치 / r4 — 게이트 job 순서(Node 설치 → 체크아웃 → 게이트) · 고정 `node-version` · PR 내용 = ci.yml · events-compat.sh뿐 · 검사기 경로 모양 = 스키마 수와 무관 · 엄격/파손 검사기 교착 / r5 — 드리프트 CI 방어 sch-23 · 호스티드 러너 전제 · 복구 경로 · 머지 전 방어의 실제 범위와 전제 · 운영자 인계(`packages/events/` · `scripts/ci/` · `.github/workflows/` · 모든 깊이 `.gitattributes` CODEOWNERS · 코드 소유자 리뷰 · `events-compat` · `events-test` required) / r6 — 패키지 밖 사본 env(`NODE_PATH` · `NODE_OPTIONS` 제거) · 전제 sch-24 · 시험 실행 경로에 루트 `pnpm-workspace.yaml` · `package.json` · `pnpm-lock.yaml` · events-test `--fail-if-no-match` · 인계에 루트 매니페스트 · 잠금파일 · `.github/CODEOWNERS` 자신 / r7 — 시험 실행 경로에 루트 `.npmrc` · `.pnpmfile.cjs` + 닫힌 목록 아님 · 인계에 두 파일 / r8 — sch-23 · st-5 · st-15 = 줄 단위 드리프트 검사(의도적으로 꼬아 쓴 ci.yml은 범위 밖 · 코드 소유자 리뷰). 규칙 `.claude/rules/events.md` 같은 내용 · kr 미러 translation-pending 줄.
+- **D 정정**: D1 산출물 (5) = ci.yml job **두 개**(`events-compat` · `events-test`) + 머리 주석 단락 — "→ T064 PASS"는 events-test가 낸다 · D5–D7(스크립트 · 하네스 · ci.yml 구성)은 r2 F1–F4 · r3 F9–F11 · r4 F17 · F19가 덮는다 · D10 리뷰 = 8회(r5–r8은 통합 1렌즈 · r8은 수렴 범위) · C3 부트스트랩 조건은 r2(기준에 검사기도 스키마도 없을 때만) · D11 인계는 아래 · D12 VD는 아래.
+- **VD-T067-1**(push 뒤 초안 PR #1의 첫 실행 — push는 사용자 확인 뒤): (a) 게이트 job setup-node · post 스텝에 캐시 복원 · 저장 줄 0 · (b) 머리 줄 — `기준 스키마: 없음 — 기준 커밋에 packages/events/schemas가 없다(전부 추가로 본다)` · `변경 쪽 스키마: HEAD 커밋 <12자>:packages/events/schemas(.json 7개 · 작업 트리 바이트 일치)` · `검사기: 부트스트랩 — 기준에 검사기도 스키마도 없어 HEAD 커밋 <12자>의 packages/events/scripts/check-compat.mjs를 쓴다(패키지 밖 임시 사본)` · added 7 · exit 0 · `GITHUB_SHA` 확인 통과 · (c) 러너에서 `hash-object --no-filters` = 체크아웃 blob(바이트 일치 줄) · (d) main 첫 push(부트스트랩) 뒤 다음 PR에서 `검사기: 기준 커밋 …` · (e) 게이트 job 첫 스텝이 setup-node이고 checkout보다 앞 · (f) setup-node 「Environment details」에 `node: v24.x` · `yarn: 1.22.22`(러너 판 — 빈 작업 공간) · (g) events-test: arm64 frozen 설치 + `pnpm --filter @jt/events --fail-if-no-match test`의 vitest 전부 통과 — sch-24(러너 `os.tmpdir()` 위치에서 shim의 `NODE_PATH`를 지운 env로 ajv 해석 실패 = 전제) · sch-14 패키지 밖 사본 · sch-23이 Linux에서 실제로 돈 수(로그의 `Tests N passed`) · (h) **선택 · 버리는 PR(초안 PR #1 아님 · 사용자 확인 뒤)**: 루트 `.yarnrc.yml`(`yarnPath:` 표식 한 줄만 찍고 exit 0 · 파일 · `GITHUB_ENV` · `GITHUB_PATH`에 쓰지 않는 probe) — PASS = 같은 실행의 events-test 「Environment details」에 `yarn: <표식>`(양성 대조 — setup-node가 체크아웃 뒤) · events-compat에는 러너 판만, 판정 불가 = events-test에도 표식 없음(탐침 재설계) — A4-1 · (i) **선택 · 버리는 PR**: 사본 env가 `NODE_PATH`를 남기는 변이(Z4)를 넣으면 events-test에서 sch-24가 FAIL하는가 — 리눅스 sh shim이 `NODE_PATH`를 넣는지 러너에서 실측(이 머신은 Windows shim만 확인) · (j) **선택 · 버리는 PR**: `pnpm-workspace.yaml`에서 `packages/events`를 빼고 잠금파일을 맞추면 test 스텝이 exit 1(`--fail-if-no-match`) · (k) Linux 하네스는 컨트롤러가 Docker로 돌려 끝냈다(위 독립 검증 — 러너 실측은 아님) · (l) events-test 로그 `Tests 267 passed (267)` · sch-23(r8)이 리눅스에서 통과.
+- **report.md 편차 · 추가 후보**: ① tasks.md :184 "ci.yml job `events-compat` → T064 PASS" → job 두 개(T064 PASS = events-test) ② 문면의 "`package.json` scripts"는 T064가 이미 넣었다(이번 diff = description 한 줄) ③ 문면 밖 산출물 4(`schemas.test.mjs` · `scripts/ci/events-compat.sh` · `tests/scripts/events-compat.tests.ps1` · run-all 1b5) ④ "main vs PR 필드 diff" → 기준 커밋(PR merge 첫째 부모 · push `before`) + 기준 쪽 검사기 · 부트스트랩(PR base가 main이 아니면 기준도 main이 아니다 · push `before` 0 = 빈 기준) ⑤ 게이트 job 스텝 순서(setup-node가 체크아웃 앞 · 고정 `node-version`) ⑥ 계약 r2–r8 보정 목록(위).
+- **인계**: **T069** Python 쪽 pattern 의미 시험(저장소 안 — `$(?!\n)` · 명시 클래스 · 끝 줄바꿈 · CR 음성 · 두 엔진 대조 53/53의 Python 절반 · A2-5) · 릴레이 봉투(`type` = 논리 토픽 · `subject` `<종류>:<id>` · `time` UTC `Z` · `id` ULID 대문자 · `tenantid` 소문자) · **T070/T073** 생산자(session.revoked `sub` 비지 않음 · `nbf` 정수 ≥ 0 · `sid` null 또는 비지 않은 문자열) · **SP-2** 소비자 도우미의 Python 형식 검사 · enum 추가 배포 순서 · user.registered `admin` 역할 · **운영자** CODEOWNERS(`packages/events/` · `scripts/ci/` · `.github/workflows/` · 모든 깊이 `.gitattributes` · 루트 `pnpm-workspace.yaml` · `package.json` · `pnpm-lock.yaml` · `.npmrc` · `.pnpmfile.cjs`(없는 경로도 지정 가능) · `.github/CODEOWNERS` 자신) · 코드 소유자 리뷰 필수 · `events-compat` · `events-test` required check(교착 방어가 events-test에 기댄다) · concurrency `cancel-in-progress`가 main push 실행을 취소하면 그 구간은 main에서 다시 검사되지 않는다(PR 게이트가 정본 · r1 B 참고) · 같은 이름 check를 만드는 새 워크플로 파일(required check의 이름 판정 — 미검증).
+- **교훈(tool-gotchas)**: `git archive` export-ignore · 체크아웃 속성 변환은 `hash-object --no-filters`로만 보인다 · setup-node `package-manager-cache` 기본 true + 「Environment details」 `yarn --version`이 `yarnPath`를 실행 → PR 코드를 돌리면 안 되는 job은 setup-node를 체크아웃 앞에 · ajv `getKeyword` · pwsh `SetEnvironmentVariable($n,$null)`은 빈 값으로 남긴다 · 픽스처 git 「자기 경로 is not a git command」 간헐(Windows · 원인 미상 — r7에서 런처 탓이 아님이 드러남 · 그 한 줄 꼴만 1회 재시도) · actionlint 색 끄기는 `-no-color` · Git Bash에서 띄운 pwsh는 `/mingw64/bin`이 PATH 앞이라 런처를 거치지 않는다 · 액션 입력의 기본값은 고정 SHA 원문으로 확인한다(r2 설계의 "캐시 입력 없음 = 캐시 없음" 오판) · pnpm vitest shim의 `NODE_PATH`(`.pnpm/node_modules`)를 시험 자식 프로세스가 물려받는다 — "패키지 밖" 시험은 env를 지우고 전제 단언을 두며, 변이 증거는 CI와 같은 명령으로 낸다 · `pnpm --filter` 무매치는 exit 0 — CI는 `--fail-if-no-match`.
+- **VD-T067-1 결과(11-04 13:21 KST · 사용자 「지금 push」 → `981ec9b..ee40a57` · 초안 PR #1 실행 41772668741 · 6 job 전부 success)**: events-compat(ubuntu24-arm64 이미지 20261025.165) — (e) 첫 스텝 setup-node(`node-version: 24` · `package-manager-cache: false`) → checkout · (f) Environment details `node: v24.22.1` · `npm: 11.19.1` · `yarn: 1.22.22`(빈 작업 공간 — 러너 판) · (a) 캐시 복원 · 저장 줄 0(「Found in cache @ /opt/hostedtoolcache/node/24.22.1/arm64」는 러너 tool cache · job 머리 「Cache mode: write」는 러너 정보 줄 · setup-node post 스텝은 정리 한 줄) · (b) `기준: PR merge 커밋의 첫째 부모 93c7469a1b70(둘째 부모 = PR head ee40a57e5621 확인)` · `기준 스키마: 없음 — 기준 커밋에 packages/events/schemas가 없다(전부 추가로 본다)` · `변경 쪽 스키마: HEAD 커밋 6fc6b889494d:packages/events/schemas(.json 7개 · 작업 트리 바이트 일치)` · `검사기: 부트스트랩 — 기준에 검사기도 스키마도 없어 HEAD 커밋 6fc6b889494d의 packages/events/scripts/check-compat.mjs를 쓴다(패키지 밖 임시 사본)` · `check-compat: checked 0 · added 7 · violations 0` · `결과: 통과 — 호환성 위반 없음(exit 0)` · (c) Linux 러너에서 바이트 대조 통과 · events-test — `pnpm install --frozen-lockfile --ignore-scripts`(41 패키지) · `pnpm --filter @jt/events --fail-if-no-match test` → check-compat.test 38 + schemas.test 229 = `Tests 267 passed (267)`(sch-14 · sch-23 · sch-24 포함 · (g) · (l)) · 남은 것: (d) main 첫 push 뒤 다음 PR의 `검사기: 기준 커밋 …`(main 머지 뒤) · (h)(i)(j) 버리는 PR은 사용자 결정으로 하지 않음. 로그 = scratch `t067-close/ci-events-{compat,test}.log`.
+
+## T068 (2026-11-04 시작 — US6 구현 · `packages/django-common/src/django_common/tenancy.py` → T060 PASS · 세션 모델 Opus 5.5)
+
+- **과제 문면(tasks.md :185)**: `TenantModel`(추상, A 등급: `tenant_id` UUID NOT NULL, 인덱스, FORCE RLS 대상) + `GlobalModel`(추상, B 등급: RLS 미적용, 허용 목록 `tenant`·`tenant_membership`·`outbox`·`session_revocation_log`), `TenantContextMiddleware`(`transaction.atomic()` + `SELECT set_config('app.tenant_id', %s, true)`, 토큰 없으면 403), `rls_policies(table)` RunSQL 헬퍼(ENABLE/FORCE/정책 USING+WITH CHECK, reverse), `check_rls` management command(A 등급 테이블이 전부 FORCE RLS인지 + B 등급 테이블이 허용 목록에 있는지 검사) → T060 PASS.
+- **소스로 확인한 사실**(읽기 전용 조사 워크플로 `wf_829c75f2-4a5` — 시험 · 명세 · 런타임 세 갈래, 보고 `.superpowers/t068/research/{tests,spec,runtime}.json`):
+  - ① **빨강**: pytest 시작 단계의 `django.setup()`이 `tests/testapp/models.py:13`의 `from django_common.tenancy import …`에서 `ModuleNotFoundError`로 세션 전체를 수집 전에 끝낸다. T068 뒤에도 `test_outbox.py` · `test_auth.py` · `test_observability.py`는 각자 모듈 부재로 빨강이므로 관문은 `tests/test_tenancy.py`(+ T068 시험 파일) 단독 실행이다.
+  - ② **시험이 고정한 모양**: `TenantModel` = `id` UUID PK(`default=uuid4`) · `tenant_id` `UUIDField`(NULL 아님) · `Meta.indexes`에 필드가 정확히 `['tenant_id', 'id']`인 인덱스(자식은 `class Meta(TenantModel.Meta)`) — 손으로 쓴 `0001`의 `widget_tenant_id_idx`는 `name='%(class)s_tenant_id_idx'`와 같아 autodetector 변경이 0이다(메모리 탐침). `GlobalModel` = 필드 없는 추상 표식(GlobalThing은 UUID PK, T061 OutboxEvent는 CharField PK). 매니저 · `save()`는 개입하지 않는다(rls-2 · rls-3 · rls-4 · 시드). `rls_policies`는 빈 `ProjectState`로 forward를 다시 적용할 수 있는 상태 무관 `RunSQL` 목록(chk-3). `check_rls`는 인자 없는 `call_command`(default = app role) · 실패 = 테이블 이름을 담은 `CommandError` · `relrowsecurity`와 `relforcerowsecurity` 둘 다 · 정책 · 비모델 테이블(rogue).
+  - ③ **Django 6.1.2는 뷰 예외를 미들웨어 안에서 응답으로 바꾼다**(`convert_exception_to_response` — `core/handlers/base.py:39,97`) → `with transaction.atomic(): return self.get_response(request)`는 500에서도 COMMIT한다(탐침: 1행 커밋). `process_exception`에서 `transaction.set_rollback(True)`이면 0행(탐침). `ATOMIC_REQUESTS`는 뷰 callable만 감싼다.
+  - ④ **바인딩**: Django PG 기본은 클라이언트 쪽 바인딩 — `str` 값은 타입 없는 리터럴, `uuid.UUID` 값은 `'…'::uuid`가 되어 `set_config(unknown, uuid, boolean)` 해석이 실패한다 → 값은 `str(tenant_id)`.
+  - ⑤ **면제 경로가 atomic을 열면 DB에 닿는다**(`Atomic.__enter__` → `ensure_connection`) — T066 api-1 · api-4(DB 마크 없음)와 `/healthz` 「외부 조회 0」(T071)을 깬다.
+  - ⑥ `transaction.atomic(durable=True)`는 다른 atomic 안이면 `RuntimeError`, TestCase가 연 블록 안은 허용(`db/transaction.py:192-203`).
+  - ⑦ 정책 식은 `NULLIF(current_setting('app.tenant_id', true), '')::uuid`여야 한다 — 같은 세션에서 지역 설정이 끝나면 `''`가 남아 `''::uuid`가 22P02로 실패한다(mw-4가 이 경로를 밟는다).
+  - ⑧ `RunSQL`: `reverse_sql`이 있어야 reversible · 목록형은 문장마다 execute · psycopg `Composed`를 넘기면 `str()`이 repr이 되므로 문자열로 만든다 · `CREATE POLICY`에는 `IF NOT EXISTS`가 없고 `DROP POLICY IF EXISTS`는 있다(PG 문서).
+  - ⑨ 인덱스 이름 30자 검사(`models.E034`)는 migrate CLI의 시스템 검사에서만 돈다 — `%(class)s_tenant_id_idx`는 클래스 이름 16자까지.
+  - ⑩ `check_rls`는 INSTALLED_APPS의 `django_common` 아래 `management/commands/check_rls.py`로 발견된다. `call_command`는 `CommandError`를 그대로 전파하고, `--database` 옵션은 기본 인자에 없다.
+  - ⑪ **카탈로그**(PG 문서 근거 · 첫 초록에서 실측): 표 `relkind` `r` · `p` · 파티션 자식 `r`(`relispartition`) · 뷰 `v` · `m`은 소유자 권한으로 기저 테이블을 읽어 RLS를 우회할 수 있다 · permissive 정책이 여럿이면 OR로 합쳐져 격리를 넓힌다 · 확장 소유 객체는 `pg_depend` `deptype='e'`.
+  - ⑫ pytest-django `settings` 픽스처는 `del settings.X`를 지원한다(`pytest_django/fixtures.py:565-574`).
+  - ⑬ **어긋남**: 403 본문(계약 = RFC 9457 `tenant_required` · 시험 = 상태 코드만) · `TENANT_CONTEXT_EXEMPT_PATHS`가 pod-template 계약에 없다 · `check_rls`를 계약은 공개 API(함수)로, 문면 · 시험은 명령으로 부른다 · 문면 「토큰 없으면 403」은 미들웨어가 JWT를 보지 않으므로 「`request.tenant_id`가 없으면 403」으로 읽는다(토큰 검증은 T070) · research 스케치(`rls_policy` 단수 · 항상 atomic · 「예외 시 rollback」 주석)는 낡았다.
+- **계약 보정(컨트롤러 · 이 설계와 같은 커밋 · 「T068 보정 2026-11-04」 표식)**:
+  - **C1** `contracts/pod-template.md` §테이블 등급의 `check_rls` 줄을 판정 규칙 전부로 바꾼다(D10) · 상수 `FRAMEWORK_TABLES` · `GLOBAL_TABLE_ALLOWLIST` · A 등급 M2M은 명시 `through`(TenantModel) · 인덱스 이름 규칙(D2).
+  - **C2** §런타임 계약 「DB 연결」 행에 미들웨어 동작 전부(D3–D7)와 「요청 트랜잭션 안에서 긴 외부 대기 금지(app role `idle_in_transaction_session_timeout` 30 s)」를 적는다.
+  - **C3** §공개 API에 `current_tenant_id` · `set_tenant_context` · `FRAMEWORK_TABLES` · `GLOBAL_TABLE_ALLOWLIST`와 `django_common.problem`(`problem_response`)을 더하고, `check_rls`는 「함수 + 같은 이름의 관리 명령」으로 적는다.
+  - **C4** `.claude/rules/django-pod.md` §Table grades · §Auth(`TENANT_CONTEXT_EXEMPT_PATHS`) · §Errors(`problem_response`)를 영어로 같이 고친다 · kr 미러는 translation-pending 줄.
+- **결정 D1–D15(컨트롤러)**:
+  - **D1 범위 · 빨강 → 초록**: 산출물은 아래와 같다.
+    - (1) `src/django_common/tenancy.py` — `TenantModel` · `GlobalModel` · `TenantContextMiddleware` · `rls_policies` · `check_rls()` · `current_tenant_id` · `set_tenant_context` · `FRAMEWORK_TABLES` · `GLOBAL_TABLE_ALLOWLIST`.
+    - (2) `src/django_common/problem.py` — `problem_response`(D5).
+    - (3) `src/django_common/management/__init__.py` · `management/commands/__init__.py` · `management/commands/check_rls.py`.
+    - (4) **새 시험** `tests/test_tenancy_contract.py`(T068 소유 · tc-1..19 — D11) + `tests/tenancyapp/{__init__,urls,views,middleware}.py`(T068 소유 시험 urlconf · 미들웨어).
+
+    T060 산출물(`test_tenancy.py` · `testapp/**` · `conftest.py` · `settings.py`)과 `0001` · `0002`는 바꾸지 않는다(② — 0001은 이미 맞다 · tc-18이 고정). 의존성 · `uv.lock`도 바꾸지 않는다. 순서는 새 시험을 먼저 쓰고 빨강(지금은 ①의 수집 오류)을 본 뒤 구현해 초록으로 만드는 것이다.
+  - **D2 모델**:
+    - `TenantModel(models.Model)`: `id = UUIDField(primary_key=True, default=uuid.uuid4, editable=False)` · `tenant_id = UUIDField()`(FK 아님 — 값 참조) · `class Meta: abstract = True; indexes = [models.Index(fields=["tenant_id", "id"], name="%(class)s_tenant_id_idx")]`.
+    - 규칙을 독스트링에 적는다: A 등급 클래스 이름은 16자 이하(넘으면 자식이 짧은 이름의 같은 인덱스를 직접 둔다 — `models.E034`) · 인덱스를 더하는 자식은 `indexes = [*TenantModel.Meta.indexes, …]` · A 등급 M2M은 명시 `through`(TenantModel 상속 — 자동 중간 테이블은 RLS가 없어 `check_rls`가 실패시킨다) · 행 거르기는 RLS만 맡는다(매니저 · `save` 무개입).
+    - `GlobalModel(models.Model)`: `class Meta: abstract = True` — 필드 없는 표식. `db_table`은 `GLOBAL_TABLE_ALLOWLIST` 안이어야 한다(D10의 모델 검사).
+  - **D3 `TenantContextMiddleware`**(sync 전용 — `sync_capable = True` · `async_capable = False`):
+    1. 면제 경로(D4)면 아무것도 하지 않고 `get_response` — atomic · 쿼리 · 경고 0.
+    2. `tenant_id = getattr(request, "tenant_id", None)`이 `uuid.UUID`가 아니면(없음 · `None` · str 포함) 403 `tenant_required`(D5) — fail-closed.
+    3. `with transaction.atomic(using=DEFAULT_DB_ALIAS, durable=True):` 안에서 `set_tenant_context(tenant_id)` 뒤 `get_response`. 요청 객체에 「이 미들웨어의 atomic이 열려 있다」 표식을 두고 블록을 나갈 때 지운다(D6).
+    4. 응답이 `StreamingHttpResponse`(FileResponse 포함)면 `__call__` 안에서 `RuntimeWarning`(D7).
+  - **D4 면제 설정 `TENANT_CONTEXT_EXEMPT_PATHS`**: 라이브러리 기본 `("/healthz", "/ready", "/health")`. 요청마다 `django.conf.settings`에서 읽는다(import 시점 · `__init__` 캐시 금지 — 규칙 §Settings). 값은 str만 담은 tuple · list · set · frozenset이어야 하고 아니면 `ImproperlyConfigured`(str 하나를 주면 `in`이 부분 문자열 검사가 되어 `/`까지 면제될 수 있다). 비교는 `request.path_info` **정확 일치**(auth 면제와 같은 규칙 · 끝 슬래시 · 접두 불인정). Bearer가 없는 경로(웹훅 · Access 전용)는 pod가 이 목록에 넣는다(규칙 §Auth — identity-admin = 헬스 3 + `/webhooks/authentik` + `/session/check`).
+  - **D5 403 `tenant_required`와 공용 problem 모듈**: `django_common.problem.problem_response(slug: str, status: int, *, title: str | None = None, detail: str | None = None) -> HttpResponse` — `Content-Type: application/problem+json` · 본문 `{"type": "https://joshuatech.dev/problems/<slug의 _를 ->", "title": <주어진 값 또는 HTTPStatus 문구>, "status": status}` + `detail`(있을 때만). 슬러그 꼴 `^[a-z][a-z0-9_]*$`가 아니면 `ValueError`. 미들웨어는 `problem_response("tenant_required", 403)`을 **돌려준다**(`PermissionDenied`를 올리면 handler403이 `forbidden`으로 바꾼다). T070 `AuthError.to_response()` · T071 헬스 503 · T073 뷰는 이 함수를 재사용한다(인계).
+  - **D6 트랜잭션 · 롤백**: 미들웨어의 atomic은 `durable=True` — 요청 트랜잭션이 가장 바깥임을 강제한다(다른 atomic 안에서 부르면 `RuntimeError` · 테스트의 TestCase 블록은 허용). 뷰 예외는 `process_exception`에서 이 미들웨어의 atomic이 열려 있을 때만 `transaction.set_rollback(True, using=DEFAULT_DB_ALIAS)`를 하고 `None`을 돌려준다 → `ATOMIC_REQUESTS`와 같은 뜻(뷰 예외 = 롤백). 예외 없이 돌려준 4xx · 5xx 응답은 커밋한다(`ATOMIC_REQUESTS`와 같다 — Ninja의 `HttpError`는 뷰 안에서 응답이 되므로 커밋 · 문서화). 요청 코드에서 `atomic(durable=True)`는 쓰지 않는다(이 미들웨어 아래에서는 항상 실패).
+  - **D7 스트리밍**: `isinstance(response, StreamingHttpResponse)`면 `warnings.warn("… StreamingHttpResponse …", RuntimeWarning, stacklevel=2)` — 본문은 트랜잭션이 끝난 뒤 컨텍스트 없이 만들어진다(A 등급은 0행 · 쓰기는 자동 커밋) · 응답은 그대로 둔다 · 차단 장치는 두지 않는다.
+  - **D8 컨텍스트 도우미**(T069 publish · T073 관리자 교차 테넌트용 — 같은 GUC 규칙을 한 곳에):
+    - `set_tenant_context(tenant_id: uuid.UUID | None, *, using=DEFAULT_DB_ALIAS) -> None` — `connections[using].in_atomic_block`이 아니면 `TransactionManagementError`(트랜잭션 밖의 `set_config(…, true)`는 조용히 무효다) · `uuid.UUID`면 `SELECT set_config('app.tenant_id', %s, true)`에 `str(…)` · `None`이면 `''`(같은 트랜잭션 안에서 컨텍스트를 비운다) · 그 밖의 타입은 `TypeError`.
+    - `current_tenant_id(*, using=DEFAULT_DB_ALIAS) -> uuid.UUID | None` — `SELECT NULLIF(current_setting('app.tenant_id', true), '')`의 NULL · `''`를 모두 `None`으로 · 값이 UUID로 해석되지 않으면 `ValueError`(우리 코드만 쓰는 GUC라 형식 오류는 버그다).
+  - **D9 `rls_policies(table: str) -> list[RunSQL]`**: 테이블 이름은 `^[a-z_][a-z0-9_]*$` · 63자 이하가 아니면 `ValueError`(마이그레이션 import 때 실패) · 큰따옴표로 인용. 매번 새 목록으로 연산 셋을 돌려준다(되돌리기는 역순 자동 정렬 — ③의 Migration.unapply).
+    - `ALTER TABLE "t" ENABLE ROW LEVEL SECURITY` ↔ `ALTER TABLE "t" DISABLE ROW LEVEL SECURITY`
+    - `ALTER TABLE "t" FORCE ROW LEVEL SECURITY` ↔ `ALTER TABLE "t" NO FORCE ROW LEVEL SECURITY`
+    - `CREATE POLICY tenant_isolation ON "t" AS PERMISSIVE FOR ALL TO PUBLIC USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid) WITH CHECK (같은 식)` ↔ `DROP POLICY IF EXISTS tenant_isolation ON "t"`
+  - **D10 `check_rls`** — 함수 `check_rls(*, using=DEFAULT_DB_ALIAS) -> list[str]`(위반 문장 목록 · 각 문장은 `<스키마 아닌 테이블 이름>: <사유>`로 시작) + 같은 이름의 관리 명령(`--database` · 기본 default · 위반이 있으면 전부를 담은 `CommandError` · 없으면 stdout 한 줄 `check_rls: OK — A 등급 N · B 등급 M · 프레임워크 K`). autocommit SELECT만 하고 권한 의존 판정(`has_table_privilege` 등)은 쓰지 않는다(app role · owner 어느 쪽에서도 같은 결과).
+    - **범위**: 시스템 스키마(`pg_catalog` · `information_schema` · `pg_toast*` · `pg_temp_*`)가 아닌 모든 스키마의 관계 `relkind ∈ {r, p, v, m, f}` · 확장 소유 객체(`pg_depend.deptype = 'e'`)는 뺀다.
+    - `FRAMEWORK_TABLES`(정확한 이름 10) → 면제.
+    - `GLOBAL_TABLE_ALLOWLIST`(B 4) → 표(`r` · `p`)여야 하고 **RLS가 꺼져 있어야** 한다(B = RLS 미적용 — 켜면 릴레이 · 웹훅이 0행을 본다).
+    - 그 밖의 모든 관계 = A 등급 → 표(`r` · `p`)여야 한다(뷰 · matview · foreign table은 위반 — 뷰는 소유자 권한으로 RLS를 우회할 수 있다) · `relrowsecurity` · `relforcerowsecurity` 둘 다 · 정책 `tenant_isolation`이 `FOR ALL`(`polcmd = '*'`) · PERMISSIVE · `USING`과 `WITH CHECK` 둘 다 있음 · 다른 PERMISSIVE 정책은 없음(OR로 격리를 넓힌다 · RESTRICTIVE는 허용).
+    - 모델 검사(정적 · DB 무관): 관리되는 구체 `TenantModel` 하위의 `db_table`이 B 허용 목록이나 `FRAMEWORK_TABLES`에 있으면 위반 · 관리되는 구체 `GlobalModel` 하위의 `db_table`이 B 허용 목록 밖이면 위반.
+  - **D11 새 시험 `tests/test_tenancy_contract.py`**(T068 소유 · T060과 같은 DB 마크 `django_db(transaction=True, databases=["default", "owner"])` · `tests/_problem.assert_problem` · `tests/_tenant`를 재사용 · 시험 urlconf/미들웨어는 `tests/tenancyapp/`):
+    - tc-1 면제 밖 · 테넌트 없음 → `assert_problem(…, 403, "tenant_required")`.
+    - tc-2 면제 경로는 DB 쿼리 0(`CaptureQueriesContext`) · 뷰 안에서 `in_atomic_block`이 거짓.
+    - tc-3 면제 목록을 요청마다 읽는다(실행 중 바꾼 값이 다음 요청에 적용) · 설정을 지우면 라이브러리 기본(헬스 3)이 적용된다.
+    - tc-4 정확 일치(`path_info`): `/healthz/` · `/healthzz`는 면제가 아니다(403 — URL 해석 전).
+    - tc-5 설정이 str 하나면 `ImproperlyConfigured`.
+    - tc-6 `request.tenant_id`가 str(UUID 글자)이면 403 `tenant_required`(tenancyapp 원시 미들웨어).
+    - tc-7 뷰가 A 등급 행을 쓴 뒤 예외 → 500 · owner로 센 행 0(롤백).
+    - tc-8 뷰가 쓴 뒤 예외 없이 500 응답을 돌려줌 → 행 1(커밋 — D6 문서화된 뜻).
+    - tc-9 뷰가 쓰고 200 → 행 1(대조).
+    - tc-10 바깥 `transaction.atomic()` 안에서 미들웨어를 부르면 `RuntimeError`(durable).
+    - tc-11 도우미: atomic 밖 `set_tenant_context` → `TransactionManagementError` · 안에서 설정 → `current_tenant_id() == 값` · `None`으로 비우면 `None`이고 A 등급 0행 · 트랜잭션이 끝난 같은 연결에서 `None`(`''` 경로) · str 인자 → `TypeError`.
+    - tc-12 `rls_policies`: 잘못된 이름 → `ValueError` · 연산 셋이 모두 reversible · owner로 `migrate testapp 0001` → RLS 꺼짐(app role이 두 테넌트 행을 모두 봄) → `migrate testapp` → 복원(`check_rls` 통과) — finally 복원.
+    - tc-13 B 테이블 `tenant`에 RLS를 켜면 `check_rls` 실패(이름 `tenant`).
+    - tc-14 widget에 다른 PERMISSIVE 정책(`FOR SELECT USING (true)`)을 더하면 실패(이름 `widget`).
+    - tc-15 owner가 만든 뷰 `leak`(`SELECT * FROM widget`)는 실패(이름 `leak`).
+    - tc-16 `tenant_isolation`을 `FOR SELECT`만으로 다시 만들면 실패 · `WITH CHECK` 없는 `FOR ALL`도 실패.
+    - tc-17 `call_command("check_rls", "--database", "owner")` 통과 · 함수 `check_rls()`는 깨끗한 DB에서 `[]`.
+    - tc-18 `makemigrations testapp --check --dry-run` → 변경 없음(TenantModel 모양 = 0001).
+    - tc-19 `problem_response` 단위: type · title · status · detail 유무 · Content-Type · 잘못된 슬러그 `ValueError`.
+    - DDL 토글은 owner autocommit으로 커밋하고 `try/finally`로 복원한다(T060 chk-2..5와 같은 방식) · pytest는 한 번에 하나.
+  - **D12 실행 · 검증**(Windows 호스트 · Docker Desktop · `uv run --directory packages/django-common …`):
+    - 빨강: 새 시험을 넣은 뒤 `pytest tests/test_tenancy_contract.py -q`가 ①의 수집 오류로 끝나는 것을 본다.
+    - 초록: `pytest tests/test_tenancy.py -q` **2회 연속**(VD-6) · `pytest tests/test_tenancy_contract.py -q` · `pytest tests/test_fixtures_pg.py -p no:django -q`(3 passed 회귀).
+    - 판별력: 구현에 변이를 넣어(예: `durable` 제거 · `process_exception` 제거 · NULLIF 제거 · `str()` 제거 · 면제 접두 일치 · 정책 이름/플래그 하나만 검사 · B RLS 검사 제거 · 뷰 허용) 해당 시험이 빨강이 되는지 확인하고 되돌린다(저장소 파일은 cmp로 복원 증명).
+    - 위생: `python -m compileall` · BOM/CR/TAB 0 · gitleaks(파일 하나씩) · `docker ps -a`에 시험 컨테이너 0(다른 프로젝트 컨테이너는 건드리지 않는다) · `docker volume ls -f dangling=true` 전후 같음(지금 25).
+  - **D13 리뷰 2렌즈**:
+    - **A(계약 · 문면 · 판별력)**: 문면 ↔ 산출물 · 계약 C1–C4 ↔ 구현 1:1 · T060 16 + tc-1..19가 결정을 실제로 가르는가(변이 대조) · 빨강이 진짜 · T069–T073 인계 API.
+    - **B(데이터 격리 · 보안)**: fail-closed 경로 전부(면제 판정 · 타입 · durable · 롤백 · NULLIF · 바인딩) · `check_rls` 우회 경로(뷰 · 정책 모양 · 스키마 · 파티션 · 확장) · SQL 인용 · 비밀 · Docker 위생.
+  - **D14 VD**: VD-6(TEST.MIRROR teardown — `test_tenancy.py` 2회 연속 · teardown에 permission denied · TRUNCATE 오류 0) · app role의 카탈로그 읽기(chk-1 default 통과가 증거) · 클라이언트 바인딩 `str` 값(mw-1) · `''` 경로(mw-4 · tc-11) · 뷰/정책 판정(tc-14..16)을 PG 18.6에서 실측.
+  - **D15 인계**:
+    - **T069**: `GlobalModel` 상속 · `db_table = "outbox"` · `publish`는 `current_tenant_id()`로 컨텍스트를 읽는다(NULL · `''` = 없음) · `problem_response`.
+    - **T070**: `request.tenant_id`는 `uuid.UUID`만 둔다(아니면 tenancy가 403) · `AuthError.to_response()`는 `problem_response` · MIDDLEWARE에서 `JwtAuthMiddleware` 바로 뒤에 `TenantContextMiddleware`.
+    - **T071**: 헬스 3종은 기본 면제 · 503 `not_ready`는 `problem_response`.
+    - **T072**: 템플릿 settings에 `TENANT_CONTEXT_EXEMPT_PATHS` · `django_common` INSTALLED_APPS(명령 발견) · RLS · 미들웨어 시험은 `transaction=True` · `check_rls`는 CI(owner `--database`)와 기동(app role) · A 등급 예시 클래스 이름 16자 이하 · B 예시는 허용 목록 안에서만.
+    - **T073**: B 모델 3개 `db_table` = 허용 이름 · 관리자 교차 테넌트 revoke는 같은 트랜잭션 안에서 `set_tenant_context(대상)` 또는 `None` 뒤 `publish(…, tenant_id=대상)` · 요청 트랜잭션 안에서 Authentik 같은 외부 호출을 오래 기다리지 않는다(30 s).
+- **순서**:
+  1. 계약 보정(C1–C4)과 설계(이 절)를 커밋한다.
+  2. 워크플로를 돌린다(api-builder 1 → 리뷰 2 병렬).
+  3. 수정한다.
+  4. 커밋 · tick 74/119 · 학습 로그로 마감한다.
+  5. T069로 넘어간다.
+
+### T068 r2(리뷰 r1 반영 · F1–F12 · 2026-11-04) — D10 · D11 · D15 정정은 이 절과 r3 절이 우선한다
+
+- **경과**: 빌드 r1 + 리뷰 2렌즈(워크플로 `wf_09fe772a-fef` · 1.07M 토큰) → A medium 1 · low 6 / B medium 1 · low 7 → 수정 r2 + 리뷰 r2(`wf_632d2ccd-40c` · 1.13M 토큰). 지시문 원본은 `.superpowers/t068/prompts/t068-fix-r2.md`(gitignore)이고, 정본은 이 절이다.
+- **결정 F1–F12(컨트롤러)**:
+  - **F1 정책 식 정본 비교**(r1 A-2 = B-1 medium — 이름만 같은 `USING (true)` 정책이 통과했다 · 실측): `tenant_isolation`의 `USING` · `WITH CHECK` `pg_get_expr` 결과가 둘 다 PG 주 버전별 정본 상수(지금 `{18: …}` — 계약 ③)와 글자 그대로 같고, `polroles = {0}`(PUBLIC)이어야 한다. 정본이 없는 주 버전이면 정책이 있는 A 표마다 위반 한 줄(fail-closed — 정본 추가는 계약 개정).
+  - **F2 `FOR ALL` 단독 판별**(A-1 medium): tc-16에 `FOR UPDATE` 사례를 두고, 변이를 M16a(polcmd) · M16b(WITH CHECK 유무) · M16c(식 비교) · M16d(polroles)로 나눠 각각 잡히는지 본다.
+  - **F3 이름만 보는 판정 좁히기**(A-5 · B-3):
+    - 「Django 스키마」 = `django_migrations` 표(r)가 있는 스키마 정확히 하나다. 없거나 둘 이상이면 위반 한 줄을 내고 면제 · B를 인정하지 않는다(전부 A).
+    - 프레임워크 면제는 그 스키마의 r만, B는 그 스키마의 r · p만 인정한다.
+    - 모델 이름 검사 2가지: 허용 목록 이름 → `GlobalModel` 하위 · 프레임워크 이름 → contrib 앱(`auth` · `contenttypes` · `sessions` · `admin`).
+  - **F4 확장 제외 좁히기 · TenantModel 표 존재**(B-2): 확장 멤버 제외는 소유자가 superuser인 확장만 한다(owner가 만든 trusted 확장 `pg_trgm`에 넣은 표를 실측으로 잡음). 관리되는 구체 `TenantModel`의 `db_table`은 카탈로그에 A 표(r · p)로 있어야 한다.
+  - **F5 SECURITY DEFINER 함수 · 재작성 규칙**(B-4 — 수정안 a 「위반」): 비시스템 스키마의 `prosecdef` 함수(F4와 같은 확장 제외)와 스캔한 관계의 `pg_rewrite` 규칙(`_RETURN` 제외)은 위반이다. 실측으로 DEFINER `leak_fn()`은 컨텍스트 없는 app role에 5행을, INVOKER는 0행을 돌려줬다.
+  - **F6 범위 도우미 `tenant_context`**(B-5 — 교차 테넌트 `set_tenant_context` 패턴의 컨텍스트 누수):
+    - `@contextmanager tenant_context(tenant_id | None, *, using=…)` — savepoint 안에서 바꾸고 정상 종료면 이전 값으로 되돌린다.
+    - 블록 안 예외 · `set_rollback(True)`는 savepoint 롤백이 복원한다(`get_rollback` 가드 — 복원 쿼리를 내면 TME · M48b 실측).
+    - 바깥 atomic 밖이면 `TransactionManagementError`다(권장안 채택).
+    - 실측(VD-6): savepoint `RELEASE`만으로는 안쪽 값 B가 남고, `ROLLBACK TO`는 A로 되돌린다 — 그래서 도우미가 필요하다.
+  - **F7 런타임 role 단언**(B-7): `check_rls(*, using, require_rls_role=False)` + 명령 `--require-rls-role` → 연결 role이 superuser · BYPASSRLS면 위반 한 줄(role 이름은 싣지 않는다). 판정 SQL은 r3 G4가 대체한다.
+  - **F8 성공 줄 ASCII**(A-4 · B-8): `check_rls: OK - A 등급 N · B 등급 M · 프레임워크 K`. 런타임 문자열은 cp949로 인코딩되지 않는 글자 0을 전수 탐침했다.
+  - **F9 값싼 판별 보강**(A-6):
+    - (a) `using=` 별칭 한정(tc-25) · (b) B 이름 뷰(tc-15) · (c) 분할 표와 파티션(tc-26 — 부모만 정책이면 자식을 직접 질의할 때 샌다 · 자식도 판정) · (d) 면제 경로 뷰 예외 타입 보존(tc-27).
+    - (e) tc-6 양성 대조 · (f) tc-5 메시지에 값 없음 · (g) 다른 세션의 TEMP 표 무시(tc-28).
+  - **F10 Ninja catch-all 처리기 주의**(B-6): 계약 「DB 연결」 · 모듈 독스트링에 적는다. Ninja판 tc-7 기본 시험은 T072가 맡는다.
+  - **F11 낡은 주석**(A-7): `pyproject.toml` 머리 · `src/django_common/__init__.py` · `tests/settings.py` :22 · :45 · `0001_initial.py`의 주석 · 독스트링만 고친다. 주석 · 독스트링을 뺀 AST와 TOML 값이 HEAD와 같음을 증명했다.
+  - **F12 판별력 · 검증**: 결정마다 변이를 하나 이상 두고 r1 변이 가운데 손댄 함수의 것을 다시 돌린다. 결과는 51개 전부 포착 · 매번 68개 시험이다.
+- **D10 대체(지금 정본)**: 함수 `check_rls(*, using=DEFAULT_DB_ALIAS, require_rls_role=False) -> list[str]`과 같은 이름의 관리 명령이다. 성공 줄 · 범위(superuser 소유 확장만 제외) · 판정 ①–⑤는 계약 pod-template §테이블 등급(「T068 r2」 · 「T068 r3」 표식)이 정본이다.
+- **D11 대체**: tc-1..19에 tc-20..29를 더한다.
+  - tc-20 모델 검사(isolate_apps) · tc-21 owner가 만든 확장 · tc-22 SECURITY DEFINER · 재작성 규칙 · tc-23 `tenant_context` · tc-24 `--require-rls-role`
+  - tc-25 별칭 한정 · tc-26 분할 표 · tc-27 면제 뷰 예외 타입 · tc-28 TEMP 표 · tc-29 Django 스키마 0개 · 2개
+  - 기존 시험 확장: tc-15(이름을 흉내 낸 뷰 · 다른 스키마) · tc-16(정책 모양 사례 · 정본 deparse · 정본 없는 판) · tc-17(상수 · 함수 · 명령 · 성공 줄)
+- **D15 대체(인계 — r3 절이 더한다)**:
+  - **T069**: tc-29 기대 집합(r3 G1이 해소).
+  - **T072**:
+    - 기동은 app role `check_rls --require-rls-role`, CI는 owner `--database`로 플래그 없이 돌린다.
+    - 정책은 `rls_policies`로만 만든다. 마이그레이션에 SECURITY DEFINER · `CREATE RULE`을 두지 않는다.
+    - `check_rls` 전에 migrate가 끝나 있어야 한다(TenantModel 표 존재 검사).
+    - Ninja catch-all 처리기를 금지하고 Ninja판 tc-7 기본 시험을 둔다.
+  - **T073**: 교차 테넌트 publish · revoke는 요청 트랜잭션 안에서 `with tenant_context(대상):`로 감싼다. D15의 「`set_tenant_context(대상)` 뒤 publish」 패턴을 대체한다.
+  - **r1 리뷰 A가 짚은 인계 위험**(T068 결함이 아니라 D4 정확 일치 규칙의 귀결):
+    - T072의 `/static/…` 서빙은 `TenantContextMiddleware` 앞(WhiteNoise 등)에 둔다.
+    - 사람 admin 경로(Bearer 없음 · O1 · VD-T066-5)는 지금 설계로는 `/admin/*`이 전부 403 `tenant_required`다. T072 · T073이 호스트 기준 처리나 auth의 tenant 공급과 함께 정한다.
+    - TestCase 기반 시험은 GUC가 바깥 시험 트랜잭션 끝까지 남는다(`transaction=True`로 덮는다).
+    - tc-17 `(grade_a, framework) == (1, 2)`는 T069 뒤에도 성립한다(outbox = B). 시험 DB에 A 표 · 프레임워크 표를 더하는 뒤 과제는 함께 고친다.
+- **빌더 r2 편차(⑧ — 수용)**:
+  - tc-15 B 이름 뷰는 `outbox` 대신 `session_revocation_log`를 쓴다(T069의 `public.outbox`와 충돌).
+  - 재작성 규칙 판정은 A만이 아니라 스캔한 모든 관계(면제 · B 포함)에 적용한다.
+  - 정본 없는 주 버전은 A 표마다 한 줄이다.
+  - 위반 문장의 이름 자리: Django 스키마 줄은 `django_migrations:`, role 줄은 `current_user:`(r3 G4가 `session_user:`로 바꾼다).
+- **빌더 r2 한계(⑨)**:
+  - superuser 소유 확장 멤버 제외의 양성 쪽은 시험 DB에서 재지 못했다. 「아무것도 빼지 않음」 변이는 살아남을 수 있지만 fail-closed 방향이다. 라이브 DB(pgvector)에서 확인할 후보다.
+  - CNPG가 앱 DB에 SECURITY DEFINER 함수를 만드는 기능(Pooler `auth_query` 등)을 쓰면 `check_rls`가 실패할 수 있다(미검증 · SP-1에는 Pooler가 없다).
+  - B 분할 표의 파티션은 A로 판정된다. B 표를 분할하려면 계약 개정이 필요하다.
+  - r1 VD 잔여(그대로): 라이브 CNPG role의 카탈로그 읽기 · `TESTCONTAINERS_HOST_OVERRIDE` 없이 1회 실행.
+- **리뷰 r2**: A2 approve_with_fixes(medium 2 · low 3) · B2 approve_with_fixes(low 3) → r3.
+- **근거 공백 기록(A2-5)**:
+  - em dash를 cp949로 리디렉트하면 실패한다는 하위 프로세스 재현 기록은 없다. r1 메모리 탐침(`'—'.encode('cp949')` 실패)으로 대체한다.
+  - 보고의 M17 「chk-4 외 10」은 FAILED 줄 10개(chk-4 포함 · 「외 9」)가 맞다.
+  - red-contract 로그(06:02:15Z)는 시험 파일 최종 수정(06:10:07Z) 전에 돌았다. 그래도 실패 줄 번호 12개가 최종본과 같고, 변이(06:12Z 이후)와 최종 초록(06:24:55Z)은 최종본으로 돌았다.
+
+### T068 r3(리뷰 r2 반영 · G1–G7 · 2026-11-04) — 결정
+
+- **G1 tc-29 기대 집합을 카탈로그에서 계산**(A2-1 medium): Django 스키마가 모호하면 모든 관계가 A가 되므로, 지금 기대 집합 `{django_migrations, django_content_type, tenant}`는 T069가 만드는 `public.outbox`(B · RLS 없음)로 확정적으로 빨강이 된다.
+  - 시나리오 전에 owner로 public 스키마의 r · p 가운데 `FRAMEWORK_TABLES ∪ GLOBAL_TABLE_ALLOWLIST` 이름을 읽어 `present`(`django_migrations` 제외)를 만든다.
+  - 공허하지 않게 `{"django_content_type", "tenant"} <= present`를 단언한다.
+  - 기대 집합은 `{"django_migrations", *present}` · `{"django_migrations", "tc29_migrations", *present}`로 쓴다.
+  - 빌더는 같은 꼴(시험 DB의 표 이름 · 개수를 그대로 적은 단언)이 다른 시험에 있는지도 훑는다.
+- **G2 contrib 앱 집합 고정**(A2-4 low): tc-17에 `_CONTRIB_APP_LABELS == frozenset({"auth", "contenttypes", "sessions", "admin"})`를 둔다. 시험 settings에는 contenttypes만 있어 `auth`를 빼는 변이가 살아남았다(identity-admin 기동에서야 드러남).
+- **G3 정책 식의 의미 우회 막기**(B2-1 low — deparse는 글자 비교다):
+  - (a) **정책 의존 검사**: `tenant_isolation` 정책(`p.oid`)의 `pg_depend` 행 가운데 `refclassid`가 `pg_class`(표 · 열)가 아닌 것이 있으면 위반이다. initdb 부트스트랩 객체(OID < 12000 — 정본 식이 쓰는 객체는 전부 여기)는 pinned라 행이 없다(PG 18.6에서 정본 정책의 의존 행을 실측해 기록). 사용자 연산자 · 함수 · 타입 · 콜레이션 · 형변환 함수를 잡는다.
+    - **r3 실측 정정**: 지시 때는 「형변환 함수는 deparse에 보이지 않는다(`showimplicit = false`)」고 보았다. 실측은 반대다 — `pg_get_expr`는 맨 위 노드에만 `showimplicit = false`를 쓰고 연산자 인자는 찍는다(VD-C: owner enum + `IMPLICIT` 형변환 정책의 deparse = `((tenant_id)::uuid = …)` → 글자 비교가 이미 잡는다).
+    - 글자 비교가 못 보는 것은 **NULLIF 안의 연산자**다(NullIfExpr는 연산자를 찍지 않는다 — VD-J: `public.=(text,text)` 정책의 deparse는 정본과 같고 의존 행만 남는다 · tc-30 NULLIF 사례가 단독으로 가른다).
+  - (b) **스캔 `search_path` 고정**: `_scan_rls`는 `transaction.atomic(using=…)` 안에서 먼저 `SELECT pg_catalog.set_config('search_path', 'pg_catalog', true)`를 하고, 끝에 `transaction.set_rollback(True, using=…)`로 되돌린다. 바깥 atomic 안이면 savepoint 롤백이다 — `RELEASE`면 값이 남는다(VD-6). 이렇게 하면 DB 소유자가 `ALTER DATABASE … SET search_path = public, pg_catalog`와 `public` 연산자로 스캔 SQL(`NOT IN` · `=` 등)이나 deparse를 가리지 못한다. 정본 deparse가 고정된 `search_path`에서도 같은지는 PG 18.6에서 app role · owner 둘 다로 다시 잰다.
+  - (c) **열 타입 검사**(수정안 2)는 채택하지 않는다(근거 r3 리뷰 A3-1로 정정 — `ALTER COLUMN TYPE` 거부는 정책을 지운 뒤 바꾸면 방어가 아니다). 열 타입이 uuid가 아니면 다음 셋 중 하나가 된다.
+    1. 연산자 인자 자리의 형변환이 deparse에 찍혀 글자 비교가 잡는다(함수 형변환 VD-C 실측 · 도메인 RelabelType · `WITH INOUT` CoerceViaIO는 같은 규칙으로 추론).
+    2. 사용자 연산자 · 함수 의존이 `pg_depend`에 남는다(VD-D).
+    3. 정책 생성이 실패한다.
+- **G4 role 단언 = `session_user` 멤버십**(B2-2 low):
+  - 판정 SQL은 `SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_roles AS r WHERE (r.rolsuper OR r.rolbypassrls) AND pg_catalog.pg_has_role(session_user, r.oid, 'MEMBER'))`다. Django `OPTIONS["assume_role"]`(접속 직후 `SET ROLE`)와 `SET ROLE`이 가능한 멤버십은 `current_user`만 보면 놓친다.
+  - 위반 줄의 이름 자리는 `session_user:`다.
+  - 시험: conftest `_bootstrap_roles`에 `GRANT test_app TO test_owner` 한 문장을 더한다. owner가 `SET ROLE test_app`으로 assume_role 경로를 재현하고, superuser 자격은 여전히 픽스처 안에만 있다. tc-24에 「owner 연결 + `SET ROLE test_app` + 플래그 → 위반(옛 `current_user` 판정은 통과)」을 더한다.
+  - 선택안(연결 role이 A 표 `relowner`의 멤버면 위반)은 채택하지 않는다 — app role은 표를 소유하지 않는다(계약 role 분리 · 위 SQL이 owner 멤버십을 BYPASSRLS로 잡는다). **r4에서 채택으로 바꾼다**(H4 — 근거가 계약 전제에 기대는 순환이라는 리뷰 A3-4).
+  - T072 인계: 런타임 DB 설정에 `OPTIONS["assume_role"]` 금지.
+- **G5 계약 · 규칙 문구**(A2-3 = B2-3 low · 컨트롤러 · 이 절과 같은 커밋): 함수 시그니처 · ① Django 스키마 0개 · 2개 · ④ 함수의 확장 제외 · `tenant_context` atomic 밖 TME와 r3 결정(정책 의존 · `search_path` 고정 · `session_user` 멤버십 · `assume_role` 금지)을 계약 pod-template(「T068 r3」 표식) · 규칙 §Table grades · §Auth에 적고, kr 미러는 translation-pending 줄에 더한다.
+- **G6 설계 정본**(A2-2 medium): 이 절과 r2 절. 코드 독스트링은 「build-notes 「## T068」 · r2 · r3 절」을 가리킨다(gitignore된 지시문을 가리키지 않는다).
+- **G7 근거 공백 기록**(A2-5 low): r2 절 끝에 적었다.
+
+### T068 r3 결과 · r4 결정(리뷰 r3 반영 · H1–H6 · 2026-11-04)
+
+- **r3 결과**(워크플로 `wf_a04b080d-08b` · 1.22M 토큰 · 빌더 DONE_WITH_CONCERNS):
+  - 줄 수: `tenancy.py` 596 → 648 · `check_rls.py` 46 → 50 · `test_tenancy_contract.py` 1043 → 1280(시험 함수 38 · 수집 57) · conftest +2(`GRANT test_app TO test_owner`와 주석).
+  - 빨강(r2 구현으로 최종 시험): 5 failed / 52 passed — tc-24와 tc-30 넷.
+  - 초록: `test_tenancy.py` 16 ×2 · `test_tenancy_contract.py` 57 · `test_fixtures_pg.py` 3.
+  - **D11 대체 — tc-30 다섯**:
+    - ① 형변환: owner enum + `IMPLICIT` 형변환. 실측 deparse `((tenant_id)::uuid = …)`와 사유 3줄을 단언한다.
+    - ② NULLIF 안 연산자: 고정 전후 deparse가 정본과 같고 위반은 의존 한 줄뿐이다(G3 a 단독).
+    - ③ 도메인 + 사용자 `=`: 고정 deparse가 `OPERATOR(public.=)`이고 의존도 걸린다(G3 a · b). r2에서 실해는 컨텍스트 없음 · A · B 모두 3행이었다.
+    - ④ 적대적 `search_path`: 결과가 기준과 같다(G3 b 단독).
+    - ⑤ 바깥 atomic: 전후 `search_path`가 같고 바깥 지역 GUC가 남는다(`set_rollback`).
+    - 확장: tc-16(고정 deparse · `pg_depend` (refclass, 열, deptype) 집합 2원소 — 행은 3개(표 `a` · 열 `n` ×2)인데 VD 실측이고 중복도는 단언하지 않는다) · tc-17(`_CONTRIB_APP_LABELS`) · tc-24(`SET ROLE` · `session_user:`) · tc-29(`present` 계산).
+  - 변이 44개 가운데 43개를 잡았다. N2b(`is_local` 거짓)는 동치라 살았고, N6은 기대 조각을 고쳐 다시 돌렸다(33/40).
+  - **편차(빌더 ⑧ — 수용)**:
+    - ⑧-1 형변환 전제는 반증됐다. NULLIF 사례로 대체했다(위 G3 a 정정).
+    - ⑧-2 VD를 상시 단언으로 옮겼다. 변이 N2b · N4b · N4d를 더했다.
+    - ⑧-3 `_Policy.oid`와 `foreign_dependents` 인자를 두었다.
+  - **인계(빌더 ⑨)**:
+    - G1 훑기: `public.outbox`로 깨지던 것은 tc-29뿐이었다. tc-17의 `(A, 프레임워크) == (1, 2)`는 A · 프레임워크 표를 더하는 뒤 과제가 함께 고친다.
+    - T072:
+      - 런타임 DB 설정에 `assume_role` 금지.
+      - CNPG app role의 `inRoles`에 owner 금지(두면 기동 실패).
+      - `rls_policies`는 `search_path`를 바꾸지 않은 마이그레이션 세션에서 적용한다.
+      - `check_rls`는 트랜잭션을 연다(바깥 atomic 안이면 savepoint).
+    - 시험 DB: owner가 test_app의 멤버(INHERIT · SET)다. 뒤 과제가 role 멤버십을 단언하면 감안한다.
+  - VD(PG 18.6):
+    - 정본 정책 `pg_depend` = `pg_class` 3행(표 `a` · 열 `n` ×2).
+    - 고정 deparse = 정본(app · owner).
+    - `search_path` 복원 2경우.
+    - `SET ROLE` 상태 `(test_app, test_owner)`.
+    - `_RETURN` 이름의 비뷰 규칙은 PG가 거부한다.
+  - 세션 중 다른 프로젝트 컨테이너(`cc-business-permissions-*`)가 새로 생겼다 — 빌더가 만든 것이 아니고 손대지 않았다.
+- **리뷰 r3**: A3 approve_with_fixes(low 4) · B3 approve_with_fixes(low 4) → r4.
+- **r4 결정 H1–H6(컨트롤러)**:
+  - **H1 상속 · 파티션 부모**(B3-1): `pg_inherits`를 읽고, A로 판정된 관계(r · p)의 부모가 A가 아니면(B · 프레임워크 · 스캔 밖) 위반 한 줄이다. 부모를 거친 질의에는 부모의 RLS만 적용된다(문서 5.11). 시험 tc-31은 `CREATE TABLE … () INHERITS (tenant)` + `rls_policies`를 쓰고, r3 상태에서 실해(컨텍스트 없는 app이 `tenant` 질의로 자식 행을 봄)를 VD로 재현한 뒤 r4로 막힘을 본다.
+  - **H2 A 표의 정책은 `tenant_isolation` 하나**(B3-4): RESTRICTIVE 정책도 위반이다(사유: PERMISSIVE는 OR로 넓히고, RESTRICTIVE 식은 `tenant_isolation`보다 먼저 모든 행에 평가될 수 있다). tc-14의 RESTRICTIVE 허용 사례를 위반으로 뒤집는다. VD: RESTRICTIVE 식(`name::integer > 0` 꼴)이 먼저 평가되어 다른 테넌트 값이 오류 메시지에 실리는지 PG 18.6에서 EXPLAIN과 오류 원문으로 잰다. 재현되지 않아도 금지 결정은 유지한다 — SP-1에 RESTRICTIVE의 쓰임이 없다.
+  - **H3 role SQL 고정**(A3-3 = B3-2): tc-24에서 `tenancy._RLS_ROLE_SQL`을 최종 원문(H4 반영)과 같다고 단언한다(`rolname = session_user` · `'SET'` 변이를 잡는다). 멤버십 양성 실측은 VD 잔여로 T072/T075 라이브에 넘긴다 — 임시 LOGIN role + `GRANT <pod>_owner TO …` → `check_rls --require-rls-role` 위반 확인 → DROP.
+  - **H4 role 판정에 관계 소유 멤버십**(A3-4 — G4 선택안 채택): `--require-rls-role`은 `session_user`가 스캔 범위 관계의 `relowner`이거나 그 멤버일 때도 위반이다(같은 한 줄 · 이름 자리 `session_user:` · 사유에 「소유」를 더한다). 시험: owner가 임시로 `GRANT CREATE ON SCHEMA public TO test_app` → 임시 표를 `ALTER TABLE … OWNER TO test_app` → app + 플래그 → 위반 → finally `DROP` · `REVOKE`.
+  - **H5 문구**(A3-1 = B3-3): 계약 ③ · 규칙 · 위 G3 a · c는 컨트롤러가 이 커밋에서 고쳤다(NULLIF 안 연산자 · initdb 부트스트랩 pinned). 빌더는 `tenancy.py`의 같은 표현(:345-346)과 tc-16 독스트링(:607)을 주석만 고친다.
+  - **H6 결과 기록**(A3-2): 이 절.
+  - **검사 범위의 경계**(계약 r4): `check_rls`는 RLS의 카탈로그 모양(관계 등급 · 정책 모양 · 식 · 상속), 소유자 권한으로 도는 객체(뷰 · `SECURITY DEFINER` · 재작성 규칙), 런타임 role을 본다. 데이터 흐름(트리거 · 애플리케이션 코드가 A 행을 B 표로 옮기기)은 보지 않는다 — 마이그레이션 · 코드 리뷰 몫이다. r4 리뷰는 이 경계 밖의 발견을 「범위 메모」로만 낸다.
+
+### T068 r4 결과 · r5 결정(리뷰 r4 반영 · I1–I5 · 2026-11-04)
+
+- **r4 결과**(워크플로 `wf_6c6cd7f9-9f3` · 0.87M 토큰 · 빌더 DONE · 통합 리뷰 1):
+  - 줄 수: `tenancy.py` 648 → 726 · `check_rls.py` 50 → 53 · `test_tenancy_contract.py` 1280 → 1448(시험 함수 40 · 수집 60).
+  - 빨강(r3 구현으로 최종 시험): 5 failed / 55 passed — tc-14 · tc-24 · tc-31 ×3.
+  - 초록: `test_tenancy.py` 16 ×2 · `test_tenancy_contract.py` 60 · `test_fixtures_pg.py` 3.
+  - **D11 대체 — 시험**:
+    - tc-14 → `test_tc_14_any_other_policy_fails`(RESTRICTIVE 단독 · 두 정책 동시 = 위반).
+    - tc-24: H4 소유 사례(`GRANT CREATE` → `OWNER TO test_app` → app + 플래그 = role 줄 · 플래그 유무와 상관없이 비-role 줄은 같다) · `relowner` 단언 · 마지막 단언 = H3 원문 고정.
+    - tc-31 둘(B 상속 자식 · 매개변수 2 = 프레임워크 부모 · B 분할 표의 파티션).
+  - **확정 원문** `_RLS_ROLE_SQL` = BYPASSRLS · superuser 멤버십 EXISTS **OR** 스캔 범위(`_SCAN_RELATIONS` — `_RELATIONS_SQL`과 같은 FROM · WHERE 조각) 관계 가운데 `pg_has_role(session_user, c.relowner, 'MEMBER')`인 것이 있다. 시험은 조합된 전체 원문을 고정한다 — 그래서 범위 조각을 바꾸는 변이(M15 · M25 · M42)도 그 단언에 걸린다.
+  - **VD(PG 18.6)**:
+    - H1 실해(r3 구현): `INHERITS (tenant)` 자식 + `rls_policies` → r3 `check_rls()` = `[]`. 컨텍스트 없는 app role로 자식 직접 질의는 0행이었고, `SELECT label FROM tenant`는 자식 두 테넌트 행과 부모 행을 돌려줬다. EXPLAIN은 `Append`이고 자식 쪽에 Filter가 없다. r4는 그 자식 한 줄이다.
+    - H2 재현: widget에 `RESTRICTIVE … USING ((name)::integer > 0)`(B 행 값 `b-secret`)을 두었다.
+      - ANALYZE 뒤 Seq Scan의 Filter는 RESTRICTIVE 식이 먼저다 → 컨텍스트 A인 app role이 `DataError: invalid input syntax for type integer: "b-secret"`을 받는다(B 값 누설).
+      - 통계 없는 3행 · 인덱스 경로(Bitmap · Index Scan)에서는 새지 않는다 — 누설은 계획에 따라 다르다. 금지 결정은 그대로다.
+    - H4: 소유 이전이 된다. 소유자가 된 app은 ENABLE · FORCE · NO FORCE · DISABLE RLS를 모두 실행했다. 원문 SQL 값은 이전 전 app False · owner True, 이전 뒤 app True, 정리 뒤 app False다.
+    - 분할 인덱스의 `pg_inherits` 행(relkind I/i)은 오탐을 내지 않는다. A 부모 + B 부모 다중 상속은 위반 한 줄이다.
+    - 스캔 밖 부모는 owner 자격으로 만들 수 없다(시스템 표 부모 → `must be owner` · 임시 표 부모 거부 · `pg_` 스키마 거부) → 변이 P2(스캔 밖 부모 허용)가 사례 없이 살았다(fail-closed 결정 · 양성 실측은 superuser VD 선택).
+  - 변이 37개 가운데 36개를 잡았다(P2 생존 — 위). N4b(앞 EXISTS 주체를 current_user로)는 이제 원문 단언만 잡는다 — owner가 모든 표를 소유해 두 EXISTS가 같이 참이기 때문이다.
+  - **편차(빌더 ⑧ — 수용)**:
+    - `_INHERITS_SQL`은 셋째 열 `inhparent::regclass::text`(스캔 밖 부모 이름 · 고정 `search_path`라 스키마가 붙는다)와 `ORDER BY inhrelid, inhseqno`를 가진다.
+    - A가 아닌 부모가 여럿이면 한 줄에 정렬해 싣는다.
+    - `_relation_grade`로 등급을 먼저 다 정하고 판정한다(두 번 훑기 — 부모가 자식보다 뒤에 정렬될 수 있다).
+    - role 줄 문구를 재배치했다.
+  - **인계(빌더 ⑨)**:
+    - T072:
+      - 런타임 app role은 pod DB의 비시스템 스키마에서 아무 관계도 소유하지 않는다. 런타임 app 자격의 DDL(`createcachetable` 등)이 있으면 기동 `--require-rls-role`이 실패한다.
+      - DB 소유자는 pod owner role이다.
+    - conftest를 `GRANT … WITH INHERIT FALSE`로 바꾸면 tc-24 정리의 DROP을 app 연결로 옮겨야 한다.
+    - **받아들인 잔여**(범위 메모):
+      - `SET SESSION AUTHORIZATION`(superuser로 인증한 세션)
+      - 논리 복제 · publication
+      - FK · 고유 제약 covert channel
+      - DB · 스키마 소유(H4 범위 밖 — SP-1은 owner가 DB를 소유한다)
+      - 일반 상속에서 B 자식에 직접 쓰기(데이터 흐름)
+- **리뷰 r4**(통합 렌즈 · approve_with_fixes · low 4): R4-1 H1 반대 방향 · R4-2 r4 결과 미기록(이 절) · R4-3 판별 잔여 · R4-4 문구(컨트롤러가 이 커밋에서 고쳤다 — 규칙 §Auth · §Table grades 끝 · 계약 「DB 연결」).
+- **r5 결정 I1–I5(컨트롤러)**:
+  - **I1 상속 양쪽 등급**(R4-1 (a)): A로 판정된 관계의 상속 · 파티션 **자식**이 A가 아니면(허용 목록 · 프레임워크 이름) 그 자식 이름으로 위반 한 줄이다(사유: A 부모의 자식인데 A가 아니다 — 부모로 쓴 A 행이 이 관계에 저장되어 RLS 없이 읽힌다). 계약 ③ · 규칙은 「양쪽 등급이 같아야 한다」로 고쳤다. 시험: tc-31에 A 분할 표 + `tenant_membership` 파티션 · `django_session` 파티션 두 사례(위반 = 그 파티션 한 줄)와 실해 VD(컨텍스트 없는 app이 파티션을 직접 읽어 두 테넌트 행)를 둔다.
+  - **I2 relkind p 자식**(R4-3 (b)): 비-A 부모(B 분할 표 `tenant_membership`)의 파티션이 A 분할 표(`… PARTITION BY RANGE`)인 사례 = 그 파티션 한 줄(relkind p).
+  - **I3 H4 단독 사례**(R4-3 (c)): `tc24_owned`를 `(tenant_id uuid, id integer)` + `rls_policies`로 만든 뒤 소유를 넘긴다. 그러면 플래그 없는 `check_rls() == []`이고, 플래그를 켜면 role 줄 하나뿐이다.
+  - **I4 견고성**(r4 리뷰 「견고성 메모」): tc-24 정리는 DROP이 실패해도 REVOKE가 돈다(중첩 try). tc-31 등 예약 이름(`tenant_membership` · `django_session`)으로 표를 만드는 사례는 만들기 전에 그 이름이 없음을 단언한다(있던 표를 지우지 않는다).
+  - **I5 런타임 문구**(r4 리뷰 범위 메모 · 선택 채택): `_isolation_problems`의 의존 사유 「(사용자 정의 연산자 · 함수 · 타입 · 콜레이션 · 형변환)」을 「표 · 열 밖의 객체(사용자 객체 · initdb 후반 객체 — 연산자 · 함수 · 타입 · 콜레이션 · 형변환)」 꼴로 넓혀 규칙과 같은 뜻으로 맞춘다(cp949 안전).
+  - **받아들이는 잔여(R4-3 (a))**: G4 앞 EXISTS(BYPASSRLS · superuser 멤버십)의 행동 판별은 r3 SET ROLE 사례가 했고, 지금은 원문 고정이 지킨다. 「BYPASSRLS이면서 아무것도 소유하지 않는 login role」은 superuser가 만드는 conftest 개정이라 하지 않는다 — 멤버십 양성과 함께 T072/T075 라이브 VD로 넘긴다.
+
+### T068 r5 결과(수렴 · 2026-11-04)
+
+- **r5 결과**(워크플로 `wf_a8d6c750-fef` · 0.73M 토큰 · 빌더 DONE_WITH_CONCERNS):
+  - 줄 수: `tenancy.py` 726 → 764 · `check_rls.py` 53 → 54 · `test_tenancy_contract.py` 1448 → 1580(시험 함수 42 · 수집 64). SQL 상수 변경은 0이다.
+  - 빨강(r4 구현으로 최종 시험): 6 failed / 58 passed — tc-30 ×3(I5 문구) · tc-31 I1 ×2 · 사슬.
+  - 초록: 16 ×2 · 64 · 3.
+  - **D11 대체 — 시험**:
+    - tc-31 I1 매개변수 2(A 분할 표 `tc31_ap`의 `tenant_membership` · `django_session` 파티션 = 그 파티션 한 줄 · 사례 안에서 실해 `(0, 2)`를 상시 단언).
+    - I2(B 분할 표의 A 분할 파티션 `tc31_sub` = relkind p 한 줄).
+    - 사슬(B(p) → A(p) → 프레임워크(r) = 관계마다 한 줄 · 실해 `(2, 0, 2)`).
+    - tc-24 I3(RLS가 걸린 표를 app에 넘김 → 플래그 없이 `[]` · 플래그를 켜면 role 줄 하나).
+    - I4(중첩 try 정리 · 예약 이름 사전 단언 `_assert_absent`).
+  - **VD(PG 18.6)**:
+    - I1 실해(r4 구현): 두 파티션 모두 r4 `check_rls()` = `[]`. 부모로 쓴 행이 그 파티션에 저장된다(tableoid).
+    - 컨텍스트 없는 app의 (부모, 파티션) = `(0, 2)`, 컨텍스트 A = `(1, 2)`.
+    - 쓰기도 샌다 — B 행을 부모로 넣으면 정책이 막고, 파티션에 직접 넣으면 된다.
+    - EXPLAIN: Filter는 부모 질의에만 있다.
+    - VD-I1b: 일반 상속에서는 부모로 쓴 행이 부모에 남는다.
+    - 분할 인덱스 행 · 다른 세션의 TEMP 상속 자식은 오탐이 없다.
+  - 변이 11/11(Q1–Q5 · P1 · P1b · P1c · P1d · P3 · P4). Q4 · P4는 원문 단언보다 앞선 행동 단언에서 잡혔다. 변이 실행기의 CRLF 판정 버그로 두 번 「EXPECTED-MISS」가 찍혔다 — 고쳐 세 번째로 다시 돌렸고, 실패 집합은 세 번 모두 같았다.
+  - **편차(빌더 ⑧ — 수용)**: 자식 쪽 판정은 스캔된 자식 가운데 B · 프레임워크로 판정된 것만 본다(B ↔ 프레임워크 링크 · 스캔 밖 자식은 판정하지 않는다 — 계약 · 규칙을 이 뜻으로 고쳤다 · R5-2). A 부모가 여럿이면 정렬해 한 줄에 싣는다. 괄호 안에 판정된 등급을 싣는다. I4를 적용하지 않은 곳: tc-15(뷰) · tc-17(전용 스키마 CASCADE) · tc-29(롤백).
+  - 세션 중 남의 컨테이너(`currentness_*` 4개)가 생겼다 — 손대지 않았다.
+- **리뷰 r5**(통합 · approve_with_fixes · low 3 · **수렴 판정** — 「리뷰를 닫아도 된다 · r6 불필요」). 컨트롤러가 직접 마무리했다(T067 r8과 같은 방식):
+  - **R5-1**: I1 사유 「부모로 쓴 A 행이 이 관계에 저장되어」는 일반 상속 자식에는 사실이 아니다.
+    - 사유를 두 경우 모두 맞는 꼴로 바꿨다: 「이 관계를 직접 읽는 질의에는 이 관계의 RLS만 적용되어 A 부모를 거쳐 보이는 행이 RLS 없이 읽힌다(파티션이면 부모로 쓴 A 행도 이 관계에 저장된다)」. 시험 `CHILD_REASON`도 그 조각으로 맞췄다.
+    - `test_tc_31_plain_inheritance_child_of_grade_a_parent_fails`(`CREATE TABLE tenant_membership () INHERITS (widget)` = 한 줄 · relkind r)를 더했다.
+    - 변이 「I1을 파티션 부모(relkind p)에만」 → 그 시험만 빨강(1 failed / 64 passed) · cmp 복원.
+  - **R5-2**: 계약 ③ · 규칙 · 모듈 독스트링 · `_INHERITS_SQL` 주석을 「A 등급 관계가 낀 링크는 양쪽이 모두 A · B ↔ 프레임워크 링크와 스캔 밖 자식은 판정 밖」으로 고쳤다.
+  - **R5-3**: 이 절.
+
+### T068 결과(r1 → r5 · 2026-11-04) — D1–D15의 정정은 r2 · r3 · r4 · r5 절이 우선한다
+
+- **경과**: 조사 `wf_829c75f2-4a5` → r1 `wf_09fe772a-fef`(1.07M) → r2 `wf_632d2ccd-40c`(1.13M) → r3 `wf_a04b080d-08b`(1.22M) → r4 `wf_6c6cd7f9-9f3`(0.87M) → r5 `wf_a8d6c750-fef`(0.73M). 빌드 · 리뷰 합계는 약 5.0M 토큰이다.
+- **리뷰 회차별 지적**(높음 · 중간 · 낮음):
+  - r1: A 0 · 1 · 6 / B 0 · 1 · 7
+  - r2: A2 0 · 2 · 3 / B2 0 · 0 · 3
+  - r3: A3 0 · 0 · 4 / B3 0 · 0 · 4
+  - r4: 통합 0 · 0 · 4
+  - r5: 통합 0 · 0 · 3(수렴)
+- **최종 산출물**:
+  - `src/django_common/tenancy.py` 768줄 · `problem.py` 46 · `management/__init__.py` · `management/commands/__init__.py` · `management/commands/check_rls.py` 54.
+  - `tests/test_tenancy_contract.py` 1599줄(시험 함수 43 · 수집 65) · `tests/tenancyapp/` 4파일.
+  - conftest +2(`GRANT test_app TO test_owner`) · 주석 전용 4파일(`pyproject.toml` · `__init__.py` · `tests/settings.py` · `0001_initial.py`).
+  - 계약 · 규칙 · kr 미러 · 이 build-notes.
+- **컨트롤러 독립 검증**(최종본 · 10:41–10:44Z):
+  - `pytest tests/test_tenancy.py -q` 16 passed ×3 · `tests/test_tenancy_contract.py -q` 65 passed ×2 · `tests/test_fixtures_pg.py -p no:django -q` 3 passed(경고 1 = T060 K9 허용).
+  - 바이트 위생 15파일 OK(최대 줄 119) · 주석 전용 4파일 AST · TOML 동일 · compileall OK · 런타임 문자열 cp949 실패 0(tenancy 175 · problem 11 · check_rls 15) · gitleaks 19/19 rc 0.
+  - Docker: dangling 볼륨 25 → 25 · testcontainers 잔존 0.
+- **계약 보정 이력**(`285af5b` 뒤 전부 이 커밋):
+  - r2: 정본 식 · PUBLIC · Django 스키마 · superuser 확장 · DEFINER · 규칙 · 모델 검사 · `--require-rls-role` · ASCII 성공 줄 · frozenset · Ninja · `tenant_context`.
+  - r3: 정책 의존 · `search_path` 고정 · `session_user` 멤버십 · 시그니처 · Django 스키마 0/2 · 함수 확장 제외 · TME · `assume_role` 금지.
+  - r4: 문구 정정 · 정책 하나 · 상속 부모 · 관계 소유 멤버십 · 검사 범위의 경계.
+  - r5: A가 낀 링크 양쪽 A · `assume_role` 문장 · 판정 밖 두 경우.
+- **report.md 후보**:
+  - ① 설계 D10의 「모양 판정」은 부족했다. 이름만 같은 `USING (true)` 정책이 r1을 통과했다. 그 뒤 정본 deparse · `pg_depend` 의존 · `search_path` 고정 · 정책 하나 · 상속 양쪽 등급으로 늘었다.
+  - ② 문면 밖 산출물: `tenant_context`(교차 테넌트 컨텍스트 누수 방지) · `check_rls(require_rls_role=…)` + `--require-rls-role`(기동 검사) · `problem_response`(D5).
+  - ③ T060 픽스처 확장: conftest 한 문장(assume_role 재현).
+  - ④ 실측으로 막은 누설 넷(이전 판이 통과시킨 것):
+    - 도메인 + 사용자 `=` 정책 — 컨텍스트 없이 전 행.
+    - 전역 표를 상속 부모로 둔 테넌트 표 — 부모 질의로 전 행.
+    - RESTRICTIVE 형변환 식 — 순차 스캔에서 다른 테넌트 값이 오류 메시지로 샌다.
+    - 테넌트 분할 표의 전역 이름 파티션 — 직접 질의로 전 행 · 쓰기도.
+  - ⑤ 검사 범위의 경계를 계약에 적었다(데이터 흐름은 리뷰 몫).
+- **VD 요약**(PG 18.6 · 180006):
+  - TEST.MIRROR teardown 연속 통과(VD-6).
+  - app role의 카탈로그 읽기 · 클라이언트 바인딩 `str` · `''` 경로.
+  - 정본 deparse(app · owner · 고정 전후 같음) · 정본 정책 `pg_depend` = `pg_class`만.
+  - savepoint 지역 GUC: `RELEASE`면 남고 `ROLLBACK TO`면 되돌아간다.
+  - 누설 재현 넷(위 ④) · 소유 이전과 소유자의 RLS 토글 · em dash의 cp949 실패.
+- **VD 잔여(라이브 · T072/T075)**:
+  - superuser 소유 확장 멤버 제외의 양성(pgvector).
+  - CNPG app role의 카탈로그 읽기와 `check_rls --require-rls-role` 통과.
+  - 멤버십 양성(임시 LOGIN role + `GRANT <pod>_owner TO …` → 위반 확인 → DROP).
+  - 「BYPASSRLS이면서 아무것도 소유하지 않는 login role」 판별 · 스캔 밖 부모의 양성(superuser).
+  - CNPG Pooler `auth_query`의 SECURITY DEFINER 함수(SP-1에는 Pooler가 없다).
+  - `TESTCONTAINERS_HOST_OVERRIDE` 없이 1회.
+- **인계(최종)**:
+  - **T069**: `GlobalModel` · `db_table = "outbox"` · `current_tenant_id()` · 교차 테넌트 publish는 `tenant_context`. tc-29는 카탈로그 계산이라 `public.outbox`와 충돌하지 않는다. 시험 DB에 다른 스캔 대상 관계를 만들지 않는다(tc-17 개수).
+  - **T070**: `request.tenant_id`는 `uuid.UUID`만 · `AuthError.to_response()`는 `problem_response` · MIDDLEWARE에서 `JwtAuthMiddleware` 바로 뒤에 `TenantContextMiddleware`.
+  - **T071**: 헬스 3 기본 면제 · 503은 `problem_response`.
+  - **T072**:
+    - 기동은 app role `check_rls --require-rls-role`, CI는 owner `--database`.
+    - 정책은 `rls_policies`로만 만든다. SECURITY DEFINER · `CREATE RULE` · RESTRICTIVE · 등급이 섞인 상속 · `assume_role`은 금지.
+    - CNPG app role의 `inRoles`에 owner를 두지 않는다. app은 아무 관계도 소유하지 않는다.
+    - `rls_policies`는 `search_path`를 바꾸지 않은 세션에서 적용한다.
+    - 정적 자산은 `TenantContextMiddleware` 앞에서 서빙한다.
+    - Ninja catch-all 처리기를 금지하고 Ninja판 tc-7 기본 시험을 둔다.
+    - `check_rls` 전에 migrate가 끝나 있어야 한다.
+  - **T073**:
+    - B 모델 3개의 `db_table`은 허용 이름이다.
+    - 교차 테넌트 revoke · publish는 `with tenant_context(대상):`.
+    - 사람 admin 경로(Bearer 없음)는 지금 설계로 403 `tenant_required`다 — 호스트 기준 처리나 auth의 tenant 공급을 함께 정한다.
+    - 요청 트랜잭션 안에서 긴 외부 대기를 하지 않는다(30 s).
+  - **시험 DB**: owner가 test_app의 멤버(INHERIT · SET)다.
+- **학습 로그**: `content/tmp/003-t068/2026-11-04.md`.
+
+## T069 (2026-11-04 시작 — US6 구현 · `packages/django-common/src/django_common/outbox/` → T061 PASS · 세션 모델 Opus 5.5)
+
+- **과제 문면(tasks.md :186)**: `OutboxEvent` 모델(B 등급 `GlobalModel`; ULID id · topic · partition_key · payload · attempts · last_error · dead_at), `publish(topic, subject, data, *, tenant_id=None)`(atomic 밖 · 테넌트 컨텍스트와 인자가 모두 없으면 `OutboxUsageError`, CloudEvents 2.2 봉투, 확정 `tenant_id` = `tenantid`(uuid) 확장 = 행 `partition_key`), `relay_outbox` command(app role · 컨텍스트 없음 · 500 ms 폴링 · 배치 100 · `WHERE dead_at IS NULL ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 100` · dead 행 재집 없음 — 재처리는 `dead_at`을 비우는 수동 command만 · confluent-kafka idempotent SASL_SSL SCRAM + cluster CA · `delivery.timeout.ms 30000` · 성공 DELETE · 실패 `attempts += 1` · `last_error` · 지수 백오프(최대 5분) · `max_attempts 10` 도달 시 원본 봉투를 `<pod>.dlq`로(+`error` 헤더) + `dead_at`(행 유지)), relay 컨테이너 `prometheus_client` HTTP 9464로 지표 3종(`outbox_pending` · `outbox_oldest_pending_seconds` · `outbox_dead_total`) + dead 행 purge beat(`dead_at + 30 d`) → T061 PASS.
+- **소스로 확인한 사실**(읽기 전용 조사 워크플로 `wf_029b6b90-1a0` — 시험 · 명세 · 런타임 세 갈래 · 1.27M 토큰, 보고 `.superpowers/t069/research/{tests,spec,runtime}.json`):
+  - ① **빨강**: `tests/test_outbox.py:51`의 `from django_common.outbox import …`가 `ModuleNotFoundError`다(T068 구현이 들어와 `django.setup()`은 지난다). 시험은 `django_common.outbox.metrics`도 import한다 → **`outbox`는 `metrics` 하위 모듈이 있는 패키지**여야 한다(문면의 단일 파일 `outbox.py`로는 안 된다).
+  - ② **모델 등록 · 마이그레이션**: `src/django_common`에 `models.py` · `migrations/`가 없다. Django는 앱 로딩 때 `<앱>.models`만 import하고, migrations 패키지가 없는 앱은 `migrate`가 표를 만들지 않는다(`--run-syncdb` 아님) → `django_common/models.py` + `migrations/0001_initial.py`(앱 이름을 준 `makemigrations django_common`)가 있어야 conftest의 migrate가 `outbox`를 만든다. `django_common/__init__.py`에서 outbox를 import하면 `AppRegistryNotReady`다. identity-admin 시험은 `apps.get_models()`에서 `db_table == "outbox"`인 모델이 정확히 하나이기를 요구한다.
+  - ③ **이름 어긋남**: 명령 이름은 계약 · T065 골든 렌더 · 생성 트리 검사 · 시험 docstring이 `outbox_relay`, 문면 · research DJANGO-D6만 `relay_outbox`다. 「CloudEvents 2.2」는 plan의 Python SDK `cloudevents` 2.2.0 판 번호다 — 봉투 규격은 1.0(`_envelope.json` `specversion` const)이고 SDK는 설치돼 있지 않으며 T061 인계는 릴레이의 재직렬화를 금지한다. 계약 §django-common 공개 API는 `relay`, 시험은 `relay_once` · `RelayResult` · `OutboxUsageError` · `metrics.refresh_metrics`다.
+  - ④ **purge 위치**: django-common에는 Celery가 없다. 계약 · T072 문면은 beat 작업을 템플릿 기본 작업(`<pod_snake>.tasks.purge_dead_outbox` · 일 1회)으로 두고, T066 api-35는 그 pod 작업으로 경계(DB now() − 30 d ± 1 h)를 고정한다 → T069는 Celery 없는 라이브러리 함수만 둔다.
+  - ⑤ **confluent-kafka 2.16.1(librdkafka 2.16.0) 실측**:
+    - `produce`의 다섯째 위치 인자는 `callback`(FakeProducer는 `on_delivery`) → 키워드로만 부른다.
+    - delivery 콜백은 `poll` · `flush` · `close`를 부른 스레드에서 돈다. 콜백 예외는 `flush` 밖으로 올라온다. DR의 `msg.headers()`는 None이다 → 행 대응은 클로저로 맺는다.
+    - `flush(timeout)`는 남은 수를 돌려준다. 시간 초과로 남은 메시지는 `purge(in_queue, in_flight)` 뒤 `flush`로 `_PURGE_*` DR을 받아야 다음 배치에 새지 않는다.
+    - 즉시 예외: `BufferError`(큐 가득) · `KafkaException`(`MSG_SIZE_TOO_LARGE` — 기본 `message.max.bytes` 1000000).
+    - 기본값: `enable.idempotence` false · `delivery.timeout.ms` 300000 · `sasl.mechanism` GSSAPI(빠져도 생성은 성공 — 경고만) · 알 수 없는 키는 생성 실패 · 정수 설정은 `'30s'` → 30(접미 무시).
+    - 실 Producer는 len 0이어도 · close 뒤에도 truthy다 — T061 인계의 「`__len__` 때문에 falsy」 근거는 틀렸다(판정 `producer is None`은 유지).
+  - ⑥ **prometheus_client 0.26.0**:
+    - `Counter("outbox_dead_total")`는 표본 `outbox_dead_total`과 `outbox_dead_created`를 낸다. 같은 이름을 다시 등록하면 `DuplicateTimeseries`다.
+    - `start_http_server`는 0.0.0.0에 붙는 daemon 스레드다.
+    - `PROMETHEUS_MULTIPROC_DIR`가 env에 있으면 값 저장 방식이 mmap 파일로 바뀐다.
+    - web 프로세스가 metrics 모듈을 import하면 web 레지스트리에도 0값 outbox 지표가 생겨 `MetricsAbsent`(relay 부재 감시)를 가린다.
+  - ⑦ **Django 6.1.2**:
+    - `select_for_update`는 평가 시점에 autocommit이면 `TransactionManagementError`다.
+    - `JSONField`는 jsonb를 `json.loads`로 읽는다 — 바이트는 보존되지 않고 뜻만 같다.
+    - `Now()`는 `STATEMENT_TIMESTAMP()`다.
+    - 관리 명령 루프는 `close_old_connections`를 직접 불러야 한다.
+    - `transaction.atomic(durable=True)`는 다른 atomic 안이면 `RuntimeError`다.
+  - ⑧ **운영 위험(시험이 못 잡음)**: 운영 app role에는 `idle_in_transaction_session_timeout 30s`가 걸려 있다(T054 PostSync). 브로커 불통이면 FOR UPDATE 잠금을 쥔 트랜잭션 안의 flush 대기가 `delivery.timeout.ms` 30 s + DR 지연(실측 0.01–0.71 s)이 된다 → 세션이 끊겨 attempts를 기록하지 못하고 같은 행을 계속 재시도한다. 메인 + DLQ 두 단계면 대기가 두 번이다.
+  - ⑨ **ULID**: 의존성 · venv에 ULID 라이브러리가 없고 Python 3.13에 `uuid7`도 없다 → 직접 구현이다. 형식은 48비트 ms + 80비트 난수, Crockford 대문자 26자, 첫 글자 0–7이다. out-11은 한 트랜잭션에서 50개를 만든다(같은 ms 안 유일성 필요).
+  - ⑩ **T068 상호작용**: tc-17은 B 등급 수가 2가 될 뿐 통과한다. 다른 스캔 대상 관계(표 · 뷰 · 함수 · 규칙)를 만들면 빨강이다. 인덱스(relkind i)는 무관하다. tc-29는 r3 G1(기대 집합을 카탈로그에서 계산)로 `public.outbox`와 충돌하지 않는다.
+  - ⑪ **봉투 · 시간**: `datetime.isoformat()`은 `+00:00`을 낸다. 시험 `TIME_RE`는 `Z`만 받는다. jsonschema 4.26에는 date-time 검사기가 없다(`rfc3339-validator` 미설치) → `time` 꼴은 out-3이 지키는 전부다.
+  - ⑫ **pod 이미지 경계**: 생성 pod 이미지는 django-common과 pod만 COPY한다 → `packages/events` 스키마를 런타임에 읽을 수 없다. 꼴 검사는 코드에 둔다.
+- **계약 보정(컨트롤러 · 이 설계와 같은 커밋 · 「T069 보정 2026-11-04」 표식)**:
+  - **C1** `contracts/events.md` §발행 API에 publish의 입력 검사(D3)를 더한다: 자기 접두 · 논리 토픽 꼴 · 물리 길이 · subject 꼴 · data dict · JSON · 크기 · tenant 정규화 · GUC 오류 → `OutboxUsageError` · 네트워크 0.
+  - **C2** 같은 문서 §outbox 릴레이를 D4–D9로 바꾼다: 명령 이름 · 옵션 · 기본값 · 라이브러리 API · 트랜잭션 구조 · 두 단계 · DLQ 실패 규칙 · `last_error` 상한 · 백오프 규칙 · 장애 때 거동 · 순서의 한계 · 프로듀서 설정 · 설정 이름 · 지표 노출 규칙 · purge 함수 · 재처리 명령.
+  - **C3** `contracts/pod-template.md` §django-common 공개 API의 `django_common.outbox` 줄과 「이벤트」 · 「메트릭」 행.
+  - **C4** `data-model.md` §4(`created_at` DB 기본값 · `attempts ≥ 0` · 길이 · 부분 인덱스 2).
+  - **C5** `.claude/rules/django-pod.md` §Outbox and events · `.claude/rules/events.md`(해당 줄)를 영어로 같이 고친다 · kr 미러 2는 translation-pending 줄.
+- **결정 D1–D16(컨트롤러)**:
+  - **D1 범위 · 빨강 → 초록**: 산출물은 아래와 같다.
+    - (1) 패키지 `src/django_common/outbox/`:
+      - `__init__.py`: 공개 이름 재노출 — `OutboxEvent` · `OutboxUsageError` · `RelayResult` · `publish` · `relay_once` · `purge_dead` · `requeue_dead`. `metrics`는 재노출하지 않는다(D5 지연 import).
+      - `models.py`(D2) · `_ulid.py`(D10) · `publisher.py`(D3 — `OutboxUsageError` · `publish` · 봉투 직렬화 `encode_envelope`) · `relay.py`(D4 · D6 — `RelayResult` · `relay_once` · `producer_config` · `build_producer`) · `maintenance.py`(D8 — `purge_dead` · `requeue_dead`) · `metrics.py`(D5).
+    - (2) `src/django_common/kafka.py` — `client_config()`(D6 · T071 `/health` 공용).
+    - (3) `src/django_common/models.py`(OutboxEvent import만 — 앱 로딩 등록) · `src/django_common/migrations/__init__.py` · `0001_initial.py`.
+    - (4) `management/commands/outbox_relay.py`(D7) · `outbox_requeue.py`(D8).
+    - (5) **새 시험** `tests/test_outbox_contract.py`(T069 소유 · oc-1..20 — D11) + `tests/test_event_patterns.py`(T067 인계 — D12).
+
+    T061 · T068 산출물(`test_outbox.py` · `_kafka.py` · `_tenant.py` · conftest · settings · `tenancy.py` · `test_tenancy*.py`)은 바꾸지 않는다. 의존성 · `uv.lock`도 바꾸지 않는다(confluent-kafka · prometheus-client · jsonschema는 이미 있다). 순서는 새 시험을 먼저 쓰고 빨강을 본 뒤 구현해 초록으로 만드는 것이다.
+  - **D2 모델 `OutboxEvent(GlobalModel)`**(`db_table = "outbox"` · 앱 라벨 `django_common`):
+    - 필드: `id = CharField(primary_key=True, max_length=26, default=new_ulid, editable=False)` · `topic = CharField(max_length=249)` · `partition_key = CharField(max_length=36)` · `payload = JSONField()` · `created_at = DateTimeField(db_default=Now())` · `attempts = PositiveIntegerField(default=0)` · `last_error = TextField(null=True, blank=True)` · `dead_at = DateTimeField(null=True, blank=True)`.
+    - `created_at`은 DB 시계다(`STATEMENT_TIMESTAMP()` — 지표 나이 · purge와 같은 시계 · INSERT `RETURNING`으로 인스턴스에 채워진다).
+    - 인덱스: `outbox_pending_idx` = `(id) WHERE dead_at IS NULL`(릴레이 `ORDER BY id LIMIT` · 지표) · `outbox_dead_at_idx` = `(dead_at) WHERE dead_at IS NOT NULL`(purge). 이름은 30자 이하(`models.E034`).
+    - 마이그레이션은 `CreateModel` 하나(인덱스 포함)다. RLS 연산 · RunSQL · GRANT는 두지 않는다(B 등급 — 권한은 owner의 기본 권한).
+  - **D3 `publish(topic, subject, data, *, tenant_id=None) -> OutboxEvent`**(호출 시점에 설정을 읽는다 · 네트워크 I/O 0 · 순서대로 검사하고 실패하면 INSERT 전에 `OutboxUsageError`):
+    1. `connections[DEFAULT_DB_ALIAS].in_atomic_block`가 아니면 → 「atomic 밖」.
+    2. `topic`이 str이 아니거나, 봉투 `type` pattern(`_envelope.json`과 같은 문자열 · Python `re.search` 의미)에 맞지 않거나, 첫 점 앞이 `OUTBOX_SOURCE`가 아니거나(자기 pod 접두 — env 접두가 붙은 토픽도 여기서 걸린다), `OUTBOX_TOPIC_PREFIX + topic`이 249자를 넘으면 → 「토픽」.
+    3. `subject`가 봉투 `subject` pattern에 맞지 않으면 → 「subject」.
+    4. `data`가 `dict`가 아니면 → 「data」.
+    5. 테넌트 확정:
+       - `tenant_id`가 `uuid.UUID`면 그대로 쓴다. str이면 `uuid.UUID(s)`로 파싱한다(대문자 · 중괄호 · `urn:uuid:` · 하이픈 없는 꼴은 소문자 8-4-4-4-12로 정규화). 그 밖의 타입이나 파싱 실패(`ValueError` · `AttributeError` · `TypeError`)는 → 「tenant_id」.
+       - 컨텍스트는 `tenancy.current_tenant_id()`로 읽는다. 그 `ValueError`(GUC 파손)는 → 「컨텍스트」(fail-closed).
+       - 둘 다 있고 다르면 → 「충돌」. 둘 다 없으면 → 「테넌트 없음」.
+    6. 봉투 `{"specversion": "1.0", "id": new_ulid(), "source": OUTBOX_SOURCE, "type": topic, "time": <UTC ms 'Z'>, "subject": subject, "tenantid": str(tenant), "datacontenttype": "application/json", "data": data}`.
+       - `time` = `datetime.now(UTC).isoformat(timespec="milliseconds")`의 `+00:00`을 `Z`로 바꾼 값이다.
+       - `encode_envelope`(`json.dumps(…, ensure_ascii=False, separators=(",", ":"), allow_nan=False)` → UTF-8)가 실패하면(`TypeError` · `ValueError` — datetime · UUID · NaN · 비str 키) → 「JSON」.
+       - 바이트가 `MAX_EVENT_BYTES = 900_000`을 넘으면 → 「크기」(브로커 `message.max.bytes` 1000000에 헤더 여유 — 메인 · DLQ 둘 다 영원히 실패하는 메시지를 막는다).
+    7. `OutboxEvent.objects.create(id=…, topic=topic, partition_key=str(tenant), payload=envelope)`를 돌려준다.
+
+    설정 `OUTBOX_SOURCE`는 봉투 `source` pattern(kebab)이 아니면 `ImproperlyConfigured`(이름만 · `from None`)다. `OutboxUsageError(Exception)`의 메시지는 규칙 이름만 싣는다(값 · data 없음).
+  - **D4 `relay_once(*, producer=None, batch_size=100) -> RelayResult`**(`RelayResult` = `@dataclass(frozen=True)` `published` · `failed` · `dead` — 이 패스에서 고른 행 수 = 셋의 합):
+    1. `producer is None`이면 `build_producer()`(D6)로 만들고, 끝나면 `flush` 뒤 버린다. 주입된 프로듀서에는 `produce` · `flush` · `poll` · (남은 메시지가 있을 때만) `purge`만 부른다. 〔r4 L6 · L7이 대신한다 — relay_once는 poll을 부르지 않는다(패스 전 poll(0)은 명령의 것) · purge는 flush가 치명을 올려도 부른다(relay 모듈 독스트링)〕
+    2. `transaction.atomic(using=DEFAULT_DB_ALIAS, durable=True)` — 트랜잭션 밖에서만 부른다. 다른 atomic 안이면 `RuntimeError`다. 바깥 트랜잭션이 롤백되면 Kafka로 이미 나간 행이 되살아난다.
+       - 첫 문장은 `SET LOCAL idle_in_transaction_session_timeout = '120s'`(상수 · 바인드 없음)다. 두 단계 flush(각 상한 35 s) 동안 app role의 30 s가 세션을 끊지 않게 한다(사실 ⑧ · 이 트랜잭션에만 걸린다).
+    3. 선택: `list(OutboxEvent.objects.filter(dead_at__isnull=True).order_by("id").select_for_update(skip_locked=True, of=("self",))[:batch_size])`. 비면 `RelayResult(0, 0, 0)`. 〔r2 J4 · r3 K5가 대신한다 — `id`와 `octet_length(payload::text)`를 잠그고(크기 상한 안 행만) 바이트 예산 안 앞부분만 읽는다〕
+    4. **1단계 — 모든 행을 메인 토픽으로**: `OUTBOX_TOPIC_PREFIX + row.topic`, key = `partition_key` UTF-8, value = `encode_envelope(row.payload)`, 헤더 `[("ce_type", row.topic), ("ce_source", OUTBOX_SOURCE), ("ce_id", row.id), ("content-type", "application/cloudevents+json")]`(UTF-8 bytes · 이름 중복 없음). 헤더는 행의 열과 설정에서 만들고 payload를 해석하지 않는다. jsonb에서 읽은 payload는 언제나 직렬화되므로, 손으로 넣은 꼴 나쁜 행도 릴레이를 멈추지 못한다(소비자 스키마 검증이 그 DLQ로 보낸다). 〔r2 J3이 대신한다 — value = `payload::text`의 UTF-8(Python으로 해석 · 재직렬화하지 않는다)〕
+       - 호출 꼴은 `produce(topic, value=…, key=…, headers=…, on_delivery=functools.partial(기록, row.id))`(키워드만)이다.
+       - 기록 콜백은 이 호출의 지역 dict에 `err`만 적는다(DB 쓰기 · 예외 없음).
+       - `produce`가 곧바로 낸 `BufferError` · `KafkaException`은 그 행의 실패다. 다른 예외는 올린다(버그 — 프로세스가 끝나고 재시작한다). 〔r2 J6이 대신한다 — relay_once는 올리고, 명령은 로그 + 백오프로 버틴다〕
+    5. `flush(FLUSH_TIMEOUT_S = 35)`. 0보다 크면 `purge(in_queue=True, in_flight=True)` 뒤 `flush(5)`로 purge DR을 받는다. 결과가 없는 행은 실패(「delivery 결과 없음」)다. in-flight purge는 이미 기록됐을 수 있다(중복 — 소비자 `(group, id)` 멱등).
+    6. **2단계 — DLQ**: 1단계 실패 행 가운데 `attempts + 1 ≥ OUTBOX_MAX_ATTEMPTS`인 것을 같은 패스에서 `OUTBOX_TOPIC_PREFIX + OUTBOX_SOURCE + ".dlq"`로 보낸다. value는 같은 바이트, key는 같은 `partition_key`, 헤더는 1단계 넷 + `("error", last_error 텍스트)`다. flush · purge 규칙은 5와 같다.
+    7. **반영**(같은 트랜잭션):
+       - 메인 성공 → `filter(pk__in=…).delete()`(published).
+       - 메인 실패 → 행마다 `attempts = F("attempts") + 1` · `last_error = str(err)[:LAST_ERROR_MAX = 1000]`(앞을 남긴다).
+         - DLQ까지 성공하면 `dead_at = Now()`도 쓴다(dead).
+         - 그렇지 않으면 행을 남긴다(failed). DLQ 실패면 `last_error`는 DLQ 오류다.
+       - `attempts ≥ 10`인데 `dead_at`이 NULL인 행(앞선 DLQ 실패)도 다음 패스에서 **메인부터** 다시 시도한다 — 브로커 장애가 원인일 때 복구 뒤 메인으로 간다. 메인이 또 실패하면 2단계 DLQ다.
+    8. 커밋 뒤 `metrics.OUTBOX_DEAD_TOTAL.inc(dead 수)`(D5 지연 import)를 한다.
+
+    설정 `OUTBOX_TOPIC_PREFIX`는 `""` · `"dev."` 둘만(계약 §토픽 규약), `OUTBOX_MAX_ATTEMPTS`는 1 이상의 int다. 어기면 `ImproperlyConfigured`.
+  - **D5 지표 `django_common.outbox.metrics`**(모듈 수준 1회 등록 · 레이블 없음 · 기본 REGISTRY):
+    - `OUTBOX_PENDING = Gauge("outbox_pending", …)` · `OUTBOX_OLDEST_PENDING_SECONDS = Gauge("outbox_oldest_pending_seconds", …)` · `OUTBOX_DEAD_TOTAL = Counter("outbox_dead_total", …)`(`_created` 표본은 그대로 둔다 — 프로세스 전역 env를 건드리지 않는다).
+    - `refresh_metrics() -> None`: default 별칭 · autocommit 한 문장으로 `count` · `max(Now() − created_at)`를 `dead_at IS NULL`에서 구한다(DB 시계). pending을 `set`하고, 나이는 `anchor = time.monotonic() − age`로 둔다(없으면 None).
+    - **나이는 스크레이프 시점에 자란다**: `OUTBOX_OLDEST_PENDING_SECONDS.set_function(lambda: 0 if anchor is None else time.monotonic() − anchor)`. 루프가 멈춰도 pending 행의 나이가 계속 커져 `OutboxOldestPending`(> 60 s)이 울린다. liveness TCP 9464는 데몬 스레드라 루프 정지를 못 본다.
+    - **지연 import**: `django_common.outbox`(publish 경로)를 import해도 이 모듈은 import되지 않는다(`relay_once` · 명령이 함수 안에서 import한다). web 프로세스 레지스트리에 0값 outbox 지표가 생기면 relay 부재 감시(`MetricsAbsent`)를 가린다.
+  - **D6 Kafka 설정**(설정 이름 확정 — T061 D3 가정 그대로):
+    - `OUTBOX_SOURCE`(pod 이름) · `OUTBOX_TOPIC_PREFIX`(prod `""` · dev `"dev."`) · `OUTBOX_MAX_ATTEMPTS`(10) · `KAFKA_BOOTSTRAP_SERVERS`(str) · `KAFKA_CLIENT_CONFIG`(dict — confluent 설정 키). 전부 호출 시점에 읽는다.
+    - `django_common.kafka.client_config() -> dict` 규칙(어기면 `ImproperlyConfigured` · 키 이름만 · 값 없음 · `from None`):
+      - `KAFKA_BOOTSTRAP_SERVERS`는 비지 않은 str. `KAFKA_CLIENT_CONFIG`는 str 키 Mapping.
+      - `bootstrap.servers` · `transactional.id` 키는 금지다(앞은 위 설정이 정하고, 뒤는 transactionalId ACL이 없다).
+      - `security.protocol`은 필수이고 `SASL_SSL` · `PLAINTEXT`만 받는다(대소문자 무시 — PLAINTEXT 기본값 금지 · 명시했을 때만 시험 · 로컬 compose).
+      - `SASL_SSL`이면 `sasl.mechanism`(또는 `sasl.mechanisms`) = `SCRAM-SHA-512` · `sasl.username` · `sasl.password` · `ssl.ca.location`이 비지 않은 str이어야 한다(librdkafka는 mechanism이 빠지면 GSSAPI로 조용히 만든다).
+      - 결과 = `{"bootstrap.servers": …, **KAFKA_CLIENT_CONFIG}`.
+    - `relay.producer_config()` = `client_config()` + `enable.idempotence = True` · `delivery.timeout.ms = 30000`(int) · `client.id` 기본 `OUTBOX_SOURCE`. `KAFKA_CLIENT_CONFIG`에 `enable.idempotence` · `delivery.timeout.ms` · `message.timeout.ms`가 있으면 `ImproperlyConfigured`다(계약 고정값). acks · retries · max.in.flight의 양립은 librdkafka가 생성 때 검사한다.
+    - `build_producer()`는 `confluent_kafka.Producer(producer_config())`다(import는 함수 안 — publish 경로는 confluent를 불러오지 않는다). 설정 dict는 로그 · 예외 · repr에 싣지 않는다(`sasl.password`). 〔r4 L6 — error_cb(비치명 이벤트 이름 로그)를 단다〕
+  - **D7 명령 `outbox_relay`**(계약 이름 · 인자 없는 기본값 = 계약 값):
+    - 옵션: `--batch-size`(100) · `--poll-interval`(0.5 s) · `--max-backoff`(300 s) · `--metrics-port`(9464 · 0 = 서버를 열지 않음 — 시험) · `--iterations`(0 = 무한 — 시험 · 운영 점검). 양수 검사.
+    - 순서: ① `build_producer()`(설정 오류는 포트를 열기 전에 실패 — liveness가 뜨지 않아 CrashLoop로 드러난다) ② `start_http_server(port)` ③ `refresh_metrics()` ④ 루프. 〔r2 J6 · r4 L7이 대신한다 — 9464를 먼저 열고, 생성은 루프 안 · 패스 전 poll〕
+    - 루프 한 번: `close_old_connections()` → `relay_once(producer=…, batch_size=…)` → `refresh_metrics()` → 다음 대기.
+      - 다음 대기는 셋 중 하나다. 배치가 가득(published = batch)이면 0(밀린 행을 바로 비운다 · SC-004 5 s). 진전 없음(published 0 · failed > 0)이면 지수 백오프(대기 × 2, `--poll-interval`에서 시작해 `--max-backoff`까지). 그 밖은 `--poll-interval`(진전이 있으면 백오프를 되돌린다). 〔r2 J4 · r3 K9 · r5 M1이 대신한다 — 대기 = max(직전, 폴링, 0.5 s) × 2 · 잘림 0 · 치명 재생성 첫 빈 패스는 유지〕
+      - DB `OperationalError` · `InterfaceError`는 로그(예외 클래스 이름만) · `close_old_connections()` · 백오프다. 그 밖의 예외는 올린다 — 프로세스가 끝나 9464가 닫히고 컨테이너가 재시작한다(crash-only). 〔r2 J6이 대신한다 — 루프 안 오류로 끝나지 않는다(로그 + 백오프)〕
+    - SIGTERM · SIGINT: 플래그만 세운다(이번 패스를 마치고 끝낸다). 대기는 0.1 s 조각으로 플래그를 본다. 끝에서 이전 처리기를 되돌린다(`call_command` 시험이 같은 프로세스).
+    - 로그: `logging.getLogger("django_common.outbox")` 이벤트 이름 + 개수만 싣는다(payload · 설정 · 오류 본문 없음 — `last_error`는 DB에 있다). 〔r2 J6 · r3 K11이 대신한다 — 예외 클래스 + 값 없는 진단 필드도 싣는다〕
+  - **D8 purge · 재처리**:
+    - `purge_dead(*, older_than: timedelta = timedelta(days=30)) -> int`: `filter(dead_at__lt=Now() − older_than).delete()`의 삭제 수를 돌려준다. DB 시계 · default 별칭(app role) · `dead_at` NULL은 대상 밖이다. `older_than`이 0 이하면 `ValueError`다. T072 Celery 작업 `<pod_snake>.tasks.purge_dead_outbox`가 감싼다(일 1회).
+    - `requeue_dead(ids: Collection[str] | None = None) -> int`: dead 행(`dead_at IS NOT NULL`, ids가 있으면 그 안)을 `dead_at = NULL` · `attempts = 0` · `last_error = NULL`로 되돌린다. attempts를 남기면 다음 패스가 다시 DLQ로 보내 DLQ에 중복이 생긴다.
+    - 명령 `outbox_requeue`: `--id <ULID>`(반복 · ULID 꼴 검사) 또는 `--all` 가운데 하나(둘 다 · 둘 다 없음 → `CommandError`)다. stdout 한 줄 `outbox_requeue: N`(ASCII)을 낸다. 계약의 「재처리는 `dead_at`을 비우는 수동 command」를 실제로 만든다.
+  - **D9 백오프 · 장애 · 순서(계약 문장)**:
+    - 백오프는 행이 아니라 루프의 것이고, 진전이 없는 패스에서만 자란다. 독성 메시지 하나는 다른 행이 진전하는 동안 0.5 s 간격으로 10번 실패해 DLQ로 간다. 전면 장애는 0.5 → 300 s 백오프로 10번째까지 약 8.5분이다. 〔r2 J6 · J12 · r3 K9 · r4 L4 · r5 M1이 대신한다 — 오류에서도 자란다 · 첫 대기 1 s · 홀로 실패 약 8.5분 · 브로커 전면 불통 약 14분(계약 「시간」) · 치명 뒤 첫 빈 패스는 대기 유지〕
+    - 장애가 그보다 길면 행은 attempts 10에 닿는다. DLQ도 닿지 않으면 행은 남고, 복구 뒤 메인으로 간다(D4-7). 메인 토픽만 실패하고 DLQ는 되는 부분 장애면 dead가 된다 → 복구 뒤 `outbox_requeue`.
+    - 순서는 최선 노력이다. 실패 행 뒤의 행은 먼저 나간다. 롤링 업데이트(maxSurge 1) 동안 릴레이 둘이 SKIP LOCKED로 행을 나눈다. 소비자는 `(group, id)`로 멱등이고 순서 역전을 견딘다.
+  - **D10 ULID `_ulid.new_ulid() -> str`**:
+    - 비트 배치: `ms = time.time_ns() // 1_000_000` · 80비트 난수(`secrets.randbits(80)`) · `(ms << 80) | rand`를 Crockford 대문자 26자로 쓴다.
+    - **프로세스 안 단조**(잠금): 같은 ms이거나 시계가 뒤로 가면 직전 ms를 쓰고 난수부를 +1 한다. 넘치면 ms + 1이다. 한 요청에서 같은 ms에 낸 두 이벤트의 `ORDER BY id`가 발행 순서와 같다(프로세스 사이 순서는 보장하지 않는다 — D9).
+  - **D11 새 시험 `tests/test_outbox_contract.py`**(T069 소유 · `django_db(transaction=True, databases=["default", "owner"])` · 자체 대역 프로듀서 · T061 픽스처 재사용):
+    - oc-1 `client_config` — 다음은 각각 `ImproperlyConfigured`이고 메시지에 키 이름은 있고 값은 없다(감시 문자열 비밀번호): bootstrap 빔 · `security.protocol` 없음 · 허용 밖 값 · SASL_SSL에서 mechanism · username · password · ca 각각 빠짐 · mechanism이 SCRAM-SHA-512가 아님 · 금지 키 2. 명시 PLAINTEXT는 통과한다.
+    - oc-2 `producer_config` — 강제 키 3 · 고정값 키가 들어오면 거부 · 실 `confluent_kafka.Producer(producer_config())`가 PLAINTEXT 꼴로 브로커 없이 만들어진다(키 오타는 생성 실패 — 시험이 확인).
+    - oc-3 publish 토픽 · subject · data:
+      - 거부: 자기 접두가 아닌 토픽 · `dev.` 접두 토픽 · 대문자 · 두 성분 · 끝 줄바꿈 · 249자 초과 · subject 콜론 없음 · subject 제어 문자 · subject 끝 줄바꿈 · data 비dict · data NaN · datetime · 900 kB 초과.
+      - 각각 `OutboxUsageError`이고 행은 0이다.
+    - oc-4 tenant 정규화 · GUC 파손: 대문자 · 중괄호 · `urn:uuid:` 꼴은 소문자 정규형으로 저장된다. int는 `OutboxUsageError`다. atomic 안에서 `set_config('app.tenant_id', 'not-a-uuid', true)` 뒤 publish는 `OutboxUsageError`다(ValueError 아님).
+    - oc-5 publish는 Kafka에 닿지 않는다(`confluent_kafka.Producer` 생성을 막아 둔 채 성공 · `KAFKA_BOOTSTRAP_SERVERS = ''`).
+    - oc-6 ULID: 꼴 · 1만 개 유일 · 생성 순서 = 정렬 순서(같은 ms 포함 · 스레드 4개 동시) · 시각부 ≈ 지금.
+    - oc-7 메시지 모양(대역): 헤더 이름 · 순서 · 중복 없음 · value JSON = payload · key = partition_key · DLQ 헤더 = 넷 + error · DLQ key = partition_key.
+    - oc-8 flush 잔여: 대역 flush가 남은 수를 돌려주고 `purge`가 `_PURGE_QUEUE` DR을 주면 그 행은 실패(attempts 1)이고 멈추지 않는다.
+    - oc-8b 실 Producer가 닫힌 포트에 붙고 `FLUSH_TIMEOUT_S`를 1로 줄이면 10 s 안에 실패로 수렴한다(purge 경로 실측).
+    - oc-9 DLQ 실패: 메인 · DLQ 둘 다 실패하는 대역으로 10번째 패스 → attempts 10 · `dead_at` NULL · `RelayResult(0, 1, 0)`. 다음 패스는 메인부터 시도한다. 메인이 성공하면 삭제되고, 메인 실패 · DLQ 성공이면 dead다.
+    - oc-10 `last_error` 상한: 5000자 오류 → 1000자 · 앞부분 보존 · DLQ error 헤더도 같다.
+    - oc-11 produce 즉시 예외: `BufferError` · `KafkaException`인 행은 실패이고, 같은 배치의 다른 행은 발행된다.
+    - oc-12 `SET LOCAL`: 대역 `produce` 안에서 같은 연결로 `SHOW idle_in_transaction_session_timeout`이 `2min`이다. 끝난 뒤 세션 값은 원래대로다. 다른 atomic 안에서 부르면 `RuntimeError`다.
+    - oc-13 `purge_dead` 경계: DB now() − 30 d − 1 h는 삭제, − 30 d + 1 h는 유지, NULL은 유지이고 반환 1이다. `older_than` 0 · 음수는 `ValueError`다.
+    - oc-14 `requeue_dead` · `outbox_requeue`: dead만 되돌리고 pending은 그대로다. `--id` · `--all` · 잘못된 id · 인자 없음 · 둘 다 → `CommandError`. 출력 한 줄.
+    - oc-15 `outbox_relay` 명령: 대역 프로듀서(`build_producer` 패치) + `--iterations 2 --metrics-port 0 --poll-interval 0` → 행 발행 · 지표 갱신. 설정 오류면 `start_http_server` 전에 실패한다(호출 기록). SIGTERM 처리기는 끝나면 원래대로다.
+    - oc-16 대기 규칙(순수 함수 단위): 가득 → 0 · 진전 없음 → 2배(상한) · 진전 → 기본으로 되돌림.
+    - oc-17 지표 지연 등록: 새 프로세스(`-I`가 아닌 시험 설정)에서 `django_common.outbox`를 import하고 publish 경로를 거쳐도 REGISTRY에 `outbox_pending`이 없다. `metrics` import 뒤에는 있다.
+    - oc-18 나이가 스크레이프 시점에 자란다: pending 1행(120 s) `refresh_metrics()` 뒤 표본이 100 이상이다. 1.1 s 뒤에는 refresh 없이 1 이상 커진다. 행을 지우고 refresh하면 0이다.
+    - oc-19 마이그레이션: `makemigrations django_common --check --dry-run` 변경 없음 · 0001에 RunSQL · RLS 없음 · 인덱스 2.
+    - oc-20 코드의 꼴 상수(type · subject · source · tenantid · id)가 `packages/events/schemas/_envelope.json`의 pattern 문자열과 같다(시험은 모노레포에서 읽는다 · pod 런타임은 읽지 않는다).
+  - **D12 T067 인계 — Python 쪽 pattern 의미 시험 `tests/test_event_patterns.py`**(T067 r2 리뷰 A2-5 · build-notes 「T067 결과」 인계):
+    - `packages/events/schemas/*.json` 7개의 모든 `pattern`이 Python `re`로 컴파일되고 `^` … `$(?!\n)` 꼴이다.
+    - `schemas.test.mjs` sch-8(ajv u 플래그 ↔ Python re — 끝 고정 · 맨 `.` · 문자 클래스)의 사례를 옮긴다(출처 줄 주석): 끝 `\n` · `\r` · 앞뒤 공백 · 대문자 · 비ASCII 닮은꼴. Python jsonschema `Draft202012Validator`(`re.search` 의미)로 같은 기대값에 대조한다.
+    - 봉투 · 토픽 data 스키마로 `publish`가 만든 봉투가 통과하는 것도 본다(out-6이 실 Kafka로 보는 것의 DB 쪽 짝).
+  - **D13 실행 · 검증**(Windows 호스트 · Docker Desktop · `uv run --directory packages/django-common …` · pytest는 한 번에 하나):
+    - 빨강: 새 시험 두 파일이 구현 없음으로 실패하는 것을 본다.
+    - 초록: `pytest tests/test_outbox.py -q` **2회**(16 · out-6 실 Kafka · VD-5) · `tests/test_outbox_contract.py` · `tests/test_event_patterns.py` · `tests/test_fixtures_kafka.py -p no:django`.
+    - 회귀: `tests/test_tenancy.py` · `tests/test_tenancy_contract.py` · `tests/test_fixtures_pg.py -p no:django`.
+    - 판별력: 결정마다 변이 하나 이상(D3 각 관문 · D4 두 단계 · `durable` · `SET LOCAL` · 키워드 호출 · purge 경로 · DLQ 실패 뒤 메인 우선 · 상한 · D5 지연 import · set_function · D6 각 규칙 · D7 순서 · 대기 규칙 · D8 경계 · requeue 필드 · D10 단조). 저장소 파일은 cmp로 복원 증명.
+    - 위생: compileall · 바이트(BOM · CR · TAB · 줄 끝 공백 · 역슬래시-u) · gitleaks(파일 하나씩) · Docker 전후(dangling 볼륨 25 · 다른 프로젝트 컨테이너 무접촉).
+  - **D14 리뷰 2렌즈**:
+    - **A(계약 · 문면 · 판별력)**: 문면 ↔ 산출물 · 편차 4(패키지 · 명령 이름 · SDK · purge 위치)와 추가 1(requeue) · 계약 C1–C5 ↔ 구현 1:1 · T061 16 + oc · 패턴 시험이 결정을 가르는가 · 인계 API.
+    - **B(데이터 · Kafka 의미 · 보안 · 운영)**: 잠금 · 트랜잭션(durable · SET LOCAL · 두 단계 flush · purge) · 중복 · 유실 경로 · DLQ 규칙 · 장애 거동 · 설정 검증(PLAINTEXT · SASL) · 비밀(설정 dict · 로그 · 예외) · 지표 신선도 · 명령 수명 주기 · Docker 위생.
+  - **D15 VD**:
+    - VD-5: 동시성 시험(out-11 · out-14)의 스레드별 연결 정리와, 릴레이가 멈췄을 때 teardown(owner `lock_timeout 30s`).
+    - out-6 실 Kafka(자동 토픽 생성 약 2 s).
+    - `SET LOCAL` 값의 실측(PG 18.6).
+    - 실 Producer purge 경로(oc-8b).
+    - 나이 성장(oc-18).
+    - 운영 SASL_SSL · CA 실측은 T075(라이브)로 넘긴다.
+  - **D16 인계**:
+    - **T070 · T073**: publish는 요청 트랜잭션 안에서 부른다.
+      - 웹훅(면제 경로)은 뷰가 `transaction.atomic()`을 직접 열고 `tenant_id`를 명시한다.
+      - 관리자 교차 테넌트 revoke는 `with tenant_context(대상):` 안에서 부른다.
+      - data 키는 넣은 그대로다(라이브러리가 더하지 않는다).
+    - **T071**: `/health` kafka 검사는 `django_common.kafka.client_config()`를 쓴다. web 프로세스는 `django_common.outbox.metrics`를 import하지 않는다.
+    - **T072**:
+      - relay 컨테이너: `python manage.py outbox_relay`(인자 없음). 재노출 파일 `<pod_snake>/management/commands/outbox_relay.py`.
+      - settings가 env를 설정으로 옮긴다: `KAFKA_BOOTSTRAP` → `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_USERNAME` · `KAFKA_PASSWORD` · CA 경로 → `KAFKA_CLIENT_CONFIG`(SASL_SSL · SCRAM-SHA-512 · `ssl.ca.location`), `ENV` → `OUTBOX_TOPIC_PREFIX`, pod 이름 → `OUTBOX_SOURCE`.
+      - relay 컨테이너에 Kafka cluster CA 마운트(골든에 없다 — 런타임 조사) · relay env에 `PROMETHEUS_MULTIPROC_DIR` 금지 · relay DB 설정 `CONN_MAX_AGE` > 0 + `CONN_HEALTH_CHECKS`.
+      - Celery 작업 `purge_dead_outbox` = `purge_dead()`.
+      - 생성물 기본 시험 2(outbox)는 purge 포함.
+    - **T075(라이브)**: SASL_SSL Producer 생성 · 배달 · ACL 거부(다른 접두)가 DLQ 경로로 가는지 실측.
+    - **T096**: 지표 이름 · 레이블 없음 · 0 상시 노출.
+    - **T061 인계 정정**: 「실 Producer는 `__len__` 때문에 falsy 가능」은 2.16.1에서 성립하지 않는다(판정 `producer is None`은 유지).
+- **순서**:
+  1. 계약 보정(C1–C5)과 설계(이 절)를 커밋한다.
+  2. 워크플로를 돌린다(api-builder 1 → 리뷰 2 병렬).
+  3. 수정한다.
+  4. 커밋 · tick 75/119 · 학습 로그로 마감한다.
+  5. T070으로 넘어간다.
+
+### T069 r1 결과 · r2 결정(리뷰 r1 반영 · J1–J12 · 2026-11-04)
+
+- **r1 결과**(워크플로 `wf_b35c53f2-657` · 1.65M 토큰 · 빌더 DONE_WITH_CONCERNS):
+  - 새 파일 16개, 추적 파일 변경은 0이다.
+    - `kafka.py` 69 · `models.py` 9 · `migrations/0001_initial.py` 34 · `outbox/` 7파일(`publisher.py` 190 · `relay.py` 250 · `metrics.py` 59 등)
+    - 명령 2(`outbox_relay.py` 208 · `outbox_requeue.py` 43)
+    - 시험 `test_outbox_contract.py` 1221(25) · `_outbox_fakes.py` 205 · `test_event_patterns.py` 445(52)
+  - 빨강: 구현 파일 전에 `ModuleNotFoundError: django_common.kafka` · `…outbox`. tp-1..7은 T067 스키마의 Python 의미라 처음부터 초록이다(판별력은 변이 P1–P3).
+  - 초록: `test_outbox.py` 16 ×2(**T061 PASS**) · contract 25 · patterns 52 · fixtures_kafka 1 · 회귀 16 · 65 · 3.
+  - 변이 97개 전부 잡았다(최종 바이트 2회차 · 1806 s). 1회차에 D10-2(ULID 잠금)가 살아 oc-6에 결정적 경합 시험을 더했다.
+  - VD:
+    - `SET LOCAL` = `2min`(밖 `0`).
+    - out-6 실 Kafka 첫 패스 0.68 s · 수신 2.2 s.
+    - 실 Producer purge(닫힌 포트) = `FLUSH_TIMEOUT_S=1`이면 1.03 s `_PURGE_QUEUE`, 기본이면 30.3 s `_MSG_TIMED_OUT`.
+    - 나이가 refresh 없이 +1.1 s 자란다.
+    - VD-5: 스레드 연결 1 → 1. 잠금을 쥔 채 멈춘 릴레이 → teardown TRUNCATE가 30.4 s 뒤 `LockNotAvailable`로 끝난다(유한한 실패).
+  - 편차(빌더 ⑧ — 수용):
+    - 비str 키 반복 검사(`json.dumps`가 `{1: …}`를 조용히 `"1"`로 바꾼다 — 실측).
+    - RecursionError를 「JSON」으로 본다.
+    - 0001 CRLF → LF(내용 같음).
+    - `--max-backoff ≥ --poll-interval` 검사 · 끝에 지표 서버 닫기 · OUTBOX_* 검증도 포트 전.
+- **리뷰 r1**: A approve_with_fixes(medium 2 · low 7) · B approve_with_fixes(medium 4 · low 7).
+  - medium:
+    - A-1 = B-6: jsonb가 1e16 이상 float를 숫자열로 펼쳐 900 KB 관문이 뚫린다 — 실측 989 B → 30,489 B.
+    - A-2: 「메시지에 값 없음」 단언이 공허하다(SENTINEL을 입력에 넣지 않았다).
+    - B-1: 장수 프로듀서가 fatal 오류 뒤 회복하지 못한다.
+    - B-2: 900 KB × 100행이 relay 192Mi를 넘어 OOM 재시작 반복.
+    - B-3: 깊은 중첩 거부가 Windows C 재귀 한도(3000)에 기대어 Linux(10000)에서 oc-3이 깨진다.
+    - B-4: relay가 web과 같은 pod라 relay CrashLoop가 pod Ready를 떨어뜨려 web API까지 끊는다.
+- **r2 결정 J1–J12(컨트롤러 — 계약 events.md · pod-template · 규칙은 이 절과 같은 커밋에서 「T069 r2」로 고쳤다)**:
+  - **J1 data 관문 = jsonb 왕복 꼴**(A-1 · A-3 · B-3 · B-6 · A-5 ①): 한 번의 반복 순회(재귀 없음)로 본다.
+    - 타입: dict(키 str만) · list · str · int(bool 포함) · float · None만. 그 밖(tuple · datetime · UUID · Decimal · bytes 등)은 거부한다.
+    - 깊이: `MAX_DATA_DEPTH = 64` 이하(플랫폼 재귀 한도와 무관 · 순환 참조도 여기서 끝난다).
+    - NUL: str 키 · 값에 `\x00`이 없다(jsonb 22P05).
+    - float: 유한하고 `repr`에 지수(`e`)가 없다. PG numeric은 지수를 펼쳐 쓴다 — 1e300은 301자리, 1e-300은 소수 300자리이고, 1e16 이상은 다시 읽으면 int다.
+    - 위반은 「JSON」 `OutboxUsageError`이고 RecursionError 잡기는 보조로 남는다.
+  - **J2 크기 = 릴레이가 보낼 바이트**(A-1): 측정은 PG jsonb 텍스트와 같은 꼴(`json.dumps(…, ensure_ascii=False, separators=(", ", ": "))`의 UTF-8 길이)이고 상한은 900,000이다. J1의 float 규칙이 있어야 이 측정이 릴레이 값과 같다 — VD로 여러 꼴 data에서 `octet_length(payload::text)`와 대조한다.
+  - **J3 릴레이 값 = `payload::text`**(B-7 · A-1): 릴레이는 payload를 Python으로 해석 · 재직렬화하지 않는다. 쿼리가 `payload::text`를 받아 UTF-8 bytes로 보낸다. 헤더는 열 · 설정에서 만든다. 손으로 넣은 꼴 나쁜 행(5000자리 수 등)도 릴레이를 멈추지 못한다.
+  - **J4 바이트 예산**(B-2):
+    - ① `id`와 `octet_length(payload::text)`를 `FOR UPDATE SKIP LOCKED LIMIT batch_size`로 잠근다.
+    - ② 누적이 `RELAY_BATCH_BYTES = 8 MiB` 안인 앞부분(최소 1행)만 `payload::text`를 읽어 보낸다.
+    - ③ 나머지 잠긴 행은 손대지 않는다(커밋 때 풀린다).
+    - `relay_once(*, producer=None, batch_size=100, batch_bytes=RELAY_BATCH_BYTES)`로 키워드를 더한다(T061 호출과 양립).
+    - 패스가 행 수나 바이트에서 잘렸는지는 `RelayResult`의 비교 밖 필드(`field(compare=False)`)로 알린다 — T061의 `RelayResult(2, 0, 0) ==` 비교를 깨지 않는다. 명령은 잘렸으면 대기 0이다.
+  - **J5 fatal 프로듀서**(B-1):
+    - `_deliver`가 produce 예외 · DR 오류의 `fatal()`을 표시한다.
+    - `relay_once`는 그 패스를 평소대로 반영 · 커밋한 뒤 `ProducerFatalError`를 올린다.
+    - 명령은 로그 + 백오프 뒤 프로듀서를 버리고 다음 패스에 `build_producer()`로 다시 만든다.
+    - 시험은 대역이 `KafkaError(_FATAL, …, fatal=True)`를 내면 재생성되는지 본다.
+  - **J6 relay는 오류로 끝나지 않는다**(B-4): pod Ready = 모든 컨테이너 ready라서, relay CrashLoop는 web 엔드포인트를 뺀다.
+    - 명령 순서: 9464를 먼저 연다(열 수 없을 때만 종료). 〔r3 K2 · r4 L4가 대신한다 — 오류로 끝나는 경로는 루프 전 실패와 9464를 열 수 없을 때〕
+    - 루프에서 프로듀서가 없으면 만들기를 시도하고, `relay_once`를 돈다.
+    - 아래는 전부 로그(이름 · 예외 클래스만) + 백오프다: 프로듀서 생성 실패 · `ImproperlyConfigured` · DB 오류(+ `close_old_connections`) · `ProducerFatalError` · 그 밖의 `Exception`. 〔r3 K11 — 예외 클래스 + 값 없는 진단 필드〕
+    - SIGTERM · SIGINT만 끝낸다. 〔r4 L4 — 「정상 종료는 SIGTERM · SIGINT뿐」〕
+    - 설정을 고치면 Reloader 롤아웃이 다시 띄운다(T046). 그동안 쌓이는 행은 `OutboxOldestPending`이 알린다.
+  - **J7 refresh 분리**(B-8): `refresh_metrics`는 따로 try로 감싼다(실패 = 로그). 대기 규칙은 relay 결과로만 정한다. 연달아 도는 동안 refresh 최소 간격은 1 s다.
+  - **J8 Kafka 금지 키 확대**(A-4 · B-5):
+    - 금지: `metadata.broker.list` · `delivery.report.only.error` · `partitioner` · `enable.gapless.guarantee`.
+    - `SASL_SSL`에서 `enable.ssl.certificate.verification` 거짓(bool · 문자열 꼴) · `ssl.endpoint.identification.algorithm` `none`을 거부한다.
+  - **J9 메시지 값 단언**(A-2): data · JSON · 크기 사례 입력에 SENTINEL을 심고, `SENTINEL not in str(error)` + `error.__cause__ is None and error.__suppress_context__`를 단언한다. 변이 「④ · ⑥ 메시지에 `{data!r}` · `from None` 제거」를 더한다.
+  - **J10 명령 `outbox_purge`**(A-7 ④): 인자 없이 `purge_dead()`를 부르고 stdout에 한 줄 `outbox_purge: N`을 낸다. `has_celery=false` pod는 템플릿이 CronJob으로 부른다(T072).
+  - **J11 정리**(A-8 · A-5 ①):
+    - 낡은 설명 3곳을 주석 · 독스트링만 고친다(`pyproject.toml` 머리 · `src/django_common/__init__.py` · `management/commands/__init__.py`).
+    - `test_event_patterns.py` 쉼표 뒤 공백.
+    - oc-3에 순환 참조 사례.
+  - **J12 문서**(컨트롤러 — 이 커밋):
+    - 계약 문장 정정(A-6 · B-9): 독성 시간은 조건부 · 관문은 `publish()` · 정지 감지는 조건부 · 장애 시간에 flush 대기 포함.
+    - 아래 r2 인계 · report.md 후보.
+    - 빌더 보고 정정(A-9 = B-11): 「줄 120자 이하」는 손으로 쓴 15파일만이다 — `0001`은 makemigrations 생성 그대로이고 긴 줄 2개가 있다.
+  - **시험 미고정으로 남기는 것**(A-5 ② ③): 테넌트 확정(⑤)과 JSON(⑥)의 상대 순서(관측 차이는 메시지뿐) · dead 카운터의 「커밋 뒤」 증가(커밋 실패 때만 과다 계수).
+- **r2 인계 추가(D16 보강)**:
+  - **T072**:
+    - ENV=test의 `OUTBOX_TOPIC_PREFIX`는 `"dev."`다(시험 브로커 · T061 · T066 가정).
+    - 생성물 시험 설정은 `KAFKA_CLIENT_CONFIG = {"security.protocol": "PLAINTEXT"}`를 명시한다(기본값이 없다).
+    - `ssl.ca.location`은 마운트 경로 상수다(env.example 20키에 CA 키가 없다).
+    - `has_celery=false` pod는 `outbox_purge` CronJob을 둔다.
+    - relay `terminationGracePeriodSeconds` ≥ 90 s(최악 패스 80 s).
+    - relay DB `OPTIONS`(`connect_timeout` · `keepalives_*` 또는 `tcp_user_timeout`)로 반쯤 열린 연결의 멈춤을 묶는다.
+    - relay를 별도 Deployment로 나누는 것은 SP-2 검토다(지금은 J6으로 결합을 줄였다).
+  - **T071**: Sentry는 `include_local_variables=False`이거나 재귀 스크러버 + `sasl.password`다(설정 dict가 예외 프레임 지역변수에 남는다 — B-10).
+  - **T096**: 조건 없는 정지 감지(하트비트 지표 — 지표 3종 고정을 바꾸는 결정 · B-9).
+  - **T070 · T073**: data는 J1 꼴로만 넣는다(라이브러리가 막는다).
+- **report.md 후보**(A-8):
+  - 편차: 단일 파일 `outbox.py` → 패키지 · `relay_outbox` → `outbox_relay` · cloudevents 2.2.0 SDK 미사용(plan Primary Dependencies) · purge beat → 라이브러리 함수 + 템플릿 작업.
+  - 추가: `outbox_requeue` · `outbox_purge` · `django_common.kafka` · `models.py` · `migrations/`.
+
+### T069 r2 결과 · r3 결정(리뷰 r2 반영 · K1–K13 · 2026-11-05)
+
+- **r2 결과**(워크플로 `wf_4d9b7621-c54` · 빌더 DONE_WITH_CONCERNS · 2026-11-04 23:04 – 11-05 00:48):
+  - 구현: `kafka.py` 98 · `publisher.py` 240 · `relay.py` 323 · `outbox_relay.py` 232 · 새 `outbox_purge.py` 22. r1 산출물 셋(`outbox/__init__.py` · `maintenance.py` · `metrics.py`)은 독스트링만 바꿨다.
+  - 시험: `test_outbox_contract.py` 1764줄(32개 — oc-21..27 추가) · `_outbox_fakes.py` 206 · `test_event_patterns.py` 445.
+  - 빨강: r1 구현 + 최종 시험 = `14 failed, 18 passed`(23:33:45).
+  - 초록(최종 바이트 · 00:45–00:46): `test_outbox.py` 16 ×2(**T061 PASS**) · contract 32 · patterns 52 · fixtures_kafka 1 · 회귀 16 · 65 · 3.
+  - 변이 158개 = 죽음 154 + 동치 4(`allow_nan` · `isfinite` · RecursionError · `max(1, …)`) · 3705 s.
+  - VD:
+    - J2: data 13꼴 중 12꼴이 같다. `-0.0`만 측정이 1바이트 크다(보수 쪽).
+    - J3: 손으로 넣은 5000자리 정수 행이 실 Kafka로 나간다.
+    - J4: 예산 1 MiB → 1행 · 정점 2.0 MB, 8 MiB → 8행 · 16.0 MB.
+    - J6: 설정 오류 6 s · DB 닫힘 14 s 뒤에도 살아서 지표를 낸다. 포트 독점이면 0.54 s에 exit 1.
+    - J5 실 브로커 VD는 할 수 없었다(로컬 cp-kafka는 인가가 꺼져 있다 → T075).
+  - **보고 정정(A2-7 = B2-9)**: 시각 순서에서 한 단계가 빠졌다.
+    - 빨강(23:33:45) 뒤, 변이(23:38:57) 전인 23:37–23:38에 구현 3파일(`outbox_relay.py` · `kafka.py` · `relay.py`)을 고쳤다.
+    - 확인된 차이는 포트 실패 메시지에 `--metrics-port <n>`을 넣은 것 하나다. 나머지 두 파일의 차이는 남은 사본이 없어 복원할 수 없다(`r2-impl/`가 23:38:11에 덮였다).
+    - 그래서 `r2-impl-sha256.txt`(23:33)는 수정 전 스냅샷이다.
+    - 변이 · 최종 초록 · 최종 VD는 모두 최종 바이트로 돌았다(두 리뷰가 확인).
+- **리뷰 r2**(같은 워크플로): A approve_with_fixes(low 7) · B approve_with_fixes(low 9). high · medium은 0이다. r1 medium 6건(A-1 = B-6 · A-2 · B-1 · B-2 · B-3 · B-4)은 해소됐다.
+- **r3 결정 K1–K13**(컨트롤러). K1–K4는 문서 결정이고, 이 절과 같은 작업에서 계약 · 규칙에 반영했다(「T069 r3」으로 검색). K5–K13은 r3 빌더 몫이다.
+  - **K1 계약을 구현에 맞춰 넓힌다**(A2-1 · B2-8 ②): 빌더 편차 ⑧-1 · 4 · 5 · 6 · 8을 받는다. 보안상 더 강하고 실측 근거가 있다.
+    - 금지 키에 `default.topic.config`를 더한다. confluent가 그 안의 키를 최상위 값보다 우선해 합치므로 모든 검사를 덮는다.
+    - 금지 키 · 고정값 키는 `topic.` 접두를 뗀 속성 이름으로 비교한다. librdkafka가 `topic.<속성>`을 토픽 속성으로 읽기 때문이다.
+    - ⑥: data 자신이 깊이 1이고, 안의 dict · list마다 1을 더한다. 짝 없는 서로게이트와 4300자리를 넘는 int는 「JSON」으로 거부한다.
+    - ⑦: 순회 중 바이트 하한이 상한을 넘으면 그 자리에서 「크기」로 거부한다. 뒤에 ⑥ 위반이 있어도 「크기」일 수 있다(메시지만 다르다 — 시험으로 고정하지 않는다).
+    - `relay_once`는 치명 오류 패스를 커밋한 뒤 `ProducerFatalError(.result)`를 올린다. `relay` 하위 모듈에서 import하고, 패키지 최상위에는 재노출하지 않는다(⑧-9).
+    - 치명 판정은 `KafkaError.fatal()` 또는 코드 `_FATAL`이다(출처는 K6). 〔r4 L2가 대신한다 — 출처는 produce 예외 · flush/poll 예외 · DR(error_cb 아님)〕
+    - CLI 인자 오류는 포트를 열기 전에 `CommandError`로 끝난다. 템플릿은 인자 없이 부른다.
+  - **K2 계약 문장 정정**(A2-2 · B2-8 ① ③):
+    - events.md 「고정값을 바꾸려 하면 기동 실패」 → 「프로듀서 생성이 `ImproperlyConfigured`로 실패한다 — 로그 + 백오프이고 프로세스는 산다」.
+    - data-model §4 「라이브러리가 atomic 밖 INSERT를 거부」 → events.md와 같은 문장(관문은 `publish()` · 모델 직접 쓰기는 규칙으로 금지).
+    - events.md purge 줄 「(Celery beat) … 유일한 경로」에 「Celery가 없는 pod는 `outbox_purge` CronJob」을 더한다.
+    - relay가 끝나는 경로를 바로 적는다. 기동 전 실패(설정 import · system checks · 인자 오류 · 지표 모듈 초기화 — 예: 없는 디렉터리를 가리키는 `PROMETHEUS_MULTIPROC_DIR`)와 9464를 열 수 없을 때뿐이다. 루프 안 오류로는 끝나지 않는다.
+  - **K3 pod-template을 T072 전에 맞춘다**(A2-3 · B2-8 ③):
+    - 생성 트리 deploy/base와 Celery 행에 `has_celery=false` CronJob `<pod>-outbox-purge`를 더한다. 일 1회 `manage.py outbox_purge` · `envFrom`은 `<pod>-env`만 · `pg-main-ca` 마운트 · securityContext 5항목 · `automountServiceAccountToken: false` · requests 256Mi · `concurrencyPolicy: Forbid`. 〔r4 L1이 대신한다 — envFrom은 ConfigMap `<pod>-config` + `<pod>-env`〕
+    - Kafka 행: `ENV=test`의 `OUTBOX_TOPIC_PREFIX`는 `"dev."`다. 시험 설정은 `KAFKA_CLIENT_CONFIG = {"security.protocol": "PLAINTEXT"}`를 명시하고, `ssl.ca.location`은 마운트 경로 상수다.
+    - 생성물 `test_outbox.py` 행과 §기본 테스트 2의 DLQ는 env DLQ다(시험 = `dev.<pod>.dlq`).
+    - relay 프로브 행: pod `terminationGracePeriodSeconds` ≥ 90 s(최악 패스 80 s).
+    - 메트릭 행: `PROMETHEUS_MULTIPROC_DIR`가 왜 relay를 죽이는지 적고, `envFrom` 공유를 조심하라고 적는다.
+    - §기본 테스트 6 렌더 단언에 셋을 더한다. grace ≥ 90 · relay env와 그 원천(ConfigMap · `<pod>-env` 템플릿)에 `PROMETHEUS_MULTIPROC_DIR` 없음 · `has_celery=false`로 한 번 더 생성한 렌더의 CronJob 단언. T072가 하네스에 test-first로 더한다. 〔r4 L1이 넓힌다 — 워크로드 셈 · web · relay · migrate 검사 · CronJob 명령 · `call_command("outbox_purge")`〕
+  - **K4 T075 인계 정정**(A2-4): 치명 오류 재현 조건을 고친다.
+    - 「IdempotentWrite 없는 InitProducerId」는 이 클러스터에서 치명 오류가 아니다. 멱등 InitProducerId는 Write만으로 허용된다(KIP-679 · 브로커 ≥ 2.8 · VD-7 확정 — T056).
+    - 재현 순서: topic Write가 하나도 없는 사용자(예: Describe만 가진 임시 KafkaUser)로 relay를 띄운다 → InitProducerId 거부 → `error_cb` fatal(K6) → `ProducerFatalError` → 재생성 로그를 확인한다 → Write ACL을 복구한 뒤 회복을 확인한다. 〔r5 M6이 대신한다 — T075 VD 두 갈래(「r5 인계」)〕
+    - produce 예외 · DR · `error_cb`가 각각 fatal 표시와 코드 중 무엇을 싣는지도 기록한다. 〔r5 M6 — produce 예외 · flush · poll 예외 · DR〕
+  - **K5 크기 상한을 넘는 행은 릴레이가 보지 않는다**(A2-5 · B2-4):
+    - 선택 ①의 조건에 `octet_length(payload::text) <= MAX_EVENT_BYTES`를 더한다. publish ⑦과 같은 수이고 같은 측정이라, publish로 만든 행은 늘 안이다.
+    - 넘는 행(손으로 넣은 행뿐이다)은 잠그지도 · 읽지도 · 보내지도 · 고치지도 않는다. attempts · last_error · dead_at이 그대로고, `RelayResult`와 대기 규칙에도 들지 않는다.
+    - 그 행은 pending으로 남아 `outbox_pending`에 들고 `OutboxOldestPending`이 알린다. 처리는 런북의 수동 확인 · 삭제다(T114 인계).
+    - 그래서 손 행 하나가 머리를 막거나(B2-4) relay를 OOM시키지(A2-5) 못한다.
+    - 두 리뷰는 「그 패스의 실패(attempts + 1)」를 제안했지만 받지 않는다. 실패로 세면 홀로 남은 손 행이 진전 없음 백오프를 300 s로 키워, 그 뒤 새 이벤트가 최대 5분 늦는다(SC-004).
+    - dead로 두지도 않는다. DLQ도 같은 값이라 실패하고(dead는 DLQ 사본이 있을 때만 — r1 D4), `outbox_dead_total`에는 알림이 없어 30일 뒤 purge가 유일한 사본을 조용히 지운다.
+    - 남는 한계(계약에 적었다): DB는 후보 행의 텍스트 길이를 패스마다 센다. 거대 손 행이 있으면 그 변환 비용이 패스마다 든다. 해법은 수동 삭제다.
+    - 시험: 머리에 손으로 넣은 900,001바이트 행 + 정상 행 2 → 첫 패스에 정상 행 둘 published · 손 행은 그대로(attempts 0 · last_error NULL) · produce에 손 행 없음 · 잘림 아님 · 대기 = 폴링 간격. 경계: 정확히 900,000바이트인 손 행은 보낸다. 수 MB 손 행이 있어도 tracemalloc 정점이 손 행 크기와 무관하다.
+  - **K6 치명 오류를 `error_cb`로도 잡는다**(B2-2): 실제 confluent에서는 DR에 fatal 표시가 거의 실리지 않는다. 그래서 flush 중에 난 치명 오류를 그 패스에서 놓치고, 다음 패스의 produce에서야 잡는다(회복이 한 패스 늦고, 일화마다 attempts가 2씩 든다). 〔r4 L2 · L6이 대신한다 — 치명은 flush · poll 예외로 온다〕
+    - `build_producer`가 confluent `error_cb`를 단다. 콜백이 받은 오류가 치명(`fatal()` 또는 코드 `_FATAL`)이면 그 프로듀서를 치명으로 표시한다.
+    - `relay_once`는 그 패스를 반영 · 커밋한 뒤 `ProducerFatalError`를 올린다. produce 예외 · DR 판정은 그대로 둔다.
+    - 콜백은 오류마다 이름 · fatal · retriable만 로그한다(메시지 없음). `error_cb`를 달면 librdkafka 기본 오류 로그가 사라지기 때문이다. 〔r4 L2 · L6이 대신한다 — 비치명 이벤트 이름만 · 사라질 기본 로그는 처음부터 없다〕
+    - 표시는 그 프로듀서에 묶는다(방법은 빌더 선택 — 얇은 감싸개 · 하위 클래스 등). 주입된 대역(T061)처럼 표시가 없는 프로듀서는 치명이 아니다.
+    - `producer_config()` 결과는 바뀌지 않는다(oc-2).
+    - `ProducerFatalError`에 값 없는 오류 이름 필드를 더해도 된다(명령 로그용).
+    - 시험: 대역 생성기로 flush 중 `error_cb`(fatal)를 부르면 그 패스 반영 · 커밋 · `ProducerFatalError` · 다음 반복 재생성. 비치명 `error_cb`(`_TRANSPORT`)는 로그만 남긴다. 로그에 메시지 · SENTINEL이 없다.
+  - **K7 신호 없는 직접 DELETE**(B2-3): relay 성공 삭제와 `purge_dead`가 Django `Collector`를 거치지 않는다. sender 없는 delete 수신기가 pod에 하나라도 있으면 Collector가 지울 행 전체(payload 포함)를 읽고 `json.loads`하기 때문이다.
+    - 삭제 전 SELECT는 0이고, `pre_delete` · `post_delete`도 0이다.
+    - 방법은 빌더 선택이다(`QuerySet._raw_delete` 또는 바인딩 SQL — 테이블 이름은 모델 메타에서).
+    - purge는 DB 시계(`STATEMENT_TIMESTAMP()`)와 반환값(삭제 수)을 그대로 둔다.
+    - 시험: sender 없는 `pre_delete` · `post_delete` 수신기를 단 채 oc-22(손 행) · oc-13(purge 경계) · 성공 삭제를 돌린다. 기대는 수신기 호출 0 · payload를 읽는 SELECT 0 · DELETE 문 하나다.
+  - **K8 Kafka 설정 검사를 fail-closed로**(B2-1): r2의 「거짓 꼴 · none 거부」는 정확 일치만 봐서 앞 공백 · NUL로 비켜 갔다(실측).
+    - 키와 str 값(`KAFKA_BOOTSTRAP_SERVERS` 포함)에 NUL(U+0000)이 있으면 거부한다. confluent는 C 문자열로 넘겨 NUL에서 자른다. 메시지에는 설정 · 키 이름만 싣고, 키 자체에 NUL이 있으면 「키」라고만 쓴다.
+    - `SASL_SSL`의 TLS 두 키는 양성 목록이다.
+      - `ssl.endpoint.identification.algorithm`: 없거나 `"https"`(대소문자 무시).
+      - `enable.ssl.certificate.verification`: 없거나 `True` · 정수 `1`(bool 아님) · `"true"` · `"t"`(대소문자 무시) · `"1"`.
+      - 그 밖은 전부 거부한다. librdkafka의 왼쪽 공백 제거 · 대소문자 무시 해석을 흉내 내지 않으므로, 공백이 붙은 안전한 값도 거부된다.
+    - 시험(oc-1 사례):
+      - 거부: 앞 공백 none · 탭 none · none+NUL · false+NUL · `" true"` · `"no"` · 키 partitioner+NUL · bootstrap.servers+NUL · delivery.report.only.error+NUL.
+      - 통과: `"https"` · `"HTTPS"` · 키 없음 · `True` · `"TRUE"` · `"t"` · `"1"` · `1`.
+  - **K9 오류 · 진전 없음 백오프의 하한**(B2-5): `--poll-interval 0`이면 오류 백오프가 0에 머물러, 루프 안 오류가 바쁜 루프 · 로그 폭주가 된다.
+    - 백오프 = `min(max(previous, poll_interval, 0.5) × 2, max_backoff)`. 0.5는 계약 폴링 기본값이다.
+    - `--max-backoff 0`(시험)은 상한이라 여전히 0이다(oc-15b 그대로).
+    - 빈 패스 대기는 폴링 간격 그대로다. `--poll-interval 0`은 시험용이라고 도움말 · 독스트링에 적는다.
+    - 시험(oc-16): 폴링 0 + 오류 → 1.0 · 진전 없음 → 1.0 · 다시 → 2.0.
+  - **K10 data 검사의 일시 메모리를 묶는다**(B2-6): 지금은 넓은 컨테이너의 자식을 한꺼번에 스택에 넣은 뒤에야 하한을 본다(정수 2,000,000개 list 거부까지 정점 129 MB).
+    - 컨테이너를 만나면 괄호와 구분자(`, ` × (원소 수 − 1))를 하한에 먼저 더한다. 지금은 구분자를 세지 않으므로 유효한 하한이다.
+    - 자식은 한꺼번에 스택에 넣지 않고 차례로 꺼낸다(반복자 스택 등 — 빌더 선택).
+    - 받는 data의 집합은 그대로다. 하한은 실제 길이의 하한으로 남는다(oc-21 · oc-3 경계).
+    - 시험: 정수 2,000,000개 list · 키 1,000,000개 dict · 폭이 큰 공유 참조를 거부할 때 tracemalloc 정점 < 2 MB(입력은 tracemalloc 시작 전에 만든다) · 900,000 경계 그대로.
+  - **K11 루프 로그에 값 없는 진단 필드**(B2-7): J6 뒤로는 지속 오류가 「클래스 이름만」 남아 원인을 알 수 없다. `error` · `db_error` · `refresh_error` · `producer_fatal` 줄에 다음을 더한다.
+    - `KafkaException`이면 `KafkaError.name()`(예: `_INVALID_ARG` · `_SSL`).
+    - DB 오류면 원인 psycopg 예외의 SQLSTATE(없으면 생략).
+    - 그 밖이면 가장 안쪽 트레이스백 프레임의 파일 이름 · 줄 · 함수.
+    - 메시지 · 인자 · 지역변수는 싣지 않는다(SENTINEL 단언 그대로).
+    - 생성 단계 실패의 재현은 「pod 안에서 `relay.build_producer()`」다. `client_config()`만으로는 CA · 값 꼴 · 양립 검사 실패를 재현하지 못한다.
+    - 시험: oc-15d · oc-25 · oc-26에 필드 단언과 SENTINEL 부재를 더한다.
+  - **K12 판별력 빈틈**(A2-6):
+    - oc-24에 DLQ 단계 치명 사례를 더한다. attempts = MAX−1 행 + 메인 실패 + DLQ DR 치명 → `ProducerFatalError` · attempts 10 · dead_at NULL · last_error = DLQ 오류 · 다음 반복 재생성. 변이 「`fatal = fatal or dlq_fatal` 제거」가 죽어야 한다.
+    - oc-26에 refresh DB 오류 뒤 `close_old_connections` 셈(또는 변이)을 더한다.
+    - oc-23 독스트링 수치를 `PEAK_LIMIT`에 맞춘다.
+  - **K13 보고의 시각 정직성**: 단계마다(빨강 · 빨강 뒤 수정 · 변이 · 최종) 구현 파일 sha256 스냅샷을 남긴다. 빨강 뒤에 구현을 고쳤으면 무엇을 왜 고쳤는지 보고에 적는다.
+  - **받지 않는 것**: 폴링 0 금지(B2-5 대안 — 시험이 쓴다) · A2-1 (d)를 시험으로 고정하기(K1 문장으로 충분).
+- **r3 인계 추가(D16 · r2 인계 보강)**:
+  - **T072**: K3 전부 · relay 종료 경로(K2) · relay 컨테이너 env에 `PROMETHEUS_MULTIPROC_DIR` 없음 · 생성 단계 실패 재현은 `relay.build_producer()`(K11) · librdkafka 오류 로그는 relay 로거의 이름 줄로 바뀐다(K6). 〔r4 L1 · L2 · r5 「r5 인계」 T072가 대신한다 — K3 → L1 · 마지막 구절(librdkafka 오류 로그 …)은 지운다(L2) · 나머지(K2 종료 경로 · K11 재현 · PROMETHEUS)는 r5 T072 줄에 모았다〕
+  - **T114**: `incident-response.md` `OutboxOldestPending` 절의 원인 셋 — relay 정지 · Kafka 장애 · 크기 상한을 넘는 손 행. 마지막은 `octet_length(payload::text) > 900000`인 pending 행을 조회해 확인한 뒤 삭제한다(K5).
+  - **T075**: K4. 〔r5 M6(「r5 인계」)이 대신한다〕
+
+### T069 r3 결과 · r4 결정(리뷰 r3 반영 · L1–L10 · 2026-11-05) — K6의 error_cb 치명 경로는 이 절의 L2 · L6이 대신한다
+
+- **r3 결과**(워크플로 `wf_bc83a238-f8e` · 7.5 h · 빌더 DONE_WITH_CONCERNS):
+  - **빌더가 한 번 끊겼다.** run1(01:37–02:55)이 최종 변이 59번째(`J5-commit-first`)를 `relay.py`에 쓴 채 끊겼다. run2(06:01–08:37)가 시작 상태에서 그것을 발견했다(`00-found-state.txt`). run1의 변이 전 백업으로 되돌리고, 남은 후보를 결정 · 계약과 대조해 다시 검토한 뒤 빨강부터 끝까지 새로 돌렸다(run1 로그는 증거로 쓰지 않았다). 변이 실행기에는 현재 변이 표식(`current-mutant.json`)을 두어, 끊긴 뒤 다음 실행이 되돌리고 멈추게 했다.
+  - 줄 수: `kafka.py` 126 · `relay.py` 414 · `publisher.py` 257 · `outbox_relay.py` 286 · `maintenance.py` 46 · 시험 `test_outbox_contract.py` 2166(35개 — oc-28 · 29 · 30 추가) · `_outbox_fakes.py` 211.
+  - 빨강(r2 구현 + 최종 시험): `12 failed, 23 passed`(06:18:49). 초록(최종 바이트): `test_outbox.py` 16 ×2(**T061 PASS**) · contract 35 · patterns 52 · fixtures_kafka 1 · 회귀 16 · 65 · 3.
+  - 변이 194개(r2 158 + K 36) = 죽음 191 + 동치 3(E1–E3). 독스트링 수정 뒤 `relay.py` 변이 56개를 다시 돌려 56/56이 죽었다.
+  - VD:
+    - K5: 머리의 손 행(900,001 B)이 그대로 남는다. 잠금 SQL에 크기 조건이 있다. 10 MB · 40 MB 손 행에서도 패스 정점은 약 18 KB다.
+    - K7: DELETE 한 문장이고 수신기 호출은 0이다.
+    - K8: r2의 우회 꼴이 전부 거부된다(` https`는 fail-closed 거짓 양성).
+    - K10: 거부 정점이 129 MB에서 824 B로 줄었다.
+    - K11: 진단 필드가 실 하위 프로세스 로그에 나온다(`kafka_error=_INVALID_ARG` · `sqlstate=25006` · `at=kafka.py:114:client_config`). SENTINEL은 0이다.
+  - 보고 ⑧: K6 근거 문장이 실측과 다르다(error_cb가 없을 때 사라질 기본 로그는 처음부터 없다). K5 잠금 쿼리는 길이를 두 번 계산한다. 지시문의 「18줄 · `??` 9줄」은 19줄 · 10줄이 맞다(컨트롤러의 셈 오류).
+- **리뷰 r3**: A approve_with_fixes(medium 1 · low 4) · B approve_with_fixes(medium 1 · low 3).
+  - **B3-1 medium — K6의 전제가 실물과 다르다**: confluent-kafka 2.16.1은 치명 오류를 error_cb로 주지 않고 flush · poll에서 `KafkaException(fatal=True)`로 올린다. 같은 호출에서 DR 콜백이 뒤따르면 그 예외를 원인으로 한 `SystemError`가 된다.
+    - relay에서는 예외가 `relay_once` 밖으로 새어 그 패스가 롤백된다. 명령은 그것을 일반 오류로 다뤄 치명 프로듀서를 버리지 않는다. 그래서 회복은 r2처럼 한 패스 늦다(유실은 0 · 이미 나간 메시지는 중복).
+    - **컨트롤러 재현**(librdkafka 시험 API `rd_kafka_test_fatal_error` · ctypes · 브로커 없음 · 닫힌 포트): 유휴 · 메시지 3개 두 경우 모두 `poll`이 `KafkaException CLUSTER_AUTHORIZATION_FAILED fatal=True`를 올렸다. error_cb 호출은 0이다. DR 3개는 `_PURGE_QUEUE`이고, 다음 `flush`는 0을 돌려줬다. 이후 produce는 `_FATAL`(fatal 표시 없음)이다.
+  - **A3-1 medium**: has_celery=false CronJob의 「`envFrom`은 `<pod>-env`만」은 ConfigMap을 뺀다. 그러면 settings import가 필수값 누락으로 실패해 purge가 매일 실패한다(문서 결함 · 하네스는 못 잡는다).
+  - low:
+    - A3-2 = B3-2: K6 근거 문장이 틀렸다 · `retriable`은 늘 False다 · T071 인계가 빠졌다.
+    - A3-3: 공개 API 요약 · `.error_name` · 고정값 별칭이 계약에 없다.
+    - A3-4: 문면 잔여 여섯.
+    - A3-5 = B3-4: 잠금 쿼리가 길이를 두 번 계산한다.
+    - B3-3: 유휴 relay가 poll하지 않는다. 오류 이벤트가 다음 비지 않은 패스에 몰리고, 유휴 중 치명 오류도 그때서야 드러난다.
+  - 빌더 보고 잔여(A): 시각 순서에서 stage-14가 빠졌다. 「J5 꼴 4개」는 실제 2개다(합계 17은 맞다).
+- **r4 결정 L1–L10**: L1–L5는 문서 결정이고, 이 절과 같은 작업에서 계약 · 규칙에 반영했다(「T069 r4」로 검색). L6–L10은 r4 빌더 몫이다.
+  - **L1 CronJob 환경**(A3-1):
+    - `envFrom`은 런타임 컨테이너와 같다(ConfigMap `<pod>-config` + Secret `<pod>-env` · `<pod>-migrate` 없음).
+    - requests · securityContext 행에 CronJob을 넣는다.
+    - §기본 테스트 6: has_celery=false 렌더의 워크로드는 Deployment 1(web+relay) + PreSync Job 1 + CronJob 1이다. web · relay · migrate 검사는 그대로 적용한다. CronJob 명령이 `manage.py outbox_purge`인지 단언하고, 생성물 시험이 시험 settings로 `call_command("outbox_purge")`를 돈다(T072).
+  - **L2 치명 오류 출처를 실물대로 적는다**(B3-1 · A3-2 · B3-2 — 문서):
+    - 치명 판정은 `KafkaError.fatal()` 또는 코드 `_FATAL`이다. 출처는 셋이다.
+      - produce 예외(코드 `_FATAL`).
+      - **flush · poll 예외**: confluent는 치명 오류를 error_cb로 넘기지 않고 `KafkaException`으로 올린다. 같은 호출에서 DR 콜백이 뒤따르면 그 예외를 원인으로 한 `SystemError`가 된다.
+      - DR 오류.
+    - error_cb: confluent는 사용자 error_cb가 없으면 비치명 오류 이벤트(`_TRANSPORT` · `_ALL_BROKERS_DOWN` 등)를 버린다. 그래서 콜백 줄(`outbox_relay.kafka_error name=…`)이 그 이벤트의 유일한 기록이다. 치명 오류와 `retriable`은 이 콜백에 실리지 않는다(2.16.1 실측 — 그 두 필드는 뺀다).
+    - librdkafka 자체 로그(FAIL · SSL · FATAL 줄)는 error_cb와 무관하게 stderr로 나가는 비JSON 줄이다.
+    - 인계:
+      - T071: 이 stderr 줄을 그대로 받을지, confluent `logger` 설정으로 Python 로깅에 넣을지 정한다(넣으면 poll · flush 때 나온다).
+      - T072: r3 인계의 「librdkafka 오류 로그는 relay 로거의 이름 줄로 바뀐다」를 지운다.
+      - T075: 재현 순서는 아래 「r4 인계 보강」이다. 〔r5 「r5 인계」가 대신한다〕
+  - **L3 계약을 구현에 맞춘다**(A3-3):
+    - pod-template 공개 API에 하위 모듈 `relay`(`ProducerFatalError` — `.result` · `.error_name` · `build_producer` · 최상위 재노출 없음)를 더한다. 〔r5 M4 문장 정정 — `build_producer()`는 함수다〕
+    - events.md 라이브러리 API에 `.error_name`을 더한다.
+    - 고정값 키에 별칭 `message.timeout.ms`와 `topic.` 표기를 적는다(events.md · 규칙).
+  - **L4 문면 잔여**(A3-4):
+    - 규칙 Relay 줄에 Celery 없는 pod의 CronJob을 더한다.
+    - events.md 트랜잭션 규칙을 data-model §4와 같은 문장으로 맞춘다.
+    - 수명 주기: 「오류로 끝나는 경로는 …뿐」 / 「정상 종료는 SIGTERM · SIGINT뿐」으로 나눠 적는다.
+    - 백오프: 「대기 = max(직전, 폴링, 0.5 s) × 2 — 첫 오류 대기 1 s」를 적는다.
+    - 규칙의 「committed as row failures」를 「the pass is committed (successes deleted, failures recorded)」로 바꾼다.
+  - **L5 길이 두 번 계산은 받아들인다**(A3-5 = B3-4):
+    - 잠금 쿼리가 상한 안 행마다 `octet_length(payload::text)`를 Filter와 출력에서 두 번 센다. PG는 조건과 출력의 같은 식을 합치지 않는다.
+    - 최악은 900 KB 100행일 때 패스당 약 180 MB 변환이다. DB 쪽 CPU일 뿐이고 정확성과는 무관하다.
+    - 계약 「한계」에 적는다. LATERAL 원시 SQL은 SP-2 최적화 후보다.
+  - **L6 flush 예외를 치명으로 다룬다**(B3-1 — 코드): `_deliver`의 flush 두 곳(첫 flush와 purge 뒤 flush)을 감싼다.
+    - 치명으로 보는 꼴: `args[0]`이 치명(`_is_fatal`)인 `KafkaException`, 또는 `__cause__`(없으면 `__context__`)가 그런 `KafkaException`인 `SystemError`다. 그 밖의 예외는 그대로 올린다(버그 — 롤백 · 명령은 로그 + 백오프).
+    - 치명이면 그 오류의 이름을 패스의 치명 이름으로 둔다(produce의 `_FATAL`보다 우선 — 원인이 보인다).
+    - 첫 flush에서 났으면 purge(in_queue · in_flight) 뒤 flush(PURGE_FLUSH_TIMEOUT_S)로 남은 DR을 받는다. 이 flush의 같은 꼴 예외도 삼킨다. DR이 없는 행은 「delivery 결과 없음」 실패다.
+    - 메인 단계에서 치명이 서면 DLQ 단계를 건너뛴다. 같은 프로듀서로는 `_FATAL` 실패가 뻔하고, DLQ 오류가 last_error의 메인 오류를 덮기 때문이다. DLQ 단계에서 난 치명(oc-24)은 그대로 둔다.
+    - 그 패스를 반영 · 커밋한 뒤 `ProducerFatalError(result, error_name=<원인 이름>)`을 올린다. 명령은 프로듀서를 버리고 다시 만든다.
+    - error_cb의 치명 표시(`_FatalMark`의 치명 갈래 · `RelayProducer.fatal_error_name`)는 실물에서 닿지 않으므로 없앤다. error_cb는 비치명 이벤트의 이름만 로그한다(`outbox_relay.kafka_error name=<name>` — fatal · retriable 필드 삭제). 감싸개가 표시만을 위해 있었다면 없애도 된다(빌더 판단 — 공개 이름이 바뀌면 계약 · 규칙과 맞추도록 보고 ⑧).
+    - 명령 `_diagnostics`: 예외의 `__cause__` · `__context__`가 `KafkaException`이면 그 KafkaError 이름을 싣는다(SystemError 경로의 원인 보존). 〔r5 M3 — SystemError로 좁힌다〕
+  - **L7 패스 전 poll**(B3-3): 명령 루프가 반복마다 relay_once 전에 `producer.poll(0)`을 부른다(프로듀서가 있을 때 · 같은 try 안).
+    - 비치명 이벤트가 시간에 따라 흩어져 로그된다(다음 비지 않은 패스에 몰리지 않는다).
+    - poll이 치명 예외(L6의 꼴)를 올리면 행에 닿기 전에 프로듀서를 버린다. 로그는 `outbox_relay.producer_fatal <클래스> kafka_error=<이름> published=0 failed=0 dead=0`이다. 그 반복은 오류(백오프)로 센다 — 원인이 그대로(ACL 등)면 재생성이 백오프 속도로만 반복된다. 〔r5 M1 — 재생성 뒤 첫 빈 패스가 대기를 되돌려 유휴 중에는 성립하지 않았다(약 1.5 s 주기) · M1이 성립시킨다〕
+    - 그 밖의 poll 예외는 일반 오류 경로다.
+  - **L8 독스트링 정리**(A3-3 · A3-4의 코드 쪽):
+    - `outbox/__init__` 독스트링(「ProducerFatalError는 명령만 쓴다」 → 계약 문구).
+    - 시험 모듈 독스트링 · oc-15b 독스트링.
+    - outbox_relay.py 「열 수 없을 때만 CommandError로 끝난다」 → 루프 전 실패의 하나.
+    - relay.py 9 · 「설정」 문단 → L2 · L6 · L7.
+  - **L9 시험**: oc-29를 실물 꼴로 다시 쓴다.
+    - (a) flush가 DR(큐의 메시지 `_PURGE_QUEUE`)을 준 뒤 `KafkaException(KafkaError(CLUSTER_AUTHORIZATION_FAILED, fatal=True))`를 올리는 꼴.
+    - (b) 그 예외를 원인으로 한 `SystemError` 꼴.
+    - (a) · (b)의 기대: 그 패스 커밋(행 attempts + 1 · last_error = DR 오류 또는 「delivery 결과 없음」) · DLQ 단계 없음(attempts = MAX−1 행 포함) · `ProducerFatalError(error_name="CLUSTER_AUTHORIZATION_FAILED")` · 다음 반복 재생성.
+    - (c) 유휴 중 poll(0)이 치명 → 행 무변경 · 재생성 · 백오프 · 로그 줄.
+    - (d) 비치명 error_cb → `kafka_error name=_TRANSPORT` 한 줄(fatal · retriable 필드 없음 · 메시지 · SENTINEL 없음).
+    - 변이: 「flush 예외 미포착」 · 「SystemError 원인 미확인」 · 「치명 뒤 DLQ 단계 수행」 · 「poll 생략」 · 「poll 치명 무시(프로듀서 유지)」 · 「원인 이름 대신 `_FATAL`」.
+  - **L10 VD**: 컨트롤러 탐침과 같은 ctypes `rd_kafka_test_fatal_error`(브로커 없음 · 닫힌 포트)를 최종 바이트로 돌린다.
+    - ① pending 3행에서 relay_once의 flush 직전에 치명 → 결과 · 행 상태 · `ProducerFatalError.error_name` · 로그.
+    - ② 명령 루프가 유휴일 때 치명 → poll이 잡아 재생성하는지 · 로그 줄 원문 · stderr `FATAL` 줄.
+    - 시험 모음에는 넣지 않는다(시험 API · 포인터 오프셋에 기대므로 VD 전용).
+- **r4 인계 보강**: T075 재현 순서(K4 정정): 〔r5 M6(「r5 인계」)이 대신한다〕
+  1. topic Write가 없는 사용자로 relay를 띄운다.
+  2. InitProducerId 거부 → (유휴여도) poll이 치명 예외 → `outbox_relay.producer_fatal KafkaException kafka_error=<원인>` + librdkafka stderr `FATAL` 줄을 확인한다.
+  3. 백오프 속도로 재생성이 반복되는지 본다.
+  4. Write ACL을 복구한 뒤 회복(`outbox_relay.pass`)을 확인한다.
+  - produce 예외 · flush · poll 예외 · DR이 fatal 표시와 코드 중 무엇을 싣는지 기록한다.
+
+### T069 r4 결과 · r5 결정(리뷰 r4 반영 · M1–M9 · 2026-11-05) — 앞 절에서 뒤 절이 대신하는 문장에는 줄 끝 〔…〕 표식을 달았다(M5)
+
+- **r4 결과**(워크플로 `wf_fef764e3-f80` · 2.4 h · 빌더 DONE_WITH_CONCERNS):
+  - 시작 점검: HEAD `5fb1076` · status 19줄 · r3 표식 없음 · `??` 17파일 sha256 = r3 최종(stage-15).
+  - 줄 수: `relay.py` 415 · `outbox_relay.py` 324 · `outbox/__init__.py` 30 · 시험 `test_outbox_contract.py` 2368(39개 — oc-29를 29a–e로) · `_outbox_fakes.py` 230(`on_poll` 훅 · `raising()`).
+  - `RelayProducer` · `_FatalMark`를 없앴다. `build_producer()`는 error_cb(비치명 이벤트 이름 로그)를 단 confluent `Producer`를 돌려준다(계약 · 규칙과 모순 없음 — 빌더 ⑧-1).
+  - 빨강(r3 구현 + 최종 시험): `7 failed, 32 passed`(09:35). 빨강 뒤 수정은 독스트링 두 곳뿐이다(AST 동일 · 되돌리면 sha256이 빨강 때와 같다).
+  - 초록(최종 바이트): `test_outbox.py` 16 ×2(**T061 PASS**) · contract 39 · patterns 52 · fixtures_kafka 1 · 회귀 16 · 65 · 3.
+  - 변이 114개(r3 재실행 91 + L 23) = 죽음 114 · 생존 0. 대상이 없어진 K6 변이 넷은 돌지 않았다.
+  - VD(ctypes `rd_kafka_test_fatal_error` · 브로커 없음 · 닫힌 포트):
+    - ① relay_once의 flush 직전 치명: flush가 `SystemError ← KafkaException(CLUSTER_AUTHORIZATION_FAILED, fatal)`을 올린다 → purge → `flush(5) = 0` → `ProducerFatalError(.result = (0, 3, 0) · .error_name = CLUSTER_AUTHORIZATION_FAILED)` · 세 행 모두 attempts 1 · last_error `_PURGE_QUEUE`.
+    - ② 명령 유휴 중 치명: `outbox_relay.producer_fatal KafkaException kafka_error=CLUSTER_AUTHORIZATION_FAILED published=0 failed=0 dead=0` → 1.0 s 뒤 재생성. stderr에 `%0|…|FATAL|<client.id>#producer-N| … Fatal error: Broker: Cluster authorization failed …` 줄이 나온다.
+    - 비치명 error_cb 줄은 패스 전 poll마다 흩어져 나왔다(`name=_TRANSPORT` · `name=_ALL_BROKERS_DOWN` · 주소 · 메시지 0).
+  - 보고 ⑧:
+    - ⑧-3: DLQ 건너뜀은 메인 단계의 모든 치명 출처(produce · flush · DR)에 적용했다(규칙대로 · oc-24로 고정).
+    - ⑧-4: 진단 원인 보존 갈래가 계약 문장에 없다.
+    - ⑧-6: **유휴 중 지속 치명은 약 1.55 s마다 재생성된다**(12반복 8.31 s에 생성 6). 새 프로듀서의 빈 패스가 대기를 폴링 간격으로 되돌리기 때문이다. 행이 있으면 1.22 → 2.23 → 4.22 → 8.24 s로 자란다.
+    - ⑧-7: 예비 변이 실행이 경로 오류(POSIX 경로로 만든 id 목록이 비었다)로 전체를 돌기 시작해, 빌더가 자기 프로세스 트리만 끝냈다. 표식 복원이 소스를 되돌렸다(r3 교훈의 표식이 실제로 쓰였다).
+- **리뷰 r4**: A approve_with_fixes(medium 1 · low 4) · B approve_with_fixes(medium 1 · low 2). high 0.
+  - **A4-1 = B4-1 medium — 유휴 중 지속 치명의 재생성 폭주**: L7의 「원인이 그대로면 재생성이 백오프 속도로만 반복된다」가 유휴 중에는 성립하지 않는다.
+    - 기전: poll 치명 → 대기 1.0 → 새 프로듀서의 첫 poll(0)은 통과한다(치명은 연결 뒤 비동기로 선다) → 빈 패스가 대기를 0.5로 되돌린다 → 다음 poll 치명 → 1.0 …
+    - 결과: 주기 약 1.5–2.5 s(분당 24–40회)로 클라이언트 생성 · SASL · stderr `FATAL` 줄 · `producer_fatal` 줄이 반복된다. 유휴라 `OutboxOldestPending`도 울리지 않는다. 유실은 0이다.
+    - 시험은 2반복만 보아 이 주기를 고정하지 않았다.
+  - low:
+    - A4-2: 계약 문장 셋 — 진단 필드에 원인 보존 갈래가 없다 · DLQ 건너뜀이 flush 치명에만 묶인 듯 읽힌다 · `build_producer`가 예외의 필드처럼 읽힌다.
+    - A4-3: build-notes 앞 절의 뒤집힌 문장이 표시 없이 남았다(D7 · J6 · K3 · K4 · K6 · r3 인계 T072).
+    - A4-4: T075 재현 순서가 실측하지 않은 「InitProducerId 거부 → 치명」을 사실로 적었다. 회복 확인 줄(`outbox_relay.pass`)은 행이 있어야 나온다.
+    - A4-5: 대역 SystemError의 메시지가 실물(`<function …> returned a result with an exception set`)과 다르다. 시험 모듈 독스트링의 r2 빨강 목록(oc-29)이 지금 시험과 어긋난다.
+    - B4-2: purge 뒤 flush에서만 난 치명(첫 flush는 잔여만 돌려줌)을 가르는 시험이 없다 — `flush_fatal = flush_fatal or purge_fatal`을 지우는 변이가 산다(정적 추론).
+    - B4-3: 진단 원인 보존 갈래가 계약 · 규칙에 없고, 범위가 SystemError보다 넓다 — `except KafkaException` 처리 중 난 다른 예외의 `at=`이 원인 이름으로 바뀐다.
+  - 빌더 보고 정직성: 두 리뷰 모두 수치 · 시각 · sha256 · 로그가 기록과 맞는다고 확인했다.
+- **r5 결정 M1–M9**: M4 · M5 · M6과 M1 · M3의 계약 · 규칙 문장은 컨트롤러가 이 절과 같은 작업에서 반영했다(「T069 r5」로 검색). M1–M3 · M7의 코드 · 시험 · 독스트링과 M8 · M9는 r5 빌더 몫이다.
+  - **M1 치명 재생성 직후의 빈 패스는 대기를 되돌리지 않는다**(A4-1 = B4-1 — 두 리뷰의 (나)):
+    - 명령은 치명으로 프로듀서를 버릴 때(poll 치명 · `ProducerFatalError` 둘 다) 표시를 세운다.
+    - 다시 만든 프로듀서로 도는 첫 패스가 결과를 돌려주면 표시를 지운다. 그 첫 패스가 빈 패스(published · failed · dead 모두 0)면 대기를 직전 값 그대로 둔다. 그 밖의 결과(진전 · 진전 없음 · 잘림 · dead만)는 평소 규칙이다.
+    - 그 반복이 결과 없이 오류로 끝나면(생성 실패 · 비치명 poll 예외 · DB 오류 등) 표시는 남는다 — 결과를 돌려준 첫 패스까지. 〔r5 리뷰 B5-2 — 그래서 치명 뒤 DB 장애가 이어지면, 회복 뒤 첫 빈 패스는 이미 한 대기 넘게 산 프로듀서여도 대기를 한 번 더 유지한다(≤ `--max-backoff`). 드문 경로라 문서로 받아들였다(계약 「첫 패스」 → 「결과를 돌려준 첫 패스」). 받지 않은 코드 안: 이전 반복에 만든 프로듀서의 패스 전 poll이 통과하면 표시를 지운다〕
+    - 규칙은 `next_wait`의 키워드 인자(예: `after_fatal_rebuild: bool = False`)로 두어 순수 함수 시험(oc-16)이 고정한다. 루프는 표시만 관리한다.
+    - 까닭: 빈 패스는 새 프로듀서가 쓸 만한지 보여 주지 않는다(produce · flush가 없고, 치명은 연결 뒤 비동기로 선다).
+    - 효과: 지속 치명이면 유휴 중에도 대기 열이 1, 1, 2, 2, 4, 4 … 300 s로 자라고, 재생성 간격이 약 1.5 · 3 · 6 · 12 … s로 는다. 상한에 닿은 뒤(약 1022 s)에는 약 600 s(유지 300 + 치명 백오프 300)마다 다시 만든다(r5 리뷰 A5-1 · B5-1 — 처음엔 「300 s까지」로 적었다). 행이 있으면 그 패스가 치명으로 끝나 유지 없이 1 · 2 · 4 … 300 s로 는다.
+    - 받아들인 대가(r5 리뷰 A5-1 · B5-1 정정 — 처음 적은 「유지된 대기를 한 번(≤ 300 s)」은 절반이었다): 원인을 고친 뒤에도 유휴 relay는 진행 중인 유지 대기와 치명 백오프를 마저 채운 뒤에야 새 프로듀서를 만든다(유지 대기 중인 프로듀서는 고치기 전에 만든 것이라 이미 치명이다). 그사이 들어온 행은 최대 약 2 × `--max-backoff`(≈ 600 s) 늦고, 새 프로듀서의 첫 빈 패스가 대기를 한 번 더 유지해 폴링 간격으로 돌아오기까지 최대 약 900 s다. 장애 내내 pending 행이 있었다면 치명 백오프 한 번(≤ 300 s)이다. 유휴 치명 동안 지표 refresh도 대기마다라 새 행의 나이가 최대 한 대기 늦게 보인다(`OutboxOldestPending`도 그만큼 늦다). 모두 장애 회복 직후 한 번이고 SC-004의 정상 상태 밖이다. 바로 되돌리려면 pod 재시작이다(T114 런북). 리뷰 실측: 빌더 덧 탐침(대역 · 상한 4 s)에서 유지 대기 중 도착한 행은 [4.0, 4.0] 뒤 발행 · 리뷰 A 가상 시계(상한 300 s) 최악 598.1 s · 리뷰 B mock 치명(상한 4 s) 7.05 s.
+    - 가정: 치명이 새 프로듀서 생성 뒤 유지된 대기(처음 1 s) 안에 선다. 그보다 늦으면(생성 → 치명 시간 L > 1 s) 빈 패스가 그 전에 대기를 되돌려, 주기가 약 (1 s + L)에 머문다. 번들 librdkafka 2.16.0 mock 클러스터(루프백 · 리뷰 B 실측 6회)에서 InitProducerId 거부의 L은 0.517–0.528 s였다 — PID 획득 타이머(500 ms) 뒤 브로커 연결 한 번이라 여유는 약 0.48 s다(r5 리뷰 B5-3 정정 — 처음엔 「1 s보다 훨씬 짧다」로 적었다). 클러스터 안 SASL_SSL은 연결 시간이 더해진다. T075 VD가 L과 재생성 간격을 잰다 — L이 0.8 s를 넘으면 첫 유지 대기에 하한(예: 2 s)을 두는 안을 검토한다(아래 「받지 않은 안」의 따로 두는 재생성 백오프와 함께).
+    - 받지 않은 안:
+      - (가) 받아들이고 문서만 고치기 — 분당 24–40회 재생성이 ACL 누락의 유일한 증상이 된다.
+      - 빌더 안 「발행 진전이 있을 때만 되돌림」 — 회복 뒤 유휴 relay가 다음 발행까지 최대 300 s 대기에 머문다.
+      - (다) 행이 생길 때까지 재생성하지 않기 — 유휴 중 비치명 줄과 회복 감지를 잃는다.
+      - 재생성 백오프를 패스 대기와 따로 두기(수준 · 생성 시각 · 건강 창) — L에 견고하지만 상태와 상수가 는다(T075 실측이 가정을 깨면 SP-2 후보).
+    - 문서: 명령 독스트링 「패스 전 poll」 · 「대기 next_wait」 문단(빌더) · events.md 백오프 줄과 치명 줄 · 규칙 Relay 줄(컨트롤러).
+    - 시험(oc-29f 새로 · oc-16 보강):
+      - 지속 치명: 행 없음 · 프로듀서 4개 모두 `on_poll=raising(None, _fatal_error())`(첫 poll은 통과 · 둘째 poll 치명) · `--iterations 8` → 대기 [0.5, 1.0, 1.0, 2.0, 2.0, 4.0, 4.0] · 생성 4 · `producer_fatal` 줄 4.
+      - 회복: 치명 하나 뒤 건강한 프로듀서 · 행 없음 · `--iterations 5` → [0.5, 1.0, 1.0, 0.5].
+      - `ProducerFatalError` 경로: 행 하나를 성공 DR로 보낸 뒤 flush가 치명을 올리는 대역(`ProducerFatalError(.result = (1, 0, 0))` — 그 행은 지워진다) → 다시 만든 프로듀서의 첫 패스는 빈 패스 → 대기 유지.
+      - oc-16: `after_fatal_rebuild=True`일 때 빈 패스 → 직전 값 · 진전 → 폴링 간격 · 진전 없음과 오류 → 두 배 · 잘림 → 0 · dead만 → 폴링 간격. 기본값(False)의 기존 단언은 그대로다.
+      - 기존 oc-24 [1.0, 0.5] · oc-28 · oc-29a–d의 대기 단언은 그대로 초록이어야 한다(다시 만든 프로듀서의 첫 패스가 진전이면 평소 규칙).
+      - 변이: 표시를 poll 치명에만 세움 · 표시를 지우지 않음 · 첫 패스면 결과와 무관하게 유지 · 유지 대신 두 배 · 생성할 때 표시를 지움 · 오류로 끝난 반복에서 표시를 지움.
+  - **M2 purge 뒤 flush에서만 난 치명을 가른다**(B4-2 — 시험만):
+    - 사례: 행 하나는 HOLD · `on_flush=raising(None, _fatal_error())` — 첫 flush는 잔여 1을 돌려주고 purge 뒤 flush가 치명을 올린다.
+    - 기대: `purge_calls` [(True, True)] · `flush_calls` [35, 5] · `ProducerFatalError(.result = (0, 1, 0) · .error_name = CLUSTER_AUTHORIZATION_FAILED)` · 행 attempts + 1 · last_error `_PURGE_QUEUE` · attempts = MAX−1 행을 함께 두면 DLQ 단계가 없다(그때 결과 수는 그에 맞춘다).
+    - r4 구현도 지키는 거동이라 빨강은 없다. 판별력은 변이 `L6-purge-fatal-dropped`(`flush_fatal = flush_fatal or purge_fatal` 제거)가 보인다.
+  - **M3 진단 원인 보존을 SystemError로 좁힌다**(B4-3 · A4-2 ① · 빌더 ⑧-4):
+    - `_diagnostics`의 원인 보존 갈래는 `SystemError`에만 적용한다. 기준은 `_fatal_exception_name`과 같다 — `__cause__`, 없으면 `__context__`가 `KafkaException`(인자가 `KafkaError`)이면 `kafka_error=<이름>`이다. 치명 여부와는 무관하다(진단이다).
+    - 그 밖의 예외는 `at=<파일>:<줄>:<함수>`를 지킨다 — `except KafkaException` 처리 중 난 버그(암묵 `__context__`)의 위치를 잃지 않는다.
+    - 시험(oc-15d 또는 oc-29e 쪽): `__context__`가 KafkaException인 RuntimeError → `at=` · `__cause__`가 다른 예외이고 `__context__`가 KafkaException인 SystemError → `at=`(원인 = cause). oc-29c의 SystemError 두 꼴은 그대로 `kafka_error=`다.
+    - 변이: 갈래를 모든 예외에 적용(r4 꼴) · context를 cause보다 먼저 봄 · cause가 있어도 context로 넘어감.
+    - 문서: events.md 진단 필드 문장 · 규칙 진단 괄호(컨트롤러) · 명령 독스트링 「로그」(빌더).
+  - **M4 계약 문장 정정**(A4-2 ② ③ · 빌더 ⑧-3 — 문서):
+    - events.md: 「메인 단계에서 치명이 서면(produce · flush · DR 어느 출처든) DLQ 단계를 건너뛴다」.
+    - pod-template 공개 API: 「하위 모듈 `relay`(`ProducerFatalError`(`.result` · `.error_name`) · `build_producer()`(error_cb를 단 confluent `Producer` — 감싸개 없음) — 최상위 재노출 없음)」.
+  - **M5 앞 절 표식**(A4-3 — 문서):
+    - 앞 절에서 뒤 절이 대신하는 문장의 줄 끝에 〔…〕 표식을 달았다: D6 `build_producer` · D7 순서 · 다음 대기 · crash-only · J6 종료 두 줄 · K3 envFrom · 렌더 단언 · K4 재현 순서 두 줄 · K6 머리 · 기본 로그 문장 · r3 인계 T072 · T075 · r4 L3 · L6 진단 · L7 · 「r4 인계 보강」. 〔r5 리뷰 A5-2로 더했다: D4 주입 프로듀서 호출 · 선택 · value · 다른 예외 · D7 로그 · D9 백오프 · J6 로그 · K1 치명 출처 · L2 T075 줄 — r3 인계 T072 표식은 범위를 고쳤다(A5-3)〕
+    - T069 결과 절 머리에도 우선 줄을 둔다.
+    - 하위 에이전트에게는 표식이 달린 줄을 그대로 넘기거나, 대신하는 절(r4 L1 · r5 M6)을 넘긴다.
+  - **M6 T075 인계를 VD로 다시 쓴다**(A4-4 — 문서 · 아래 「r5 인계」).
+  - **M7 시험 잔여**(A4-5 — 독스트링 · 상수):
+    - `_system_error` 메시지를 실물 꼴(`<function record at 0x…> returned a result with an exception set {SENTINEL}` 또는 중립 문구)로 바꾼다. SENTINEL은 남긴다.
+    - 시험 모듈 독스트링의 빨강 목록에 「(당시 시험 기준 — oc-29는 r4에서 29a–e로 갈음)」을 붙이고, r5 목록(M1 · M3)을 더한다.
+  - **M8 판별력 · 시각 정직성**:
+    - M1 · M3의 결정마다 단독으로 죽이는 시험과 변이가 있어야 한다.
+    - r4 변이 가운데 `outbox_relay.py`에 걸린 것(L7-* · K9 · K11 · J4–J7 쪽)은 최종 바이트로 다시 돈다. relay.py는 바뀌지 않는다(바뀌면 그 변이도 다시 돈다).
+    - 단계별 sha256 스냅샷을 남기고, 빨강 뒤 수정은 무엇을 왜 고쳤는지 적는다. 변이 실행기는 표식 파일을 둔다.
+  - **M9 VD**:
+    - 빌더 r4 ②'를 최종 바이트로 다시 돌린다 — 실 `build_producer` · 생성 0.2 s 뒤 ctypes 치명 · 유휴 · 9–10반복 → 생성 간격이 약 1.5 · 3 · 6 · 12 s로 느는지 본다.
+    - 회복 변형: 치명 둘 뒤 치명을 넣지 않는 프로듀서 → 유지 대기 한 번 뒤 0.5 s로 돌아오는지 본다.
+- **r5 인계**(r3 인계의 T075 줄 · 「r4 인계 보강」을 대신한다):
+  - **T075**(M6 · VD — 외부 거동은 실측 뒤 정한다): topic Write가 하나도 없는 임시 KafkaUser로 relay를 띄운다. 기본 가정은 (i)이고, 어느 갈래였는지 기록한다.
+    - (i) 치명: InitProducerId가 `CLUSTER_AUTHORIZATION_FAILED`로 거부되고, librdkafka가 그것을 멱등 프로듀서의 치명으로 본다. 번들 librdkafka 2.16.0 mock 클러스터에서는 재현됐다(r5 리뷰 B5-3 — poll이 `KafkaException(…, fatal=True)` · error_cb 0건 · 그 뒤 produce는 `_FATAL`). 유휴 relay에 `outbox_relay.producer_fatal KafkaException kafka_error=CLUSTER_AUTHORIZATION_FAILED published=0 failed=0 dead=0` 줄과 stderr `%0|…|FATAL|<client.id>#producer-N| [thrd:main]: Fatal error: Broker: Cluster authorization failed: Failed to acquire idempotence PID from broker <host:port/id>: Broker: Cluster authorization failed` 줄이 나온다(FATAL 줄에도 브로커 주소가 실린다).
+      - 생성 → 치명 시간 L을 잰다(mock 0.52 s). 재생성 간격의 기준: L ≈ 0.5 s면 약 2 · 3 · 6 · 12 s(mock), L 0.2 s면 1.56 · 3.07 · 6.06 · 12.06 s(r5 VD ① · ctypes).
+      - 간격이 자라지 않고 일정하면 M1 가정이 깨진 것이다(약 1 s + L을 폴링 간격 단위로 올린 값 · 2.5 s 이상 — 예: L 1.2 s → 2.5 s 고정). 1.5 s 고정이면 M1이 꺼진 꼴(r4 거동)이다(r5 리뷰 A5-3 · B5-3 — 빌더 보고 ⑨의 「약 1.5 s에 머물면 가정이 깨진 것」은 틀렸다).
+      - 행이 있으면 줄이 `outbox_relay.producer_fatal ProducerFatalError kafka_error=CLUSTER_AUTHORIZATION_FAILED published=0 failed=N dead=0`이고, 행 last_error는 원인이 아니라 `_PURGE_QUEUE`다(원인은 줄의 kafka_error에서 본다). 치명이 이어지는 동안 attempts가 10을 넘어도 DLQ로 가지 않는다(치명 패스는 DLQ 단계를 건너뛴다 — 고친 뒤 메인으로 간다).
+    - (ii) 재시도: librdkafka가 PID 획득 실패를 재시도한다. `producer_fatal` 줄은 없고, stderr에 `%4|…|GETPID|…: Failed to acquire idempotence PID from broker <host:port/id>: <오류>: retrying` 줄이 약 0.5 s마다 쌓인다. 행은 delivery 시한(30 s) 뒤 `_MSG_TIMED_OUT`으로 실패한다(attempts + 1 · 진전 없음 백오프 1 · 2 · 4 …). `OutboxOldestPending`이 울린다. 번들 판 mock에서 이 꼴은 재시도되는 코드(예: `COORDINATOR_NOT_AVAILABLE`)에서만 나왔고, ACL 거부(31)는 (i)이었다(r5 리뷰 B5-3).
+    - 회복: pending 행 하나를 둔 채 Write ACL을 복구하고, `outbox_relay.pass published=1`과 `producer_fatal` · `GETPID` 줄이 그치는지 본다(유휴로 두면 pass 줄이 나오지 않는다). pending 행을 둔 채 고치면 pass 줄은 그때의 치명 백오프(≤ 300 s) 안에 나온다. 유휴 relay를 고친 뒤 행을 넣으면 최대 약 600 s 늦을 수 있다(M1 대가 — r5 리뷰 A5-1). 두 꼴의 지연을 재고, 기다리지 않으려면 pod를 재시작한다.
+    - 일부 토픽만 Write를 뺀 변형도 본다 — 행마다 `TOPIC_AUTHORIZATION_FAILED`(비치명)인지(r5 리뷰 B5-3 — mock에서는 비치명이었다).
+    - produce 예외 · flush · poll 예외 · DR이 각각 fatal 표시와 코드 중 무엇을 싣는지 기록한다.
+  - **T071**: librdkafka FAIL · FATAL 줄은 error_cb와 무관한 비JSON stderr이고, FAIL 줄에는 브로커 주소가 실린다. 그대로 받을지, confluent `logger`로 Python 로깅에 넣을지 정한다. 비치명 오류 이벤트는 이벤트마다 `outbox_relay.kafka_error name=…` 한 줄이고, 유휴 중에도 다음 패스 전 poll(≤ 대기 간격 뒤)에 나온다 — 실측 간격 약 2 s(닫힌 포트 · Windows · r5 리뷰 A5-3 — 「poll마다」는 과장이었다). 실 경로의 FATAL 줄에도 브로커 host:port/id가 실린다. (ii)라면 GETPID 줄이 프로듀서당 초당 약 2개다(r5 리뷰 B5-3).
+  - **T072**: r4 L1(CronJob 환경 · §기본 테스트 6) · relay 종료 경로 · relay env에 `PROMETHEUS_MULTIPROC_DIR` 없음. 명령은 반복마다 `producer.poll(0)`을 부르므로 생성물 시험의 대역 프로듀서에 `poll`이 있어야 한다. `relay.build_producer()`는 실 Producer다(`.inner` · `.fatal_error_name` 없음). 생성 단계 실패(CA · 값 꼴 · 양립)의 재현은 pod 안에서 `relay.build_producer()`를 부르는 것이다(K11 — r3 인계 T072의 남은 항목 · r5 리뷰 A5-3).
+  - **T114**: `incident-response.md` `OutboxOldestPending` 절의 원인(relay 정지 · Kafka 장애 · 크기 상한을 넘는 손 행 — K5)에 Kafka ACL을 두 갈래로 더한다(r5 리뷰 B5-3).
+    - ① Write가 하나도 없음 → InitProducerId 치명(T075 (i)). 유휴 relay는 알림 없이 `producer_fatal` 줄과 stderr `FATAL` 줄만 남긴다. 재생성 간격은 약 1.5 · 3 · 6 … s로 늘다가, 약 1022 s 뒤에는 약 600 s(유지 300 + 치명 백오프 300)마다다(M1 — r5 리뷰 A5-1 · B5-1 정정 · 상한 주기는 계산과 시뮬레이션 값이고 실측은 처음 네 간격까지다). `producer_fatal` 줄은 FATAL 줄보다 최대 한 유지 대기 늦다. 행이 쌓이면 그때 알림이 울린다 — 유휴 중 새로 든 행의 나이는 다음 refresh까지 보이지 않아 알림이 최대 한 대기(≤ 300 s) 늦다. ACL을 고친 뒤 새 행의 최악 지연은 약 600 s다. 바로 되돌리려면 pod를 재시작한다.
+    - ② 일부 토픽만 Write가 없음 → 행마다 `TOPIC_AUTHORIZATION_FAILED`(비치명) · `producer_fatal` 없음 · 진전 없음 백오프 · `OutboxOldestPending` · 10회 뒤 DLQ(DLQ 토픽도 막혔으면 행이 남는다).
+    - 치명 뒤 DB 장애가 이어지면 회복 뒤 대기가 한 번 더 유지된다(≤ 300 s · M1 · r5 리뷰 B5-2).
+
+### T069 결과(r1 → r5 · 2026-11-04..05) — D1–D16 · J · K · L · M의 정정은 뒤 절(r2 · r3 · r4 · r5)과 이 절이 우선한다(앞 절 줄 끝 〔…〕 표식)
+
+- **경과**: 조사 `wf_029b6b90-1a0`(1.27M) → r1 `wf_b35c53f2-657`(1.65M) → r2 `wf_4d9b7621-c54`(1.62M) → r3 `wf_bc83a238-f8e`(2.15M · 빌더 한 번 끊김) → r4 `wf_fef764e3-f80`(1.51M) → r5 `wf_6a40c898-7c6`(1.35M · 1.6 h). 빌드 · 리뷰 합계는 약 9.55M 토큰이다.
+- **리뷰 회차별 지적**(높음 · 중간 · 낮음):
+  - r1: A 0 · 2 · 7 / B 0 · 4 · 7
+  - r2: A2 0 · 0 · 7 / B2 0 · 0 · 9
+  - r3: A3 0 · 1 · 4 / B3 0 · 1 · 3
+  - r4: A4 0 · 1 · 4 / B4 0 · 1 · 2(medium은 같은 한 건)
+  - r5: A5 0 · 1 · 2 / B5 0 · 0 · 3(A5-1 medium = B5-1 low — 같은 한 건 · 모두 문면이라 컨트롤러 반영으로 닫았다)
+- **r5 결과**(빌더 DONE_WITH_CONCERNS — 우려 ⑧-1 = M1 대가 문장이 최악을 절반으로 적었다 → A5-1 · B5-1):
+  - 바뀐 파일은 `outbox_relay.py`(324 → 357)와 `test_outbox_contract.py`(2368 → 2570 · 시험 39 → 42 — oc-29f · 29g · 15f)뿐이다. `relay.py` · `_outbox_fakes.py`는 r4와 sha256이 같다.
+  - 빨강(r4 구현 + 최종 시험): `3 failed, 39 passed`(12:09) — oc-29f(네 사례) · oc-15f · oc-16. oc-29g(M2)는 r4도 지키는 거동이라 초록이고, 판별력은 변이 `L6-purge-fatal-dropped`가 보인다. 빨강 뒤 시험 수정은 0이다.
+  - 변이 76개(새 17 = M1 11 · M2 1 · M3 5 + r4 재실행 59) = 죽음 76 · 생존 0 · 복원 76. r4의 `outbox_relay.py` 변이 48개를 모두 다시 돌렸고, `relay.py`는 바뀐 시험에만 기대던 11개를 다시 돌렸다(두 리뷰가 jsonl로 범위를 확인했다).
+  - VD(M9 · 실 `build_producer` · 닫힌 포트 · 생성 0.2 s 뒤 ctypes 치명 · 유휴): 생성 간격 1.56 · 3.07 · 6.06 · 12.06 s · 대기 [0.5, 1, 1, 2, 2, 4, 4, 8, 8] · 회복 [0.5, 1, 1, 2, 2, 0.5, 0.5]. 리뷰 B는 번들 librdkafka 2.16.0 mock 클러스터의 실제 InitProducerId 치명(L 0.517–0.528 s)에서도 간격이 2.0 · 3.0 · 6.0 s로 느는 것을 확인했다.
+- **r5 리뷰 반영**(컨트롤러 · 2026-11-05 — 6차 빌더 라운드는 두지 않았다. 코드 · 시험 · 변이 · VD는 두 렌즈 모두 결정과 1:1이라고 판정했다):
+  - A5-1 · B5-1(M1 대가 · 상한 주기 수치): 계약 events.md 치명 줄 · 지표 줄, 규칙 Relay 문장, kr 미러 pending, 위 M1 「효과」 · 「받아들인 대가」, 명령 독스트링을 같은 수치로 고쳤다 — 상한에서 재생성 약 600 s(유지 300 + 치명 백오프 300) · 고친 뒤 최악 약 2 × `--max-backoff`(≈ 600 s) · 폴링 간격으로 돌아오기까지 최대 약 900 s · pending 행이 있었다면 ≤ 300 s · 긴 대기 중 지표 refresh 지연.
+  - B5-2(치명 뒤 DB 오류가 이어질 때 표시가 남는다): (가)를 골랐다. 계약 · 규칙 · 독스트링의 「첫 패스」를 「결과를 돌려준 첫 패스」로 바꾸고 그 경로를 적었다. 드문 경로 · 데이터 영향 0 · 지연은 `--max-backoff` 이하 한 번이라 빌드 라운드를 더하지 않았다. 받지 않은 (나) 코드 안(이전 반복에 만든 프로듀서의 패스 전 poll이 통과하면 표시를 지움)은 위 M1 표식에 적었다.
+  - B5-3 · A5-3(인계 보정): 「r5 인계」 T075 (i) · (ii) · 회복과 T071 · T072 · T114를 mock 실측과 판별 기준으로 고쳤다. 빌더 보고 ⑨의 「간격이 약 1.5 s에 머물면 가정이 깨진 것」은 틀린 기준이라 옮기지 않았다. M1 가정 줄에 실측 L을 적었다.
+  - A5-2(앞 절 표식): 9줄에 〔…〕 표식을 더하고(M5 줄에 목록), r3 인계 T072 표식의 범위를 고쳤다. `relay.py` 독스트링의 「진전 없는 패스에서만 자란다」는 계약 · 명령 독스트링을 가리키는 문장으로 바꿨다.
+  - 코드 두 파일(`outbox_relay.py` 357 → 361 · `relay.py` 415)은 독스트링만 바뀌었다. 독스트링을 뺀 AST · 주석 토큰 · 줄 길이(≤ 120자)가 같은지 스크립트로 확인했다(원본은 scratch 백업).
+- **최종 산출물**(`packages/django-common/` 아래):
+  - `src/django_common/outbox/`: `__init__.py` 30 · `models.py` 46 · `_ulid.py` 51 · `publisher.py` 257 · `relay.py` 415 · `maintenance.py` 46 · `metrics.py` 61.
+  - `src/django_common/kafka.py` 126(`client_config()` — T071 `/health` 공용) · `models.py` 9(OutboxEvent 등록) · `migrations/__init__.py` · `0001_initial.py` 34.
+  - 관리 명령 `outbox_relay.py` 361 · `outbox_requeue.py` 43 · `outbox_purge.py` 22.
+  - 시험 `tests/test_outbox_contract.py` 2570(42개) · `tests/test_event_patterns.py` 445(52개) · `tests/_outbox_fakes.py` 230.
+  - 주석 전용 3파일(`pyproject.toml` · `__init__.py` · `management/commands/__init__.py`) · 계약 events.md · pod-template.md · data-model.md · 규칙 · kr 미러 · 이 build-notes.
+- **컨트롤러 독립 검증**(최종 바이트 · 2026-11-05 13:38–13:45 · 시험은 하나씩):
+  - `test_outbox.py` 16 ×2(16.99 s · 14.92 s — **T061 PASS**) · contract 42 · patterns 52 · fixtures_kafka 1 · 회귀 tenancy 16 · tenancy_contract 65 · fixtures_pg 3. 경고 둘은 기존 `PytestConfigWarning: Unknown config option: DJANGO_SETTINGS_MODULE`(`-p no:django`)이다.
+  - 위생 RESULT OK(26파일 — BOM · CR · TAB · 줄 끝 공백 · 역슬래시-u · 끝 LF · 120자 초과는 0001 생성물 :19 · :31뿐) · 주석 전용 3파일 AST/값 동일(`management/commands/__init__.py`는 따로 확인) · 메모리 compile 19파일.
+  - gitleaks 8.30.1: 파일 26개를 하나씩 돌려 모두 exit 0(양성 대조 rc 1로 호출이 공허하지 않음을 확인) · `gitleaks:allow` 0 · Docker dangling 25 → 25 · 컨테이너 목록 같음.
+- **한계(남긴 것)**:
+  - 변이 「표시를 빈 패스에서만 지움」은 산다 — 컨트롤러가 실행해 확인했다(계약 시험 42 통과 · 소스 sha 복원). 관측 차이는 「치명 → 재생성 첫 패스가 진전 없음 · 잘림 → 다음 빈 패스」에서 대기 한 번(≤ `--max-backoff`)뿐이다(리뷰 A5 관찰).
+  - B5-2 경로(치명 뒤 DB 오류 반복 → 회복 뒤 대기 한 번 더 유지)는 문서로 받아들였다.
+  - 대역 `_system_error`의 메시지는 `<function record at 0x…>`다. 실물은 중첩 함수라 `<function _deliver.<locals>.record at 0x…>`일 것이다(추론 · 단언에 쓰이지 않는다 — 리뷰 A5 관찰).
+  - 상한 주기 약 600 s와 고친 뒤 최악 약 600 s는 계산 · 가상 시계 시뮬레이션 · 축소판 실측(상한 4 s)에서 얻었다. 실제 sleep 실측은 처음 네 간격까지다.
+- **문면과 다르게 한 것(report.md 후보)**:
+  - ① 단일 파일 `outbox.py` → 패키지 `outbox/`(시험이 하위 모듈 `metrics`를 import한다 — 사실 ①).
+  - ② 명령 이름 `relay_outbox` → `outbox_relay`(계약 · T065 골든 렌더 · 시험 독스트링 — 사실 ③).
+  - ③ 「CloudEvents 2.2 봉투」 → SDK 없이 dict 봉투(`specversion` "1.0" — 2.2는 Python SDK 판 번호 · pod 이미지에 스키마 패키지가 없어 꼴 상수는 코드에 두고 시험이 스키마와 같음을 지킨다).
+  - ④ 「dead 행 purge beat」 → 라이브러리 함수 `purge_dead()` + 템플릿 Celery 작업(T072) + Celery 없는 pod의 `outbox_purge` 명령 · CronJob(django-common에는 Celery가 없다).
+  - ⑤ 문면 밖 산출물: `kafka.client_config()`(설정 검증 공용) · `outbox_requeue`(dead 재처리) · `outbox_purge` · django_common 앱의 `models.py` + 마이그레이션 0001.
+  - ⑥ DLQ는 env DLQ다(prod `<pod>.dlq` · dev `dev.<pod>.dlq` — 계약 §토픽 규약).
+  - ⑦ 「지수 백오프(최대 5분)」는 행이 아니라 명령 루프의 것이다(대기 = max(직전, 폴링, 0.5 s) × 2 ≤ 300 s · 잘림 0 · 치명 뒤 결과를 돌려준 첫 빈 패스는 대기 유지 — K9 · M1). 대기 하나하나는 5분 이하지만, 치명 원인을 고친 뒤의 실효 지연은 대기 둘(≈ 10분)일 수 있다(r5 리뷰 A5-1 · A5 관찰).
+  - ⑧ 문면 밖 안전장치: publish의 jsonb 왕복 관문 · PG 텍스트 꼴 크기 상한 · relay 값 = `payload::text` · 바이트 예산 · 크기 상한 손 행 제외 · relay 무종료 수명 주기 · 치명 프로듀서 재생성(produce · flush · poll · DR) · Kafka 설정 양성 목록.
+  - ⑨ 「max_attempts 10 도달 시 DLQ + dead_at」: 메인 단계가 치명이면 그 패스의 DLQ 단계를 건너뛴다. 치명이 이어지는 동안 행은 attempts ≥ 10 · `dead_at` NULL로 남고, 고친 뒤 메인부터 다시 시도한다(L6 · r5 리뷰 A5 관찰).
+- **실측으로 뒤집힌 가정(report.md 후보)**:
+  - jsonb는 숫자를 다시 쓴다(`1e300` → 301자리) — Python 직렬화 크기로는 관문이 뚫린다(r1 리뷰 실측 989 B → 30,489 B).
+  - Django `delete()`는 삭제 신호 수신기가 있으면 지울 행을 먼저 읽는다 → `_raw_delete`.
+  - librdkafka는 설정 값을 C 문자열로 받아 NUL에서 자르고, 열거형 값의 앞 공백 · 대소문자를 무시한다 → 양성 목록.
+  - confluent-kafka 2.16.1은 치명 오류를 error_cb로 주지 않고 `flush` · `poll` 예외로 준다(r3 설계 K6 반증).
+  - 재생성 직후 빈 패스는 건강의 증거가 아니다(r4 실측 약 1.5 s 재생성 → M1).
+  - M1의 대가는 대기 하나가 아니라 둘이다(고치기 전에 만든 프로듀서의 유지 대기 + 그 프로듀서를 버리는 치명 백오프 — 빌더 덧 탐침 · 두 리뷰 독립 재현).
+  - 생성 → 치명 시간 L은 「1 s보다 훨씬 짧다」가 아니라 약 0.52 s다(번들 librdkafka 2.16.0 mock · PID 획득 타이머 500 ms 뒤 연결 한 번).
+- **사고**:
+  - r3 빌더가 변이 도중 끊겨 소스에 변이를 남겼다 → 다음 실행이 발견 · 복원 · 처음부터 재실행 → 변이 표식 파일 규칙(r4에서 실제로 작동했다).
+  - 컨트롤러 지시문의 셈 오류(18 → 19줄) · 이전 라운드 스크립트 경로 오지정(도구가 거부했다).
+  - r5 리뷰 B의 부수 효과 2건 — 저장소 · scratch 밖에 임시 파일을 잘못 만들었다가 지웠고, 상태 확인 명령이 배경 작업이 되어 TaskStop으로 멈췄다. 영향은 0이고 리뷰가 스스로 보고했다.
+- **VD 잔여(라이브)**:
+  - T075: (i) · (ii) 판별 · 클러스터 안 L · 유휴 재생성 간격(자라는지 · 일정한지) · 회복 지연 두 꼴(pending 행을 둔 채 고치기 · 유휴 중 고친 뒤 행 넣기) · 부분 ACL(`TOPIC_AUTHORIZATION_FAILED`) · produce · flush · poll · DR의 fatal 표시와 코드 · Linux에서 L 재측정.
+  - T072: 생성물 시험 대역의 `poll` · CronJob env · `terminationGracePeriodSeconds` ≥ 90.
+  - T071: FATAL · FAIL · GETPID stderr 줄(브로커 주소 포함)의 수집 형식.
+- **인계(최종)** — 「r5 인계」가 정본이다(T071 · T072 · T075 · T114). 더해서:
+  - **T096**: 조건 없는 relay 정지 감지(하트비트 지표)는 T096 결정이다(J7 · 계약 지표 줄).
+  - **T072**: 템플릿 Celery 작업 `<pod_snake>.tasks.purge_dead_outbox`가 `purge_dead()`를 감싼다 · relay 컨테이너는 인자 없는 `manage.py outbox_relay` · `terminationGracePeriodSeconds` ≥ 90 · relay DB 설정 `CONN_MAX_AGE` > 0 + `CONN_HEALTH_CHECKS`.
+  - **SP-2 후보**: 재생성 백오프를 패스 대기와 따로 두기 · 첫 유지 대기 하한(T075의 L이 0.8 s를 넘으면) · 잠금 쿼리 길이 이중 계산을 피하는 LATERAL 원시 SQL.
+- **학습 로그**: `content/tmp/003-t069/2026-11-04.md` · `2026-11-05.md`.
+
+## T070 (2026-11-04 착수 · 11-05 설계 확정 — US6 구현 · `packages/django-common/src/django_common/auth.py` → T062 PASS · 세션 모델 Opus 5.5)
+
+- **과제 문면(tasks.md T070)**: `JwtAuthMiddleware`(PyJWT `PyJWKClient` 1h 캐시 — JWKS URL은 svc DNS · `iss`(공개 issuer URL) · `aud` · `exp` · `nbf` 검증 · `act.sub` 검증은 `AUTH_ACTOR_SUB`가 설정된 경우에만) · `AccessJwtValidator`(Cloudflare `/cdn-cgi/access/certs` · AUD 집합 `ACCESS_AUD_M2M` · `ACCESS_AUD_ADMIN` + `ACCESS_EXPECTED_CN` — `common_name` 불일치 · 부재 403) · `Denylist`(redis-py · ACL 사용자 `<pod>` · `socket_timeout` · `socket_connect_timeout` 0.2 · 키 `revoked:sub:{sub}`(nbf epoch) · `revoked:sid:{sid}` 파이프라인 1회 · 조회 실패 503 fail-closed) · Ninja auth callable · 면제 목록 · 웹훅 HMAC 헬퍼 → T062 PASS.
+- **소스로 확인한 사실**(읽기 전용 조사 워크플로 `wf_84149399-610` — 시험 · 명세 · 런타임 세 갈래 · 1.41M 토큰, 보고 `.superpowers/t070/research/{tests,spec,runtime}.json`):
+  - ① **빨강**: `tests/test_auth.py`와 `tests/authapp/views.py`가 `django_common.auth`를 import한다 → 모듈 부재로 `ModuleNotFoundError`(수집 단계).
+    - 시험이 고정한 공개 이름은 5개다: `AuthError` · `JwtAuthMiddleware` · `WebhookEvent` · `WebhookSignatureInvalid` · `verify_authentik_webhook`.
+    - 시험 32개(auth-1..32)는 DB 없이 Dragonfly 컨테이너와 로컬 JWKS 서버로 돈다.
+  - ② **판정 순서(시험 고정)**: 면제(정확 일치 · 무검사 · Dragonfly 무접촉) → Access 전용 경로(Access만) → Access(403 `access_required`) → Bearer(401 `invalid_token`) → `act.sub`(설정 시만) → 거부 목록(401 `session_revoked` · 503 `denylist_unavailable`).
+    - 판정은 URL 해석 전이다(urlconf에 없는 경로도 403/401).
+    - act · tenant_id · 거부 목록 사이의 상대 순서와 동시 실패 우선순위는 시험이 고정하지 않는다.
+  - ③ **PyJWT 2.15.1**:
+    - `require`가 없으면 `exp` 없는 토큰도 통과한다. `issuer`를 넘기지 않으면 iss를 보지 않는다.
+    - `PyJWKClientError`(모르는 kid)는 `InvalidTokenError` 하위가 아니다. JWKS 응답이 JSON이 아니거나 본문 읽기 중 OSError면 PyJWT 밖 예외가 그대로 샌다.
+    - 생성자 기본값: `timeout` 30 s · `lifespan` 300 s · `cooldown_duration` 30 s. fetch는 RLock을 쥔 채 돈다.
+    - 모르는 kid면 마지막 성공 fetch 뒤 cooldown이 지났을 때만 1회 재조회한다(홍수가 fetch 폭주를 만들지 않는다). lifespan이 지난 뒤 fetch가 실패하면 만료된 키를 쓰지 않고 `PyJWKClientConnectionError`다.
+  - ④ **redis-py 8.1.0**:
+    - `Redis()` 생성자 기본은 지수 백오프 10회 재시도 · 타임아웃 5 s, `from_url` 기본은 재시도 0이지만 타임아웃 5 s다 → 세 값을 명시해야 한다.
+    - **URL 쿼리가 키워드 인자를 덮어쓴다**(`?socket_timeout=5` 실측 — 0.2 s fail-closed 상한이 무력화된다).
+    - 기본 RESP3다. 파이프라인 오류 메시지에 키(= sub)가 실린다. `TimeoutError`는 `ConnectionError` 하위가 아니다.
+  - ⑤ **Django 6.1.2**:
+    - `request.get_host()`는 불릴 때만 `DisallowedHost`(→ handler400 400)를 올린다. 그래서 「업무 경로는 인증 전 400」은 누군가 판정 전에 `get_host()`를 불러야 성립한다.
+    - 시험 Client는 첫 요청 때 미들웨어를 적재하고(Client 1 = 인스턴스 1), 처리되지 않은 예외를 다시 올린다.
+    - T068 `TenantContextMiddleware`는 `__call__`에서 `uuid.UUID`인 `request.tenant_id`를 요구한다.
+  - ⑥ **표준 라이브러리**:
+    - `hmac.compare_digest`는 비ASCII str에 `TypeError`다.
+    - `json.loads`는 깊은 중첩에 `RecursionError`다(ValueError 아님).
+    - `uuid.UUID`는 str가 아닌 값에 `AttributeError` · `TypeError`이고, 32 hex · 중괄호 · `urn:uuid:` 꼴도 받는다.
+  - ⑦ **시험이 고정하지 않는 것**: `AccessJwtValidator` · `Denylist` · Ninja callable의 모양 · JWKS · certs fetch 실패 응답 · fetch 타임아웃 · leeway 값 · 스킴 없는 팀 도메인 · 경로 설정 타입 검사 · 빈 설정 · 클레임 모양(빈 sub · 비str tenant_id · 비dict act) · 거부 목록 값이 정수가 아닐 때 · 호스트 400의 책임 · sync/async · 웹훅 대문자 hex · `Z` 접미 · 빈 비밀.
+  - ⑧ **어긋남**:
+    - spec 인증 순서 두 곳(:421 · :430)이 계약 · 시험(Access 먼저)과 다르다 → 계약이 우선한다(report.md 편차 후보).
+    - `ACCESS_EXPECTED_CN` 값: 계약 identity-admin-api.md:35는 Client ID인데, `hostnames-and-access.md:106` · `bff-api.md:43`의 「common_name = web-bff-<env>」은 낡았다(ADR 0006 · tasks.md T075 본문은 고칠 수 없다 — report.md 편차 후보).
+    - 웹훅 면제: pod-template은 「pod가 명시」, identity-admin-api.md · T062 시험은 라이브러리 기본(`AUTH_EXEMPT_PATHS` = 헬스 3 + `/webhooks/authentik`) → 시험 · identity-admin 계약을 따른다.
+    - pod-template §공개 API 요약이 시험이 import하는 이름과 다르다.
+    - Ninja auth callable은 문면에만 있고 계약 · 시험이 없다. Ninja `auth=` 목록은 OR 의미이고, Ninja 기본 401 본문은 RFC 9457이 아니다.
+  - ⑨ **미결(O1 · O2 — T062 · T066 · T068에서 넘어온 것)**: 사람 admin 경로는 GitHub IdP Access JWT라 `common_name`도 Bearer도 없다 → 지금 체인이면 403이다. 그 요청은 tenant도 없어 T068이 `/admin/*`을 403 `tenant_required`로 막는다(면제는 경로 정확 일치뿐).
+- **계약 보정(컨트롤러 · 이 설계와 같은 커밋 · 「T070 보정 2026-11-05」 표식)**:
+  - **C1** `contracts/pod-template.md` §런타임 계약 「인증」 행과 §공개 API(`django_common.auth`)를 D2–D10으로 고친다. §기본 테스트 3에 fetch 실패 503을 더한다.
+  - **C2** `contracts/identity-admin-api.md` 인증 계층에 호스트 400 선행 · fetch 실패 503 `auth_keys_unavailable` · 클레임 모양 · 오류 슬러그 목록을 더한다. `hostnames-and-access.md:106` · `bff-api.md:43`의 낡은 `common_name` 문구를 Client ID로 바로잡는다. `bff-api.md` 폐기 확인 줄의 「상류 503(`denylist-unavailable`)」을 「상류 503(어느 슬러그든)」으로 넓힌다.
+  - **C3** `contracts/denylist.md` §조회 규약에 공개 API(D7) · URL 쿼리 거부 · 값 이상 = 503 · 메시지 · 로그에 키(sub) 없음을 적는다.
+  - **C4** `.claude/rules/django-pod.md` §Auth를 영어로 같이 고친다 · kr 미러는 translation-pending 줄.
+- **결정 D1–D14(컨트롤러)**:
+  - **D1 범위**: `src/django_common/auth.py` 한 모듈과 새 시험 `tests/test_auth_contract.py`(T070 소유 · 시험이 고정하지 않은 표면)다. 필요하면 `tests/authcontractapp/`(T070 소유 urlconf)와 `tests/_auth_fakes.py`를 더한다. T062 산출물(`test_auth.py` · `_jwt.py` · `_dragonfly.py` · `_secret.py` · `authapp/` · conftest · settings)은 바꾸지 않는다. 의존성 · `uv.lock` 변경은 0이다.
+  - **D2 미들웨어 판정**(sync 전용 · `request.path_info` 정확 일치 · 설정은 호출 시점에 읽는다 · 순서 고정):
+    0. 면제 `AUTH_EXEMPT_PATHS`(라이브러리 기본 `("/healthz", "/ready", "/health", "/webhooks/authentik")` · str만 담은 tuple · list · set · frozenset이 아니면 `ImproperlyConfigured`) → 아무것도 하지 않고 통과한다(호스트 검사 · 요청 속성 · Dragonfly 모두 없음).
+    1. **호스트 선행**: `request.get_host()`를 부른다. `ALLOWED_HOSTS` 밖이면 `DisallowedHost` → handler400 400 `invalid_host`다(인증보다 먼저 · 미들웨어 순서와 무관).
+    2. Access 전용 `AUTH_ACCESS_ONLY_PATHS`(기본 `()` · 같은 타입 검사)면 Access만 본다 → `request.access_claims` → 뷰.
+    3. Access(D3) → 4. Bearer(D4) → 5. act(설정 시) → 6. 거부 목록(D7).
+    7. 성공이면 `request.access_claims` · `request.auth_claims`(검증된 payload 전체) · `request.tenant_id`(클레임이 있을 때만 · `uuid.UUID`)를 두고 뷰를 부른다. 실패 · 면제 경로에서는 이 속성을 두지 않는다.
+  - **공개 API**(`django_common.auth.__all__`): `JwtAuthMiddleware` · `AccessJwtValidator`(문면 이름 — `validate(token: str) -> dict` · 실패는 `AccessRequired` · `AuthKeysUnavailable` · 미들웨어 ④가 쓴다) · `Denylist` · `DenylistRecord` · `AuthError`와 하위 여섯(D8) · `WebhookEvent` · `verify_authentik_webhook`. Bearer 검증 단계는 공개하지 않는다(문면에 없다).
+  - **D3 Access**(실패 → 403 `access_required`):
+    - 헤더 `Cf-Access-Jwt-Assertion`.
+    - certs = `<팀 기준 URL>/cdn-cgi/access/certs`. `ACCESS_TEAM_DOMAIN`에 스킴이 없으면 `https://`를 붙이고, `http://`는 루프백 호스트(시험 서버)만 받는다 — 아니면 `ImproperlyConfigured`.
+    - `algorithms=["RS256"]` · `audience` = 비지 않은 값만 모은 `{ACCESS_AUD_M2M, ACCESS_AUD_ADMIN}`(dev의 빈 `ACCESS_AUD_ADMIN`은 집합에서 뺀다) · `issuer` = 팀 기준 URL · `require = exp, iat, aud, iss` · `leeway = 5 s` · nbf는 있으면 검증한다.
+    - `common_name`이 str이고 `ACCESS_EXPECTED_CN`과 같아야 한다(등호 — 값의 모양은 보지 않는다).
+  - **D4 Bearer**(실패 → 401 `invalid_token`):
+    - `Authorization: Bearer <token>` — 스킴은 대소문자 무시, 구분은 공백 하나, 토큰에 공백이 없어야 한다.
+    - JWKS는 `AUTHENTIK_JWKS_URL`만 쓴다(Access 키와 섞지 않는다 · discovery 금지 · 공개 DNS 조회 0).
+    - `RS256` · `audience = AUTHENTIK_AUDIENCE` · `issuer = AUTHENTIK_ISSUER` · `require = exp, iat, sub, aud, iss` · `leeway 5 s`.
+    - 클레임 모양(fail-closed): `sub`는 비지 않은 str, `sid`가 있으면 비지 않은 str, `tenant_id`가 있으면 소문자 정규형 UUID 문자열(`str(uuid.UUID(v)) == v` — 다른 꼴 · 비str은 거부 · seed_tenant(T073)가 이 꼴로 쓴다), `AUTH_ACTOR_SUB`가 비어 있지 않으면 `act`가 dict이고 `act.sub`가 같아야 한다.
+  - **D5 키 가져오기**:
+    - `PyJWKClient(url, cache_jwk_set=True, lifespan=3600, timeout=2)`를 미들웨어 인스턴스 안에 URL별로 캐시한다(Authentik · Access 따로 · `cooldown_duration`은 기본 30 s 그대로 · 새 인스턴스는 다시 가져온다 — auth-28).
+    - **fetch 실패**(`PyJWKClientConnectionError` · JWKS 꼴 오류 `PyJWKSetError` · JSON 오류 · `OSError`)는 토큰 결함이 아니라 의존성 장애다 → **503 `auth_keys_unavailable`**(새 슬러그). 만료 뒤 fetch 실패도 같다(만료된 키를 쓰지 않는 fail-closed).
+    - 모르는 kid(재조회 뒤에도 키 없음)는 토큰 결함이다 → Access 403 · Bearer 401.
+    - BFF는 상류 503을 슬러그와 무관하게 `upstream_unavailable`로 바꾸고 쿠키를 유지한다(로그아웃하지 않는다 — C2).
+  - **D6 설정**:
+    - 이름은 시험 그대로다: `AUTHENTIK_ISSUER` · `AUTHENTIK_JWKS_URL` · `AUTHENTIK_AUDIENCE` · `ACCESS_TEAM_DOMAIN` · `ACCESS_AUD_M2M` · `ACCESS_AUD_ADMIN` · `ACCESS_EXPECTED_CN` · `AUTH_ACTOR_SUB` · `DRAGONFLY_URL` · `AUTH_EXEMPT_PATHS` · `AUTH_ACCESS_ONLY_PATHS`.
+    - 비어 있으면 안 되는 것(ISSUER · JWKS_URL · AUDIENCE · TEAM_DOMAIN · AUD_M2M · EXPECTED_CN · DRAGONFLY_URL)이 없거나 비면 요청 때 `ImproperlyConfigured`다(설정 이름만 · `from None` → 500). 기동 시 존재 검사는 T072 settings 몫이다.
+    - 빈 값이 유효한 것: `AUTH_ACTOR_SUB`(impersonation) · `ACCESS_AUD_ADMIN`(dev — 집합에서 뺀다).
+  - **D7 거부 목록 `Denylist`**(공개 — T073 `/session/check`가 재사용한다):
+    - `Denylist()` — `lookup(sub: str, sid: str | None = None) -> DenylistRecord(sub_nbf: int | None, sid_revoked: bool)`.
+    - 호출 시점에 `DRAGONFLY_URL`을 읽고, URL별로 클라이언트를 인스턴스 안에 캐시한다(같은 인스턴스가 바뀐 URL을 따른다).
+    - 클라이언트: `Redis.from_url(url, socket_timeout=0.2, socket_connect_timeout=0.2, retry=Retry(NoBackoff(), 0))`. URL에 쿼리가 있으면 거부한다(쿼리가 타임아웃을 덮어쓴다 — 사실 ④). 지연 생성이고, 생성자에서 연결 · PING을 하지 않는다(auth-21).
+    - 파이프라인 1회(`transaction=False` — GET + sid가 있으면 EXISTS).
+    - 값이 정수가 아니거나(`int()` 실패) 어떤 예외든(`RedisError` 하위 · `TimeoutError` · 그 밖) `DenylistUnavailable`(503 `denylist_unavailable`)이다. 예외 메시지(키 · URL)는 응답 · 로그 · 연쇄 예외에 싣지 않는다(`from None`).
+    - 판정 도우미 `DenylistRecord.revokes(iat: int) -> bool` = (`sub_nbf`가 있고 `> iat`) 또는 `sid_revoked`.
+    - 지표 `denylist_lookup_seconds`(Histogram · 레이블 `result` ∈ ok · revoked · error · 모듈 수준 1회 등록).
+    - 결과를 캐시하지 않는다(auth-16).
+  - **D8 오류 형**: `AuthError(Exception)`(속성 `slug` · `status` · `to_response()` = `problem_response`)와 하위 `InvalidToken`(401 `invalid_token`) · `AccessRequired`(403 `access_required`) · `SessionRevoked`(401 `session_revoked`) · `DenylistUnavailable`(503 `denylist_unavailable`) · `AuthKeysUnavailable`(503 `auth_keys_unavailable`) · `WebhookSignatureInvalid`(401 `webhook_signature_invalid`). detail에 토큰 · 비밀 · URL · 예외 문자열을 싣지 않는다. `WWW-Authenticate` 등 추가 헤더는 두지 않는다.
+  - **D9 웹훅 헬퍼** `verify_authentik_webhook(body: bytes, signature: str | None, *, secret: str, now: datetime | None = None) -> WebhookEvent`(frozen dataclass `pk` · `created`(aware) · `data`):
+    - 빈 `secret`은 `ValueError`다(설정 오류 — pod settings가 기동에서 먼저 막는다 · 심층 방어).
+    - 서명 꼴 `^sha256=[0-9a-f]{64}$`(소문자만 — 계약)이 아니면 거부한다.
+    - 본문 UTF-8 디코드 · JSON(`RecursionError` 포함) · 비객체 · `pk`(비지 않은 str) · `created`(str · tz 있는 ISO 8601 — `Z` 허용)의 실패도 전부 `WebhookSignatureInvalid`다.
+    - 정규형 JSON의 HMAC-SHA256을 `compare_digest`로 비교하고, `|now − created| > 300 s`면 거부한다.
+  - **D10 Ninja auth callable · 사람 admin 경로**:
+    - Ninja auth callable은 만들지 않는다. 미들웨어가 모든 비면제 경로를 URL 해석 전에 판정하므로 중복이고, Ninja `auth=`는 OR 의미이며 기본 401 본문이 RFC 9457 밖이다(사실 ⑧). 뷰는 `request.auth_claims` · `request.tenant_id`를 읽는다. 문면 편차 → report.md 후보.
+    - O1 · O2(사람 admin 경로 · 그 tenant)는 T070 범위 밖이다. 서비스 토큰 경로만 구현하고, 계약에 미결로 적어 T072 · T073 · T084(VD-T066-5)로 넘긴다. 선택지는 (a) `ADMIN_HOST` + `aud = ACCESS_AUD_ADMIN` 사람 모드 · (b) admin 호스트를 별도 미들웨어 스택으로 · (c) T084 실측 뒤 결정이다.
+  - **D11 새 시험 `tests/test_auth_contract.py`**(T070 소유 · T062가 고정하지 않은 표면 · 값 없음 단언은 입력에 SENTINEL을 심어 공허하지 않게 한다 — T069 J9 교훈):
+    - 호스트 400 선행(자격 없는 보호 경로 + 밖 Host = 400 · certs 요청 0 · 면제 경로는 호스트 검사 안 함).
+    - 경로 설정 타입 검사 · 요청마다 읽기.
+    - 팀 도메인 스킴 처리 · 루프백 밖 `http://` 거부.
+    - 빈 필수 설정 = `ImproperlyConfigured`(이름만 · SENTINEL 없음).
+    - JWKS · certs fetch 실패(닫힌 포트 · 응답 없는 소켓 · JSON 아님 · 빈 키 세트) = 503 `auth_keys_unavailable`(약 2 s 안) · 모르는 kid = 401/403 · 만료 뒤 fetch 실패 = 503.
+    - 클레임 모양 거부(빈 sub · 비str sub · 비정규 tenant_id(대문자 · 중괄호 · `urn:uuid:` · 32 hex) · 비dict act · 빈 sid) = 401(500 아님).
+    - 소문자 `bearer` 스킴 수락 · 공백 둘 · 토큰 공백 = 401 · Access 미래 nbf = 403.
+    - 거부 목록: 값 비정수 = 503 · URL 쿼리 = 503 · `Denylist` 공개 API(원시 값 · URL 변경 추적 · 오류 형 · 메시지에 sub 없음).
+    - 지표 레이블 ok · revoked · error.
+    - 웹훅(빈 비밀 · 대문자 hex · `Z` · 깊은 중첩 · 비UTF-8 · ±300 s 경계).
+    - sync 전용 · import 부작용 0(소켓 · 스레드).
+  - **D12 로그**: 미들웨어는 판정마다 로그를 남기지 않는다(요청 로그는 T071 RequestMiddleware가 상태 코드로 남긴다). 예외 둘 — 키 fetch 실패와 거부 목록 오류는 WARNING 한 줄이다(이벤트 이름 · 출처 `authentik`/`access`/`denylist` · 예외 클래스 — 토큰 · URL · 키 · 메시지 없음).
+  - **D13 VD**:
+    - VD-T070-1: Authentik identity-admin provider 서명 키가 RSA인지(T081 — EC면 전부 401).
+    - VD-5(T076): `common_name` = Client ID.
+    - pod → Cloudflare certs egress(T085 · T076).
+    - 0.5 s 상한의 flake 감시.
+  - **D14 인계**:
+    - T071: 마스킹 목록에 `cf-access-jwt-assertion`을 더한다. `sub_hash`는 `auth_claims["sub"]`에서 만든다.
+    - T072:
+      - MIDDLEWARE = RequestId → … → JwtAuth → TenantContext.
+      - settings 존재 검사 · `TENANT_CONTEXT_EXEMPT_PATHS`에 웹훅 · Access 전용 경로.
+      - handler400 · 프로브 Host.
+    - T073:
+      - `/session/check`는 `Denylist().lookup`을 쓴다.
+      - 웹훅 뷰는 atomic + `verify_authentik_webhook`이다.
+      - O1 · O2를 결정한다.
+    - T081: RSA 키 · act(VD-1) · 웹훅 매핑(VD-T062-1).
+    - T092(BFF): 상류 503은 슬러그와 무관하게 `upstream_unavailable` · 쿠키 유지.
+
+### T070 r1 결과 · r2 결정(리뷰 r1 반영 · N1–N13 · 2026-11-05)
+
+- **r1 결과**(워크플로 `wf_7acf8b9b-797` · 1.67M 토큰 · 약 2시간 10분 · 빌더 DONE_WITH_CONCERNS):
+  - 새 파일 7개, 추적 파일 변경은 0이다.
+    - `auth.py` 683 · 시험 `test_auth_contract.py` 1353(시험 함수 32 · 사례 104 · ac-1..22) · `_auth_fakes.py` 250 · `authcontractapp/` 4파일(`urls` · `views` · `middleware` · `__init__`)
+  - 빨강(14:29): `test_auth_contract.py`는 `ImportError: cannot import name 'auth' from 'django_common'`, `test_auth.py`는 `ModuleNotFoundError: No module named 'django_common.auth'`다(둘 다 수집 단계 · exit 2).
+  - 빨강 뒤 수정 5건은 보고에 시각과 함께 적혀 있다: 시험 논리 `caplog.clear()` · 줄 길이 · `poll_interval` 0.05 · ac-5c 추가 · 독스트링 2줄. ac-5c는 빨강을 보지 못했고, 판별력은 변이 M43 · M44로 보였다.
+  - 초록: `test_auth.py` 32 ×3(**T062 PASS**) · contract 104 · fixtures jwks 3 · dragonfly 1 · 회귀 tenancy 16 · 65 · outbox 16 · 42 · patterns 52 · fixtures_pg 3.
+  - 변이 73개 중 71개를 잡았다(T070 시험만 54 · T062만 9 · 둘 다 8).
+    - 살아남은 M22(알고리즘 목록 넓힘) · M23(원시 키 + HS256)은 동치 변이다.
+    - 근거: PyJWK가 알고리즘을 키에 묶고(api_jws.py:415–430), 원시 RSA 키는 HMAC · none에서 `TypeError` · `InvalidKeyError`다. 빌더 탐침과 리뷰 A · B가 소스로 확인했다.
+  - VD:
+    - 0.5 s 상한의 여유는 0.17 s 이상이다(모드마다 20회).
+    - 키 fetch는 블랙홀 · 닫힌 포트 모두 2.02–2.06 s다. Windows는 닫힌 포트도 연결 재시도로 약 2 s가 걸린다.
+    - Windows 닫힌 포트의 Dragonfly 실패는 `TimeoutError`로 나타난다.
+    - `INFO commandstats`가 MULTI/EXEC를 센다(M57이 잡혔다).
+    - VD-T070-1 · VD-5 · certs egress는 이 환경에 Authentik · Cloudflare가 없어 미실측이다(T081 · T076 · T085).
+  - 편차(빌더 ⑧ — 처리는 아래 N2):
+    - ① 비면제 경로에서 판정 전에 요청 속성 셋을 지운다
+    - ② 팀 기준 URL 꼴 검사를 넓혔다
+    - ③ `AUTHENTIK_JWKS_URL` 스킴 오류 = `ImproperlyConfigured`
+    - ④ `Denylist.lookup` 인자 검사(`TypeError` · `ValueError`)
+    - ⑤ 지표 `result="revoked"` = 폐기 키가 있었다
+    - ⑥ JSON null인 `sid` · `tenant_id` = 「있음」 → 401
+    - ⑦ 웹훅 헬퍼 입력 형 검사
+    - ⑧ 로그 `error=` = 예외 클래스 이름(URL 쿼리 거부는 `url_query`)
+    - ⑨ `AuthError` 기본값 = `invalid_token` / 401
+  - 한계(빌더 · PyJWT 2.15):
+    - ① 서명 키 후보가 없는 200 응답은 lifespan(1 h) 동안 503으로 고착된다.
+    - ② fetch 실패는 마지막 성공 fetch 시각을 갱신하지 않는다. 그래서 장애 중에는 모르는 kid마다 재조회한다(N10).
+    - ③ timeout은 소켓 동작 단위다(N11).
+- **리뷰 r1**: A approve_with_fixes(medium 2 · low 7) · B approve_with_fixes(low 4).
+  - B 탐침 결과, 아래가 모두 fail-closed로 끝났고 500으로 새는 경로는 없었다:
+    - JWT 우회 30여 종
+    - 키 fetch 실패 10종
+    - 거부 목록 예외 6종
+  - medium:
+    - A-1: `revokes()`의 「오래된 sub 키(nbf ≤ iat) + 폐기된 sid」 조합을 어느 시험도 가르지 않는다. sid를 무시하는 변이가 T062 · T070 · T066 세 스위트를 모두 통과한다. 실제로 일어나는 순서다: 전체 로그아웃 → 재로그인 → 단일 기기 로그아웃이면 330 s 동안 두 키가 같이 있다.
+    - A-2: 빌더 편차 ⑧-1 · 3 · 4 · 5 · 6 · 7을 시험이 고정했는데 계약에는 없다.
+  - low:
+    - A-3: 키 fetch 상한 3.5 s가 timeout 2 s와 3 s를 가르지 못한다.
+    - A-4: `path_info` · 클라이언트 재사용 · `auth_claims` 전체가 판별되지 않는다.
+    - A-5: `ACCESS_TEAM_DOMAIN` · `AUTHENTIK_AUDIENCE`의 운영 출처가 없다.
+    - A-6: 웹훅 호스트 검사 주체가 비어 있다.
+    - A-7: 인계 정밀도.
+    - A-8: 패키지 독스트링이 낡았다.
+    - A-9: 보고 세부가 정확하지 않다.
+    - B-1: 장애 중 모르는 kid 재조회가 잠금을 쥔 채 직렬화된다.
+    - B-2: 시간 상한은 소켓 동작 단위다.
+    - B-3: 설정 오류 500 프레임에 지역 변수가 남는다.
+    - B-4: 스냅샷 표에 빈 칸이 있다.
+- **r2 결정 N1–N13(컨트롤러)**: 계약(pod-template · identity-admin-api · denylist · bff-api) · data-model · 규칙은 이 절과 같은 변경에서 「T070 r2」 표식으로 고쳤다.
+  - **N1 거부 판정 조합**(A-1):
+    - ac-13에 `DenylistRecord(sub_nbf=T, sid_revoked=True).revokes(T + 1) is True`를 더한다.
+    - 미들웨어 사례를 하나 더한다: 같은 토큰에 대해 `revoked:sub:{sub}` = iat − 60과 `revoked:sid:{sid}`를 함께 쓰면 401 `session_revoked`다.
+    - 변이 M76(`sub_nbf`가 있으면 `sid_revoked`를 보지 않는다)이 잡혀야 한다.
+  - **N2 빌더 편차 채택 → 계약**(A-2):
+    - ⑧-1 채택: 비면제 경로는 호스트 검사 뒤, 판정 전에 `access_claims` · `auth_claims` · `tenant_id`를 지운다.
+      - 따라서 이 속성을 두는 미들웨어는 JwtAuth **뒤**에만 둔다(T072 MIDDLEWARE 제약 — 계약 인증 행 · 규칙 §Auth).
+      - 면제 경로는 건드리지 않는다(D2 ⓪). 앞선 미들웨어가 둔 값이 그대로 남으므로, T072가 기동에서 포함 관계를 검사한다(N7).
+    - ⑧-2 채택 + 강화: N9.
+    - ⑧-3 채택: 키 URL(`AUTHENTIK_JWKS_URL`)이 http · https가 아니면 `ImproperlyConfigured`(500)다. 토큰 결함 401로 접지 않는다.
+    - ⑧-4 채택: `lookup(sub, sid=None)`에서 `sub`는 비지 않은 str, `sid`는 None 또는 비지 않은 str이다. 어기면 `TypeError` · `ValueError`(호출자 오류)이고, T073은 질의 검증 400을 앞에 둔다(N7).
+    - ⑧-5 채택: `denylist_lookup_seconds{result}`의 `revoked`는 「폐기 키가 하나라도 있었다」는 뜻이다.
+      - 판정 결과가 아니다. 오래된 sub 키 때문에 200을 받은 요청도 revoked로 센다.
+      - 거부한 요청 수는 401 응답 지표로 본다.
+    - ⑧-6 채택: 키가 있으면(JSON null 포함) 꼴을 본다. 그래서 null `sid` · `tenant_id`는 401 `invalid_token`이다.
+      - 근거: 이 클레임은 우리 ScopeMapping이 만든다. null을 「없음」으로 접으면 sid 폐기가 조용히 무력화된다. 〔U10 — `tenant_id`만 맞다 · `sid`는 Authentik provider가 싣는다〕
+      - 대신 data-model §9 ScopeMapping을 「attribute가 있을 때만 키를 넣는다」로 고친다. T081이 식을 그렇게 쓰고 VD로 실측한다.
+      - `tenant_id`가 없는 사용자는 T068의 403 `tenant_required`를 받는다.
+    - ⑧-7 채택: 웹훅 헬퍼에서 str 아닌 `secret` · bytes 아닌 `body`는 `TypeError`, naive `now`는 `ValueError`다. 서명 실패 401과 구별되는 호출 · 설정 오류다.
+    - ⑧-8 · ⑧-9는 기록만 한다. 로그 형식은 D12 범위이고, 기본 형의 값에는 공개 의미가 없다.
+  - **N3 키 fetch 상한**(A-3):
+    - 시험의 `KEY_FETCH_LIMIT_S`를 2.8 s 이하로 낮춘다. BFF 3 s보다 작고, timeout 2 s와 3 s를 가른다.
+    - 변이 M35b(timeout 3)가 잡혀야 한다.
+    - 계약 문구를 「fetch 타임아웃 2 s — 연결 · 읽기 소켓 동작마다(DNS 해석과 전체 시간은 묶지 않는다)」로 고친다.
+    - 타임아웃 표 두 곳(pod-template · identity-admin-api)에 키 fetch 행을 더한다.
+  - **N4 판별 3사례**(A-4):
+    - ① `SCRIPT_NAME="/x"`로 `/healthz`를 부르면 200이다. 면제는 `path_info` 정확 일치이므로, `request.path`로 바꾼 변이를 잡는다.
+    - ② 같은 `Denylist`로 3번 조회하면 Dragonfly `connections_received` 차이가 1이다. URL별 클라이언트 재사용 — 매번 `from_url` 하는 변이를 잡는다.
+    - ③ 계약 시험 뷰가 `sorted(auth_claims)`를 비추고, 추가 클레임(예: `groups`)이 그대로 있는지 본다. payload 전체여야 하므로 `{"sub": …}`만 두는 변이를 잡는다. T073 관리자 판정이 `groups`에 기댄다.
+  - **N5 설정 출처**(A-5): ConfigMap에 두 키를 더한다(pod-template 설정 행 · 규칙 §Settings).
+    - `ACCESS_TEAM_DOMAIN` = `joshua-tech.cloudflareaccess.com`. dev · prod가 같은 Zero Trust 팀이고 비밀이 아니다(spec 가정).
+    - `AUTHENTIK_AUDIENCE` = pod 이름. BFF 교환의 `audience=<pod>`가 만드는 `aud`이고, 계약은 `aud=<pod>`다(identity-admin = `identity-admin`).
+    - **VD-T070-2(T081)**: 교환 토큰의 `aud`가 요청한 `audience` 값(pod 이름) 그대로 나오는지 실측한다. provider client_id가 나오면 T081 blueprint가 client_id를 pod 이름으로 맞춘다.
+    - tasks.md T072 · T075의 ConfigMap 목록에는 이 두 키가 없다 → report.md 편차 후보.
+    - T065 하네스의 ConfigMap 검사는 부분집합 검사라 깨지지 않는다(렌더에는 T072가 더한다).
+  - **N6 웹훅 호스트**(A-6):
+    - 미들웨어는 면제 경로에서 호스트를 보지 않는다(D2 ⓪ 유지 — 헬스 프로브가 근거).
+    - 웹훅의 호스트 검사는 **웹훅 뷰(T073)가 HMAC 앞에서 `request.get_host()`로** 한다(identity-admin-api §호스트 · 인증 계층 1 · 규칙 §Auth).
+    - 참고: Django `CommonMiddleware`(django/middleware/common.py:48)와 OTel Django 미들웨어(`build_absolute_uri("?")` · otel_middleware.py:166)도 모든 요청에서 `get_host()`를 부른다. 그래서 실제 스택에서는 그 단계가 먼저 400을 낸다. 계약은 그 동작에 기대지 않는다.
+  - **N7 인계 정밀도**(A-7 · B 관찰 1 · 2 · 6):
+    - T072:
+      - 프로브 Host 해결은 **필수**다. 위 두 미들웨어가 헬스 경로에서도 `get_host()`를 부르기 때문이다(pod-template 프로브 행).
+      - MIDDLEWARE 순서는 RequestId → … → JwtAuth → TenantContext이고, 요청 속성을 두는 미들웨어는 JwtAuth 뒤에 둔다(N2 ⑧-1).
+      - 기동 검사: `AUTH_EXEMPT_PATHS` ⊆ `TENANT_CONTEXT_EXEMPT_PATHS`, `AUTH_ACCESS_ONLY_PATHS` ⊆ `TENANT_CONTEXT_EXEMPT_PATHS`.
+      - 웹훅이 없는 pod는 `AUTH_EXEMPT_PATHS` = 헬스 3종을 명시한다. 라이브러리 기본의 `/webhooks/authentik`을 물려받지 않는다.
+      - `ENV` prod · dev의 `ACCESS_TEAM_DOMAIN`은 https만 받는다(루프백 http는 `ENV=test`만).
+    - T073:
+      - `/session/check`는 모듈 수준 `Denylist` 하나를 재사용한다. 요청마다 새로 만들면 연결 풀 · TCP · AUTH 왕복이 붙는다.
+      - 질의 검증(400)을 lookup 앞에 둔다. 빈 `sub` · 빈 `sid`(`sid=`) · 정수 아닌 `iat`는 400 `validation_error`다(identity-admin-api /session/check 행).
+      - BFF는 `sid`가 없으면 쿼리에서 뺀다(bff-api).
+  - **N8 패키지 독스트링**(A-8): `src/django_common/__init__.py` 독스트링의 「auth(T070)는 뒤 과제」 문장을 구현 목록으로 옮긴다. D1 범위의 예외이고, AST가 같음을 증명한다.
+  - **N9 팀 기준 URL 정규형**(A-9 ② · B 관찰 2):
+    - `ACCESS_TEAM_DOMAIN`을 `<scheme>://<host>[:<port>]`로 **다시 만든다**.
+      - 스킴 · 호스트는 소문자로 맞춘다.
+      - 기본 포트(https 443 · http 80) · 빈 포트(`host:`) · 끝 `/`는 뗀다.
+    - 호스트는 소문자로 맞춘 뒤 `[a-z0-9.-]+`이거나 루프백 IP 리터럴이어야 한다. 공백 · 제어 문자 · 비ASCII · `_`는 `ImproperlyConfigured`다. 〔U2 — LDH 규칙 · 포트 1–65535로 좁힌다〕
+    - 그 밖의 규칙은 그대로다: 스킴이 없으면 https, http는 루프백 IP 리터럴만, 사용자 정보 · 경로 · 쿼리 · 조각은 거부.
+    - 근거: Cloudflare `iss`는 소문자이고 포트가 없다. 정규형이 아니면 모든 요청이 조용히 403이 된다.
+    - 시험(대문자 호스트 수락 · `:443` 수락 · 공백 · 비ASCII 거부)과 변이(소문자화 없음 · 포트 그대로 · 문자 검사 없음)를 더한다.
+  - **N10 장애 중 재조회 직렬화**(B-1 — 받아들인다 · (가)):
+    - 동작: PyJWT 2.15.1 `get_signing_key`는 RLock을 쥔 채 cooldown을 판정하고 재조회한다(jwks_client.py:277–291 · 소스 확인).
+      - fetch가 실패하면 마지막 성공 fetch 시각이 그대로 남는다.
+      - 그래서 키 엔드포인트가 응답하지 않는 동안에는 모르는 kid가 올 때마다 최대 2 s 재조회가 돈다. 〔U5 — 소켓 동작마다 2 s · 연결은 주소마다〕
+      - 그동안 같은 출처의 모든 판정이 잠금을 기다린다. 캐시로 통과했을 아는 kid도 포함이다.
+    - 도달 범위:
+      - Access 단계는 다른 자격보다 먼저 돈다. 그래서 엣지를 거치지 않고 pod 포트에 닿는 클러스터 안 호출자(같은 ns · NetworkPolicy가 허용한 `identity` · traefik)가 자격 없이 일으킬 수 있다.
+      - Bearer 단계는 유효한 Access를 통과한 뒤에만 닿는다.
+      - 엣지 트래픽은 Cloudflare가 헤더를 덮어쓰므로 불가하다.
+      - fail-closed는 유지되고 우회는 없다. 가용성 문제다.
+    - 처리:
+      - auth.py 독스트링 한계와 report.md에 바로잡아 적는다. 빌더 r1의 「Access 뒤의 호출자만」 서술을 정정한다.
+      - T085 VD에 R3을 더한다: 블랙홀 certs에 모르는 kid를 연속으로 보내면서, 동시에 들어온 정상 요청이 얼마나 기다리는지 잰다(gthread 기준).
+      - 실패 백오프(실패 뒤 cooldown 동안 네트워크 없이 503)를 넣을지는 R3 결과로 정한다(SP-2 후보). 〔U4 — r3에서 지금 넣는다〕
+  - **N11 시간 상한 = 소켓 동작 단위**(B-2):
+    - 「키 fetch 2 s」 · 「거부 목록 0.2 s」는 연결 · 읽기 소켓 동작마다 걸리는 상한이다.
+    - 따로 걸리는 것:
+      - DNS 해석(`getaddrinfo`)은 시간 제한 밖이다.
+      - Dragonfly 새 연결의 핸드셰이크 왕복(HELLO · AUTH · CLIENT SETINFO 등 최대 4)은 왕복마다 0.2 s다.
+      - 키 fetch는 잠금 안에서 직렬화된다.
+    - 고칠 곳: auth.py 독스트링 한계와 계약 문구(pod-template 인증 행 · 타임아웃 표 · denylist §조회 규약 3).
+    - T072 · T085 인계:
+      - `DRAGONFLY_URL` 호스트를 끝 점 FQDN(`dragonfly-<env>.data.svc.cluster.local.`)으로 쓸지 검토한다(ndots 검색 왕복 제거).
+      - VD R2: CoreDNS 상류가 지연 · 실패할 때 certs fetch와 새 연결에 걸리는 시간을 잰다.
+      - redis-py 왕복 줄이기(driver_info · 유지보수 알림 끄기)는 실측 없이 바꾸지 않는다.
+  - **N12 설정 오류 500의 프레임 지역 변수**(B-3):
+    - 원인: `_BearerValidator.validate`는 헤더를 해석하기 전에 `_required("AUTHENTIK_*")`를 부른다. 그래서 설정이 비면 그 프레임에 원문 `header`(Bearer JWT)가, `_authenticate` 프레임에 클레임이 지역 변수로 남는다.
+    - T071이 막는다: Sentry `include_local_variables=False`(T071 설계 D7)에 더해, T071 시험에 auth 설정 오류 500 경로를 넣는다. SENTINEL Bearer를 심고, Sentry transport 대역의 이벤트에 SENTINEL이 없음을 단언한다.
+    - 1차 방어는 T072 기동 검사(필수 7개 존재 · 비지 않음)다. 〔U3 — 기동 검사가 `check_settings()`를 부른다〕
+    - auth.py는 바꾸지 않는다.
+  - **N13 보고 기록 정정**(A-9 ① ③ · B-4):
+    - 스냅샷 표 빨강 행의 `_auth_fakes.py`는 `1135114b…`다. 14:37 `poll_interval` 수정 뒤 `4ab5cc21…`로 바뀌었고, 판정과는 무관하다.
+    - M53 · M73은 번호만 비었다(정의는 73개).
+    - 「T070 결과」 절에 바르게 옮긴다.
+- **r2 범위**:
+  - 빌더: N1 · N3 · N4 · N8 · N9 + 독스트링 한계(N10 · N11) + 보고 정정(N13).
+  - 컨트롤러가 이미 고친 것: 계약 · 규칙 · data-model(N2 · N3 문구 · N5 · N6 · N7 · N11 문구).
+  - 변이: 새 변이(M76 · M35b · N4 셋 · N9 셋)를 더한다. r1 변이 가운데 바뀐 함수(`_team_base_url` · `_base_url_parts`)에 걸린 M13–M16은 최종 바이트로 다시 돌린다.
+  - 시험 파일은 더하거나 강화만 한다. 기존 단언을 지우거나 약하게 하지 않았음을 diff로 보인다.
+- **B 관찰(결함 아님 — 기록)**:
+  - 거부 목록 값의 `int()`는 공백 · `_` · 부호를 받는다. 쓰는 쪽이 identity-admin뿐이라 무해하다.
+  - iat에도 leeway 5 s가 걸린다. 같은 클러스터 NTP라 무시할 만하다.
+  - `revokes(iat)`는 iat 형을 보지 않는다. T073이 400으로 먼저 거른다(N7).
+  - 고립 서로게이트가 든 `sub`는 거부 목록 키 인코딩에서 503이 된다. 서명된 토큰만 닿는다.
+
+### T070 r2 결과 · r3 결정(리뷰 r2 반영 · U1–U13 · 2026-11-05) — N10의 실패 백오프 보류와 N12의 1차 방어 문장은 이 절의 U4 · U3이 대신한다(앞 절 줄 끝 〔…〕 표식)
+
+- **r2 결과**(워크플로 `wf_30612bb7-77c` · 1.33M 토큰 · 약 71분 · 빌더 DONE):
+  - 바뀐 파일:
+    - `auth.py` 683 → 719(`10c68c8a…` → `f3db2f79…`): N9 팀 기준 URL 재구성 · 상수 `_DEFAULT_PORTS` · `_HOST_NAME` · 독스트링 N10 · N11.
+    - `__init__.py`: 독스트링만이다(N8 · 독스트링을 뺀 AST 동일 · 주석 토큰 동일).
+    - `test_auth_contract.py` 1353 → 1519(시험 함수 38 · 사례 130).
+    - `authcontractapp/views.py`: echo 응답에 `auth_claim_names` · `groups`를 더했다.
+  - 시험에서 지운 줄은 4줄이다. 약해진 단언은 0이다.
+    - `KEY_FETCH_LIMIT_S` 3.5 → 2.8(강화)
+    - 그 주석 1줄
+    - ac-6b 독스트링 2줄
+  - 빨강(16:37–16:38 · r1 `auth.py` 그대로): 20 failed / 110 passed. 실패는 N9 사례뿐이다(ac-4d 6 · ac-4e 14).
+  - 초록: `test_auth.py` 32 ×2 · contract 130 · fixtures jwks 3 · dragonfly 1 · 회귀 16 · 65 · 16 · 42 · 52 · 3.
+  - 변이 17/17(M76 · M35b · M77–M87 · M13–M16을 최종 바이트로). T062 실패는 0이다.
+  - VD N3:
+    - 키 fetch 실패 판정은 2.0121–2.0992 s였다(모드마다 20회 · cold/warm).
+    - 2.8 s까지 여유가 0.70 s 이상이다.
+    - 측정은 Windows 로컬뿐이다. CI는 django-common pytest를 돌리지 않는다.
+  - 편차(빌더 ⑧ 1–8):
+    - 1–7은 계약 문구와 같아 그대로 둔다: 원문 전체 문자 검사 · `?` `#` 글자 거부 · 괄호 호스트는 루프백만 · ipaddress 정규 표기 · `_loopback_literal` · fetch_data 가로채기 시험 · N8 표기.
+    - 8(계약 정규식이 끝 점 · 빈 라벨 · 앞 하이픈을 받는다)은 U2가 닫는다.
+- **리뷰 r2**: A approve_with_fixes(low 7) · B approve_with_fixes(low 4). high · medium은 0이다.
+  - B 탐침:
+    - N9 정규형에 50값을 넣었다. 다른 출처를 받아들인 값은 0이다.
+    - certs URL과 iss는 같은 base에서 나온다.
+    - 오류에 값 · 연쇄가 없고, 이름 조회는 0이다.
+    - Access 우회 19종을 다시 돌렸다. 정규형 iss만 받아들였다.
+  - low:
+    - A-1: 웹훅 body 형을 시험이 고정하지 않는다. 구현이 bytearray를 받는다.
+    - A-2: 거부 목록 「판정은 0.2 s 안」 문구 · 규칙 lookup 문장의 비str sid가 빠졌다.
+    - A-3: 계약 정규식 잔여(끝 점 · 빈 라벨 · 앞 하이픈 · 포트 0).
+    - A-4: N12 참조 · T071 Access 프레임.
+    - A-5: T073 계약 시험의 주인이 없다.
+    - A-6: pyproject 머리 주석이 낡았다.
+    - A-7: 교환 토큰 `sid` 꼴을 재는 VD가 없다.
+    - B-1: 연결 시간 초과는 주소마다 걸린다. 빈 캐시 장애에서는 계단 대기가 공격자 없이 생긴다.
+    - B-2: 요청 때 설정 오류가 늘었다 → 기동 검사가 같은 함수를 써야 한다 · N12 Access 단계.
+    - B-3: BFF가 비정상 응답을 fail-closed로 묶지 않는다.
+    - B-4: Bearer 계층에 환경 경계가 없다.
+- **r3 결정 U1–U13(컨트롤러)**: 계약(pod-template · identity-admin-api · denylist · bff-api) · 규칙 · kr 미러는 이 절과 같은 변경에서 「T070 r3」 표식으로 고쳤다.
+  - **U1 웹훅 body는 bytes만**(A-1):
+    - 구현을 계약 문면(「bytes 아닌 body → `TypeError`」)에 맞춘다.
+      - bytearray · memoryview · str · int · list는 `TypeError`다.
+      - `bytes(body)` 변환은 필요 없어진다. Django `request.body`는 bytes다.
+    - 시험: ac-15에 int · list · memoryview · bytearray · str body → `TypeError`를 더한다.
+    - 변이: M88(형 검사 삭제 — A-1 실측으로 int · list가 401로 접히고 memoryview는 수락된다) · M89(bytearray 다시 수락).
+  - **U2 팀 기준 URL 호스트 문법 — 지금 좁힌다**(A-3 (a) · B-2):
+    - 이름 호스트는 LDH 규칙을 따른다:
+      - 라벨은 1–63자 `[a-z0-9-]`이고 영숫자로 시작하고 끝난다(하이픈은 가운데만).
+      - 빈 라벨이 없다(앞 점 · 끝 점 · `..`).
+      - 전체는 253자 이하다.
+      - 마지막 라벨이 숫자만이면 안 된다. `https://0` · `https://10.0.0.1` · `https://127.1` · `https://010.0.0.1` 같은 값을 막는다. 이런 값은 이름 조회가 inet_aton 꼴로 엉뚱한 주소를 풀 수 있다. 〔16진 꼴 `0x…`도 — V1〕
+    - 포트는 1–65535다(`:0` 거부). `:0443`은 443으로 읽혀 떼진다(같은 목적지).
+    - 루프백 IP 리터럴 규칙과 N9의 나머지 규칙은 그대로다.
+    - 근거:
+      - 끝 점(`…com.`)은 이름이 풀린다. 그러면 certs URL과 iss가 모두 `…com.`이 되어 Cloudflare iss(`…com`)와 어긋난다. N9가 닫겠다던 조용한 403이다.
+      - 빈 라벨 · 앞 점은 IDNA 인코딩에서 UnicodeEncodeError → 503으로 이미 시끄럽다. 앞 · 끝 하이픈 · 포트 0은 이름 조회 · 연결 실패 503이다. 둘 다 설정 오류로 앞당긴다.
+    - 시험: ac-4e(거부) · ac-4d(수락 — `xn--` 라벨 · 숫자가 섞인 라벨 · 63자 라벨 · 루프백 https)에 사례를 더한다.
+    - 변이: 끝 점 수락 · 빈 라벨 수락 · 라벨 끝 하이픈 수락 · 숫자만인 마지막 라벨 수락 · 포트 0 수락 · 길이 검사 없음 가운데 넷 이상.
+  - **U3 공개 `check_settings()`**(B-2):
+    - `django_common.auth.check_settings() -> None`을 더한다. 요청 때 인증 계층이 읽는 설정을 그 판정 함수 그대로 한 번에 검사한다(사본 규칙을 만들지 않는다).
+      - `AUTH_EXEMPT_PATHS` · `AUTH_ACCESS_ONLY_PATHS`(형)
+      - `ACCESS_TEAM_DOMAIN`(팀 기준 URL — U2 포함)
+      - `ACCESS_AUD_M2M` · `ACCESS_EXPECTED_CN` · `AUTHENTIK_ISSUER` · `AUTHENTIK_AUDIENCE`(필수)
+      - `AUTHENTIK_JWKS_URL`(필수 + http · https — 키 클라이언트 생성과 같은 판정)
+      - `ACCESS_AUD_ADMIN` · `AUTH_ACTOR_SUB`(선택 · str)
+      - `DRAGONFLY_URL`(필수 · 쿼리 없음 · `Redis.from_url`이 받는 URL — 생성만)
+    - 네트워크 · 이름 조회 · Dragonfly 연결 · 키 fetch는 0이다.
+    - 실패는 `ImproperlyConfigured`다(설정 이름만 · 값 없음 · `from None`). 고정된 순서로 검사하고 첫 실패에서 멈춘다.
+    - 요청 때 동작은 그대로다. `DRAGONFLY_URL` 쿼리는 요청 때 503 `denylist_unavailable`(`error=url_query`)이고, `check_settings()`에서는 설정 오류다.
+    - T072가 기동 검사에서 부른다(부르는 자리는 T072가 정한다).
+      - 그러면 N12의 1차 방어가 「필수 7개 존재 · 비지 않음」에서 「요청 때 500이 되는 설정 오류 전부」로 넓어진다.
+      - 끝 줄바꿈이 붙은 ConfigMap 값(YAML 블록 스칼라 `|` — B-2)도 기동에서 멈춘다. 〔r3에서는 `ACCESS_TEAM_DOMAIN`만 맞았다 — V2가 나머지를 닫는다〕
+    - 시험:
+      - 나쁜 값마다 그 설정 이름의 `ImproperlyConfigured`가 난다. SENTINEL 값은 메시지 · args · `__cause__` · `__context__`에 없다.
+      - 좋은 설정이면 None이다.
+      - 이름 조회 · 연결 · fetch가 0이다.
+      - 요청 때 `ImproperlyConfigured`가 되는 값은 모두 `check_settings()`도 거부한다(같은 판정).
+    - 변이: 팀 URL 검사 생략 · `DRAGONFLY_URL` 쿼리 검사 생략 · JWKS 스킴 검사 생략 · 검사 중 연결(PING 등) 가운데 셋 이상.
+  - **U4 키 fetch 실패 백오프 — 지금 넣는다**(B-1 · N10 처리 변경):
+    - 까닭:
+      - N10은 실패 백오프를 SP-2 후보로 미뤘다.
+      - r2 B가 공격자 없이 생기는 경우를 실측했다. 캐시가 비었거나 만료된 장애에서는 아는 kid 판정까지 요청마다 잠금 안에서 fetch를 되풀이해 대기가 계단처럼 쌓인다. 0.4 s 대역에서 동시 5건 = 0.4 · 0.8 · 1.2 · 1.6 · 2.0 s이고 fetch는 5회였다.
+      - 그런 장애: 기동 직후 egress 차단 · 마지막 성공 뒤 1 h가 지난 장애 · 장애 중 pod 재시작.
+    - 동작:
+      - `_KeyClient`(키 URL 하나)는 fetch가 실패하면(어떤 예외든) 백오프 창을 둔다.
+      - 창은 1 s에서 시작해 연속 실패마다 2배가 되고, 최대 30 s다. 성공하면 초기화한다.
+      - 창은 직전 창을 2배 해서 구한다. 실패 횟수로 거듭제곱하면 오래가는 장애에서 float 변환이 넘친다.
+      - 창 안에서 fetch가 필요한 판정(빈 캐시 · 만료 · 모르는 kid 재조회)은 네트워크 없이 503 `auth_keys_unavailable`이다.
+      - 이때 WARNING은 `auth.keys_unavailable source=<access|authentik> error=backoff`다. 거부 목록의 `error=url_query`와 같은 꼴이다.
+      - 캐시로 통과하는 판정(유효 캐시 · 아는 kid)은 영향이 없다.
+    - 결과:
+      - 동시 요청은 fetch 한 번의 시간만 잠금을 기다린다(소켓 동작마다 2 s × 해석된 주소 수 + DNS). 계단이 없어진다.
+      - 장애 중 fetch는 키 URL마다 최대 30 s에 한 번이다.
+      - 회복이 늦어지는 시간은 최대 창 길이(30 s)다.
+    - 대가: 기동 직후나 만료 시점의 일시 장애 한 번이 그 키 URL의 fetch를 1 s 동안 막는다.
+    - 시계:
+      - 단조 시계를 쓴다.
+      - 시험의 ShiftedClock은 PyJWT 세 모듈의 `time`만 바꾼다. 그래서 시험이 이 시계를 따로 다룬다(방법은 빌더가 정한다).
+    - 영향을 받는 기존 시험:
+      - ac-8은 만료 뒤 certs만 되살린 직후 다시 요청한다. 창 안이라 fetch가 막힌다.
+      - 시계를 창 밖으로 옮기거나 그 자리에서 백오프를 단언하도록 조정한다. 바뀐 줄마다 이유를 보고한다(약해진 단언 0).
+      - T062 `test_auth.py`와 T066 `apps/identity-admin/tests/test_api.py`에는 키 엔드포인트 실패 뒤 회복 순서가 없다(컨트롤러 grep).
+    - 시험:
+      - 빈 캐시 + 실패 → 두 번째 판정은 fetch 0이고 즉시 503 `error=backoff`다.
+      - 창이 지나면 다시 가져온다. 연속 실패는 창을 2배로 늘리고 30 s에서 멈춘다. 성공하면 처음(1 s)으로 돌아간다.
+      - 창 안에서도 캐시의 아는 kid는 200이다.
+      - 동시 요청이 계단 없이 끝난다.
+    - 변이: 백오프 없음 · 성공 때 초기화 없음 · 2배 없음 · 상한 없음 · 캐시 적중도 막음 가운데 넷 이상.
+    - 계약: pod-template 인증 행 · 타임아웃 표, identity-admin-api 타임아웃 표, 규칙 §Auth.
+  - **U5 시간 상한 독스트링 · 계약 문구**(B-1 둘째):
+    - 연결 시간 초과는 해석된 주소(A · AAAA)마다 따로 걸린다.
+      - Python `socket.create_connection`이 주소를 차례로 시도한다.
+      - B 실측: 주소 1 · 2 · 3개에서 2.09 · 4.04 · 6.04 s.
+    - N10 독스트링의 「최대 2 s」를 「연결 · 읽기 소켓 동작마다 2 s(연결은 주소마다)」로 고친다.
+    - N10 한계 문단은 U4 뒤의 동작으로 다시 쓴다.
+      - 잠금 대기는 fetch 한 번의 시간으로 줄어든다.
+      - 모르는 kid 재조회도 창 안에서는 네트워크를 타지 않는다.
+      - Access 단계 도달 범위 문장은 그대로 둔다.
+    - T085 VD R3을 넓힌다:
+      - 실제 certs 호스트의 주소 수와 egress drop 때 fetch 1회 시간
+      - 빈 캐시 + 블랙홀 + 동시 요청의 대기(U4 뒤 계단이 없는지)
+      - 그동안 `/healthz` 프로브 지연(gthread)
+  - **U6 문구**(A-2):
+    - denylist §조회 규약 3과 규칙 §Auth의 「판정은 0.2 s 안」을 「맺어진 연결에서」로 좁힌다. 소켓 동작마다 · 새 연결 핸드셰이크 왕복 · DNS 해석 밖을 함께 적는다.
+    - 규칙의 lookup 문장을 "a `sid` that is neither None nor a non-empty string"으로 고친다(비str sid = `TypeError` — 구현 · denylist §6 · §공개 API와 같다).
+    - kr 미러 translation-pending 줄에 r3 개정분을 더한다.
+  - **U7 N12 참조 정정 · T071 인계 보강**(A-4 · B-2):
+    - N12의 「T071 설계 D7」은 T071 설계 초안의 D7(`configure_sentry` — `include_local_variables=False`)이다. T071 설계 커밋이 build-notes 「## T071」 D7로 들여온다. T069 인계의 「False 또는 재귀 스크러버」 택일을 False로 닫는다.
+    - T071 시험(초안 D11)의 auth 설정 오류 500은 두 경로로 낸다. 둘 다 SENTINEL을 `Authorization`과 `Cf-Access-Jwt-Assertion`에 함께 심고, 이벤트 어디에도 SENTINEL이 없음을 단언한다.
+      - (a) `AUTHENTIK_AUDIENCE` 등을 비운다 → Bearer 프레임(`header`).
+      - (b) `ACCESS_TEAM_DOMAIN`에 끝 줄바꿈 같은 꼴 오류를 넣는다 → Access 프레임. `AccessJwtValidator.validate`의 `token`은 원문 Access JWT다. 만료 전까지 엣지에서 다시 쓸 수 있는 자격이다.
+    - N12의 1차 방어는 U3의 기동 검사다.
+  - **U8 T073 계약 시험**(A-5): T066 시험은 아래 둘을 고정하지 않는다. T073이 자기 계약 시험으로 고정한다.
+    - (a) `/session/check?sub=&iat=…`와 `?sub=x&iat=…&sid=` → 400 `validation_error`, Dragonfly 새 연결 0.
+    - (b) `CommonMiddleware` · OTel 미들웨어 없이(N6 — 그 단계에 기대지 않는다) 웹훅 + `ALLOWED_HOSTS` 밖 Host → 400 `invalid_host`. 틀린 서명이어도 401이 아니라 400이다(HMAC 앞에서 판정).
+  - **U9 pyproject 머리 주석**(A-6):
+    - 컨트롤러가 주석만 고친다.
+      - 「+ T070 구현(django_common.auth — tests/test_auth.py · tests/test_auth_contract.py 초록)」을 더한다.
+      - 남은 빨강은 observability · health(T071)만 적는다.
+    - `tomllib.loads` 결과가 같음을 확인했다.
+    - T071 지시문의 pyproject 허용 범위(머리 주석의 낡은 문장)는 그대로 맞다.
+  - **U10 교환 토큰 `sid` · `tenant_id` 꼴 VD**(A-7):
+    - N2 ⑧-6의 근거 「이 클레임은 우리 ScopeMapping이 만든다」는 `tenant_id`에만 맞다. `sid`는 Authentik provider가 싣는다.
+    - T081 VD(VD-T070-2와 같은 캡처)에서 교환 토큰(audience=identity-admin)을 본다:
+      - `sid`는 없거나 비지 않은 str이어야 한다.
+      - `tenant_id`는 없거나 소문자 정규형 UUID여야 한다.
+    - `sid`가 null로 실리면 pod 요청 전부가 401이다(fail-closed 전면 장애). T081이 go-live 전에 막는다.
+  - **U11 BFF 폐기 확인 응답 처리**(B-3):
+    - bff-api 폐기 확인 줄에 규칙을 더한다. 판정에 쓰는 응답은 200이면서 `active`가 boolean인 것뿐이다.
+    - 그 밖(400 `validation_error` · 403 `access_required` 등 4xx · 5xx · 시간 초과 · 본문 꼴 오류 · `active` 없음)은 503 `upstream_unavailable`이다(쿠키 유지 · 활성으로 보지 않는다).
+    - 403은 서비스 토큰 만료 · 회전 사고 때 모든 세션에서 한꺼번에 난다.
+    - T092 시험 인계: 400 · 403 · 500 · `active` 없는 200 → 503.
+  - **U12 Bearer 계층의 환경 경계**(B-4 — 기록 · 회귀 아님):
+    - dev · prod pod는 Bearer 검증 조건을 모두 공유한다(provider · iss · JWKS · aud = pod 이름 · impersonation이라 act 검사 없음).
+    - 환경 경계는 Access 계층뿐이다(환경별 서비스 토큰 → `ACCESS_EXPECTED_CN` · `ACCESS_AUD_M2M`). 거부 목록도 환경마다 따로다.
+    - T081 결정 항목: 환경별 audience(예: dev `dev-identity-admin` — BFF `audience=`와 ConfigMap을 함께 바꾼다) 또는 VD-1 옵션 A가 확정될 때 환경 결속을 함께 다룬다.
+    - report.md에 적는다.
+  - **U13 기록 정정**:
+    - r2 보고 ⑧-8 「끝 점 · 빈 라벨 · 앞 하이픈 → 조용한 403」은 일부만 맞다(B-2 실측). 조용한 403은 끝 점뿐이고(TLS 호스트 검증에 따라 503), 빈 라벨 · 앞 점은 IDNA 오류 503이다. U2 뒤에는 모두 설정 오류다.
+    - N11의 끝 점 FQDN 검토는 `DRAGONFLY_URL`에만 해당한다. `ACCESS_TEAM_DOMAIN`은 끝 점을 받지 않는다(U2).
+    - 「T070 결과」 절과 report.md에 바르게 옮긴다.
+- **r3 범위**:
+  - 빌더: U1 · U2 · U3 · U4 · 독스트링(U2 · U3 · U4 · U5) · U4로 바뀌는 기존 시험 조정(줄마다 이유).
+  - 컨트롤러가 이미 고친 것: 계약(pod-template · identity-admin-api · denylist · bff-api) · 규칙 · kr 미러(U1–U6 · U11 문구) · pyproject 머리 주석(U9) · 이 절.
+  - 변이: M88부터 번호를 잇는다(U1 둘 · U2 넷 이상 · U3 셋 이상 · U4 넷 이상). 바뀐 함수에 걸린 r1 · r2 변이(M13–M16 · M80–M87 · 웹훅 형 검사 · 키 fetch 분류)는 최종 바이트로 다시 돌린다.
+  - VD:
+    - U4 계단 해소: 메모리 안 fetch 실패 0.4 s 대역 동시 5건(r2 B 재현)과 블랙홀 실측
+    - U5 주소마다 연결 시간 초과: B 탐침 재현 또는 인용
+
+### T070 r3 결과 · r4 결정(리뷰 r3 반영 · V1–V7 · 2026-11-06) — U2의 숫자 라벨 규칙과 U3의 끝 줄바꿈 문장은 이 절의 V1 · V2가 넓힌다(앞 절 줄 끝 〔…〕 표식) · r3 보고 ⑧-2(PyJWT 잠금 재진입) · ⑧-5(순서 고정 주장)는 V4 · V3이 대신한다
+
+- **r3 결과**(워크플로 `wf_8bc179c8-c5c` · 1.52M 토큰 · 약 110분 · 빌더 DONE):
+  - 바뀐 파일:
+    - `auth.py` 719 → 839(`f3db2f79…` → `bf5e1e55…`):
+      - U1 body 형 검사(`bytes(body)` 변환 삭제)
+      - U2 `_ldh_host_name`(`_HOST_LABEL` · `_HOST_MAX_LENGTH` · `_DIGITS_ONLY` — `_HOST_NAME` 삭제) · 포트 0 거부
+      - U3 공개 `check_settings()`와 공유 도우미 셋(`_key_client` · `_denylist_client` · `_url_has_query` — 요청 경로와 같은 함수를 부른다)
+      - U4 `_KeyClient.fetch_data` 백오프(`_KEYS_BACKOFF_INITIAL_S` 1.0 · `_KEYS_BACKOFF_MAX_S` 30.0)
+      - U5 독스트링
+    - `__init__.py`: 독스트링에 `check_settings`만 더했다(독스트링을 뺀 AST 동일 · 주석 토큰 동일).
+    - `test_auth_contract.py` 1519 → 1890(시험 함수 38 → 45 · 사례 130 → 235).
+    - `_auth_fakes.py` 250 → 257: `install_shifted_clock`이 `django_common.auth.time`도 바꾼다.
+    - authcontractapp · `test_auth.py`는 그대로다.
+  - 시험에서 지운 57줄(약해진 단언 0 — 리뷰 A 대조):
+    - 독스트링 23
+    - 매개 변수 목록을 모듈 상수로 옮긴 것 33(노드 id 그대로)
+    - ac-8 경고 줄 기대를 2줄에서 3줄로 늘린 것 1(강화)
+  - ac-8 조정:
+    - certs를 되살린 직후 요청에서 백오프를 단언한다(503 · fetch 0).
+    - 그 뒤 시계를 창 밖(1.25 s)으로 옮기고 원래 단언은 그대로 둔다.
+  - 빨강(18:15–18:16 · r2 `auth.py` 그대로): 98 failed / 133 passed. 실패는 결정마다 맞다.
+    - U3: ac-1 · ac-23 78건
+    - U1: ac-15 bytearray
+    - U2: ac-4e 11건
+    - U4: ac-8 · ac-24a–d
+  - 초록(최종 바이트 19:01–19:03 · 한 번에 하나): `test_auth.py` 32 ×2 · contract 235 · fixtures jwks 3 · dragonfly 1 · 회귀 16 · 65 · 16 · 42 · 52 · 3.
+  - 변이 55개를 모두 잡았다: 새 25(M88–M112) + 바뀐 함수에 걸린 r1 · r2 변이 30을 최종 바이트로 다시 돌린 것.
+    - M14(루프백 밖 http 허용)는 첫 실행에서 살아남았다. U2 뒤에는 `http://0.0.0.0` · `http://[::]`가 호스트 규칙에서 먼저 걸려 http 규칙에 닿지 않는다.
+    - ac-4b에 `http-name` · `http-localhost`를 더해 다시 돌렸고, 잡혔다.
+    - M46 · M47 · M48은 r1과 같이 T062가 잡는다.
+  - VD:
+    - U4 계단 — 메모리 안 0.4 s 실패 · 빈 캐시 · 동시 5건:
+      - r2: 0.4 · 0.8 · 1.2 · 1.6 · 2.0 s · fetch 5
+      - 최종: 모두 0.40 s · fetch 1
+    - U4 블랙홀(실제 urllib) · 동시 5건:
+      - r2: 2.03 … 10.16 s · fetch 5
+      - 최종: 모두 2.02–2.03 s · fetch 1
+      - 창 안 두 번째 판정은 0.0003 s
+    - U5 주소마다 연결 시간 초과: 닫힌 루프백 포트 1 · 2 · 3개에서 2.02 · 4.03 · 6.03 s(리뷰 r2 B 재현).
+  - 편차(빌더 ⑧ 1–8):
+    - 그대로 둔다:
+      - 1: 시계 패치
+      - 3: 창은 실패를 안 시각부터 센다
+      - 4: 공유 도우미 추출 — 바뀐 함수에 걸린 r1 · r2 변이 15개를 지시문 목록 밖에서 다시 돌렸다
+      - 6: `DRAGONFLY_URL` 해석 · 생성의 어떤 예외든 설정 오류
+      - 7: M80은 LDH 규칙으로 잡힌다
+    - 다른 결정이 대신한다:
+      - 2(`_client_lock` 재진입): V4
+      - 5(「ac-23c가 순서를 고정한다」 — 사실과 다르다): V3
+  - 관찰: 빌더가 시작 때 Up이던 남의 컨테이너 `cc-managed-…` 하나가 끝 목록에 없었다고 보고했다. 조치는 하지 않았다.
+    - 빌더의 docker 명령은 조회뿐이었고, `docker events`에도 그 이름이 없다.
+    - 무접촉 대상이고 원인은 모른다.
+- **리뷰 r3**: A approve_with_fixes(low 4) · B approve_with_fixes(low 2). high · medium은 0이다.
+  - B 탐침:
+    - r2 B-1 계단을 r2 사본과 최종으로 다시 쟀다. 사라졌다(메모리 안 동시 5건 · 블랙홀 동시 3건 모두 fetch 1).
+    - 백오프 상태 기계:
+      - 만료된 키를 다시 쓰는 경로가 없다.
+      - 창 안에서도 캐시로 통과하는 판정은 통과한다.
+      - 건강한 엔드포인트에 모르는 kid를 쏟아부어도 창이 열리지 않는다.
+      - 연속 실패 1100회에서 창은 30 s 상한에서 멈춘다(넘침 없음).
+      - 상태는 잠금 안에서만 바뀐다.
+    - `check_settings()`:
+      - 좋은 설정에서 연결 · 이름 조회 · 스레드 · fetch · Dragonfly · 로그 · 지표 변화가 0이다.
+      - 나쁜 값 24개는 모두 설정 이름만 싣는다.
+      - 요청 경로와 차분 418조합에서 놓친 값이 0이다.
+    - U1: bytes가 아닌 body는 서명 판정 전에 TypeError다(401로 접히지 않는다).
+    - U5: 독스트링이 CPython · PyJWT 2.15.1 · redis-py 소스와 맞다.
+  - low:
+    - A-1: 끝 줄바꿈 · 앞뒤 공백이 붙은 인증 문자열 설정이 `check_settings()`를 통과하고, 요청마다 조용한 403 · 401이 된다(`ACCESS_TEAM_DOMAIN` 밖 7개).
+      - U3의 「끝 줄바꿈 ConfigMap 값도 기동에서 멈춘다」는 `ACCESS_TEAM_DOMAIN`에만 맞았다.
+    - A-2 · B-1(같은 지적): 마지막 라벨이 `0x` 16진 꼴(`0x7f000001` · `127.0.0.0x1` · `169.254.169.0xfe`)이면 LDH 이름으로 받는다.
+      - inet_aton · getaddrinfo가 이름 조회 없이 숫자 IP로 푼다.
+      - https만 해당한다. TLS 호스트 검증이 막아 503이고, 우회는 없다.
+    - A-3: ac-23c는 JWKS 스킴 검사(⑦)의 자리를 고정하지 않는다.
+      - 모든 값을 str이 아닌 목록으로 두므로 `_required`에서 걸린다.
+      - 보고 ⑧-5의 「ac-23c가 고정한다」는 사실과 다르다.
+    - A-4: 리뷰 r2 B의 범위 밖 관찰 셋이 어디에도 라우팅되지 않았다 — BFF 프록시의 `/session/check` · session_revoked 판정 지표 · Python ≥ 3.13.2.
+    - B-2: `_KeyClient.fetch_data`가 PyJWT 비공개 속성 `_client_lock`을 직접 쥔다.
+      - 그 속성이 없는 판에서는 모든 fetch가 AttributeError다. 창도 열리지 않아 모든 요청이 503이다.
+      - CI는 이 시험을 돌리지 않는다.
+- **r4 결정 V1–V7(컨트롤러)**: 계약(pod-template · bff-api) · 규칙 · kr 미러는 이 절과 같은 변경에서 「T070 r4」 표식으로 고쳤다.
+  - **V1 숫자 꼴 마지막 라벨 — 16진도 거부한다**(A-2 · B-1):
+    - 규칙: 마지막 라벨이 숫자 꼴이면 이름이 아니다.
+      - 숫자 꼴 = 10진 숫자만, 또는 `0x` + 16진 숫자(빈 것 포함 — `0x` 자체도).
+      - 소문자로 맞춘 라벨에 fullmatch한다. WHATWG URL 「ends in a number」와 같다.
+    - 까닭:
+      - U2의 근거(「이름 조회가 inet_aton 꼴로 엉뚱한 주소를 푼다」)가 16진 성분에도 그대로 맞는다.
+      - 이 값은 지금 `check_settings()`를 통과하고, 창마다 의도하지 않은 IP(예: 169.254.169.254:443)로 연결을 시도한다. U2가 설정 오류로 앞당기려던 부류다.
+    - 받는 값은 그대로다:
+      - 마지막이 아닌 라벨의 `0x…`(예: `0x7f.example.com`)
+      - `0x`로 시작하지만 16진이 아닌 마지막 라벨(`a.0xg`)
+      - `xn--` 라벨 · 숫자가 섞인 라벨
+    - 시험:
+      - ac-4e(거부 — ac-23b가 같은 목록을 쓴다): `https://0x7f000001` · `https://0X7F000001` · `https://127.0.0.0x1` · `https://169.254.169.0xfe` · `https://a.0x1` · `https://0x`
+      - ac-4d(수락): `0x7f.example.com` · `a.0xg`
+    - 변이: 16진 마지막 라벨 수락(r3 규칙으로 되돌림) · `0x` 뒤 빈 것 수락.
+  - **V2 인증 문자열 설정은 공백 없는 출력 가능 ASCII만 받는다 — 아니면 설정 오류다**(A-1 (b)를 넓혀):
+    - 규칙: `_required` · `_optional`은 값의 글자가 하나라도 `!`(U+0021)–`~`(U+007E) 밖이면 `ImproperlyConfigured`(설정 이름만)로 거부한다.
+      - 걸리는 것: 공백 · 제어 문자 · 줄바꿈 · 탭 · 비ASCII 전부(NBSP 같은 Unicode 공백 · 폭 0 · BOM · 보이지 않는 채움 문자 · 동형 글자)
+      - 팀 기준 URL 원문 검사(`_base_url_parts`)와 같은 범위다.
+      - `str.isprintable()`로는 모자란다. 한글 채움 문자(U+3164) · 점자 빈칸(U+2800)은 보이지 않지만 출력 가능 글자로 분류된다.
+    - 빈 값 규칙은 그대로다(`_optional`의 빈 값은 유효하다).
+    - 대상: 두 함수로 읽는 설정 전부다.
+      - `ACCESS_TEAM_DOMAIN` · `ACCESS_AUD_M2M` · `ACCESS_AUD_ADMIN` · `ACCESS_EXPECTED_CN`
+      - `AUTHENTIK_JWKS_URL` · `AUTHENTIK_ISSUER` · `AUTHENTIK_AUDIENCE` · `AUTH_ACTOR_SUB` · `DRAGONFLY_URL`
+      - 모두 ASCII 식별자 · URL이라(URL의 특수 글자는 퍼센트 인코딩) 그 밖의 글자를 담을 정당한 까닭이 없다.
+    - 까닭:
+      - YAML 블록 스칼라 `|`의 끝 줄바꿈, 복사해 붙인 폭 0 문자 · BOM · 동형 글자가 든 값은 비교(iss · aud · common_name · act.sub)에서 늘 어긋난다.
+      - 그러면 모든 판정이 조용한 403 · 401이 된다. fail-closed 전면 장애인데 500이 아니라 드러나지 않는다.
+      - 요청 경로와 `check_settings()`가 같은 함수를 쓰므로 둘 다 바뀐다. 요청 때는 500(설정 오류)이고, 기동 검사에서는 기동 실패다.
+    - 행동 변화(받아들인다): 지금 동작하는 값 둘이 설정 오류가 된다. 〔셋이다 — `ACCESS_AUD_ADMIN`도(W5)〕
+      - `AUTHENTIK_JWKS_URL`: urllib이 앞뒤 공백을 떼어 fetch가 됐다.
+      - `DRAGONFLY_URL`: urlsplit이 탭 · 줄바꿈을 지웠다.
+      - 둘 다 정상 경로는 ESO Secret · ConfigMap의 정확한 값이다. 영향은 잘못 넣은 값뿐이다.
+    - 경로 목록 설정(`_paths`)은 범위 밖이다.
+      - 값이 ConfigMap이 아니라 settings 코드에 있다.
+      - `path_info`는 공백을 담을 수 있다.
+    - 시험:
+      - ac-5a · ac-5b · ac-5c(ac-23b가 같은 목록을 쓴다)에 설정마다 값을 더한다: 끝 줄바꿈 · 앞 공백 · 가운데 공백 · 탭 · NBSP · 폭 0(U+200B) · BOM(U+FEFF) · 한글 채움 문자(U+3164) · 키릴 동형 글자(U+0430). 〔ASCII 제어 문자 · DEL도 — W1〕
+      - 값에 SENTINEL을 심어 이름만 실리는지 단언한다.
+      - `_optional`의 빈 값은 그대로 유효하다.
+    - 변이: 검사 없음 · `_optional`만 빠짐 · 공백 허용(범위를 U+0020부터) · 비ASCII 출력 가능 글자 허용(isprintable 규칙).
+  - **V3 `check_settings()` 순서 시험을 깊은 오류 값으로 한 번 더 돌린다**(A-3 (a)):
+    - ac-23c는 모든 설정을 str이 아닌 값으로 두어 형 검사 자리만 고정한다.
+    - str 꼴의 깊은 오류 값으로 같은 절차를 한 번 더 돌린다. 그러면 스킴 검사 · 쿼리 검사의 자리까지 고정된다.
+      - 경로 목록: str이 아닌 원소를 담은 목록
+      - 팀 도메인: LDH 위반
+      - 문자열 설정: V2 위반
+      - `AUTHENTIK_JWKS_URL`: `ftp://`
+      - `DRAGONFLY_URL`: 쿼리
+    - 변이: `_key_client(...)`(스킴 검사)를 ⑧ 뒤로 · ⑩ 뒤로 옮긴다.
+    - r3 보고 ⑧-5의 문장은 「T070 결과」 절에 바로잡아 옮긴다: r3에서는 형 검사 자리만 고정됐고, r4 시험이 깊은 검사의 자리를 고정한다.
+  - **V4 백오프 잠금은 자기 잠금이다 — PyJWT 비공개 속성에 기대지 않는다**(B-2 — 리뷰 제안 (a)와 다르게):
+    - `_KeyClient.__init__`이 자기 `threading.RLock()`을 두고, `fetch_data`는 그 잠금만 쥔다. `_client_lock`은 읽지 않는다.
+    - 까닭:
+      - PyJWT 2.15.1에서 `_client_lock`을 쥐는 곳은 `get_signing_key`(jwks_client.py:277)뿐이다. `fetch_data`는 쥐지 않는다(소스 확인).
+        - 그래서 순서는 언제나 PyJWT 잠금 → 자기 잠금이다.
+        - 반대 순서로 쥐는 경로가 없으므로 교착이 없다.
+      - 리뷰 제안 (a)(`_client_lock`이 있으면 그것을 다시 쥔다)는 위험하다.
+        - 그 속성이 재진입 불가 잠금으로 바뀐 판에서는 `get_signing_key`가 쥔 잠금을 같은 스레드가 다시 쥐려다 요청 스레드가 멈춘다. 503보다 나쁘다.
+        - 자기 잠금은 그 속성의 유무 · 종류와 무관하다.
+      - 범위 축소(`>=2.15.1,<2.16`)는 하지 않는다. 2.x 보안 판이 막힌다. 범위는 그대로 `>=2.13,<3`이다.
+    - 2.15.1에서는 동작이 그대로다. `get_signing_key` 경로는 PyJWT 잠금이 이미 직렬화하고, 상태 갱신은 자기 잠금 아래에서 한다.
+    - 시험(모의 부모 — 2.15.1 동작에서 잠금만 바꿔 흉내 낸다):
+      - `_client_lock`이 없는 부모(잠금 없는 `get_signing_key`): fetch 실패가 창을 열고, 다음 판정은 `error=backoff` 503이다(AttributeError가 아니다).
+      - `_client_lock`이 재진입 불가 `threading.Lock`인 부모: 판정이 멈추지 않고 끝난다(스레드 join 시간 제한으로 단언).
+      - 잠금 없는 부모 + 빈 캐시 + 실패하는 fetch + 동시 5건: fetch는 1이다(자기 잠금이 직렬화한다). 〔성공 fetch의 중복 제거는 PyJWT 잠금 몫 — W3〕
+    - 변이: `_client_lock` 재사용(r3 코드 · 리뷰 (a)) · 잠금 없음.
+    - 독스트링에 한 줄을 남긴다: 「PyJWT 2.15.1 호출 순서(get_signing_key → get_signing_keys → get_jwk_set → fetch_data)와 공개 메서드 이름 둘(`get_signing_keys` · `fetch_data`)에 기댄다 — PyJWT를 올리면 test_auth_contract를 돌린다」.
+    - 인계(CI 공백):
+      - CI `test` job은 아직 자리표시다(T002 골격 · T060 기록). django-common pytest(testcontainers)를 CI에서 돌리는 일의 주인이 tasks.md에 없다.
+      - 그래서 Renovate의 uv 잠금 갱신이 PyJWT를 올려도 CI가 이 결합을 시험하지 않는다.
+      - report.md에 공백으로 적는다. T072(템플릿 CI 연결)가 test job을 채울 때 django-common pytest도 넣을지 정한다.
+  - **V5 BFF 프록시의 `/session/check`는 세션 값으로만 부른다**(A-4 ① · r2 B 범위 밖 관찰 1): 〔경로 대조 · 리디렉션 규칙 — W7〕
+    - 문제:
+      - spec FR-027 · tasks.md T089 · T092는 프록시 허용 경로에 `/session/check`를 둔다.
+      - 상류 `/session/check`는 Access 전용 경로라 Bearer로 호출자를 묶지 않는다.
+      - 그래서 로그인한 아무 사용자가 `/api/proxy/identity-admin/session/check?sub=<남>&iat=0`으로 다른 사용자(다른 테넌트 포함)의 폐기 여부 · `nbf`를 물을 수 있다. BFF가 서비스 토큰을 빌려주는 혼동된 대리인이다.
+    - 결정:
+      - 허용 경로는 그대로 둔다(FR-027 · tasks.md 문면과 같다).
+      - 프록시가 `/session/check`를 부를 때는 클라이언트 질의를 버린다. `/api/session`의 폐기 확인과 같은 세션 값(`sub` · `iat` · 있으면 `sid`)으로 질의를 다시 만든다.
+      - 허용 경로에서 빼는 안(리뷰 제안 (a))은 승인본 spec FR-027 문면과 어긋나므로 고르지 않는다.
+    - 계약: bff-api 프록시 행에 이 규칙을 더한다.
+    - 인계:
+      - T089 시험: 프록시 `/session/check?sub=<남>&iat=0&sid=<남>`을 부르면 상류 질의가 세션 값이다(클라이언트 질의 · 중복 키 없음 · `sid` 클레임이 없으면 `sid`도 없음).
+      - T092가 구현한다.
+  - **V6 범위 밖 관찰 둘의 인계**(A-4 ② ③):
+    - T071 — 요청 로그(request_finished)에 problem 슬러그를 남길지 정한다.
+      - 지금은 `session_revoked`(탈취 토큰 재사용 신호)를 `invalid_token`과 가를 지표가 없다.
+      - 거부 목록 지표의 `revoked`는 판정이 아니고, 401은 둘이 섞인다.
+      - T071 설계가 결정한다.
+    - T072 — 이미지 Python이 3.13.2 이상인지 확인한다. 〔판 확인 — W8〕
+      - urlsplit의 괄호 앞뒤 잡음 거부(`_check_bracketed_netloc` — CVE-2025-0938 수정)가 3.13.2부터 있다.
+      - `requires-python >=3.13,<3.14`는 3.13.0–3.13.1을 허용한다. 옛 판에서도 루프백 리터럴로 바뀔 뿐 다른 출처가 되지는 않는다.
+      - Dockerfile 기본 이미지 digest를 고를 때 그 판을 적는다.
+  - **V7 기록 정정**:
+    - U3의 「끝 줄바꿈이 붙은 ConfigMap 값도 기동에서 멈춘다」는 r3에서 `ACCESS_TEAM_DOMAIN`에만 맞았다(A-1). V2 뒤에는 인증 문자열 설정 전부에 맞는다.
+    - r3 보고 ⑨ T072 「check_settings 밖」 목록에 공백 항목이 없던 것도 V2로 닫힌다.
+    - r3 보고 ⑧-5(ac-23c가 순서를 고정한다)는 사실과 다르다(A-3). V3이 바로잡는다.
+    - 「T070 결과」 절과 report.md에 바르게 옮긴다.
+- **r4 범위**:
+  - 빌더: V1 · V2 · V3 · V4(구현 · 시험 · 독스트링).
+  - 컨트롤러가 이미 고친 것: 계약(pod-template 인증 행 · bff-api 프록시 행) · 규칙 §Auth · kr 미러(V1 · V2 · V5 문구) · 이 절.
+  - 변이: M113부터 번호를 잇는다(V1 둘 · V2 넷 · V3 둘 · V4 둘).
+    - 바뀐 함수에 걸린 앞 회차 변이는 최종 바이트로 다시 돌린다.
+    - 대상: `_ldh_host_name`의 M90–M98 · `_required` · `_optional`에 걸린 r1 변이 · `fetch_data`의 M106–M112 · `check_settings`의 M99–M105.
+  - VD: U4 계단 해소를 최종 바이트로 다시 잰다(메모리 안 0.4 s 실패 · 동시 5건 · fetch 1).
+
+### T070 r4 결과 · r5 결정(리뷰 r4 반영 · W1–W8 · 2026-11-06) — V2의 시험 꼴 · 행동 변화, V4 시험 (c), V5 · V6은 이 절의 W1 · W5 · W3 · W7 · W8이 넓힌다(앞 절 줄 끝 〔…〕 표식)
+
+- **r4 결과**(워크플로 `wf_356ea59d-b81` · 1.39M 토큰 · 약 95분 · 빌더 DONE):
+  - 바뀐 파일:
+    - `auth.py` 839 → 876(`bf5e1e55…` → `7011a4c2…`):
+      - V1 `_NUMERIC_LABEL`(`[0-9]+|0x[0-9a-f]*` fullmatch — `_DIGITS_ONLY` 대신)
+      - V2 공유 도우미 `_printable_ascii`(`_required` · `_optional`이 거친다 · 이름만 실은 `ImproperlyConfigured` · `from None`)
+      - V4 `_KeyClient._backoff_lock`(RLock — `_client_lock`은 주석에만 남는다)
+      - 독스트링: 모듈 Access 절 · 「인증 문자열 설정」 문단 · 「한계」 · 「PyJWT 결합」 줄 · `check_settings` 순서를 고정하는 시험 이름
+    - `test_auth_contract.py` 1890 → 2168(시험 함수 45 → 51 · 사례 235 → 399 · r3 노드 id 235개가 모두 남았다 · 지운 줄은 독스트링 3줄을 넓혀 쓴 것뿐이다).
+    - `_auth_fakes.py` 257 → 314: 모의 부모 둘(`install_lockless_parent` · `install_plain_lock_parent`).
+    - `__init__.py` · `test_auth.py` · authcontractapp는 그대로다.
+  - 빨강(11:26–11:27 · r3 `auth.py` 그대로): 158 failed / 241 passed. 실패는 결정마다 맞다.
+    - V1: ac-4e 7 + ac-23b 7
+    - V2: ac-5a 45 · ac-5c 8 · ac-5b 18 · ac-23b 69
+      - r3에서도 초록인 사례가 넷 있다. 다른 검사가 먼저 걸렸다(BOM이 앞에 붙은 URL은 스킴 검사 · `DRAGONFLY_URL` 앞 공백 · BOM은 `from_url` ValueError).
+    - V3: ac-23d 1
+      - 원인은 V2 부재다. r3 `_required`가 V2 위반 문자열을 통과시켜 ④에서 `AUTHENTIK_JWKS_URL`이 실렸다.
+      - ⑦ · ⑪의 자리는 r3에서도 맞았다.
+    - V4: ac-24e(fetch 0) · ac-24f(2 s join 시간 초과 — 교착) · ac-24g(`error=AttributeError`)
+  - 초록(최종 바이트 12:07–12:10 · 한 번에 하나): `test_auth.py` 32 ×2 · contract 399 · fixtures jwks 3 · dragonfly 1 · 회귀 16 · 65 · 16 · 42 · 52 · 3 · ac-24 묶음 3회.
+  - 변이 41개 중 40개를 잡았다.
+    - 새 10(M113–M122)은 모두 잡혔다. M119 · M120은 ac-23d만, M122는 ac-24g만 잡는다.
+    - 바뀐 함수에 걸린 앞 회차 변이 26(M90–M112 · M41 · M42 · M45)을 최종 바이트로 다시 돌렸다. 모두 잡혔다.
+    - 목록 밖 확인 5(`_base_url_parts`의 M15 · M83 · M84 · M86 · M87) 가운데 M83(원문 글자 범위 검사 삭제)만 살아남았다.
+      - 동치 변이다. 유일한 호출자 `_team_base_url`이 `_required`(V2)를 거친 값에 `https://`만 붙여 넘긴다.
+  - VD:
+    - U4 계단 재측정(메모리 안 0.4 s 실패 · 빈 캐시 · 동시 5건 · 3회): 모두 0.400–0.401 s · fetch 1. 잠금 없는 부모에서도 같다.
+    - r3 사본 + 잠금 없는 부모(대조): 모든 판정이 0.0003–0.0024 s에 `error=AttributeError` 503 · fetch 0이다. r3 B-2의 고장 꼴을 재현했다.
+    - V4 근거 소스(PyJWT 2.15.1): `_client_lock` 생성은 :128이고, 쥐는 곳은 :277(`get_signing_key`) 하나뿐이다. `fetch_data`(:147) · `get_jwk_set`(:190) · `get_signing_keys`(:234)는 쥐지 않는다.
+  - V2 충돌 확인(읽기만): 0건(`tests/settings.py` · conftest · T066 `test_api.py` · templates golden-render).
+  - 편차(빌더 ⑧):
+    - 1: M83 동치 — `_base_url_parts`의 원문 검사는 심층 방어로 남긴다(W8).
+    - 2: V2를 공유 도우미 하나로 구현했다(규칙 한 곳).
+    - 3: V2 시험은 설정 8 × 값 꼴 9를 모두 덮었다. 동형 글자는 감시 문자열 바로 뒤에 넣었다.
+    - 4: V1 거부 사례에 `hex-after-sentinel`을 더했다. 지시한 여섯 값에는 감시 문자열이 없어 「값이 새지 않는다」 단언이 공허했다.
+    - 5: VD에 `staircase-lockless` 모드를 더했다.
+- **리뷰 r4**: A approve_with_fixes(low 5) · B approve_with_fixes(low 4). high · medium은 0이다. A-1과 B-2는 같은 지적이다.
+  - 탐침:
+    - A: 빌더 보고의 수치를 모두 대조했다(해시 · 줄 수 · 빨강 158 분해 · 변이 41 · VD · mtime). V5 규칙은 FR-027 · T089 · T092 문면과 부딪히지 않는다.
+    - B — V1 우회 시도 75값(대소문자 · `0X` · 긴 16진 · 32비트 초과 · 8진 · 1–5성분 · 전각 · 아랍-인도 숫자 · `xn--` · IPv4 매핑 IPv6):
+      - V1이 이름으로 받는데 inet_aton · getaddrinfo(AI_NUMERICHOST)가 숫자로 푸는 값은 0이다.
+      - glibc `__inet_aton_exact`도 1–4성분의 10진 · 8진 · 16진만 받는다. 꼴로 거르는 V1은 플랫폼과 무관하다. r3 B-1의 Linux 미실측 항목은 소스 논리로 닫는다.
+    - B — V2 차분 1755조합(설정 9 × 코드 포인트 65 × 자리 3):
+      - 놓친 값 0 · 요청 경로와 `check_settings()`의 판정 차이 0
+      - 정당한 운영 꼴 18값(64 hex AUD · `<32 hex>.access` · svc URL · 퍼센트 인코딩 비밀번호 등)은 하나도 막히지 않았다.
+    - B — V4 잠금 순서 계측(10스레드 × 3회 · 경로 5): 자기 잠금을 쥔 채 PyJWT 잠금을 얻는 경로 0 · 잠금 밖 상태 쓰기 0. 블랙홀(실제 urllib) 동시 3건은 2.08 s · fetch 1이다.
+  - low:
+    - A-1 · B-2: V2 시험 값 꼴 아홉에 공백이 아닌 ASCII 제어 문자 · DEL이 없다.
+      - 「`isascii()` + `isspace`」 규칙 변이와 상한에 DEL을 넣은 변이가 설정 8개에서 시험 전체를 통과한다(메모리 탐침).
+      - 제어 문자 · DEL 사례는 ac-4e(`ACCESS_TEAM_DOMAIN`)에만 있다. 거기서는 `_base_url_parts`가 같은 범위를 따로 거부해 `_printable_ascii` 변이가 가려진다(M83의 반대 방향).
+      - ac-4e에는 폭 0 · BOM · 한글 채움 문자 꼴이 없다. 「`ACCESS_TEAM_DOMAIN`은 ac-4b · ac-4e가 덮는다」 주석은 일부만 맞다.
+    - A-2: V2 「행동 변화」가 「지금 동작하는 값 둘」만 적는다.
+      - `ACCESS_AUD_ADMIN`도 r3에서 동작하던 값이다. 공백이 든 값은 audience 집합의 맞지 않는 원소일 뿐이라 M2M 판정이 200이었다.
+      - r4에서는 모든 Access 판정 500 · 기동 실패다(메모리 탐침).
+    - A-3: T075 플레이스홀더 절차(US6 시점 `kv/{env}/authentik/identity-admin`에 임의 값)와 기동 `check_settings()`(U3 + V2)가 부딪히는데 인계가 없다. `placeholder` 같은 값은 키 URL 스킴 검사 · V2에서 기동 실패다.
+    - A-4: V5가 `apps/web` 경로 규칙 §BFF contract에 없다(r3 U11도 없다). T092 빌더는 그 규칙을 적재한다.
+    - A-5: 모듈 독스트링 「한계(장애 중 잠금 대기)」에서 V4 자기 잠금 문장 바로 뒤에 「그래서 … 캐시로 통과할 아는 kid 포함 … 잠금을 기다리고」가 온다.
+      - 그래서 캐시 적중을 막는 것이 자기 잠금처럼 읽힌다. 실제로는 PyJWT 2.15.1 잠금이다.
+    - B-1: V2가 새로 여는 설정 오류 500 · 기동 실패의 트레이스백 프레임 지역 변수(`_required.value` · `_printable_ascii.value`)에 `DRAGONFLY_URL` 비밀번호가 남는다.
+      - structlog 26.1.0 기본 `dict_tracebacks`(`show_locals=True`)는 그 값을 JSON으로 렌더한다(실측). `format_exc_info` · `show_locals=False`는 싣지 않는다.
+      - T071 인계(N12 · U7)는 Sentry만 막는다. r3 리뷰 B R-4(`check_settings()` 프레임의 비밀번호 URL)도 라우팅되지 않았다.
+    - B-3: 자기 잠금은 PyJWT 잠금이 없는 부모에서 fetch를 직렬화만 하고 중복을 없애지 않는다.
+      - 빈 캐시 + 느린 성공 fetch(0.3 s) + 동시 5건이면 fetch 5 · 0.3 … 1.5 s 계단이다. 기다리던 판정이 잠금을 얻기 전에 이미 캐시 확인을 지났기 때문이다.
+      - PyJWT 2.15.1 그대로면 fetch 1이고 모두 0.301 s다. PyJWT 잠금이 캐시 확인까지 감싼다.
+      - ac-24g는 실패 경로만 본다.
+    - B-4: V5 문장에 경로 대조 규칙이 없다. 정확 일치인지, 디코딩 뒤 비교인지, 상류 경로를 클라이언트 경로로 잇는지가 정해지지 않았다.
+      - 접두 일치 + `/tenants/me%2F..%2F..%2Fsession%2Fcheck?sub=<남>` 같은 꼴이면 상류 URL이 WHATWG 정규화로 `/session/check`가 된다. 재작성 판정(`=== '/session/check'`)은 거짓이라 남의 폐기 여부가 중계된다(스펙 지식 · 미실측).
+      - `new URL(clientPath, base)`는 `//host/…`로 호스트를 바꾼다. 서비스 토큰이 다른 호스트로 간다.
+  - 범위 밖 관찰(B):
+    - `_KeyClient.__init__`이 `super().__init__()` 뒤에 자기 상태를 둔다. 생성 중에 fetch하는 판이면 AttributeError다.
+    - Django `SafeExceptionReporterFilter.hidden_settings`가 `DRAGONFLY_URL` · `DATABASE_URL`에 맞지 않는다. DEBUG 페이지나 AdminEmailHandler를 켜면 비밀번호 URL이 나온다(r4와 무관하게 전부터 있다).
+    - 서비스 토큰을 싣는 상류 호출은 리디렉션을 따르지 않아야 한다(r3 관찰).
+- **r5 결정 W1–W8(컨트롤러)**: 계약(bff-api · pod-template · data-model) · 규칙(web §BFF contract · django-pod §Auth) · kr 미러는 이 절과 같은 변경에서 「T070 r5」 표식으로 고쳤다.
+  - **W1 V2 시험 꼴에 ASCII 제어 문자 · DEL을 더한다**(A-1 · B-2):
+    - `AUTH_STRING_FORMS`에 둘을 더한다. 둘 다 감시 문자열 바로 뒤에 넣는다.
+      - `escape`(ESC U+001B — 색 있는 터미널 출력에서 복사한 ANSI 시퀀스)
+      - `delete`(DEL U+007F — `~` 바로 위 경계)
+      - ac-5a · ac-5b · ac-5c · ac-23b가 같은 목록으로 늘어난다.
+    - `TEAM_DOMAIN_REJECTED_CASES`에 폭 0(U+200B) · BOM(U+FEFF) · 한글 채움 문자(U+3164)를 더한다.
+      - 그러면 `ACCESS_TEAM_DOMAIN`도 V2 꼴 아홉과 제어 문자 · DEL을 모두 덮는다.
+      - 그 설정에서는 `_base_url_parts` 원문 검사가 같은 범위를 따로 거르므로 `_printable_ascii` 변이를 가르지 못한다. 판별력은 나머지 8개 설정이 보인다.
+    - 「`ACCESS_TEAM_DOMAIN`은 ac-4b · ac-4e가 덮는다」 주석을 사실대로 고친다.
+    - 변이(M123부터):
+      - M123: 상한에 DEL을 넣는다(`"!" <= ch <= chr(0x7F)`).
+      - M124: ASCII이고 공백이 아니면 받는다(`not value.isascii() or any(ch.isspace() for ch in value)`일 때만 거부).
+      - 둘 다 r4 시험 바이트로는 살아남고(리뷰 탐침과 같은지 확인한다), r5 시험으로 잡혀야 한다.
+  - **W2 독스트링 「한계(장애 중 잠금 대기)」의 인과를 바로잡는다**(A-5):
+    - 「그래서 … 기다린다」는 PyJWT 2.15.1 잠금(`get_signing_key` :277)의 결과로 적는다.
+    - 자기 잠금 문장은 그 뒤로 옮기고 한 구절을 붙인다: 자기 잠금은 `fetch_data` 안에서만 쥐므로 캐시 적중 판정은 그 잠금을 쥐지 않는다(T070 r4 V4).
+    - 동작은 바뀌지 않는다.
+  - **W3 중복 제거는 PyJWT 잠금 몫이다 — 시험으로 결합을 고정한다**(B-3 (b)):
+    - `_KeyClient` 독스트링에 한 문장을 더한다. 〔「PyJWT 결합」 줄에도 — r6 X2〕
+      - 자기 잠금은 fetch를 직렬화할 뿐 중복을 없애지 않는다.
+      - PyJWT 잠금이 없는 판에서 빈 캐시 · 만료에 동시 요청이 몰리고 fetch가 성공하면, fetch가 요청 수만큼 돈다. 기다리던 판정은 이미 캐시 확인을 지났다.
+      - 2.15.1에서는 PyJWT 잠금이 캐시 확인까지 감싸 fetch 1이다.
+    - 시험 ac-24h는 실제 PyJWT 부모로 돈다(모의 부모가 아니다).
+      - 조건: 빈 캐시 + 메모리 안 느린 성공 fetch(유효 키 집합) + 동시 5건(Barrier)
+      - 기대: fetch 1 · 다섯 판정 모두 통과 · 가장 늦은 판정 < 2 × fetch 시간
+      - 이 시험이 실패하면 PyJWT가 중복 제거를 그만둔 것이다. 그때 자기 상태로 중복을 없애는 안(아래 고르지 않은 안)을 다시 정한다. 시험 독스트링에 적는다.
+      - 판별력: 같은 시험을 잠금 없는 모의 부모(`install_lockless_parent`)로 한 번 돌려 실패(fetch 5)함을 보고에 보인다. 운영 코드 변이가 아니라 의존성 결합의 탐침이라 시험으로 남기지 않는다.
+    - 고르지 않은 안 (a) — 자기 세대 번호로 중복을 없앤다:
+      - 2.15.1에서는 동작이 같다. PyJWT가 잠금을 없앤 가상의 판에서만 의미가 있다.
+      - 기다리던 모르는 kid 재조회가 자기 요청보다 먼저 시작된 fetch의 결과를 받게 된다. 키 교체 직후의 신선도가 바뀐다(PyJWT 재조회 cooldown 30 s와 얽힌다).
+      - ac-24h가 PyJWT 갱신 때 그 경우를 드러내므로 그때 정한다.
+  - **W4 프레임 지역 변수의 비밀은 렌더링 층에서 막는다**(B-1):
+    - 통제 지점은 예외 렌더러 하나다.
+      - 인증 경로의 다른 프레임도 원문 Bearer `header` · Access `token`(U7) · `sub`를 지역 변수로 쥔다.
+      - 그래서 `_required`에서 값 하나를 지워도(`del value` — 리뷰 선택안) 트레이스백에서 비밀이 사라지지 않는다. `auth.py`는 바꾸지 않는다.
+    - T071이 맡는다:
+      - 렌더링: 준비된 설계 초안은 이미 `format_exc_info`(지역 변수 없음)만 쓰고 `dict_tracebacks` · `ExceptionDictTransformer(show_locals=True)`를 금지한다. Sentry는 `include_local_variables=False`다(N12).
+      - 규칙 문장: 규칙 §Logging의 「frame locals를 남기지 않는다 · `format_exc_info`」 문장은 T071 계약 보정(준비된 문서 스크립트)이 넣는다. T070에서는 따로 넣지 않는다(중복 · 앞뒤 문장 충돌).
+      - 시험: auth 설정 오류 500 경로에 (c)를 더한다. `DRAGONFLY_URL` V2 위반(비밀번호 자리에 SENTINEL · 끝 줄바꿈) + 유효 Access · Bearer → 500.
+      - 세 경로 (a) · (b) · (c) 모두, 수집한 JSON 로그 줄(`request_failed` · `django.request`)과 Sentry transport 이벤트 어디에도 SENTINEL이 없음을 단언한다. 지금 초안의 (a) · (b)는 Sentry만 본다.
+    - T072가 맡는다:
+      - 기동 검사(`check_settings()`) 실패 출력(stderr · 로그 · Sentry)에도 같은 단언을 둔다.
+      - `DEBUG=False` 고정과 `mail_admins`(AdminEmailHandler) 미사용을 확인한다. Django `SafeExceptionReporterFilter.hidden_settings`는 `DRAGONFLY_URL` · `DATABASE_URL`에 맞지 않아 설정 덤프에 비밀번호 URL이 나온다. 〔ExceptionReporter 세 경로 · 통제는 미사용 — r6 X7〕
+  - **W5 V2 행동 변화는 셋이다 — `ACCESS_AUD_ADMIN`**(A-2):
+    - 셋째 값: `ACCESS_AUD_ADMIN`에 공백 · 보이지 않는 글자가 든 값은 r3에서 audience 집합의 맞지 않는 원소였을 뿐이라 M2M 판정이 200이었다. r4부터는 모든 Access 판정 500 · 기동 실패다.
+    - 정상 경로(ConfigMap의 정확한 값 — prod 64 hex · dev 빈 값)는 영향이 없다.
+    - 규칙 §Auth · pod-template 인증 행의 근거 문장을 넓힌다. 조용한 403 · 401뿐 아니라 우연히만 동작하던 값(라이브러리가 공백을 떼는 URL 설정 · 맞지 않는 audience일 뿐이던 `ACCESS_AUD_ADMIN`)도 설정 오류로 앞당긴다. 〔URL 문구 — r6 X8〕
+    - report.md에 셋으로 적는다.
+  - **W6 US6 플레이스홀더도 기동 검사를 통과해야 한다**(A-3): 〔r6 X4가 고친다 — T044 sentinel 덮어쓰기 · 웹훅 비밀은 실값 · 나가는 쪽 자격은 T075〕
+    - `kv/{env}/authentik/identity-admin`의 `jwks_url` · `issuer`는 처음부터 계약 값이다. 플레이스홀더가 아니다. 〔라이브 값은 T044 sentinel — 덮어쓴다(X4)〕
+      - 값: `http://authentik-server.identity.svc:9000/application/o/identity-admin/jwks/` · `https://auth.joshuatech.dev/application/o/identity-admin/`(contracts/identity-admin-api.md §호스트)
+      - US4에서도 바뀌지 않는다.
+    - `client_id` · `client_secret` · `api_token`과 `kv/{env}/openfga/{store_id,preshared}`는 비지 않은 공백 없는 ASCII 임시 값이다(V2 · T066 비밀 빈 값 기동 실패).
+    - US4 전에는 Authentik이 없어 JWKS fetch가 실패한다. Bearer 판정은 503 `auth_keys_unavailable`이다. JWT 경로를 쓰지 않는 기간이라 영향이 없다(`/health` 확인은 Access 서비스 토큰 — T075 문면).
+    - 계약: data-model.md `kv/{env}/authentik/identity-admin` 행에 이 규칙을 더한다.
+    - 인계:
+      - T075: ExternalSecret · 기동 확인
+      - T043 절차 한 줄의 운영자 블록: 넣기 전에 꼴을 판정한다
+      - T081: 실값으로 교체할 때도 같은 꼴
+  - **W7 BFF 프록시 경로 대조 · 리디렉션 규칙**(B-4 · A-4 · r3 B 관찰): 〔응답 중계 규칙 — r6 X3〕
+    - 허용 경로는 정확 일치다. 아래 둘은 404이고, 상류를 부르지 않는다.
+      - 원문 경로에 인코딩된 구분자 · 점(`%2F` · `%5C` · `%2E` — 대소문자 무관)이 있다.
+      - 디코딩한 경로가 허용 상수와 글자 그대로 같지 않다(접두 · 끝 슬래시 · 빈 세그먼트 · `.`/`..` · 대소문자 · `;` 매개 변수 변형).
+    - 상류 URL은 정적 맵 기준 URL + 일치한 허용 경로 상수다. 클라이언트 경로 문자열을 잇지 않고, `new URL(clientPath, base)`를 쓰지 않는다.
+    - `/session/check` 질의 재작성(V5)은 같은 일치 결과에 묶는다.
+    - 자격(서비스 토큰 `CF-Access-Client-*` · 교환 토큰 · client secret)을 싣는 하류 호출은 리디렉션을 따르지 않는다(`redirect: 'manual'`). 〔호출 목록 · 3xx 결과 — r6 X5〕
+      - Fetch 표준의 기본 `follow`는 사용자 정의 헤더를 지우지 않고 `Location`으로 다시 보낸다. Workers 런타임에서의 동작은 T092가 로컬 서버로 확인한다.
+      - 폐기 확인에서 3xx는 U11대로 503 `upstream_unavailable`이다.
+    - 계약은 bff-api 프록시 행과 §하류 호출 규약이다. 규칙은 web §BFF contract에 V5 · U11 · W7을 더한다(kr 미러는 translation-pending).
+    - 인계(T089 시험 · T092 구현):
+      - 변형 사례 `/session/check/` · `/Session/check` · `/session%2Fcheck` · `/tenants/me/..%2F..%2Fsession%2Fcheck` · `//session/check` · `/session/check;x` → 모두 404 · 상류 호출 0 〔핸들러 단위 — 통합 단은 308 · r6 X6〕
+      - 상류가 3xx를 돌려주면 따라가지 않는다(로컬 서버가 두 번째 요청 0을 기록한다).
+  - **W8 기록**:
+    - M83은 동치 변이다. 「T070 결과」 한계에 적는다(r1 M22 · M23처럼).
+      - `_base_url_parts`의 원문 검사는 심층 방어로 남긴다.
+      - W1의 `ACCESS_TEAM_DOMAIN` 가림은 그 대가다.
+    - V6 「3.13.2부터」를 확인했다. gh-105704(CVE-2025-0938)의 3.13 백포트 PR #129526이 2025-02-02에 3.13 브랜치에 머지됐고, 그 뒤 첫 판이 3.13.2(2025-02-04)다.
+    - `_KeyClient.__init__`의 속성 순서(B 관찰)는 바꾸지 않는다.
+      - 2.15.1 생성자는 fetch하지 않는다(ac-23a가 fetch 0을 지킨다).
+      - 생성 중에 fetch하는 판이 오면 AttributeError가 `check_settings()` · 요청 시험을 바로 깨뜨린다. PyJWT를 올릴 때 test_auth_contract가 드러낸다.
+    - PyJWT 결합의 둘째 경로(A 참고): 생성 pod의 `uv.lock`(T073 copier `_tasks: uv lock`)도 범위 안 최신 PyJWT로 잠긴다.
+      - test_auth_contract가 본 적 없는 판이다.
+      - V4 CI 공백 인계(report.md · T072)와 같은 줄에 적는다.
+- **r5 범위**:
+  - 빌더: W1(시험 · 주석) · W2 · W3(독스트링 · ac-24h · 판별력 탐침). 운영 코드 동작은 바뀌지 않는다(독스트링뿐).
+  - 컨트롤러가 이미 고친 것:
+    - 계약: bff-api 프록시 행 · §하류 호출 규약 · pod-template 인증 행의 근거 · data-model `kv/{env}/authentik/identity-admin` 행
+    - 규칙: web §BFF contract · django-pod §Auth 근거
+    - kr 미러: django-pod · web translation-pending
+    - 이 절
+  - 변이: M123 · M124(W1).
+    - r5는 운영 코드 동작을 바꾸지 않는다. 그래서 앞 회차 변이는 다시 돌리지 않는다.
+    - 다만 V2 묶음(M115–M118)은 새 시험 바이트로 한 번 더 돌려 그대로 잡히는지 본다.
+
+### T070 r5 결과 · r6 결정(리뷰 r5 반영 · X1–X8 · 2026-11-06) — W6의 data-model 문장, W7의 응답 중계 · 리디렉션 호출 목록 · 변형 판정 층, W4의 T072 인계, W5 근거의 URL 문구는 이 절의 X4 · X3 · X5 · X6 · X7 · X8이 고친다(앞 절 줄 끝 〔…〕 표식)
+
+- **r5 결과**(워크플로 `wf_81d70237-c68` · 1.32M 토큰 · 약 79분 · 빌더 DONE):
+  - 바뀐 파일:
+    - `auth.py` 876 → 880(`7011a4c2…` → `f02b8b7a…`) · 독스트링만 바뀌었다. 독스트링을 뺀 AST와 주석 토큰 30개가 r4와 같다.
+      - W2 모듈 「한계(장애 중 잠금 대기)」: 대기의 원인을 PyJWT 2.15.1 `_client_lock`(:277 — 캐시 확인과 `fetch_data`를 함께 감싼다)으로 적었다. 자기 잠금 문장은 뒤로 옮겼다(캐시 적중 판정은 자기 잠금을 쥐지 않는다).
+      - W3 `_KeyClient`: 「직렬화할 뿐 중복은 없애지 않는다 … 2.15.1에서는 캐시 확인까지 감싸 fetch 1(ac-24h)」.
+    - `test_auth_contract.py` 2168 → 2246(시험 함수 51 → 52 · 사례 399 → 438). r4 노드 id 399개가 모두 남았고, 지운 8줄은 모두 주석 · 독스트링이다.
+      - W1: `escape`(`chr(0x1B)`) · `delete`(`chr(0x7F)`) 꼴로 ac-5a +10 · ac-5b +4 · ac-5c +2 · ac-23b +19가 늘었다. `TEAM_DOMAIN_REJECTED_CASES`의 폭 0 · BOM · 한글 채움으로 ac-4e +3이 늘었다.
+      - W3: ac-24h(실제 PyJWT 부모 · 루프백 키 서버 0.3 s 지연 · 동시 5건). django_common.auth 기록 0 단언을 더했다.
+    - `_auth_fakes.py` 314 → 329: `KeyServer.set_delay(path, seconds)`. GET 수는 기다리기 전에 센다.
+  - r4 `auth.py`로 돌린 새 시험: 438 passed. 새 39건이 모두 초록이다(운영 코드가 이미 맞다는 기대대로).
+  - 초록(최종 바이트 13:37–13:40 · 한 번에 하나): `test_auth.py` 32 ×2 · contract 438 · fixtures jwks 3 · dragonfly 1 · 회귀 16 · 65 · 16 · 42 · 52 · 3 · ac-24 묶음 3회(10 passed).
+  - 판별력:
+    - M123(상한에 DEL) · M124(ASCII이고 공백이 아니면 받는다)는 r4 시험 바이트로는 살아남고(399 passed), r5 바이트로 잡혔다(16 · 32 failed).
+    - M115–M118을 r5 바이트로 다시 돌렸고 모두 잡혔다(173 · 45 · 32 · 33 failed).
+    - ac-24h를 잠금 없는 모의 부모로 돌린 탐침은 fetch 5 · 판정 0.32 → 1.61 s 계단으로 실패했다(시험으로 남기지 않았다). 실제 부모는 fetch 1 · 0.32 s × 5다.
+  - 편차(빌더 ⑧):
+    - 1: 지시문 전제를 소스로 바로잡았다. PyJWT 2.15.1 `fetch_data`는 `finally`가 아니라 성공 경로 끝(:185–186)에서만 캐시를 채운다. :181–184 주석이 `finally` 쓰기를 일부러 피한다고 적고, `get_jwk_set`이 :222–223에서 한 번 더 넣는다.
+      - **컨트롤러 지시문의 사실 오류**다. 시험 설계는 지시대로 실제 `fetch_data`에 네트워크 쪽 지연을 건 것이라 결과에는 영향이 없다.
+    - 2: 셈은 `urlopen` 대역이 아니라 루프백 키 서버로 했다. 2.15.1은 `build_opener(...).open`을 쓴다.
+    - 3: 편집 도구가 기존 줄의 공백 하나를 지운 것을 diff로 찾아 고쳤다. 변이와 r4 코드 실행은 최종 바이트로 다시 돌렸고 결과가 같다.
+  - 위생: compileall · 바이트 8파일 · gitleaks 8파일(하나씩) clean. Docker 컨테이너 7개 이름이 전후로 같고, dangling 볼륨은 25 → 25다.
+- **리뷰 r5**: A approve_with_fixes(low 4) · B approve_with_fixes(medium 2 · low 4).
+  - 같은 지적: A-2 = B-2 · A-3 = B-4 · A-4 = B-6.
+  - B는 코드 · 시험 산출물의 결함을 0으로 봤다. medium 둘은 컨트롤러가 r5에 고친 계약 문장(W6 · W7)의 공백이다.
+  - 탐침:
+    - A: auth AST · 주석 30/30 · 수집 id 399 ⊂ 438 · ac-24h 메모리 재현(실제 부모 3/3 · 잠금 없는 부모 FAIL) · V2 변이를 실제 사례 목록으로 판정 · W6 값 `check_settings()` None · T071 `docs.py` 치환 원문 14/14 일치.
+    - B: W7 경로 변형 20꼴(어느 것도 남의 질의를 상류 `/session/check`에 싣지 못한다 — 틈은 응답 쪽 하나) · W4 프레임 지역 변수 세 경로 실측 · ExceptionReporter 텍스트 보고서 실측 · 바이트 19파일 · gitleaks 14파일.
+  - medium:
+    - B-1: 프록시 「응답을 그대로 중계」에 응답 헤더 · 3xx 규칙이 없다.
+      - Access는 서비스 토큰으로 인증된 응답에 앱 범위 JWT 쿠키 `CF_Authorization`을 실을 수 있다.
+        - Cloudflare 문서: 「엄격 서비스 토큰 인증」은 조직 설정이고, 켜면 그 쿠키를 돌려주지 않는다.
+        - 그 설정은 2026-10-05 이후 만든 조직에서만 기본으로 켜진다. 우리 조직은 그 전에 만들었다. 미실측이다.
+      - 그 쿠키가 브라우저로 가면 로그인한 사용자가 m2m 호스트 `/session/check?sub=<남>`을 직접 불러 W7 · V5 질의 재작성을 우회한다.
+        - 그 경로는 Access 전용이다. 쿠키의 `common_name`은 `web-bff-<env>`이고, `session_duration`은 24 h다(infra/cloudflare/access.tf).
+      - 「그대로 중계」는 쿠키를 `/api/auth/*`에서만 설정한다는 계약 · web 규칙과 부딪힌다.
+      - `redirect: 'manual'` 뒤 상류 3xx(`Location` 포함)를 그대로 중계하는 경우도 정해지지 않았다.
+    - B-2 · A-2: W6이 웹훅 HMAC 비밀(`kv/{env}/authentik/webhooks/identity-admin` `secret`)을 빠뜨렸고, T044 게이트와 맞춰지지 않았다.
+      - 라이브 값은 8경로의 모든 키가 T044 sentinel `PLACEHOLDER-T044-SENTINEL`이다(2026-09-17 투입 — docs/runbooks/vault-unseal.md §US6 플레이스홀더 8경로).
+        - W6의 「`jwks_url` · `issuer`는 처음부터 계약 값」은 라이브 상태와 다르다. 덮어쓰는 단계가 없다.
+      - 웹훅 비밀은 들어오는 쪽 검증 키다. `/webhooks/authentik`은 Access · Bearer 면제라 HMAC만이 그 경로를 지킨다.
+        - 저장소 문서에 적힌 sentinel이나 고정 임시 값으로 pod가 뜨면, pod 포트에 닿는 클러스터 안 호출자가 서명한 `logout` 본문을 보낼 수 있다.
+        - 그러면 임의 사용자의 사용자 단위 폐기(강제 로그아웃 · 감사 오염)가 된다.
+        - 빈 HMAC 키를 기동 실패로 막은 이유(contracts/identity-admin-api.md)와 같은 부류다.
+      - W6 · T075의 「플레이스홀더로 기동」이 T044 규칙 셋과 부딪힌다.
+        - 불변식: sentinel 잔존 0 = consumer 활성화 전제.
+        - 게이트 1: 경로 단위로 `PLACEHOLDER-` 0(T075 · T081).
+        - 게이트 2: 설정 검증기가 `PLACEHOLDER-`에서 기동 실패(T072 · T075 · T077).
+        - sentinel을 알아볼 수 없는 고정 임시 값으로 바꾸면 게이트가 남은 플레이스홀더를 가르지 못한다.
+      - W6의 근거 「(V2 · T066 비밀 빈 값 기동 실패)」는 일부에만 맞는다.
+        - `check_settings()`가 보는 것은 `jwks_url` · `issuer`뿐이다.
+        - `api_token` · `store_id` · `preshared` · 웹훅 비밀은 T066 기동 검사(존재 · 비밀 비지 않음)만 받는다.
+        - `client_id` · `client_secret`에 대응하는 identity-admin 설정은 없다(ESO 동기화 몫).
+  - low:
+    - A-1: V2 수락 쪽 경계(`!` U+0021 · `~` U+007E)를 가르는 시험이 없다.
+      - 수락 사례의 문장 부호가 `-./:@[]_` 여덟 개뿐이다. 그래서 `!` 거부 · `~` 거부 · RFC 3986 글자만 받는 변이가 사례 전체를 통과한다(메모리 탐침).
+      - fail-closed라 시끄럽게 드러나지만 판별력 공백이다. 예: 비밀번호에 `~` · `!`가 든 `DRAGONFLY_URL`이 기동 실패가 된다.
+    - A-3 · B-4: W7 인계 「변형 사례 모두 404」는 핸들러 단위에서만 성립한다(스펙 지식 · 미실측). 누출은 0이다.
+      - 핸들러 앞에서 바뀌는 꼴: Next.js 기본 끝 슬래시 · 겹친 슬래시 308 · WHATWG의 점 세그먼트 접기.
+      - 캐치올 매개 변수는 디코딩돼 있다. 그래서 원문 검사의 입력이 정해져야 한다.
+      - 정적 맵이 일반 객체면 `constructor` · `__proto__`가 참이 된다.
+      - 기준 URL이 끝 슬래시로 끝나면 `//session/check`가 생긴다.
+    - A-4 · B-6: 「PyJWT 결합」 줄(모듈 · `_KeyClient`)이 W3이 시험으로 고정한 셋째 결합을 적지 않는다. 셋째 결합은 잠금 범위(캐시 확인까지 감싸는 중복 제거)다.
+    - B-3: 리디렉션 규칙의 호출 목록과 3xx 결과에 빈 곳이 있다.
+      - client secret을 싣는 Authentik 호출 셋(callback 코드 교환 · refresh · refresh revoke)이 목록에 없다.
+      - 폐기 확인 밖 호출의 3xx 결과가 없다. 3xx를 401 · 쿠키 삭제로 접는 구현과 503으로 접는 구현이 갈린다.
+    - B-5: W4의 T072 인계가 ExceptionReporter 누출 근거를 설정 덤프로만 적는다.
+      - 실측으로는 요청 META의 `HTTP_CF_ACCESS_JWT_ASSERTION`(원문 Access JWT)도 텍스트 보고서에 실린다. 정리 정규식에 맞지 않기 때문이다.
+      - HTML 본문 · DEBUG 페이지에는 프레임 지역 변수가 실린다.
+      - 지금 인계(DEBUG=False · mail_admins 미사용)가 막으므로 틈은 아니다.
+  - 참고(A · B):
+    - pod-template · 규칙의 「라이브러리가 앞뒤 공백을 떼는 URL」은 좁다. `urlsplit`은 탭 · CR · LF를 자리와 무관하게 지운다.
+    - ac-24h 시간 단언의 여유는 0.27 s다(실측 0.33 s · 상한 0.6 s). CI에서 돌게 되면 flake 감시 대상이다.
+    - `/tenants/me`의 클라이언트 질의를 상류로 보낼지가 정해지지 않았다. Bearer에 묶여 누출은 없다.
+    - compileall이 `tests/__pycache__`에 pyc를 썼다. gitignore 대상이라 무해하고, auth pyc는 0이다.
+- **r6 결정 X1–X8(컨트롤러)**: 같은 변경에서 아래를 「T070 r6」 표식으로 고쳤다.
+  - 계약: bff-api · pod-template · data-model
+  - 규칙: web §BFF contract · django-pod §Auth
+  - 런북: vault-unseal §US6 플레이스홀더
+  - kr 미러
+  - **X1 V2 수락 쪽 경계를 시험으로 고정한다**(A-1):
+    - 수락 사례를 새로 둔다(기대 `check_settings() is None`):
+      - 자유 꼴 6개(`ACCESS_AUD_M2M` · `ACCESS_AUD_ADMIN` · `ACCESS_EXPECTED_CN` · `AUTHENTIK_ISSUER` · `AUTHENTIK_AUDIENCE` · `AUTH_ACTOR_SUB`): `!`–`~` 94자 전부(`"".join(map(chr, range(0x21, 0x7F)))`)
+      - `AUTHENTIK_JWKS_URL`: 경로에 `~` · `!` · 하위 구분자(`$&'()*+,;=`)가 든 루프백 URL
+      - `DRAGONFLY_URL`: 비밀번호 자리에 `~!$&'()*+,;=`
+    - 요청 경로 대조를 하나 둔다. `ACCESS_EXPECTED_CN`에 94자 값을 두고 같은 `common_name`을 실은 Access 토큰을 보내면 200이다. 판정 함수가 하나라 사례 하나로 고정된다.
+    - 변이:
+      - M125: `"!" < character`(`!`를 거부)
+      - M126: `character < "~"`(`~`를 거부)
+      - 둘 다 r5 시험 바이트로는 살아남고 r6 바이트로 잡혀야 한다.
+      - M123 · M124 · M115–M118은 r6 바이트로 한 번 더 돌린다.
+  - **X2 「PyJWT 결합」 줄에 잠금 범위를 더한다**(A-4 · B-6 — 독스트링만):
+    - 모듈 줄: 호출 순서 · 공개 메서드 이름 둘에 셋째를 더한다 — get_signing_key의 클라이언트 잠금이 캐시 확인까지 감싸는 것.
+      - 이 결합이 동시 빈 캐시 판정의 fetch 중복을 없앤다. ac-24h가 고정한다.
+      - ac-24h가 실패하면 W3의 고르지 않은 안 (a)를 다시 정한다.
+    - `_KeyClient` 줄: 「(호출 순서 · 공개 메서드 이름 둘 · 잠금 범위)」.
+  - **X3 프록시 · `/api/health`는 응답에서 고른 것만 중계한다**(B-1): 〔중계 범위(pod JSON 2xx · 4xx만) · 모든 라우트 · 응답 쪽 마스킹 — 「T070 결과」 F1 · F6 · F7〕
+    - 프록시: 상류 응답의 상태 · 본문 · `content-type`만 옮긴다.
+      - `set-cookie` · `location` · `cf-*`를 비롯한 그 밖의 상류 응답 헤더는 옮기지 않는다.
+      - `x-request-id`는 BFF가 자기 값을 싣는다(하류에 넘긴 값과 같다).
+    - 상류 3xx는 중계하지 않는다. 503 `upstream_unavailable`이다.
+    - `/api/health`는 BFF가 만든 본문(`{ status, upstream, upstream_ms, checks }`)만 낸다. 상류 헤더를 옮기지 않는다.
+    - 요청 쪽도 §하류 호출 규약의 헤더만 싣는다. 클라이언트의 `cookie` · `cf-access-token` · `authorization` · 그 밖의 요청 헤더는 하류로 옮기지 않는다.
+    - 클라이언트 질의는 `/session/check` 재작성 말고는 상류로 가지 않는다. `/tenants/me`는 질의를 버린다(A 참고 · X6과 같은 문장).
+    - 계약의 근거 문장: Access는 서비스 토큰 응답에 앱 범위 `CF_Authorization` 쿠키를 실을 수 있다. 그 쿠키가 브라우저에 가면 m2m 호스트를 직접 불러 질의 재작성을 우회한다.
+    - VD(T076 · T092 — 사용자 동석): 실제 m2m 앱이 서비스 토큰 요청 응답에 `Set-Cookie: CF_Authorization`을 싣는지와 수명을 한 번 잰다.
+    - 선택지 「엄격 서비스 토큰 인증」은 T084 · T092가 영향 범위와 함께 정한다.
+      - 조직 설정이다. 켜면 그 쿠키를 돌려주지 않고, 보낸 쿠키도 무시한다.
+      - 조직의 모든 Access 앱에 걸린다.
+      - 계약 규칙(응답 헤더 허용 목록)은 그 결과와 무관하게 유지한다.
+    - 인계(T089 시험 · T092 구현): 로컬 상류가 `Set-Cookie` · `Location` · 3xx를 돌려줘도 BFF 응답에는 둘 다 없고, 3xx는 503이다.
+  - **X4 W6 정정 — US6 값은 T044 sentinel을 덮어쓰고, 웹훅 비밀은 처음부터 실값이다**(B-2 · A-2): 〔편차 목록 T043 · T075 · T081 · T083 · 쓴 뒤 판정 보강 — 「T070 결과」 F3 · F10 / 안 1이 끝나는 지점 · KV patch · OpenFGA 서버 키 · 운영자 블록 — 인계 H1–H4〕
+    - data-model `kv/{env}/authentik/identity-admin` 행의 W6 문장을 바꾼다.
+      - US6 기동(T075) 전에 운영자 블록이 T044 sentinel을 덮어쓴다.
+      - `jwks_url` · `issuer`는 계약 값이다. US4에서도 그대로다. sentinel `jwks_url`이면 `check_settings()`가 기동에서 멈춘다(fail-closed).
+      - US4(T081 · T082)에서야 실값이 생기는 나가는 쪽 자격을 US6 동안 어떻게 둘지는 T075가 T044 게이트 1 · 2와 함께 정한다. 대상은 `client_id` · `client_secret` · `api_token` · `kv/{env}/openfga/{store_id,preshared}`다(`preshared`는 T044 런북의 US6 교체 규칙도 함께 본다).
+      - sentinel을 알아볼 수 없는 다른 고정 값으로 바꿔 게이트를 통과시키지 않는다.
+      - 근거 표기를 나눈다:
+        - `jwks_url` · `issuer` = `check_settings()`(V2 · 스킴)
+        - `api_token` · `store_id` · `preshared` · 웹훅 비밀 = T066 기동 검사(존재 · 비밀 비지 않음)
+        - `client_id` · `client_secret` = ESO 동기화(identity-admin 설정 없음)
+    - `kv/{env}/authentik/webhooks/<pod>` 행에 더한다: US6 플레이스홀더를 두지 않는다.
+      - T075가 identity-admin을 켜기 전에 운영자가 CSPRNG 32바이트 이상 실값으로 sentinel을 덮어쓴다.
+      - US4에서 바꾸지 않는다. T081 NotificationTransport가 같은 경로를 읽는다.
+      - 쓴 뒤 판정: sentinel 아님 · 길이 · 되읽기 해시. 값은 화면 · argv에 찍지 않는다.
+      - frozen T075 문면과의 편차다. T075는 「`kv/{env}/authentik/*`에 플레이스홀더를 투입하고 US4에서 실값으로 교체」라고 적는다. 웹훅 비밀만 US6부터 실값이고 US4 교체가 없다. report.md에 적는다.
+    - 런북 vault-unseal.md 게이트 2 줄에 범위 문장을 더한다.
+      - 웹훅 비밀 · `jwks_url` · `issuer`는 범위 안이다. US6 전에 덮어쓴다.
+      - US6 동안 sentinel을 둘 나가는 쪽 자격을 범위에서 뺄지는 T075가 T072와 함께 정한다.
+    - 인계(T075 · T072):
+      - 권고안(안 1): 나가는 쪽 자격은 sentinel 그대로 둔다.
+        - 그 자격의 consumer는 US4까지 켜지 않는다. `AUTHENTIK_WRITES_ENABLED=false`는 prod도 US4 전까지다. OpenFGA 호출 경로도 같다.
+        - 게이트 2(T072 템플릿 검증기)의 `PLACEHOLDER-` 기동 실패는 그 자격을 뺀 범위에 건다.
+        - 게이트 1은 키 단위로 판정한다. 경로 단위면 sentinel `api_token` 때문에 `kv/{env}/authentik/identity-admin`이 늘 hits ≥ 1이다.
+        - 그 자격의 게이트 1은 T081 · T082의 consumer 활성화 앞이다.
+      - 고르지 않는 안: sentinel을 다른 고정 임시 값으로 바꾼다(W6 원안). 게이트가 남은 값을 가르지 못한다.
+      - 안 1은 T066 기동 검사(비밀 빈 값 기동 실패)와 부딪히지 않는다. sentinel은 비지 않은 값이라 통과한다.
+  - **X5 리디렉션 규칙의 호출 목록과 3xx 결과**(B-3): 〔callback · logout 응답 열 · logout 실패 갈래 — 「T070 결과」 F2〕
+    - 목록:
+      - Authentik 토큰 엔드포인트 전부(callback 코드 교환 · refresh · 토큰 교환)
+      - Authentik revoke
+      - 폐기 확인
+      - `/api/health`
+      - `/sessions/revoke`
+      - 프록시
+    - 실을 자격에 refresh 토큰을 더한다. 307 · 308은 메서드와 본문도 그대로 다시 보낸다.
+    - 어느 호출이든 상류 3xx는 시간 초과와 같은 갈래(503 `upstream_unavailable`)다. 만료 · 폐기 갈래(401 · 쿠키 삭제)로 접지 않는다. 폐기 확인은 U11 그대로다.
+  - **X6 변형 판정은 핸들러 기준이다**(A-3 · B-4): 〔`Location` 꼴 · URL 파서가 접는 꼴 — 「T070 결과」 F8〕
+    - 프레임워크가 핸들러 앞에서 정규형 경로로 돌리는 리디렉션(Next.js 끝 슬래시 · 겹친 슬래시 308)은 상류 호출이 0이면 계약을 만족한다.
+    - 원문 검사의 입력은 `request.url`의 pathname이다. 디코딩된 캐치올 매개 변수가 아니다.
+    - 정적 맵은 자기 키로만 찾는다(`Map` 또는 `Object.hasOwn`). `constructor` · `__proto__` · `toString`은 404다.
+    - `IDENTITY_M2M_URL`은 경로 · 끝 슬래시 없는 origin이다. T092가 꼴을 검사한다.
+    - 인계(T089 · T092):
+      - 핸들러 단위 시험(원문 URL · 매개 변수를 직접 넣는다): W7 변형 6사례와 `constructor` · `__proto__`가 404 · 상류 0이다.
+      - 통합 단(`next start` · OpenNext preview): `/session/check/` · `//session/check`는 308 → 정규 경로이고, 상류 질의는 세션 값이다. T092가 실제 상태 코드와 상류 호출 0을 잰다.
+  - **X7 W4의 T072 인계를 넓힌다**(B-5): 〔실제 통제는 `ADMINS == []`의 조기 반환 · T071 (c) 문구 — 「T070 결과」 F9 · F4〕
+    - Django `ExceptionReporter`는 원문 값을 세 경로로 싣는다.
+      - 설정 덤프: `DRAGONFLY_URL` · `DATABASE_URL`(`hidden_settings`에 맞지 않는다)
+      - 요청 META: `HTTP_CF_ACCESS_JWT_ASSERTION` · `HTTP_X_FORWARDED_USER_SUB`(정리 정규식에 맞지 않는다)
+      - HTML 본문의 프레임 지역 변수
+    - 그래서 통제는 필터 보강이 아니라 미사용이다(`DEBUG=False` · `ADMINS` 빈 값 · AdminEmailHandler 없음). T072가 확인한다.
+    - T071 (c)는 Bearer `sub` · `sid`에도 감시 문자열을 심는다. 그 값을 쥐는 프레임 지역 변수는 `Denylist.lookup.sub` · `sid` · `_authenticate.bearer`다(B 실측). T071 설계 초안에 반영했다.
+  - **X8 기록**: 〔끝 공백은 `urlsplit` 몫이 아니다 — 「T070 결과」 F5〕
+    - V2 근거 문장의 「앞뒤 공백을 떼는 URL」을 넓힌다(pod-template 인증 행 · 규칙 §Auth): 「공백을 떼거나 지우는 URL(앞뒤 공백 · 자리와 무관한 탭 · CR · LF — `urlsplit`)」.
+    - ac-24h 시간 여유(0.27 s)는 CI test job 공백 인계(T072 · report.md)와 같은 줄에 flake 감시로 적는다.
+    - 지시문 r5의 「`fetch_data`가 `finally`에서 캐시를 채운다」는 컨트롤러 사실 오류였다. 빌더가 소스로 바로잡았고 결과에는 영향이 없다. 「T070 결과」 사고에 적는다.
+- **r6 범위**:
+  - 빌더: X1(시험) · X2(독스트링). 운영 코드 동작은 바뀌지 않는다.
+  - 컨트롤러가 이미 고친 것: X3–X8의 계약 · 규칙 · 런북 · kr 미러 · 이 절 · T071 초안(scratch).
+  - 변이: M125 · M126(X1). M123 · M124 · M115–M118은 r6 바이트로 다시 돌린다.
+  - 수렴 규칙:
+    - r6 리뷰에서 high · medium이 나오거나, 코드 변경이 필요한 low가 나오면 r7이다.
+    - 문서만 고치면 되는 low는 컨트롤러가 마감 때 고치고 이 절 아래에 기록한다. 회차를 더하지 않는다.
+
+### T070 결과(r1 → r6 · 마감 정정 · 2026-11-04..06) — D1–D14 · N · U · V · W · X의 정정은 뒤 절(r2 · r3 · r4 · r5 · r6)과 이 절이 우선한다(앞 절 줄 끝 〔…〕 표식)
+
+- **경과**: 조사 `wf_84149399-610`(1.41M · 약 34분) → r1 `wf_7acf8b9b-797`(1.67M · 약 2시간 10분) → r2 `wf_30612bb7-77c`(1.33M · 약 71분) → r3 `wf_8bc179c8-c5c`(1.52M · 약 110분) → r4 `wf_356ea59d-b81`(1.39M · 약 95분) → r5 `wf_81d70237-c68`(1.32M · 약 79분) → r6 `wf_ba44ad09-e2b`(1.19M · 약 68분). 빌드 · 리뷰 합계는 약 8.42M 토큰이다(조사 포함 9.83M).
+- **리뷰 회차별 지적**(높음 · 중간 · 낮음):
+  - r1: A 0 · 2 · 7 / B 0 · 0 · 4
+  - r2: A2 0 · 0 · 7 / B2 0 · 0 · 4
+  - r3: A3 0 · 0 · 4 / B3 0 · 0 · 2(A3-2 = B3-1 — 같은 한 건)
+  - r4: A4 0 · 0 · 5 / B4 0 · 0 · 4(A4-1 = B4-2 — 같은 한 건)
+  - r5: A5 0 · 0 · 4 / B5 0 · 2 · 4(A5-2 = B5-2 · A5-3 = B5-4 · A5-4 = B5-6 — 같은 세 건 · B5 medium 둘은 컨트롤러가 쓴 계약 문장 W6 · W7)
+  - r6: A6 0 · 0 · 8 / B6 0 · 0 · 9(A6-1 = B6-4 · A6-2 = B6-1 · A6-8 = B6-9 — 같은 세 건 · A6-3 · B6-6과 A6-5 · B6-2는 일부 겹침 · 범위 표기 T070 8 · 인계 9 · 코드 결함 0)
+  - 마감 확인(읽기 전용 1회 · 회차 아님): 0 · 0 · 7(C-1–C-7 — 문서만 · 코드 · 시험 변경 0)
+- **r6 결과**: 빌더 DONE.
+  - `auth.py` 880 → 882줄 — 독스트링만 바뀌었다(「PyJWT 결합」 줄에 잠금 범위 · X2). 독스트링을 뺀 AST 덤프는 r5와 같다(`07eef5c5f76a840b`).
+  - contract 438 → 447:
+    - ac-23e 8사례: 자유 꼴 6개는 `!`–`~` 94자, JWKS 루프백 URL과 `DRAGONFLY_URL` 비밀번호 자리는 URL 문장 부호 ``~!$&'()*+,;=``
+    - ac-5d 1사례: 요청 경로 200 + 94자 `common_name`. `~`를 뺀 대조는 403이다.
+  - M125(`!` 거부) · M126(`~` 거부)은 r5 시험 바이트로는 살아남고(438 passed) r6 바이트로 잡혔다(각 9 failed — ac-23e 8 · ac-5d 1 · 메시지에는 설정 이름만 있다).
+  - M123 · M124 · M115–M118은 r6 바이트로도 r5와 같은 수로 잡혔다.
+  - r5 코드 + r6 시험 = 447 passed다. 새 시험은 동작을 바꾸지 않는다.
+  - ac-24h 0.32 s.
+- **r6 리뷰 반영**(마감 정정 — 수렴 규칙대로 r7은 없다 · 컨트롤러가 문서만 고쳤다 · 사본 드라이런 → 적용 → cmp 같음 · 그 뒤 읽기 전용 독립 확인 1회가 low 7(C-1–C-7)을 찾아 F11–F14와 이 절의 문구로 닫았다):
+  - **F1**(A6-1 · B6-4) 프록시는 pod가 만든 응답만 상태 · 본문 · `content-type`을 중계한다 — 2xx · 4xx이면서 미디어 타입이 `application/json` · `application/problem+json`인 것.
+    - 3xx · 5xx · 그 밖의 `content-type`(엣지 530 · Traefik · Access 응답)은 503 `upstream_unavailable`(BFF problem+json · 쿠키 유지)이다 — FR-027 · 계약 머리말 「오류는 problem+json」 · frozen T089 「`denylist-unavailable` 503도 같은 코드로」와 맞춘다.
+    - 프록시 응답에 `x-content-type-options: nosniff`를 단다. 옮긴 pod 4xx 본문의 슬러그는 §오류 형식 BFF 슬러그 목록의 예외다.
+    - `/api/health`는 상류가 200 JSON이 아니면 503이다.
+    - 고친 곳: bff-api 프록시 · health 행 · 응답 열 · §오류 형식, web.md §BFF contract.
+  - **F2**(A6-2 · B6-1) callback · logout 응답 열에 503 `upstream_unavailable`을 더했다.
+    - callback: 코드 교환이 시간 초과 · 3xx · 5xx면 세션 쿠키를 만들지 않고 503이다.
+    - logout 실패 갈래: 세션 · CSRF 검사를 통과한 뒤에는 하류 결과와 무관하게 쿠키를 지운다(사용자의 뜻 — 공용 기기). `/sessions/revoke`가 실패해도 Authentik refresh revoke를 시도한다. 둘 중 하나라도 실패하면 쿠키를 지운 503이다.
+    - 「만료 · 폐기 갈래(401 · 쿠키 삭제)로 접지 않는다」는 refresh · `/api/session` · 프록시로 좁혔다. logout은 위 실패 갈래를 따른다.
+    - 타임아웃 표 Authentik 행에 「초과 → 503」을 적었다.
+    - 고친 곳: bff-api, web.md.
+  - **F3**(A6-3 · B6-6 일부) X4 편차는 frozen 문면 넷이다 — T043(절차 한 줄) · T075(플레이스홀더 절차) · T081(US6 플레이스홀더 교체 한 줄) · T083(투입).
+    - 대상 키는 셋이다: `kv/{env}/authentik/identity-admin`의 `jwks_url` · `issuer`(계약 값)와 `kv/{env}/authentik/webhooks/identity-admin`의 `secret`(CSPRNG 실값).
+    - `jwks_url` · `issuer`의 쓴 뒤 판정 = 계약 문자열과 글자 그대로 같다.
+    - 웹훅 쓴 뒤 판정에 dev 해시 ≠ prod 해시를 더했다. 값을 내지 않는 채널은 넷이다(화면 · 파일 · argv · 클립보드).
+    - T081 · T083은 웹훅 경로를 읽어 판정만 하고 쓰지 않는다.
+    - 고친 곳: data-model 두 행.
+  - **F4**(A6-7) T071 초안 (c): `_authenticate` 프레임이 쥔 것은 검증된 `_Bearer`(클레임 · `sub` · `sid`)이고 원문 토큰 문자열이 아니다. 원문 Authorization 값은 (a)가 맡는다(scratch 초안 — T071 설계 커밋 때 들어간다).
+  - **F5**(A6-8 · B6-9) URL 문구를 고쳤다(컨트롤러 실측 CPython 3.13.15).
+    - 앞 공백 · C0 제어 문자와 자리와 무관한 탭 · CR · LF = `urlsplit`
+    - 끝 공백 = 키 fetch의 `urllib.request.Request`(unwrap) · redis-py DB 번호의 `int()`
+    - 고친 곳: pod-template 인증 행 · 규칙 §Auth · kr 미러 대기 줄. 소스 · 시험 주석(auth.py:345 · 시험 :753 · :845 · :988)은 이미 맞아 그대로 둔다.
+  - **F6**(A6-4) 모든 라우트: BFF 응답 헤더는 BFF가 만든다. 하류(pod · Authentik) 응답 헤더는 어느 라우트에서도 옮기지 않는다(프록시의 `content-type`만 예외 · bff-api §하류 호출 규약 · web.md).
+  - **F7**(B6-5) 응답 쪽 자격 마스킹: `Set-Cookie` 값(BFF 자신 · 상류) · `CF_Authorization` 값 · 상류 응답 헤더를 로그 · 오류 `detail` · Sentry에 싣지 않는다(bff-api §로그 · 마스킹 · web.md).
+  - **F8**(B6-7) X6 만족 조건에 `Location` 꼴을 더했다 — 같은 origin의 경로이고, `//` · `/\`로 시작하지 않으며, 스킴 · 호스트가 없다.
+    - URL 파서가 핸들러 앞에서 접는 점 세그먼트(`..` · `%2e%2e` — 컨트롤러 Node 실측)와 엣지가 합칠 수 있는 `//`(미실측)는 핸들러에 정규 경로 요청으로 보인다.
+    - 응답이 정규 경로와 같고 클라이언트 질의가 상류에 닿지 않으면 만족이다(bff-api · web.md).
+  - **F9**(B6-8) X7 정정: Django 기본 LOGGING은 `django` 로거에 `mail_admins`(AdminEmailHandler)를 늘 붙인다. 보고서를 실제로 막는 것은 `ADMINS == []`일 때 emit의 조기 반환이다(utils/log.py — 컨트롤러 소스 확인). T071 초안 D14 인계에 반영했다.
+  - **F10**(B6-3 일부) data-model `kv/platform/openfga/preshared` 행에 표식을 달았다 — 서버의 들어오는 쪽 검증 키라 플레이스홀더 · 고정 값을 두지 않는다. 생성 규칙 · 게이트는 인계 H3이다.
+  - **F11**(확인 C-1) 「같은 origin 경로」를 한 정의로 모았다(`return_to` · 프레임워크 리디렉션 `Location` 공통 — bff-api 표 아래 문단 · login 행 · F8 괄호 · web.md).
+    - 퍼센트 디코딩한 값이 `/`로 시작하고 `//`로 시작하지 않으며, `\` · 공백 · C0 제어 문자(탭 · CR · LF) · DEL을 담지 않는다.
+    - 요청 origin 기준 WHATWG 해석의 origin이 요청 origin과 같다.
+    - 까닭: 기존 글자 접두 규칙(`/`로 시작 · `//` 아님 — FR-027 · T089 · T092 문면)은 `return_to=/%5Cevil.com`(디코딩 `/\evil.com`) · `/%09/evil.com`을 통과시킨다. 둘 다 WHATWG 해석으로 `https://evil.com`이다(컨트롤러 Node 실측) — 열린 리디렉션이다.
+    - 이것은 원래 있던 문면의 틈이고, frozen 문면보다 좁히는 쪽이라 부딪히지 않는다.
+  - **F12**(확인 C-2) `jt_csrf`에 `Max-Age=2592000`을 주고, `jt_session`과 같은 자리(callback · refresh)에서 싣는다. 브라우저 세션 쿠키면 재시작 뒤 `jt_session`만 남아, F2의 전제(CSRF 통과 뒤에만 지운다) 때문에 logout이 쿠키를 지우지 못한다(bff-api 쿠키 표 · web.md).
+  - **F13**(확인 C-3) 정적 맵 항목 = 경로 + 메서드(SP-1 두 경로 모두 GET). 맵에 없는 메서드는 404 `not_found`(상류 호출 없음)다. 까닭: Ninja 405는 `text/html`(컨트롤러 확인 — `HttpResponseNotAllowed`)이라 F1에서 503 「상류 장애」로 보고된다(bff-api 프록시 행 · web.md).
+  - **F14**(확인 C-4) 2xx는 `application/json`, 4xx는 `application/problem+json`일 때만 옮긴다. 옮긴 pod 4xx 본문(슬러그 · 필드 — `request_id` 없음)은 pod 계약 몫이고, `x-request-id` 헤더는 BFF 값이다(bff-api 프록시 행 · 응답 열 · §오류 형식 · web.md).
+  - r6 절 X3–X8 머리 줄에 이 절을 가리키는 〔…〕 표식을 달았다.
+- **최종 산출물**(`packages/django-common/` 아래):
+  - `src/django_common/auth.py` 882줄(`c5e7ef37a9a9…`)
+  - `src/django_common/__init__.py`(공개 API 독스트링 · 주석만 — HEAD와 독스트링을 뺀 AST가 같다)
+  - `tests/test_auth_contract.py` 2342줄 · 시험 함수 54 · 사례 447(`3eb04a64b527…`)
+  - `tests/_auth_fakes.py` 329줄(`0aa00fd18513…`)
+  - `tests/authcontractapp/` 4파일(`__init__` · middleware · urls · views)
+  - `pyproject.toml`(주석만 — tomllib 값이 같다)
+  - `tests/test_auth.py`(T062)는 바뀌지 않았다.
+- **컨트롤러 독립 검증**(2026-11-06 · Windows · 한 번에 하나 · 모두 exit 0 · 경고는 기존 `PytestConfigWarning`뿐):
+  - test_auth 32 passed ×2(**T062 PASS**) · test_auth_contract 447 passed
+  - fixtures jwks 3 · dragonfly 1(`-p no:django`)
+  - 회귀: tenancy 16 · tenancy_contract 65 · outbox 16 · outbox_contract 42 · event_patterns 52 · fixtures_pg 3
+  - 위생: hygiene.py 9파일 OK(pyproject · `__init__` 주석 전용 OK) · 문서 dochyg OK(커밋 문서 전부)
+  - gitleaks 파일별 23파일 · 누출 0(커밋하는 파일 전부)
+  - Docker dangling 볼륨 25 → 25 · 남은 testcontainers 0
+- **한계(남긴 것)**:
+  - 동치 변이:
+    - M22(알고리즘 목록 넓힘) · M23(원시 키 + HS256): PyJWK가 알고리즘을 키에 묶는다(api_jws.py:415–430).
+    - M83(`_base_url_parts` 원문 글자 범위 검사 삭제): 유일한 호출자가 V2를 거친 값만 넘긴다. 검사는 심층 방어로 남겼다(W8).
+  - PyJWT 2.15: 서명 키 후보 없는 키 집합이 200으로 오면 lifespan(1 h) 동안 503이 이어진다(fail-closed — 복구는 만료 또는 재시작).
+  - 잠금 대기: fetch 한 번이 도는 동안 같은 출처의 판정(캐시로 통과할 아는 kid 포함)이 PyJWT 2.15.1 잠금을 기다린다.
+    - 그 시간은 연결 · 읽기 소켓 동작마다 2 s이고, 연결은 해석된 주소마다 따로 걸린다.
+    - 실패하면 백오프 창이 계단을 끊는다(T085 R3이 클러스터에서 잰다).
+  - 중복 제거는 PyJWT 잠금 몫이다. PyJWT가 그 잠금을 없애면 빈 캐시 + 동시 요청 + 성공 fetch에서 fetch가 요청 수만큼 돈다. ac-24h가 PyJWT 갱신 때 드러낸다(W3 · 「PyJWT 결합」 줄 — X2).
+  - Access 단계는 다른 자격보다 먼저 돈다. 그래서 엣지를 거치지 않고 pod 포트에 닿는 클러스터 안 호출자가 자격 없이 키 fetch를 일으킬 수 있다(가용성 문제 · 우회 없음).
+  - Bearer 계층에 환경 경계가 없다(U12 — dev · prod pod가 Bearer 검증 조건을 공유한다) → T081 · report.md.
+  - 측정은 Windows 로컬뿐이다. CI는 django-common pytest를 돌리지 않는다(V4 인계). ac-24h 시간 단언의 여유는 0.27 s다 — CI에 넣으면 flake 감시 대상이다(X8).
+  - 프록시 응답 판별은 `content-type` 기준이다(F1 · F14). 엣지 · Access가 2xx `application/json`이나 4xx `application/problem+json`을 낸다면 그대로 옮겨진다(VD T092).
+- **문면과 다르게 한 것(report.md 후보)**:
+  - ① Ninja auth callable을 두지 않았다(D10 — 미들웨어가 모든 비면제 경로를 URL 해석 전에 판정 · Ninja `auth=`는 OR 의미 · 기본 401 본문은 RFC 9457 밖).
+  - ② 문면 밖 산출물 · 동작:
+    - 공개 `check_settings()`(U3)
+    - Access 전용 경로 `AUTH_ACCESS_ONLY_PATHS`(T066 계약)
+    - 키 fetch 실패 503 `auth_keys_unavailable` · 실패 백오프(U4)
+    - 팀 기준 URL 정규형 · LDH 호스트(N9 · U2 · V1)
+    - 인증 문자열 설정은 공백 없는 출력 가능 ASCII만(V2 — 동작하던 값 셋이 설정 오류가 된다: `AUTHENTIK_JWKS_URL` · `DRAGONFLY_URL` · `ACCESS_AUD_ADMIN` — W5)
+    - 요청 속성 지움 · 호스트 검사 선행
+    - `Denylist` 공개 API(T073 재사용) · 웹훅 도우미 `bytes` 본문만 · `WebhookEvent`
+  - ③ spec 인증 순서 두 곳(:421 · :430)이 계약 · 시험(Access 먼저)과 다르다 → 계약이 우선한다(사실 ⑧).
+  - ④ `ACCESS_EXPECTED_CN` = 서비스 토큰 Client ID(`<32 hex>.access`)다. ADR 0006 · tasks.md T075 본문의 「web-bff-<env>」 이름은 낡았다(사실 ⑧).
+  - ⑤ BFF(V5 · W7 · X3 · X5 · X6 · F1 · F2 · F6 · F8 — FR-027 허용 경로 문면은 유지하고 동작을 보강했다):
+    - `/session/check`는 세션 값으로만 질의한다. 그 밖의 클라이언트 질의는 상류로 가지 않는다.
+    - 허용 경로는 정확 일치이고, 상류 URL은 기준 URL + 허용 경로 상수다. 변형 판정은 핸들러 기준이다.
+    - 프록시는 pod가 만든 2xx · 4xx JSON만 상태 · 본문 · `content-type`을 중계한다. 3xx · 5xx · 비JSON은 503이다. 어느 라우트도 하류 응답 헤더를 옮기지 않는다.
+    - 자격을 싣는 하류 호출은 리디렉션을 따르지 않는다. 3xx는 시간 초과와 같은 갈래다.
+    - logout은 세션 · CSRF 검사를 통과한 뒤 하류 결과와 무관하게 쿠키를 지우고, 서버 쪽 폐기가 실패하면 503이다. `jt_csrf`는 `jt_session`과 같은 수명이다(F12).
+    - `return_to` · 프레임워크 리디렉션 `Location`은 「같은 origin 경로」 정의로 판정한다(F11 — FR-027 「`/`로 시작 · `//` 아님」보다 좁다). 정적 맵 항목은 경로 + 메서드다(F13).
+  - ⑥ US6 kv 값 셋은 플레이스홀더가 아니다(X4 · F3).
+    - 대상: `kv/{env}/authentik/identity-admin`의 `jwks_url` · `issuer`(계약 값)와 `kv/{env}/authentik/webhooks/identity-admin`의 `secret`(CSPRNG 실값)
+    - US6 기동 전에 T044 sentinel을 덮어쓰고, US4에서 다시 쓰지 않는다(T081 · T083은 판정만).
+    - 이는 frozen T043(절차 한 줄) · T075(플레이스홀더 절차) · T081(US6 플레이스홀더 교체 한 줄) · T083(웹훅 비밀 · `jwks_url` · `issuer` 투입)과의 편차다.
+    - 까닭: 웹훅 비밀은 들어오는 쪽 검증 키라 알려진 값이면 누구나 서명한다.
+- **실측으로 뒤집힌 가정(report.md 후보)**:
+  - 빈 캐시 · 만료 키 장애의 계단 대기는 공격자 없이 생긴다(r2 B 실측 0.4 → 2.0 s) → N10 보류를 뒤집어 U4.
+  - 연결 시간 초과는 해석된 주소마다 따로 걸린다(2.02 · 4.03 · 6.03 s).
+  - 팀 도메인 끝 점은 조용한 403, 빈 라벨 · 앞 점은 IDNA 오류 503이었다(U13) → 둘 다 설정 오류로.
+  - 마지막 라벨이 `0x` 16진 꼴이면 inet_aton · getaddrinfo가 이름 조회 없이 IP로 푼다(r3 B) → V1.
+  - `str.isprintable()`은 한글 채움 문자(U+3164) · 점자 빈칸(U+2800)을 출력 가능으로 본다(컨트롤러 확인) → V2를 ASCII 범위로.
+  - PyJWT 2.15.1에서 `_client_lock`을 쥐는 곳은 `get_signing_key`뿐이다 → 자기 잠금이면 교착이 없다. 그 잠금을 다시 쥐면 재진입 불가 잠금 판에서 멈춘다(V4).
+  - 자기 잠금은 실패 fetch만 하나로 줄인다. PyJWT 잠금이 없는 판에서 성공 fetch는 요청 수만큼 돈다(r4 B 실측 fetch 5 · 0.3 … 1.5 s) → W3.
+  - PyJWT 2.15.1 `fetch_data`는 `finally`가 아니라 성공 경로 끝(:185–186)에서만 캐시를 채운다(r5 빌더가 소스로 확인 — 지시문 전제 정정).
+  - V2가 연 새 500 경로는 프레임 지역 변수에 비밀번호 URL을 남긴다. structlog 기본 `dict_tracebacks`는 그것을 JSON으로 렌더한다(r4 B 실측) → W4(렌더러가 통제 지점). Django `ExceptionReporter`는 설정 덤프 · 요청 META(`HTTP_CF_ACCESS_JWT_ASSERTION`) · HTML 프레임 지역 변수로 원문을 싣는다(r5 B 실측) → X7(통제는 미사용).
+  - Django 기본 LOGGING은 `django` 로거에 `mail_admins`를 붙인다. 「AdminEmailHandler 없음」은 기본 상태가 아니고, 보고서를 막는 것은 `ADMINS == []`의 조기 반환이다(r6 B · 컨트롤러 소스 확인) → F9.
+  - US6 kv 8경로의 라이브 값은 모든 키가 T044 sentinel이다. W6의 「`jwks_url` · `issuer`는 처음부터 계약 값」은 틀렸다(r5 B 런북 대조) → X4.
+  - `urlsplit`은 앞 공백 · C0 제어 문자만 떼고 끝 공백은 남긴다. 끝을 떼는 것은 `urllib.request.Request`(unwrap)와 redis-py DB 번호 `int()`다(r6 A · B · 컨트롤러 실측) → F5.
+  - WHATWG URL 파서는 점 세그먼트(`..` · `%2e%2e`)를 핸들러 앞에서 접고 `//`는 남긴다. 계약 표의 `.`/`..` 404는 그 꼴이 핸들러에 그대로 닿을 때만 해당한다(r6 B · 컨트롤러 Node 실측) → F8.
+  - Windows에서는 닫힌 포트도 연결 재시도로 약 2 s가 걸린다(r1 VD).
+  - WHATWG 해석은 `\`를 `/`로 바꾸고 탭 · 줄바꿈을 지운다. 그래서 글자 접두 규칙 「`/`로 시작 · `//` 아님」은 `/\evil.com` · `/<탭>/evil.com`(다른 origin)을 통과시킨다(확인 C-1 · 컨트롤러 Node 실측) → F11.
+  - Ninja의 405(`HttpResponseNotAllowed`)는 `text/html`이다(확인 C-3 · 컨트롤러 확인) → F13.
+- **문서로 뒤집힌 가정(미실측 · report.md 후보 — 실측 묶음과 따로 둔다)**:
+  - Access는 엄격 서비스 토큰 인증이 꺼진 조직에서 서비스 토큰 응답에 앱 범위 `CF_Authorization` 쿠키를 실을 수 있다(Cloudflare 문서 — 엄격 모드는 조직 설정 · 2026-10-05 이후 조직만 기본 on) → X3 · VD T076 · T092.
+- **사고**:
+  - r2 리뷰 B와 r3 빌더의 넓은 검색(`grep -r` · `find /`)이 명령 상한 120 s를 넘어 배경 작업이 됐다(저장소 변경 0 · 스스로 보고). r4 지시문에 「넓은 검색 금지 · 라이브러리 소스 경로 명시」를 넣었다.
+  - r4 결과를 받은 직후 컨트롤러도 scratch 전체에 `grep -r`를 돌려 120 s를 넘겼다(배경 작업 → 바로 중단 · 변경 0). 하위 에이전트에게 금지한 일을 컨트롤러가 했다.
+  - r3 보고 ⑧-5(「ac-23c가 순서를 고정한다」)가 사실과 달랐다(A3-3) → V3.
+  - r1 빌더가 빨강 뒤 시험을 다섯 군데 고쳤다(보고에 시각과 함께 · ac-5c는 빨강을 보지 못해 변이로 판별력을 보였다).
+  - 컨트롤러가 처음 쓴 r4 V2 규칙(isprintable)에 빈틈이 있었다 → 빌더를 띄우기 전에 계약 · 규칙 · 이 절을 다시 고쳤다.
+  - r5 지시문에 컨트롤러 사실 오류가 있었다(「`fetch_data`가 `finally`에서 캐시를 채운다」) — 빌더가 소스로 바로잡았고 시험 설계는 영향이 없다.
+  - r5에서 컨트롤러가 쓴 W6 문장이 T044 런북 게이트 · 라이브 sentinel과 어긋났고 웹훅 비밀을 빠뜨렸다(r5 B-2 medium) → X4. 계약 문장을 쓰기 전에 그 kv 경로의 라이브 기록(런북)을 대조하지 않았다.
+  - r6에서도 컨트롤러가 쓴 문장 넷이 근거와 어긋났다.
+    - X4 편차 목록: T075만 적어 T043 · T081 · T083과 `jwks_url` · `issuer`가 빠졌다.
+    - X7 「AdminEmailHandler 없음」: Django 기본과 다르다.
+    - X8 URL 문구: 끝 공백을 `urlsplit` 몫으로 적었다.
+    - T071 초안 (c) 「`_authenticate` 프레임에 원문 Bearer」: 실측은 검증된 `_Bearer`다. X7 본문(`_authenticate.bearer`)은 맞았고, 초안으로 옮기면서 틀렸다.
+    - 넷 다 frozen 문면 · 라이브러리 소스 · 실측을 끝까지 대조하지 않은 탓이다(r6 low · 마감 F3 · F9 · F5 · F4).
+  - 마감 정정 뒤 독립 확인이 원래 있던 BFF 계약 문면의 틈 둘을 찾았다 — `return_to` 글자 접두 규칙의 열린 리디렉션(C-1 → F11) · `jt_csrf` 세션 쿠키 수명(C-2 → F12). 둘 다 설계 때 컨트롤러가 쓴 문면이고 구현(T092) 전에 닫았다.
+  - 마감 정정 초안의 logout 「어느 갈래에서든 쿠키를 지운다」는 CSRF 검사 실패 갈래까지 덮어, 위조 요청으로 남을 로그아웃시킬 수 있는 문장이었다. 적용 전 사본 검수에서 찾아 「세션 · CSRF 검사를 통과한 뒤」로 좁혔다.
+  - r5 빌더의 편집 도구가 기존 줄의 공백 하나를 지웠다(빌더가 diff로 찾아 고치고 변이 · 시험을 최종 바이트로 다시 돌렸다).
+  - r3 동안 남의 컨테이너 `cc-managed-…` 하나가, r6 동안 `cc-fe-it-…` 하나가 사라졌다(우리 명령은 조회뿐 · 무접촉 · 원인 미상).
+- **VD 잔여(라이브)**:
+  - VD-T070-1 · VD-T070-2(`aud` = pod 이름) · VD-5 · certs egress: T081 · T076 · T085.
+  - T085 R3(U5): 실제 certs 호스트의 주소 수 · egress drop 때 fetch 1회 시간 · 빈 캐시 + 블랙홀 + 동시 요청(계단이 없는지) · 그동안 `/healthz` 프로브 지연(gthread).
+  - T081(U10): 교환 토큰의 `sid`는 없거나 비지 않은 str · `tenant_id`는 없거나 소문자 정규형 UUID.
+  - T092(W7 · X6 · F1 · F8): Workers 런타임 fetch의 `redirect` 동작(사용자 정의 헤더가 `Location`으로 가는지) · 경로 변형의 실제 상태 코드(Next 308) · `Location` 꼴 · 상류 호출 0 · 프록시가 받는 엣지 530 · Traefik · Access 응답의 실제 `content-type`.
+  - T076 · T092(X3 — 사용자 동석): m2m 앱의 서비스 토큰 응답에 `Set-Cookie: CF_Authorization`이 실리는지 · 수명. 엄격 서비스 토큰 인증(조직 설정 · 모든 Access 앱에 걸린다)은 T084 · T092가 영향 범위와 함께 정한다.
+- **인계(최종)**:
+  - **T071**:
+    - 두 경로 SENTINEL Sentry 시험(U7)에 (c) `DRAGONFLY_URL` 비밀번호 경로를 더해 세 경로로 하고, 세 경로 모두 JSON 로그 줄(`request_failed` · `django.request`)도 단언한다(W4).
+    - (c)는 Bearer `sub` · `sid`에도 SENTINEL을 심는다(X7). `_authenticate` 프레임이 쥔 것은 검증된 `_Bearer`이고, 원문 토큰은 (a)가 맡는다(F4).
+    - 예외는 `format_exc_info`로만 렌더한다. 규칙 §Logging의 frame locals 문장은 준비된 문서 스크립트가 넣는다(W4).
+    - 요청 로그 `problem` 슬러그(V6) · 마스킹 `cf-access-` · `sub_hash`는 `request.auth_claims["sub"]`에서.
+    - WARNING 두 줄 꼴 고정(`error=` 값에 `backoff` · `url_query`) · `denylist_lookup_seconds`는 auth import 때 등록 · `/health` Dragonfly 0.2 s · 재시도 0 · 쿼리 거부.
+  - **T072**:
+    - 기동 검사에서 `check_settings()`를 부른다(U3). 실패 출력(stderr · 로그 · Sentry)에 값이 없음을 단언한다(W4).
+    - ExceptionReporter 통제(W4 · X7 · F9): `DEBUG=False` 고정 · `ADMINS == []`.
+      - 기본 LOGGING은 `django` 로거에 `mail_admins`를 붙인다. 실제로 막는 것은 `ADMINS == []`일 때 emit의 조기 반환이다.
+      - (a) LOGGING에서 `django` 로거 handlers를 다시 정의해 `mail_admins`를 떼거나, (b) `ADMINS == []` · `DEBUG is False`를 기동 단언으로 고정한다(T071 D14와 같이 정한다).
+      - `ExceptionReporter`는 설정 덤프 · 요청 META · HTML 프레임 지역 변수로 원문을 싣는다. 필터 보강으로는 닫히지 않는다.
+    - 게이트 2(`PLACEHOLDER-` 기동 실패)의 범위를 T075와 함께 정한다(X4 — 웹훅 비밀 · `jwks_url` · `issuer`는 범위 안 · 제외 장치의 꼴은 아래 H1).
+    - ConfigMap · ESO 값에 블록 스칼라 `|`를 쓰지 않는다(V2).
+    - 그 밖: prod · dev `ACCESS_TEAM_DOMAIN` https만 · `AUTHENTIK_JWKS_URL` 공개 도메인 금지(FR-046) · `AUTHENTIK_WEBHOOK_SECRET` 비지 않음 · 백오프 상태는 worker 프로세스마다 따로다 · 프로브 Host.
+    - 이미지 Python ≥ 3.13.2(V6 · W8 확인). CI test job에 django-common pytest를 넣을지(V4 — ac-24h flake 감시 · X8). 생성 pod `uv.lock`의 PyJWT 판(W8).
+  - **T073**: 계약 시험 둘(U8 — 빈 `sub=` · `sid=` → 400 · 새 Dragonfly 연결 0 / CommonMiddleware · OTel 없이 바깥 Host 웹훅 → 400 `invalid_host`, 서명이 틀려도) · `Denylist` 모듈 수준 하나 재사용 · `AUTH_ACCESS_ONLY_PATHS = ("/session/check",)` · `TENANT_CONTEXT_EXEMPT_PATHS`.
+  - **T075 · T043 운영자 블록**(X4 · F3 — data-model 두 행 · 런북 게이트 2 줄):
+    - US6 기동 전에 T044 sentinel을 덮어쓴다.
+      - `jwks_url` · `issuer` = 계약 값(쓴 뒤 판정 = 계약 문자열과 글자 그대로 같다)
+      - 웹훅 `secret` = CSPRNG 32바이트 이상 실값
+    - **H4**(B6-6) 블록 꼴:
+      - 판정 블록과 쓰기 블록을 나누고, 그 사이에 Read-Host를 둔다.
+      - 판정 블록은 읽기 전용이다. 경로별 현재 버전을 읽고, 값이 정확히 sentinel인지 해시로 대조해 세 갈래로 낸다(덮어쓰기 · 이미 실값이라 중단 · 그 밖은 중단).
+      - 쓰기는 JSON stdin + `-cas=<판정 버전>`이다(런북 T045 입력 규칙 — `key=-`는 stdin 끝 개행이 값에 든다).
+      - env마다 따로 만든다(CSPRNG 32바이트 → base64url 43자 또는 hex 64자 — 판정 길이는 그 글자 수).
+      - 쓴 뒤 판정: sentinel 아님 · 길이 · 되읽기 해시 · dev 해시 ≠ prod 해시. 값은 화면 · 파일 · argv · 클립보드에 내지 않는다.
+    - **H2**(A6-6 · 확인 C-6) KV v2: `vault kv put`은 그 경로의 새 버전을 준 키만으로 만든다.
+      - 다섯 키 경로(`kv/{env}/authentik/identity-admin`)의 일부만 바꿀 때는 `vault kv patch`(JSON stdin · `-cas=<판정 버전>`)를 쓴다(또는 다섯 키를 다 담은 JSON put). 명령 꼴은 T075가 dev에서 실측한다.
+      - 해당하는 쓰기는 둘이다: US6 `jwks_url` · `issuer`(T075)와 US4 `client_id` · `client_secret` · `api_token`(T081 · T083).
+      - 쓴 뒤 판정에 「키 집합 = 계약 키 5개」를 더한다.
+      - 런북 :310의 「키당 1회 호출」(`key=-`)을 :342 T045 입력 규칙(JSON stdin만 — `key=-`는 stdin 끝 개행이 값에 든다)과 맞춘다.
+    - 나가는 쪽 자격(`client_id` · `client_secret` · `api_token` · `kv/{env}/openfga/*`)은 T044 게이트 1 · 2와 함께 정한다.
+      - 권고 안 1: sentinel 유지 · consumer 끔 · 게이트 2 범위에서 뺀다 · 게이트 1은 키 단위로 T081 · T082 활성화 앞.
+      - 다른 고정 값으로 바꾸지 않는다.
+    - **H1**(A6-5 · B6-2) 안 1을 고르면 함께 정할 것:
+      - 읽기 경로: `reconcile_authentik_sessions`(일 1회) · `seed_tenant` 사용자 조회는 쓰기 플래그와 무관하게 sentinel `api_token`으로 Authentik을 부른다. beat 일정 · 플래그로 끄거나, Authentik이 생긴 뒤 교체 전까지 일 1회 실패를 받아들인다고 적는다.
+      - prod `AUTHENTIK_WRITES_ENABLED=false`는 identity-admin-api 설정 표(prod `true`) · frozen T073(dev만 비활성)과의 편차다(report.md).
+        - 켜는 자리는 T083이다(`api_token` 실값 · 키 단위 게이트 1과 같은 변경).
+        - 꺼진 채 두면 관리자 · `all_devices` 폐기가 거부 목록 창(330 s) 뒤 풀린다. T085의 ≤ 2 s 측정은 그것을 잡지 못한다 → T085 단언(아래).
+      - 게이트 2 제외 장치:
+        - US6 overlay에만 둔다.
+        - 나가는 쪽 자격 이름의 닫힌 목록으로 둔다.
+        - 들어오는 쪽 비밀(웹훅 비밀)을 넣으면 검증기가 거부한다.
+        - T081 · T082 게이트 1과 같은 자리에서 거둔다.
+        - 끝 상태 단언(`PLACEHOLDER-` 0)은 T085 또는 T077 tester에 둔다(frozen T077 문면에는 없다).
+      - 런북 게이트 1 블록 · PASS 기준(`read=8/8 hits=0`) · 불변식 문구를 키 단위로 바꾼다. 지금 그대로면 안 1에서 T075 게이트 1이 자기 기준으로 FAIL이다.
+  - **T081**: U10(`sid` · `tenant_id` 꼴 실측) · U12(환경별 audience 또는 VD-1 옵션 A) · VD-T070-2 · 웹훅 비밀 · `jwks_url` · `issuer`는 US6 값 그대로 읽고 판정만 한다(X4 · F3 — 교체 없음). 같은 경로에 나가는 쪽 자격만 쓸 때는 H2(일부 키 쓰기 = `patch`)를 따른다.
+  - **T082**(H3 — B6-3): `kv/platform/openfga/preshared`(서버 `authn.preshared`)는 들어오는 쪽 검증 키다. 키 하나가 dev · prod store를 다 연다(ADR 0006 위험 수용).
+    - 플레이스홀더 · 고정 값을 두지 않는다. CSPRNG 32바이트 이상으로 만든다.
+    - 방향은 platform 값이 먼저이고, env 사본(`kv/{env}/openfga/preshared`)이 그 값을 복사한다.
+    - 쓴 뒤 판정: sentinel 아님 · 길이 · env 사본 해시 = platform 해시. 값은 화면 · 파일 · argv · 클립보드에 내지 않는다.
+    - 서버 기동 앞 게이트에 이 경로를 넣는다(게이트 1 목록을 넓히거나 T082 자체 게이트).
+    - 「env 사본은 US6에서 platform 값으로 교체」 문구를 안 1과 맞춘다(안 1이면 「T082에서」). 이 문구는 런북 vault-unseal.md:309와 bootstrap.md:887 두 곳에 있다.
+  - **T083**: 안 1이면 prod `AUTHENTIK_WRITES_ENABLED=true`를 켜는 자리다(H1). 웹훅 경로 · `jwks_url` · `issuer`는 판정만 한다(F3). 나가는 쪽 자격을 쓸 때는 H2(일부 키 쓰기 = `patch`)를 따른다.
+  - **T085**: U5(R3 확장).
+    - 안 1이면 prod 체인에 「폐기가 유지되는지」 단언을 더한다: 관리자 · `all_devices` 폐기 뒤 대상 세션 사본의 refresh가 401(Authentik invalid_grant)이거나, Authentik 세션 API에 그 세션이 없다(H1).
+    - 끝 상태 `PLACEHOLDER-` 0.
+  - **T089 · T092**:
+    - U11(판정에 쓰는 상류 응답은 200 + boolean `active`뿐 — 그 밖은 503 `upstream_unavailable`)
+    - V5(프록시 `/session/check` 질의는 세션 값으로만)
+    - W7(경로 변형 6꼴 404 · 상류 호출 0 · 3xx 비추종 · Workers fetch redirect 실측)
+    - X3 · F6 · F7:
+      - 로컬 상류가 `Set-Cookie` · `Location` · 3xx를 돌려줘도 BFF 응답에는 상류가 준 값이 실리지 않는다. BFF 자신의 쿠키 설정 · 삭제(callback · refresh · logout)와 callback 302 `Location`은 BFF 값으로 따로 단언한다. 3xx는 503이다. 라우트마다 단언한다(확인 C-5).
+      - 클라이언트 `cookie` · `cf-access-token`은 하류로 가지 않는다.
+      - 로그에 `Set-Cookie` · `CF_Authorization` 값이 없다.
+    - F1 · F14: 로컬 상류가 530 `text/html` · 403 `text/html` · 4xx `application/json`(problem+json 아님) · 5xx problem+json을 돌려주면 BFF는 503 problem+json(쿠키 유지)이다. 2xx JSON · 4xx problem+json만 상태 · 본문 · `content-type`을 옮긴다. `nosniff`를 단다. `/api/health`는 200 JSON이 아니면 503이다.
+    - F11: `return_to` = `/\evil.com`(`/%5Cevil.com`) · `/%09/evil.com` · `/%0A/evil.com` · `//evil.com` · `https://evil.com` → 400 `invalid_return_to`. callback 재검증도 같다. 프레임워크 리디렉션 `Location`도 같은 정의로 본다.
+    - F12: callback · refresh가 `jt_csrf`를 `jt_session`과 같은 Max-Age로 싣는다. `jt_session`만 있고 `jt_csrf`가 없는 logout의 응답은 아래 H5다.
+    - F13: POST · PUT · DELETE · HEAD `/api/proxy/identity-admin/tenants/me` → 404 `not_found` · 상류 호출 0(pod 405 `text/html`에 닿지 않는다).
+    - F2: callback 코드 교환이 시간 초과 · 3xx · 5xx면 503(세션 쿠키 없음)이다. logout은 상류 3xx · 시간 초과에서 쿠키 삭제 · Authentik revoke 시도 · 503이다.
+    - X5(리디렉션 목록 — Authentik 토큰 엔드포인트 전부 · revoke · 3xx = 시간 초과 갈래)
+    - X6 · F8:
+      - 핸들러 단위: 404 · 상류 0 + `constructor` · `__proto__`
+      - 통합 단: 상태 · `Location` 꼴 · 상류 호출 수 · 상류 질의를 함께 잰다 — 기대는 셋 모두 허용(308 → 정규 · 조용한 정규화 · 핸들러 404)
+      - 그 밖: `request.url` pathname · `Map`/`Object.hasOwn` · `IDENTITY_M2M_URL` origin 꼴 검사
+    - **H5**(A6-2 · B6-1 나머지 · 확인 C-2): callback 코드 교환 4xx의 응답 슬러그 · logout에서 refresh가 이미 만료 · 폐기돼 교환할 수 없을 때(`all_devices` 포함)의 응답 · `jt_session`만 있고 `jt_csrf`가 없을 때(쿠키 일부 삭제)의 logout 응답.
+    - **H6**(컨트롤러): 프록시가 옮기는 pod 403 `access_required`(서비스 토큰 · Access 층 문제 — 사용자 탓이 아니다)를 그대로 둘지, `/api/session`(T070 r3)처럼 503으로 접을지 정한다.
+  - **PyJWT 갱신 절차**: test_auth_contract ac-24a–h를 돌린다. ac-24h가 실패하면 PyJWT가 중복 제거를 그만둔 것이다 → W3 (a)를 다시 정한다.
+  - **report.md**: U12 환경 경계 · V4 CI 공백(+ W8 생성 pod uv.lock · X8 ac-24h 여유) · W5 행동 변화 셋 · 위 「문면과 다르게 한 것」(⑥ X4 편차 = T043 · T075 · T081 · T083) · 「실측으로 뒤집힌 가정」 · 안 1을 고르면 prod 쓰기 플래그 편차(H1).
+- **학습 로그**: `content/tmp/003-t070/2026-11-05.md` · `2026-11-06.md`.
+
+## T071 (2026-11-05 설계 · 11-06 보정(T070 r6 A-7 · B-8 — D11 (c) · D14) — US6 구현 · `packages/django-common/src/django_common/{observability,health}.py` → T063 PASS · 세션 모델 Opus 5.5)
+
+- **과제 문면(tasks.md T071 · :188)**: structlog + django-structlog `RequestMiddleware`(X-Request-ID) + 마스킹 processor(`authorization` · `cookie` · `x-authentik-signature` 제거) · `configure_otel()`(DjangoInstrumentor · OTLP http `OTEL_EXPORTER_OTLP_ENDPOINT` · `parentbased_traceidratio` 0.1 · 헬스 3종 제외 · response_hook tenant/sub_hash) · `configure_sentry()`(errors only · release = digest · `send_default_pii=False` · `before_send`로 `Authorization` · `Cookie` · `CF-Access-*` 제거) · `health_router`(`/healthz` 정적 · `/ready` = DB만(django-health-check DB) · `/health` 상세) → T063 PASS.
+- **소스로 확인한 사실**(읽기 전용 조사 워크플로 `wf_4b472661-c84` — 시험 · 명세 · 런타임 · Sentry 네 갈래 · 1.77M 토큰, 보고 `.superpowers/t071/research/{tests,spec,runtime,sentry}.json`):
+  - ① **빨강**: `tests/test_observability.py:84`의 `from django_common.observability import configure_otel`이 수집 단계에서 `ModuleNotFoundError`다. observability만 생기면 다음 벽은 `tests/obsapp/urls.py:15`의 `django_common.health`(첫 요청의 urlconf 적재). 시험 독스트링 :46-48과 pyproject 머리 주석의 빨강 설명(「django.setup()이 tenancy를 못 찾아」)은 T068 이전 문장이라 낡았다(T063 산출물 — 고치지 않는다).
+  - ② **시험이 고정한 공개 이름**: `configure_logging(stream=)` · `configure_otel(span_exporter=)`(반환 = SDK `TracerProvider` — `.sampler.get_description()` · `.shutdown()`) · 설정 문자열 `django_common.observability.RequestIdMiddleware` · ninja Router `health_router`(`NinjaAPI(...).add_router("", health_router)`로 루트 — `/healthz` · `/ready` · `/health` GET · OpenAPI에 보여야 한다(api-50)). `configure_sentry`는 시험 0건이다.
+  - ③ **로그 줄(obs-1..7 · 20 · 21)**: 한 줄 = JSON 객체 하나 · 모든 줄에 `ts`(ISO 8601 UTC) · `level` · `event` · `logger` · stdlib 줄(django.request 404)도 같은 sink · INFO가 살아야 한다 · 같은 이벤트 중복 금지 · `request`는 `GET <경로>`(쿼리 없음) · request_id = 상류 `^[A-Za-z0-9._:-]{1,128}$`면 그대로 · 아니면 uuid · 응답 헤더 X-Request-ID = 로그 값 · 버린 값은 어디에도 없음 · request_finished의 `tenant_id`(str) · `sub_hash`(hex ≥ 16 · 결정적 · sub별로 다름 · 없으면 키 없음) · 마스킹은 키째 제거 · Mapping 전체 재귀(HttpHeaders 포함) · sampled 요청 세 줄의 `trace_id` · `span_id`.
+  - ④ **라이브러리가 대신하지 않는 것**(런타임 T1 — 설치 소스 대조): django-structlog 11은 TRUST 설정이 True면 형식 검사 없이 상류 id를 받고 응답 헤더를 붙이지 않으며, `request`에 쿼리를 넣고 `ip`(X-Forwarded-For 왼쪽 — 조작 가능) · `user_agent`를 남기고, `request.user`가 있으면 `user_id`(pk — AuthenticationMiddleware면 DB 조회)를 묶는다. 그래서 형식 검사 · 응답 헤더 · 쿼리 제거 · tenant/sub_hash 추가를 하위 클래스가 해야 한다.
+  - ⑤ **누출 함정 셋**: structlog `dict_tracebacks`는 기본 `show_locals=True`라 프레임 지역 변수(psycopg conninfo 비밀번호 · Kafka 설정 dict)를 싣는다 · `ExtraAdder()`는 django.request 레코드의 `request` 객체를 실어 repr(쿼리 포함)이 찍힌다 · JSONRenderer 기본 폴백은 repr이라 Mapping · UUID · HttpRequest가 repr로 나간다.
+  - ⑥ **OTel 0.66b2**: 두 번째 `instrument()`는 경고만 내고 무시된다(uninstrument 뒤 재계측) · 제외 판정은 쿼리를 뗀 절대 URI에 앵커 없는 `re.search`(쉼표로 쪼갬 — `{m,n}` 금지) · 기본 모드 `http.url`/`http.target`(gunicorn RAW_URI)에 쿼리가 들어간다 · new semconv(`OTEL_SEMCONV_STABILITY_OPT_IN`)면 `url.query`가 시작 속성이라 공개 API로 지울 수 없다 · 헤더 캡처 env를 켜면 Authorization이 가림 없이 실린다 · 샘플러 ARG가 비거나 틀리면 경고 한 줄 뒤 비율 1.0(fail-open) · 비샘플 span도 유효한 컨텍스트다 · **제외 판정이 `build_absolute_uri("?")` → `get_host()`를 불러 헬스 경로도 DisallowedHost → 400이 될 수 있다**(kubelet Host = pod IP — T072).
+  - ⑦ **헬스 하네스(obs-11..18 · api-1..3 · 52)**: `/healthz`는 DB · Dragonfly · Kafka에 닿으면 안 된다(DB 마크 없는 시험이 부른다) · `/ready`는 default 별칭 DB만 · 503은 `not_ready` problem+json · `/health`는 항상 200 · checks 키 집합 정확히 `{db, dragonfly, kafka_producer}` · 예산 DB 2 s(psycopg `connect_timeout` 하한) · Dragonfly 0.2 s · Kafka 1 s → 순차 합 3.2 s라 병렬만 통과(< 3 s · 블랙홀 포함) · 시험은 `settings_dict`를 제자리에서 고쳐 DB를 내리므로 **상주 스레드가 연결을 들고 있으면 다운을 못 본다** · `KAFKA_BOOTSTRAP_SERVERS = ""`이면 `client_config()`의 `ImproperlyConfigured`도 fail로 삼켜야 한다 · redis-py 기본 5 s · 재시도 10회 · URL 쿼리가 키워드 인자를 이긴다 · confluent `list_topics` 기본 timeout은 무한(GIL은 놓는다).
+  - ⑧ **세션 전역 부작용**: `log_sink`는 세션 픽스처라 configure_logging이 뒤 모듈(test_outbox_contract의 `caplog` 단언 69곳)까지 남는다 — 기존 로거를 끄거나(dictConfig `disable_existing_loggers` 기본 True) 전파를 끊거나 pytest 핸들러를 지우면 전체 실행에서 깨진다. `instrument()`는 MIDDLEWARE list를 제자리에서 고친다.
+  - ⑨ **sentry-sdk**(웹 문서 · PyPI — 미설치라 소스 미확인 항목은 빌더가 설치 뒤 소스로 다시 확인한다): 최신 안정 2.73.0(2026-10-22 업로드 · 3.0은 b3까지 프리릴리스 — 3.x는 이 옵션들을 없앤다 → `<3` 필수) · 의존(urllib3 · certifi)은 이미 lock에 있어 변화량 1패키지 · `send_default_pii`는 2.72부터 폐기 예고(False를 넘겨도 DeprecationWarning · 생략 = False) · 기본 경로는 Authorization · Cookie 값만 비우고 `Cf-Access-*` · `X-Authentik-Signature` · `query_string` 원문 · 10 KB 이하 본문 · 프레임 지역 변수(`include_local_variables` 기본 True)는 그대로 보낸다 · 자동 RedisIntegration이 거부 목록 키 `revoked:sub:<sub>`를 브레드크럼에 원문으로 남긴다 · LoggingIntegration은 원본 LogRecord를 보아 포매터 단계 마스킹을 거치지 않는다 · `trace_propagation_targets` 기본 `[".*"]`라 트레이싱이 꺼져도 모든 http.client 호출(PyJWKClient → Cloudflare certs · OTLP)에 sentry-trace · baggage(public_key · release)가 붙는다 · 빈 DSN으로 init하면 전송만 없고 패치 · 전파는 켜진다 · django.test.Client는 Sentry가 패치한 `WSGIHandler.__call__`을 거치지 않아 헤더 시험이 공허하다.
+  - ⑩ **어긋남**:
+    - 문면 「/ready = django-health-check DB」 ↔ 규칙 · T063 D10(`SELECT 1` — 테이블이 RLS 허용 목록을 깬다) → `SELECT 1`(report.md 편차 후보).
+    - 문면 「release = digest」: digest는 빌드 뒤 정해져 이미지에 구울 수 없고 env.example 20키에도 없다 → `<pod>@<git sha>`(D7 · 계약 보정 · report.md 편차 후보).
+    - Sentry 제거 헤더: T071 문면 · 계약 `Authorization · Cookie · CF-Access-*` ↔ T100 `authorization · cookie · x-authentik-signature` → 허용 목록으로 둘 다 덮는다(D7).
+    - 로그 필드: pod-template(`ts level logger event request_id tenant_id sub_hash trace_id span_id`) ↔ identity-admin-api §관측(`route status duration_ms`) ↔ django-structlog(`request code`) → 한 목록으로 맞춘다(D3 · C1 · C2).
+    - `/health` 본문의 `version` · `git_sha` · `degraded` · `latency_ms`는 시험 「T071 가정」에만 있고 계약에는 없다 → 계약에 적는다(C2).
+    - OTLP: research gRPC 4317 ↔ 계약 · 문면 http → http 4318(엔드포인트 값에 스킴 필요 — T098 문면 값에는 스킴이 없다).
+    - 규칙 §Logging 「`DJANGO_STRUCTLOG_TRUST_UPSTREAM_REQUEST_ID = True` in pod settings」 ↔ D3(미들웨어가 설정과 무관하게 형식 검사 뒤 받는다) → 규칙 보정(C4).
+  - ⑪ **소유 공백**: web `/metrics`(9100) 서버와 `http_requests_total{route,status}`를 맡는 태스크 줄이 없다(T071 · T072 문면 무언급 · 계약 · T098 · network-policy에는 있다).
+  - ⑫ **pod 핀 django-ninja 1.7.0** ↔ 워크스페이스 1.7.3(시험) — 1.7.3 전용 기능(`Status` · 라우터 재사용)에 기대지 않는다. 〔r2 Y5 — 라우터 재사용은 1.7.0에도 있다 · VD-T071-1 oc-43〕
+- **계약 보정(컨트롤러 · 이 설계와 같은 커밋 · 「T071 보정 2026-11-05」 표식)**:
+  - **C1** `contracts/pod-template.md` §런타임 계약 「로그」 행 · 「트레이스 · Sentry」 행 · §공개 API(`django_common.observability` · `django_common.health` 시그니처)를 D2–D8로 고친다.
+  - **C2** `contracts/identity-admin-api.md` 헬스 표 3행(본문 꼴 · degraded · latency_ms · `/ready` 200 본문) · 타임아웃 표 `/health` 행(전체 마감 2.5 s · 진행 중 검사 상한) · §관측 로그 · 트레이스 · Sentry 줄을 같은 문장으로 맞춘다.
+  - **C3** `contracts/events.md` 「librdkafka 자체 로그 … (수집 형식은 T071)」 → 원문 stderr 유지 결정(D9).
+  - **C4** `.claude/rules/django-pod.md` §Logging 두 줄을 영어로 같이 고친다(TRUST 설정 문장 삭제 · 마스킹 목록 · sub_hash · 예외 렌더 · 헬스 스레드 · Sentry) · kr 미러는 translation-pending 줄.
+  - **C5** BFF → pod 정보용 헤더 `x-forwarded-user-sub`(원문 sub)가 pod 로그 마스킹 · Sentry 허용 목록 밖임을 그 헤더를 적은 계약 줄에 붙인다.
+- **결정 D1–D15(컨트롤러)**:
+  - **D1 범위**: `src/django_common/observability.py` · `src/django_common/health.py` · 새 시험 `tests/test_observability_contract.py`(T071 소유 — T063이 고정하지 않은 표면) · 필요하면 `tests/obscontractapp/`(T071 소유 urlconf · 뷰) · `tests/_obs_fakes.py`. 의존성 `sentry-sdk>=2.73,<3` 한 줄(pyproject :28 주석 자리 — 정당화 주석)과 루트 `uv lock`(변화량 sentry-sdk 1패키지 · 다른 패키지 판 변화 0). 주석 전용: `src/django_common/__init__.py` 독스트링 · pyproject 머리 주석(「T071에서 들어온다」 문장). T063 산출물(`test_observability.py` · `obsapp/` · `_problem.py` · `_dragonfly.py` · conftest · settings)과 T060–T070 산출물은 바꾸지 않는다.
+  - **D2 `configure_logging(*, stream: TextIO | None = None, level: str = "INFO") -> None`**:
+    - structlog → stdlib 한 경로: `structlog.configure(processors=[merge_contextvars, add_log_level, add_logger_name, TimeStamper(fmt="iso", utc=True, key="ts"), add_trace_ids, mask_sensitive, format_exc_info, ProcessorFormatter.wrap_for_formatter], logger_factory=stdlib.LoggerFactory(), wrapper_class=stdlib.BoundLogger, cache_logger_on_first_use=False)` — 재호출이 언제나 반영된다(캐시 고정 없음 · 요청량이 작아 조립 비용은 받아들인다).
+    - stdlib: 루트에 `StreamHandler(stream or sys.stdout)` 하나 + `ProcessorFormatter(foreign_pre_chain=[merge_contextvars, add_log_level, add_logger_name, TimeStamper(…key="ts"), add_trace_ids, format_exc_info], processors=[remove_processors_meta, mask_sensitive, JSONRenderer(default=안전 폴백)])`. `ExtraAdder`는 쓰지 않는다(레코드 extra는 버린다).
+    - 우리 핸들러에는 표식을 달고, 다시 부르면 그 핸들러만 바꾼다(중복 줄 0). 다른 핸들러(pytest caplog 등) · 다른 로거의 `level` · `propagate` · `disabled`는 건드리지 않는다(dictConfig를 쓰지 않는다). 루트 레벨 = `level`.
+    - 예외는 `format_exc_info`(지역 변수 없음)로만 렌더한다. `dict_tracebacks` · `ExceptionDictTransformer(show_locals=True)`는 금지다.
+    - JSON 폴백(repr 금지 — fail-closed): `uuid.UUID` → `str` · `datetime`/`date`/`time` → `isoformat()` · `Decimal` → `str` · 그 밖(bytes · HttpRequest · 설정 객체 등) → `"<타입 이름>"`. `ensure_ascii`는 기본(True — 외톨이 서로게이트도 안전하게 이스케이프된다).
+    - `mask_sensitive`(두 체인 모두 — structlog 체인에서 wrap 앞에 두어 원본 레코드의 msg도 마스킹된 상태가 된다 · Sentry LoggingIntegration을 쓰지 않아도 handleError 출력에 원문이 남지 않게): 〔r2 Y4 — 마스킹 키에만 맞다 · 값의 repr은 남았다(B-4) → handleError 고정 줄〕
+      - 키 정규화 = 소문자 · `_` → `-` · 앞의 `http-` 제거(META 키 `HTTP_AUTHORIZATION`). 〔r2 Y4 — `.`도 `-` · bytes 키도 판정〕
+      - 키째 제거: `authorization` · `proxy-authorization` · `cookie` · `set-cookie` · `x-authentik-signature` · `x-forwarded-user-sub`(BFF 정보용 원문 sub — C5) · 접두 `cf-access-`(`cf-access-jwt-assertion` · `cf-access-client-id` · `cf-access-client-secret` — T070 D14). 〔r2 Y4 — 쿠키 · META · 비밀 이름 · 접미 · 자격 URL · `sub`로 넓혔다〕 〔r3 Z4 — 목록 기준 · referer · OTel META 접두 · 쿠키 접두 · camelCase · memoryview · 접미 대칭〕
+      - 재귀: `collections.abc.Mapping` 전체(dict로 바꾼다) · list · tuple(list로) · 깊이 상한 16(넘으면 `"<truncated>"`) · 순환은 `"<cycle>"`. 키가 str · int · float · bool · None이 아니면 `"<타입 이름>"` 키로 바꾼다. 어떤 값에도 예외를 내지 않는다. 〔r2 Y4 — 첫 항목이 마스킹 이름인 쌍은 쌍째 뺀다〕
+      - 값 안의 비밀(토큰이 든 문자열)은 잡지 않는다 — 호출자 규칙(비밀을 로그 필드로 넘기지 않는다 · T062 K12)이다.
+    - `add_trace_ids`: 현재 span이 **기록 중(`is_recording()`)일 때만** `trace_id`(32 hex) · `span_id`(16 hex)를 단다 — 내보낸 span과 1:1(비샘플 요청의 유효하지만 기록 없는 span id는 Tempo에 없다 · 계약 「유효 span」을 이 뜻으로 고친다).
+  - **D3 `RequestIdMiddleware`(django-structlog `RequestMiddleware` 하위 클래스)**:
+    - 요청 머리에서 structlog contextvars를 먼저 비운다(앞 요청이 handle_response를 끝내지 못했을 때 남은 값 차단).
+    - request_id: 상류 `X-Request-ID`가 `re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", v)`면 그대로, 아니면 `str(uuid.uuid4())`. `DJANGO_STRUCTLOG_TRUST_UPSTREAM_REQUEST_ID` 설정과 무관하다(형식 검사가 받을 조건이다 — 호출자는 Access 뒤의 BFF · tester와 클러스터 안 Authentik뿐이다 · 규칙 문장 보정 C4).
+    - 응답 헤더 `X-Request-ID` = 그 값(성공 · 실패(500) 두 갈래 모두).
+    - `request` 필드 = `"<METHOD> <request.path>"`(쿼리 없음 — started · finished · failed 세 이벤트).
+    - request_finished에 더한다: `code`(django-structlog — HTTP 상태) · `route`(`request.resolver_match.route` — 해석된 때만) · `duration_ms`(요청 머리부터 · 소수 한 자리) · `tenant_id`(`request.tenant_id`가 `uuid.UUID`일 때만 `str`) · `sub_hash`(`request.auth_claims["sub"]`가 비지 않은 str일 때만 — D4) · `problem`(응답이 `application/problem+json`이면 본문 `type`의 마지막 경로 조각 — 예: `session-revoked` · 본문을 읽지 못하거나 `https://joshuatech.dev/problems/<slug>` 꼴이 아니면 키 없음 · 스트리밍 응답은 읽지 않는다 · T070 r4 V6: `session_revoked`(탈취 토큰 재사용 신호)를 `invalid_token`과 가를 신호가 지금은 없다 — 둘 다 401이고 거부 목록 지표의 `revoked`는 판정이 아니다 · 계약 로그 필드 목록에 더한다).
+    - 남기지 않는 것: `ip`(X-Forwarded-For 왼쪽 값 — 조작 가능 · 개인정보) · `user_id`(`request.user`에 접근하지 않는다 — /healthz DB 조회 0 유지). `user_agent`는 request_started에 남긴다(kubelet 프로브 · BFF 구분).
+    - 수준은 django-structlog 기본(2xx INFO · 4xx WARNING · 5xx ERROR)이다. 헬스 요청도 로그를 남긴다(obs-12). DB 장애 동안 `/ready` 503마다 ERROR 두 줄(request_finished · django.request)이 쌓이는 것은 받아들인다(장애 신호 · 양은 Alloy 필터 T098).
+  - **D4 sub_hash** = `django.utils.crypto.salted_hmac("django_common.observability.sub_hash", sub, algorithm="sha256").hexdigest()[:32]`(SECRET_KEY 파생 — 새 비밀 설정 0 · 같은 pod · 같은 키에서 결정적 · 키가 없으면 UUID 목록으로 역산할 수 없다). 로그와 span이 같은 함수를 쓴다. SECRET_KEY를 돌리면 값이 바뀌고, pod끼리 같은 사용자의 값은 다르다(교차 상관은 request_id · trace_id가 맡는다).
+  - **D5 `configure_otel(*, span_exporter: SpanExporter | None = None, excluded_urls: str | None = None) -> TracerProvider`**(호출할 때만 동작 · import 부작용 0):
+    - env 검증(설정 오류는 이름만 실은 `ImproperlyConfigured` — 기동 실패가 조용한 열림보다 낫다): `OTEL_SEMCONV_STABILITY_OPT_IN`에 `http`가 있으면 거부(`url.query`를 지울 수 없다) · `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST`/`_RESPONSE`가 비지 않으면 거부 · `OTEL_PYTHON_DJANGO_MIDDLEWARE_POSITION`이 있으면 거부(가장 바깥이어야 request_started가 span 안이다) · `OTEL_PYTHON_DJANGO_INSTRUMENT`가 false면 거부. 〔r2 Y1 — `TRACED_REQUEST_ATTRS` · `OTEL_SDK_DISABLED=true`를 더해 일곱 · import 때 굳은 값 확인〕 〔r3 Z1 — `OTEL_PROPAGATORS` · `CAPTURE_ALL_METHODS`를 더해 아홉 · 굳은 값 확인 셋 · Django 계측 지표 끔〕 〔r5 P5 — OTLP 헤더 둘을 더해 열하나〕 〔r6 G1 — 열일곱(mTLS 클라이언트 키 · 인증서 넷 · 닫힌 꼴 밖 엔드포인트 둘)〕
+    - 샘플러: `OTEL_TRACES_SAMPLER`가 없으면 계약 기본 `ParentBased(TraceIdRatioBased(0.1))`. 있으면 SDK 이름 집합 안이어야 하고, 비율 샘플러면 `OTEL_TRACES_SAMPLER_ARG`가 [0, 1]의 수여야 한다 — 아니면 거부(SDK의 「경고 뒤 1.0」 fail-open을 막는다). 값은 부를 때마다 env에서 읽는다(obs-8).
+    - Resource: `service.name` = `settings.OUTBOX_SOURCE`(pod 이름 · kebab 검사) · `service.version` = `settings.APP_VERSION`. `OTEL_SERVICE_NAME` · `OTEL_RESOURCE_ATTRIBUTES`가 있으면 SDK 규칙대로 그것이 이긴다.
+    - 내보내기: `span_exporter`가 있으면 `SimpleSpanProcessor`(시험 — 동기). 없으면 `OTEL_EXPORTER_OTLP_ENDPOINT`(또는 `_TRACES_ENDPOINT`)가 있을 때만 `BatchSpanProcessor(OTLPSpanExporter())` — 값은 `http://` · `https://`로 시작해야 한다(아니면 거부 · T098 문면 값에 스킴을 붙인다). 엔드포인트가 없으면 내보내기를 두지 않고 WARNING 한 줄(`otel_exporter_disabled` — 이름만)을 남긴다(localhost:4318 시도 · ERROR 반복 없음). 〔r6 G1 — 비지 않은 엔드포인트 env 둘은 닫힌 꼴 `scheme://host[:port][/path]`만 받는다 · 검사는 `span_exporter`와 무관하게 OTel import 전〕
+    - 계측: 이미 계측 중이면 `uninstrument()` 뒤 `instrument(tracer_provider=provider, response_hook=…, excluded_urls=excluded_urls or 기본)`. 기본 제외 = `^https?://[^/]+/healthz$,^https?://[^/]+/ready$,^https?://[^/]+/health$`(앵커 · 호스트 포함 · 쉼표 구분 — env `OTEL_PYTHON_DJANGO_EXCLUDED_URLS`는 인자가 있어 쓰이지 않는다).
+    - 전역 provider는 아직 Proxy일 때만 `set_tracer_provider`(덮어쓰기 경고 0). 반환값은 새 provider.
+    - `response_hook(span, request, response)`: `span.is_recording()`이 아니면 아무것도 하지 않는다. `http.url` · `http.target` · `url.full` 값이 있으면 `?` 앞까지로 덮어쓴다(get_host를 다시 부르지 않는다 · gunicorn RAW_URI 경로 포함). `tenant_id`(str) · `sub_hash`(D4)를 더한다. 예외를 내지 않는다.
+    - 프로브 Host: 계측된 pod는 헬스 경로에서도 Host를 검사한다(사실 ⑥) — kubelet 프로브 Host 해결은 T072(httpHeaders Host 또는 ALLOWED_HOSTS) 인계다.
+  - **D6 헬스 `health_router`**(ninja `Router` 모듈 싱글턴 · 세 연산 모두 `auth=None` 명시(pod API가 auth를 걸어도 프로브가 401을 받지 않는다) · OpenAPI에 보인다 · 1.7.0 · 1.7.3 공통 기능만):
+    - `/healthz`: `{"status": "ok", "version": APP_VERSION, "git_sha": APP_GIT_SHA}` — I/O 0. 설정이 str가 아니면 `"unknown"`(liveness는 설정 오류로 죽지 않는다 — 존재 검사는 T072 settings).
+    - `/ready`: default 별칭 DB 검사 하나 → 200 `{"status": "ok"}` 또는 `problem_response("not_ready", 503)`(detail 없음).
+    - `/health`: DB · Dragonfly · Kafka를 병렬로 검사 → 항상 200 `{"status": "ok" | "degraded", "version", "git_sha", "checks": {"db", "dragonfly", "kafka_producer"}}` · 항목 `{"status": "ok" | "fail", "latency_ms": float}`(fail에도 걸린 시간 — 마감이면 마감 값 · 사유 · 예외 문자열 없음).
+    - 실행: 검사마다 **새 데몬 스레드** 하나(풀 없음 — 상주 스레드가 DB 연결을 들고 있지 않게)와 마감(`/ready` · `/health` 모두 2.5 s — 전체 < 3 s). 마감을 넘긴 스레드는 버려 두되, 진행 중 검사 수 상한(모듈 `BoundedSemaphore(32)`)을 넘으면 새 스레드 없이 곧바로 fail이다(지속 정지에서 스레드가 쌓이지 않는다). 〔r2 Y2 — 상한은 검사 칸마다 8 · `/ready` 칸은 따로〕 〔r3 Z3 — 스레드를 만들거나 시작하지 못해도 자리를 놓고 곧바로 fail〕 〔r5 P4 — 자리는 스레드가 시작되지 않았을 때만 그 자리에서 놓는다(시작됐으면 그 스레드가 끝날 때)〕
+    - DB: 작업 스레드에서 `connections["default"]`(그 스레드의 새 연결 — 설정은 호출 시점 dict) → `ensure_connection()` → `SELECT 1` → `finally connections.close_all()`(그 스레드 것만). 시간 상한은 pod DB OPTIONS `connect_timeout`(계약 2 s — T072)과 마감이다.
+    - Dragonfly: 요청 시점 `settings.DRAGONFLY_URL`(Secret이면 값)로 `Redis.from_url(url, socket_connect_timeout=0.2, socket_timeout=0.2, retry=Retry(NoBackoff(), 0))` → `ping()` → `close()`. URL에 쿼리가 있으면 시도 없이 fail(쿼리가 타임아웃을 덮는다 — T070 D7과 같은 규칙).
+    - Kafka: `AdminClient({**client_config(), "log_level": 0})` → `list_topics(timeout=1.0)`. `client_config()`의 `ImproperlyConfigured`를 포함한 모든 예외가 fail이다. 헬스 클라이언트는 librdkafka 로그를 끈다(장애 신호는 relay 프로듀서 줄과 이 결과가 맡는다).
+    - 의존 예외는 모두 삼켜 fail로 바꾼다(500 금지). 검사 스레드는 로그를 남기지 않는다(요청 로그의 code가 남는다). `django_common.outbox.metrics`를 import하지 않는다.
+  - **D7 `configure_sentry(*, transport: Transport | None = None) -> bool`**(초기화했으면 True — 호출할 때만 · `sentry_sdk` import는 함수 안):
+    - `settings.SENTRY_DSN`(str 또는 Secret)이 비었거나 없으면 **init하지 않고** False(빈 DSN init은 패치 · 전파를 켠다). 있으면 `ENV` ∈ {dev, prod, test} · release 원천이 맞아야 한다(아니면 이름만 실은 `ImproperlyConfigured`). 무효 DSN도 `ImproperlyConfigured`(`from None`).
+    - release = `f"{settings.OUTBOX_SOURCE}@{settings.APP_GIT_SHA}"`(git sha = 이미지 라벨 revision · 문면 「digest」는 빌드 뒤 정해져 이미지에 구울 수 없다 — C1 · report.md 편차 후보). environment = `settings.ENV`.
+    - init 인자: `include_local_variables=False` · `max_request_body_size="never"` · `max_breadcrumbs=0` · `trace_propagation_targets=[]` · `auto_session_tracking=False` · `spotlight=False` · `debug=False` · `auto_enabling_integrations=False` · `integrations=[DjangoIntegration(), LoggingIntegration(level=None, event_level=None)]` · `disabled_integrations=[StdlibIntegration]` · `before_send=…`. 넘기지 않는 것: `send_default_pii`(2.72+ 폐기 예고 — 생략 = False · 시험이 `should_send_default_pii() is False`를 단언 · C1 보정) · `traces_sample_rate` · `profiles_*` · `enable_tracing` · `enable_logs`(0이 아니라 미설정이어야 트레이싱이 꺼진다). 〔r2 Y3 — `sentry_logs_level=None`도 넘긴다〕
+    - 「errors only」 = 예외 포착만이다(Django 통합의 got_request_exception · 5xx 응답 패치 · excepthook). 로그는 브레드크럼도 이벤트도 되지 않는다(쿼터 — DisallowedHost ERROR · 5xx request_finished ERROR · OTLP 실패 ERROR가 이벤트가 되지 않는다).
+    - `before_send`(직렬화된 dict · 예외를 내면 SDK가 이벤트를 버린다 = fail-closed):
+      - `request.headers`는 허용 목록만 남긴다(소문자 비교): `host` · `user-agent` · `accept` · `content-type` · `content-length` · `x-request-id` · `traceparent`. 그 밖(Authorization · Cookie · CF-Access-* · X-Authentik-Signature · X-Forwarded-* · Cf-Connecting-Ip 등)은 키째 지운다. 〔r2 Y3 — `x-request-id`를 뺐다 · `contexts.trace` · DSC 정리〕 〔r3 Z2 — `traceparent`도 뺐다〕
+      - `request.query_string` · `cookies` · `data` · `env`(SERVER_NAME · SERVER_PORT 밖)와 `request.url`의 `?` 뒤 · `user` · 그 경로의 `_meta`를 지운다. 프레임 `vars`를 지운다(심층 방어). 이벤트 전체에 D2의 키 마스킹을 한 번 더 건다.
+      - 태그: `request_id`(structlog contextvars의 현재 값 — 포착은 요청 안에서 일어난다) · `trace_id`(현재 OTel span이 기록 중일 때 32 hex).
+    - 호출 위치는 미들웨어 적재 전이다(Django 통합 수신자가 django-structlog보다 먼저 연결된다 — T072 인계).
+    - 의존성: `sentry-sdk>=2.73,<3`(extra 없음 — `opentelemetry` extra는 distro · grpc를 끌어온다). 빌더는 설치 뒤 위 전제(헤더 · 쿼리 · 지역 변수 · 브레드크럼 · 전파 · 빈 DSN · `send_default_pii` 경고)를 설치 소스로 다시 확인하고 다르면 보고 ⑧에 적는다.
+  - **D8 공개 API**(`django_common.observability.__all__`): `configure_logging` · `configure_otel` · `configure_sentry` · `RequestIdMiddleware` · `sub_hash(sub: str) -> str`(T092 BFF는 쓰지 않는다 — pod 안 공용) · `mask_sensitive`(processor — 템플릿 Celery 로깅이 쓴다). `django_common.health.__all__`: `health_router`.
+  - **D9 librdkafka 로그**: 원문 stderr 줄(`%<수준>|<초>.<ms>|<fac>|<이름>| <메시지>`)을 그대로 둔다 — confluent `logger`로 Python 로깅에 넣으면 poll · flush 때만 나오고(종료 중 큐 로그 유실) T069 relay를 고쳐야 한다. Alloy는 비JSON 줄을 원문으로 받는다(T098 — 파이프라인이 JSON 파싱 실패 줄을 버리지 않아야 한다). `/health` Kafka 클라이언트만 `log_level 0`(D6). T069 인계(T071 — 수집 형식)를 이것으로 닫는다.
+  - **D10 web `/metrics`(9100) · `http_requests_total{route,status}`**: T071 밖 — T072가 gunicorn 다중 worker(prometheus multiprocess · web 컨테이너 전용 `PROMETHEUS_MULTIPROC_DIR`)와 함께 정한다. 라이브러리에 계수기를 더할 때는 relay 프로세스 레지스트리에 생기지 않게(지연 생성 — T069 지표 모듈과 같은 원칙) 한다. RequestIdMiddleware는 지표를 내지 않는다.
+  - **D11 새 시험 `tests/test_observability_contract.py`**(T071 소유 · 값 없음 단언은 입력에 SENTINEL을 심는다 — T069 J9 교훈):
+    - 로그: 확장 마스킹(cf-access-* · proxy-authorization · set-cookie · x-forwarded-user-sub · `HTTP_` META 키 · list/tuple · 비str 키 · 순환 · 깊이) · repr 폴백 금지(repr에 SENTINEL을 심은 객체) · UUID → str · 예외 렌더에 지역 변수 없음(지역 변수 SENTINEL) · configure_logging 두 번 = 줄 하나 · 다른 루트 핸들러 · 기존 로거 · 전파 유지.
+    - 미들웨어: 500 경로의 응답 헤더 · `ip` 없음(X-Forwarded-For SENTINEL) · `request.user` 미접근 · `route` · `duration_ms` · 앞 요청 contextvars 차단 · `problem`(problem+json 응답 = 슬러그 · 다른 응답 · 꼴이 다른 본문 · 스트리밍 응답 = 키 없음 · 본문의 다른 값(detail에 심은 SENTINEL)은 실리지 않는다 · T070 r4 V6).
+    - sub_hash: SECRET_KEY가 바뀌면 값이 바뀐다 · 로그와 span 값이 같다.
+    - OTel: env 거부 넷〔r2 Y1 — 일곱〕〔r3 Z1 — 아홉〕〔r5 P5 — 열하나〕〔r6 G1 — 열일곱〕 · 샘플러 없음 = 0.1 · 무효 샘플러 · ARG 거부 · 스킴 없는 엔드포인트 거부〔r6 G1 — 닫힌 꼴 밖 엔드포인트 거부 · `span_exporter`와 무관〕 · 엔드포인트 없음 = 내보내기 0(BSP 스레드 0) · service.name · 전역 provider 1회 · gunicorn RAW_URI의 `http.target` 쿼리 제거 · 비샘플 요청 로그에 trace_id 없음.
+    - Sentry(가로채는 Transport · 실제 `WSGIHandler()(environ, start_response)` 경로 · 시험마다 isolation scope · 정리 = `get_client().close()` → `get_global_scope().set_client(None)` · `with sentry_sdk.init()` 금지): 빈 DSN = init 없음(`is_active()` False) · 뷰 예외 → 이벤트 1 · 허용 목록 밖 헤더 · 쿼리 · 쿠키 · 본문 · user · 프레임 vars에 SENTINEL 없음 · 태그 request_id = 응답 X-Request-ID · sampled면 trace_id 태그 · 브레드크럼 0 · ERROR 로그 · DisallowedHost · 예외 없는 503 → 이벤트 0 · before_send 예외 → 이벤트 0 · Redis 통합 없음 · 나가는 http.client 요청에 sentry-trace · baggage 없음(로컬 HTTP 서버가 헤더를 기록) · environment · release 꼴 · `should_send_default_pii()` False · 세션 envelope 0 · **auth 설정 오류 500 세 경로**(T070 인계 N12 · r3 U7 · r5 W4 — SENTINEL을 `Authorization`과 `Cf-Access-Jwt-Assertion`에 함께 심는다: (a) `AUTHENTIK_AUDIENCE` 등을 비운 채 유효 Access + SENTINEL Bearer → Bearer 검증 프레임 지역 변수 `header`에 원문 Bearer / (b) `ACCESS_TEAM_DOMAIN`에 끝 줄바꿈 같은 꼴 오류 + SENTINEL Access JWT → `AccessJwtValidator.validate` 프레임 지역 변수 `token`에 원문 Access JWT / (c) `DRAGONFLY_URL`의 비밀번호 자리에 SENTINEL + 끝 줄바꿈(V2 위반) + 유효 Access · Bearer(`sub` · `sid` 클레임에도 SENTINEL — T070 r6 X7) → `_required` · `_printable_ascii` 프레임 지역 변수에 원문 URL · `Denylist.lookup` 프레임에 `sub` · `sid` · `_authenticate` 프레임에 검증된 Bearer `bearer`(`_Bearer` — 클레임 · `sub` · `sid` · 원문 토큰 문자열이 아니다 · 원문 Authorization 값은 (a)가 맡는다 · T070 r6 A-7)) → 경로마다 이벤트 1 · 이벤트 어디에도(프레임 vars · 예외 메시지 · 요청 헤더 · extra) SENTINEL 없음 · 같은 요청에서 수집한 JSON 로그 줄(`request_failed` · `django.request`) 어디에도 SENTINEL 없음.
+    - 헬스: 블랙홀 3종 `/health` < 3 s(OS 무관 병렬 고정 — T066 인계) · 진행 중 상한을 채우면 곧바로 fail〔r2 Y2 — 칸마다〕 · 요청 스레드에 열린 연결이 있어도 DB 다운을 본다 · Kafka `ImproperlyConfigured` = fail · 쿼리 붙은 DRAGONFLY_URL = fail(다이얼 0) · fail 항목에도 latency_ms · auth를 건 API에서도 헬스 200 · 응답 · 로그에 비밀 없음.
+    - import 부작용 0: observability · health import가 로깅 · structlog · OTel · Sentry 설정과 스레드 · 소켓 · 지표 등록(`prometheus_client.REGISTRY` 이름 집합 불변) · `django_common.outbox.metrics` import를 만들지 않는다.
+    - 한 세션 묶음 실행: `pytest tests/test_observability.py tests/test_observability_contract.py tests/test_outbox.py tests/test_outbox_contract.py tests/test_tenancy.py tests/test_tenancy_contract.py tests/test_event_patterns.py tests/test_auth.py tests/test_auth_contract.py -q`(세션 전역 로깅 · Sentry 패치가 뒤 모듈을 깨지 않는다 — 사실 ⑧).
+  - **D12 VD**:
+    - VD-T071-1: pod 핀 django-ninja 1.7.0 위에서 health_router(`uv run --with django-ninja==1.7.0 … pytest tests/test_observability.py -k "health or ready or healthz"` 꼴 — 저장소 lock · venv 무변경 확인).
+    - VD-T071-2: Cloudflare Access가 서비스 토큰 헤더(CF-Access-Client-Id · Secret)를 오리진까지 넘기는지(T076 실측 — 넘겨도 D2 마스킹 · D7 허용 목록이 막는다).
+    - VD-T071-3: 계측 pod의 kubelet 프로브 Host × OTel `get_host`(T072 · T075).
+    - VD-T071-4: Sentry ingest 도착 · request_id 태그(T100 · T102).
+  - **D13 문서 · 주석**: 모듈 독스트링에 계약 줄을 그대로 옮기지 말고 가리킨다(T069 A5-2 교훈 — 규칙을 되풀이하면 낡는다). 「T063 시험 독스트링의 낡은 빨강 설명」은 고치지 않고 이 절에 적어 둔다.
+  - **D14 인계**:
+    - T072: 호출 위치(configure_logging = AppConfig.ready 첫머리 — 모든 프로세스 · configure_sentry · configure_otel = wsgi.py의 `get_wsgi_application()` 앞 — web만 · relay · migrate Job은 logging만) · `LOGGING_CONFIG` 경계(Django 기본 LOGGING 뒤에 우리 루트 핸들러 · DEBUG=True면 console 핸들러가 stderr에 평문 중복 · 기본 LOGGING은 `django` 로거에 `mail_admins`(AdminEmailHandler · require_debug_false)를 붙인다 — ExceptionReporter를 막는 것은 `ADMINS == []`일 때 emit의 조기 반환이다(Django 6.1 `utils/log.py`) → (a) LOGGING에서 `django` 로거 handlers를 다시 정의해 `mail_admins`를 떼거나 (b) `ADMINS == []` · `DEBUG is False`를 기동 단언으로 고정한다 · T070 r6 B-8) · settings 필수값(`APP_VERSION` · `APP_GIT_SHA`(Dockerfile build-arg → ENV) · `SENTRY_DSN`(빈 값 허용 = 끔) · `ENV` · `OUTBOX_SOURCE`) · DB OPTIONS `connect_timeout=2`(+ 단일 주소 HOST) · OTEL env 값(`OTEL_EXPORTER_OTLP_ENDPOINT=http://<alloy>.monitoring.svc:4318` 스킴 포함 · 금지 env 넷) · 프로브 Host(VD-T071-3) · web 9100 · `http_requests_total`(D10) · Celery pod의 `CeleryIntegration`과 worker 루트 로거 가로채기 · `SSL_CERT_FILE` · `REQUESTS_CA_BUNDLE`을 내부 CA로 두지 않는다(Sentry TLS) · 생성물 lock에 sentry-sdk가 더해진다. 〔r2 Y7 보강〕 〔r3 Z8 — 금지 env는 아홉(계약 「트레이스 · Sentry」 행)〕 〔r5 P5 — 열하나〕 〔r6 G1 — 열일곱(mTLS 클라이언트 키 · 인증서 넷 · 닫힌 꼴 밖 엔드포인트 둘)〕 〔r7 S4 — pod env · 이미지에 `NETRC` · `SSLKEYLOGFILE` · 프록시 env(소문자 꼴 포함) · `.netrc`를 두지 않는다(렌더 · 이미지 단언)〕 〔r8 L3 — `.netrc` · `_netrc` 둘 다 · sentry-sdk가 스스로 읽는 `CLIENT_CERT_FILE` · `CLIENT_KEY_FILE`도 · 배포 매니페스트는 T075 lint가 덮는다〕 〔r10 I5 — 생성 pod pyproject addopts와 T065 하네스 명령에 `--show-capture=no`를 둘지 정한다 · configure_sentry는 except 블록 밖에서 부른다 · ci.yml test 자리를 채우는 과제(US 단계)는 django-common pytest를 패키지 ini로 돌리고 `-O` · `PYTHONOPTIMIZE`와 실패 출력을 넓히는 옵션을 쓰지 않는다〕
+    - T073: US7 AC3 「의도적 예외」 경로(관리 명령 또는 내부 전용 경로)를 둘지 정한다. 〔r2 Y7 보강〕
+    - T075: `kv/{env}/sentry/identity-admin` 키가 없으면 ESO 동기화가 실패한다 — 빈 dsn 플레이스홀더(빈 값 = 끔). 〔r2 Y7 보강〕 〔r8 L3 — gitops 렌더 lint: container env · envFrom ConfigMap data · ExternalSecret 키에 `NETRC` · `SSLKEYLOGFILE` · 프록시 env(소문자 꼴 포함) · `CLIENT_CERT_FILE` · `CLIENT_KEY_FILE`이 없다 · ExternalSecret은 `data`로 키를 명시하고 `dataFrom`을 쓰지 않는다〕 〔r9 K5 — 실효 env 이름(`env[].name` ∪ envFrom prefix + 키) · 대소문자 무시 대조 · ExternalSecret 키는 `target.template.data` 키(없으면 `data[].secretKey`) · 렌더 밖 객체를 가리키는 envFrom은 FAIL 또는 허용 목록 · `SSL_CERT_FILE` · `REQUESTS_CA_BUNDLE`도〕 〔r10 I4 — ExternalSecret 키 = `target.template.data` 키 ∪ (템플릿이 없거나 `mergePolicy: Merge`면 `data[].secretKey`) · `templateFrom`은 `dataFrom`처럼 FAIL 또는 허용 목록〕
+    - T084 · T085: admin 호스트 경로(브라우저 → Access → pod)의 클라이언트 `traceparent`를 지울지 받아들일지 T084가 정해 계약 §관측 신뢰 경계에 적고, T085가 관찰 수단(flag 01 traceparent를 보낸 요청의 pod 로그 `trace_id` 대조 · 가장자리에서 지우면 그 설정의 렌더 · API 단언)으로 검증한다. 〔r6 G6 · r7 S3 · T071 마감 F6〕
+    - T092: BFF가 보내는 traceparent 플래그 정책(항상 01이면 pod의 0.1은 루트 요청에만 적용) · `x-forwarded-user-sub`는 pod 로그 · Sentry에 남지 않는다. 〔r2 Y7 보강〕 〔r3 Z8 — 브라우저가 보낸 traceparent는 하류로 넘기지 않는다〕
+    - T098: OTLP 엔드포인트에 스킴 · Alloy가 비JSON 줄(librdkafka)을 원문으로 받는다. 〔r2 Y7 보강〕 〔r7 S4 · r8 L3 — 엔드포인트는 닫힌 꼴의 상수 · 프록시를 들이면 `NO_PROXY`가 `.svc` · `.cluster.local`을 덮고 사용자 정보 없는 프록시만 쓴다〕
+    - T100: before_send = 허용 목록(T100 문면 3종을 포함) · LoggingIntegration 끔. 〔r2 Y7 보강〕
+    - T114: librdkafka FAIL · FATAL · GETPID 줄은 원문 stderr 꼴(D9)이다.
+    - T070에서 받은 것(build-notes 「T070 r1 결과 · r2 결정」 N7 · N11 · N12 · 「T070 r2 결과 · r3 결정」 U3 · U4 · U7): 마스킹은 `cf-access-` 접두로 `cf-access-jwt-assertion`을 덮는다 · `sub_hash`는 `request.auth_claims["sub"]`에서 만든다(실패 · 면제 경로에는 속성이 없다) · `auth.keys_unavailable` · `auth.denylist_unavailable` WARNING 줄 형식은 고정이다 · `denylist_lookup_seconds`는 `django_common.auth` import 때 기본 REGISTRY에 등록된다(import 부작용 0 단언은 observability · health 모듈 import만 본다) · `/health` Dragonfly 검사도 0.2 s(소켓 동작마다) · 재시도 0 · URL 쿼리 거부를 따른다 · Django `DisallowedHost` 로그 줄에는 Host 값이 실린다(비밀 아님 · JSON 렌더가 제어 문자를 이스케이프한다) · `auth.keys_unavailable`의 `error=` 값에 `backoff`가 더해졌다(키 fetch 실패 백오프 창 안 — 예외 클래스 이름이 아니다 · U4) · 인증 설정의 기동 검사는 `django_common.auth.check_settings()`다(T072가 부른다 · U3 · r4 V2 — 인증 문자열 설정은 공백 없는 출력 가능 ASCII만 · 끝 줄바꿈 값은 요청 때도 설정 오류 500) · 요청 로그 `problem` 슬러그(r4 V6 — D3) · 설정 오류 500 (c) 경로와 JSON 로그 줄 단언(r5 W4 — V2 위반 500의 프레임 지역 변수에 `DRAGONFLY_URL` 비밀번호가 남는다 · structlog 기본 `dict_tracebacks`는 `show_locals=True`) — T071 시험의 auth 설정 오류 500은 기동 검사를 거치지 않은 요청 때 경로라 그대로 둔다(U7).
+  - **D15 판정 순서 · 경계 요약**: 미들웨어 순서 = OTel(instrument가 index 0) → RequestIdMiddleware → … → JwtAuth → TenantContext. 헬스 경로는 JwtAuth · TenantContext 면제(정확 일치)이고, OTel 층의 Host 검사만 남는다(D5).
+
+### T071 r1 결과 · r2 결정(리뷰 r1 반영 · Y1–Y7 · 2026-11-06) — D2의 마스킹 이름 · 정규화 · handleError 문장, D5의 거부 env, D6의 진행 중 상한, D7의 통합 인자 · 헤더 허용 목록, D11의 해당 사례, D14 인계, 사실 ⑫는 이 절의 Y4 · Y1 · Y2 · Y3 · Y7 · Y5가 고친다(앞 절 줄 끝 〔…〕 표식)
+
+- **r1 결과**(워크플로 `wf_c09020d9-a4d` · 1.65M 토큰 · 약 2시간 36분 · 빌더 DONE_WITH_CONCERNS):
+  - 새 파일: `observability.py` 656 · `health.py` 213 · 시험 `test_observability_contract.py` 1857(oc-1..46) · `_obs_fakes.py` 193 · `obscontractapp/` 4파일(`__init__` · `middleware` · `urls` · `views`).
+  - 바뀐 파일: pyproject +7/−3(`sentry-sdk>=2.73,<3` · 정당화 주석 · 머리 주석) · `__init__.py` +4/−2(독스트링만 — 독스트링을 뺀 AST가 HEAD와 같다) · `uv.lock` +15/−0.
+  - 빨강(17:41): 계약 시험은 `ImportError: cannot import name 'health' from 'django_common'`, T063은 `ModuleNotFoundError: No module named 'django_common.observability'`다(둘 다 수집 단계 · exit 2).
+  - 빨강 뒤 시험 수정 3건(구현은 그대로 · 셋 다 변이로 판별력을 보였다):
+    - oc-3: 루트의 다른 핸들러가 받는 원본 `record.msg`도 마스킹됐는지 보는 단언을 더했다(M14 생존 → N03).
+    - oc-46 신설: `/health` AdminClient 설정 = `client_config()` + `log_level 0`(M60 생존 → N04).
+    - oc-37 공허 결함 수정: `log_lines()` 호출 없이 `.raw`를 읽고 있었다(N02가 드러냈다).
+  - 초록(최종 바이트): T063 21 ×2(**T063 PASS**) · 계약 46 · 회귀 파일별(auth 32 · auth_contract 447 · tenancy 16 · 65 · outbox 16 · 42 · patterns 52 · fixtures pg 3 · kafka 1 · jwks 3 · dragonfly 1) · 한 세션 묶음 737(9파일 합과 같다).
+  - 변이: 1차 83개 중 81개를 잡았다. 살아남은 M14 · M60은 시험을 보강한 뒤 N03 · N04로 잡혔고, N01(지역 변수 두 겹 복합) · N02도 잡혔다(killers.txt 87줄).
+  - 의존성:
+    - 그냥 `uv lock`은 sentry-sdk 2.74.0(2026-11-05T14:50Z 업로드 — 약 17시간 · 숙성 3일 미달)을 골랐다. 그래서 `uv lock --upgrade-package sentry-sdk==2.73.0`으로 고정했다(범위 `>=2.73,<3`은 그대로).
+    - 2.73.0: wheel 2026-10-22T09:08:47Z 업로드 · 해시 = PyPI(조사 F01) · lock 변화 = sentry-sdk 블록 하나 + django-common의 `dependencies` · `requires-dist` 각 한 줄(지시문의 「한 줄」은 uv.lock 꼴로는 두 줄이다).
+    - D7의 전제는 설치 소스와 탐침으로 전부 맞았다. 덧붙임: `disabled_integrations`는 같은 프로세스에서 앞서 설치된 통합에는 듣지 않는다(`_installed_integrations`가 프로세스 전역 — 운영은 init을 한 번만 한다).
+  - VD:
+    - VD-T071-1 PASS: django-ninja 1.7.0 overlay에서 T063 21 · 계약 45(최종 46)가 통과했다. 라우터 하나를 API 둘에 붙이는 oc-43도 포함이다. lock · venv 지문은 전후 같다.
+    - VD-T071-3 로컬 재현: Host가 pod IP일 때 OTel이 없으면 200, 계측하면 400, `ALLOWED_HOSTS`에 그 IP를 넣으면 200이다.
+    - VD-T071-2 · 4는 로컬에서 잴 수 없다(Cloudflare · Sentry 수신).
+  - 빌더 세부 결정(보고 ⑧ — 계약과 충돌 없음): 처리는 Y6.
+  - 실행기 사고 1건: M22의 원문 조각을 찾지 못해 건너뛰는 메시지를 출력하다가 cp949 출력 오류로 멈췄다(`-I`가 `PYTHONIOENCODING`을 무시한다). 변이를 적용하기 전이었고, 표식 없음 · cmp 같음을 확인한 뒤 이어 돌렸다.
+- **리뷰 r1**: A approve_with_fixes(medium 2 · low 7) · B approve_with_fixes(medium 2 · low 7).
+  - 두 렌즈 모두 빌더 보고의 수치(줄 수 · diff · 해시 · 로그 · 변이표 · 묶음 합)가 증거와 맞는다고 확인했다.
+  - B는 기본 설정에서 비밀이 새는 경로를 찾지 못했다(우회 시도 21종).
+  - medium:
+    - A-1 = B-1(T071): `configure_otel`이 `OTEL_PYTHON_DJANGO_TRACED_REQUEST_ATTRS`를 거부하지 않는다. 두 렌즈의 메모리 탐침에서 env 하나(`META,headers,COOKIES` · `headers,GET,COOKIES`)로 Authorization · Cookie · 쿼리의 표식 값이 span 속성에 실렸다.
+    - A-2(인계): `sub_hash`의 키인 `SECRET_KEY`의 출처와 안정성이 어느 계약에도 없다(env.example 20키 · T072 · T075 문면 · data-model kv 표).
+    - B-2(T071): `/ready`와 `/health`가 진행 중 상한 32를 같이 쓴다.
+      - 버려진 `/health` 스레드와 동시 호출이 칸을 채우면 `/ready`가 곧바로 503이다(readiness = DB만과 어긋난다 · 지금 gthread 2 × 4에서는 잠복).
+      - 인증 없는 BFF `/api/health` 중계로 익명 호출마다 PG · Kafka SCRAM이 한 번씩 돈다.
+  - low(T071):
+    - A-3: `OTEL_SDK_DISABLED=true`를 거부하지 않는다.
+    - A-4 = B-5: 마스킹이 bytes 키 · (이름, 값) 쌍 목록 · 헤더 밖 비밀 이름을 놓친다.
+    - A-5: oc-32에 양성 대조가 없다.
+    - A-9: 시험 파일 1행 범위와 사실 ⑫가 틀렸다.
+    - B-3: Sentry Logs 처리기가 잠복해 있다(`sentry_logs_level` 기본 INFO).
+    - B-4: `handleError`가 `repr(record.msg)`를 stderr에 쓴다.
+    - B-6: Sentry 이벤트에 상류 X-Request-ID 원문과 위조 가능한 trace 문맥 · DSC가 실린다.
+  - low(인계):
+    - A-6: report.md 편차 후보 표시 · T100.
+    - A-7: wsgi 호출 순서 · 프로브 timeoutSeconds.
+    - A-8: BFF x-request-id 꼴.
+    - B-7: `/api/health` 캐시 · rate limit.
+    - B-8: gunicorn access log · Python warnings.
+    - B-9: DB 예외의 DETAIL.
+- **r2 결정 Y1–Y7(컨트롤러)**: 계약(pod-template 「로그」 · 「트레이스 · Sentry」 행 · §공개 API · identity-admin-api 헬스 표 · 타임아웃 표 · §관측 · bff-api 머리 문단)과 규칙 §Logging은 이 절과 같은 변경에서 「T071 r2」 표식으로 고쳤다.
+  - **Y1 OTel 거부 env**(A-1 · B-1 · A-3 — D5 정정):
+    - `_check_otel_env`에 둘을 더한다. 오류는 이름만 실은 `ImproperlyConfigured`이고, 값은 메시지에 싣지 않는다.
+      - `OTEL_PYTHON_DJANGO_TRACED_REQUEST_ATTRS`가 비지 않으면(strip) 거부한다. 요청 객체 속성(`META` · `headers` · `COOKIES` · `GET` · `body` 등)을 `str()`로 span 속성에 싣기 때문이다(0.66b2 `otel_middleware.py:117`의 클래스 속성은 import 때 env로 굳는다 · `:209` · `instrumentation/utils.py:41-51`).
+      - `OTEL_SDK_DISABLED`가 SDK의 끔 값(`strip().lower() == "true"` — `sdk/trace/__init__.py:1278-1279`)이면 거부한다. `get_tracer`가 NoOpTracer를 줘서 span 0 · 로그 `trace_id` 0이 기동 신호 없이 이어진다(`OTEL_PYTHON_DJANGO_INSTRUMENT=false`와 같은 원칙 — 샘플링을 끄려면 `OTEL_TRACES_SAMPLER=always_off`).
+    - 심층 방어: `instrument()` 뒤 `_DjangoMiddleware._traced_request_attrs`(import 때 굳은 값)가 빈 list가 아니거나 그 속성이 없으면(판 올림) uninstrument · `provider.shutdown()` 뒤 `ImproperlyConfigured`다. 자리는 미들웨어 삽입 확인과 같다. 〔r3 Z1 — 공백 항목만인 list는 빈 것 · 굳은 값 확인 셋(propagator · semconv를 더한다)〕
+    - 열거를 닫는다(설치 소스 0.66b2 · SDK 1.45 — Django 계측 · util-http · wsgi · `_semconv` · SDK가 읽는 env): 〔r3 Z1 — API 패키지(propagate)를 빠뜨렸다 · 범위 = 설치된 opentelemetry-* 전부〕
+      - span 내용이나 계측 여부를 바꾸는 env는 일곱이고 모두 거부한다: `OTEL_SEMCONV_STABILITY_OPT_IN`(http) · 서버 헤더 캡처 2 · `TRACED_REQUEST_ATTRS` · `MIDDLEWARE_POSITION` · `INSTRUMENT` · `SDK_DISABLED`. 〔r3 Z1 — 기준을 고쳐 아홉: `OTEL_PROPAGATORS` · `CAPTURE_ALL_METHODS`를 더한다〕 〔r5 P5 — 열하나: OTLP 헤더 둘〕 〔r6 G1 — 열일곱(mTLS 클라이언트 키 · 인증서 넷 · 닫힌 꼴 밖 엔드포인트 둘)〕
+      - 나머지는 거부하지 않는다:
+        - 샘플러 2는 D5가 검증하고, OTLP 엔드포인트는 스킴을 검증한다. 〔r6 G1 — 엔드포인트는 닫힌 꼴(사용자 정보 · 쿼리 등 거부) · mTLS 클라이언트 키 · 인증서 env 넷은 거부〕
+        - `OTEL_SERVICE_NAME` · `OTEL_RESOURCE_ATTRIBUTES`는 SDK 자원 규칙을 따른다.
+        - `OTEL_PYTHON_DJANGO_EXCLUDED_URLS` · `OTEL_PYTHON_EXCLUDED_URLS`는 인자가 이긴다(`django/__init__.py:408-409`).
+        - 헤더 캡처 `_SANITIZE_FIELDS`는 캡처가 꺼져 있어 무효다. 클라이언트 헤더 캡처 2는 클라이언트 계측이 없어 무효다.
+        - `OTEL_PYTHON_INSTRUMENTATION_HTTP_CAPTURE_ALL_METHODS`는 메서드 이름만 바꾼다. 한도 env(`OTEL_ATTRIBUTE_*` · `OTEL_SPAN_*`)는 값을 드러내지 않는다. 〔r3 Z1 — CAPTURE_ALL_METHODS는 클라이언트 메서드 원문을 싣는다 · 거부〕
+    - 시험:
+      - oc-15에 두 env 사례를 더한다(값에 SENTINEL — 오류 메시지에 값 없음).
+      - 굳은 값 사례: 시험 안에서 클래스 속성을 바꾼 뒤 configure_otel → 거부, 그다음 원복한다.
+      - 변이: 두 거부를 각각 지우기 · 굳은 값 검사 지우기.
+  - **Y2 헬스 진행 중 상한 = 검사 칸마다**(B-2 — D6 정정):
+    - 칸은 넷이다: `/ready`의 DB · `/health`의 `db` · `dragonfly` · `kafka_producer`.
+      - 칸마다 살아 있는 검사 스레드는 8까지다. 마감을 넘겨 버려진 것과 결과를 알린 뒤 정리 중인 것도 센다.
+      - 넘으면 그 검사만 새 스레드 없이 곧바로 fail(latency_ms 0.0)이다. 〔r3 Z3 — 스레드를 만들거나 시작하지 못해도 자리를 놓고 곧바로 fail〕 〔r5 P4 — 자리는 스레드가 시작되지 않았을 때만 그 자리에서 놓는다(시작됐으면 그 스레드가 끝날 때)〕
+      - 모듈 상한 32 하나는 없앤다(합은 같다).
+    - 효과:
+      - `/health`의 부하와 버려진 스레드가 `/ready`를 바꾸지 않는다(readiness = DB만 · identity-admin-api 헬스 표).
+      - 한 의존의 정지(예: Kafka DNS 정지)가 `/health`의 다른 항목을 fail로 만들지 않는다. r1은 공유 칸이 차면 살아 있는 DB도 fail이었다.
+    - 결과 공유(single-flight)와 직전 결과 재사용 창은 두지 않는다.
+      - 마감을 넘긴 검사에 합류하면 정지한 실행의 낡은 결과를 받고, 그 실행이 끝날 때까지 칸이 묶인다.
+      - 재사용 창은 고정 시험의 순서(obs-16 degraded → obs-17 ok · api-52 `/health` → `/ready`)와 「호출 시점 설정」 원칙을 깬다.
+      - 동시 검사 수는 프로세스의 요청 스레드 수가 묶는다(research gthread 4 — 칸 상한 8 안). 익명 증폭은 BFF 캐시 · rate limit으로 막는다(T092 인계 — Y7).
+    - 시험:
+      - (1) `/health` 세 칸을 상한까지 채운 상태에서 DB가 살아 있으면 `/ready`는 200이다.
+      - (2) Kafka 칸만 채우면 `/health`의 kafka_producer는 fail(latency_ms 0.0)이고, db · dragonfly는 그대로 판정한다.
+      - (3) `/ready` 칸을 채우면 `/ready`는 곧바로 503이고, `/health`의 db는 그대로 판정한다.
+      - (4) 칸을 채운 스레드가 끝나면 다음 호출은 새 검사다. 상한은 정리 중 스레드까지 센다.
+      - 시험이 채운 칸은 그 시험 안에서 비운다(스레드가 끝날 때까지 기다린다 — 뒤 시험 · 묶음 실행에 남지 않게).
+      - 기존 상한 시험(oc-39)은 이 꼴로 바꾼다.
+      - 변이: 칸 공유(세마포어 하나) · 칸 상한 지우기 · 정리 중 스레드를 세지 않기.
+  - **Y3 Sentry 정리 보강**(B-3 · B-6 — D7 정정):
+    - `LoggingIntegration(level=None, event_level=None, sentry_logs_level=None)`으로 Sentry Logs 처리기를 만들지 않는다.
+      - 근거(2.73.0 `integrations/logging.py`): `:125` 기본값이 INFO이고, `:137-138`이 처리기를 만든다. 보낼지는 `enable_logs` 등 셋으로만 정한다.
+      - 켜지면 레코드 extra · args의 safe_repr이 마스킹과 before_send 없이 나간다. 지금은 `enable_logs` 기본값 하나가 막고 있다.
+    - 요청 헤더 허용 목록에서 `x-request-id`를 뺀다. 검증된 값은 태그 `request_id`가 싣고, 꼴 밖이라 버린 상류 값은 이벤트에 남지 않는다(T063 사실 ③ 「버린 값은 어디에도 없음」). 〔r3 Z2 — `traceparent`도 뺀다〕
+    - `contexts.trace`:
+      - `dynamic_sampling_context`는 언제나 지운다. SDK는 before_send 뒤 이벤트에서 그것을 꺼내 envelope 머리 `trace`로 보낸다(`client.py:1202-1211` — 클라이언트 `baggage`의 public_key · release를 그대로 옮긴다).
+      - 기록 중 OTel span이면 `trace_id` · `span_id`를 그 값(32 · 16 hex)으로 바꾸고 `parent_span_id`는 지운다. 아니면 `contexts.trace`를 통째로 지운다.
+      - 근거: SentryWsgiMiddleware가 클라이언트 `sentry-trace`로 `continue_trace`한다(`integrations/wsgi.py:181` · `strict_trace_continuation` 기본 False).
+    - 시험:
+      - `call_wsgi`에 꼴 밖 `X-Request-ID`(SENTINEL) · 위조 `sentry-trace`(SENTINEL trace id) · `baggage`(`sentry-public_key` · `sentry-release`에 SENTINEL)를 넣는다. 이벤트 본문과 envelope 머리(CaptureTransport가 envelope headers도 기록한다) 어디에도 SENTINEL이 없어야 한다.
+      - sampled traceparent 사례에서 `contexts.trace.trace_id`는 OTel 값이다.
+      - oc-25에 Sentry Logs 처리기가 없다는 단언을 더한다.
+      - 변이: `sentry_logs_level` 기본값 복원 · `x-request-id` 허용 · DSC 남기기 · trace 문맥 그대로 두기.
+  - **Y4 로그 마스킹 · 쓰기 실패**(A-4 · B-5 · B-4 — D2 정정):
+    - 정규화 = 소문자 · `_` · `.` → `-` · 앞의 `http-` 하나 제거. bytes · bytearray 키는 latin-1(`errors="replace"`)로 풀어 같은 판정을 한다. 지우지 않는 bytes 키는 지금처럼 `"<bytes>"` 키로 남긴다. 〔r3 Z4 — 쿠키 접두 떼기 · camelCase 꼴 · memoryview 키〕
+    - 이름 목록(닫힌 집합 — 정규화 뒤 정확히 같거나 접미가 맞는 이름): 〔r3 Z4 — 목록 기준 · 이름 · 접미 · 접두 보강〕
+      - 헤더: `authorization` · `proxy-authorization` · `cookie` · `set-cookie` · `x-authentik-signature` · `x-forwarded-user-sub` · `x-csrftoken`(Django CSRF 헤더) · 접두 `cf-access-`.
+      - 쿠키: `cf-authorization`(Access JWT 쿠키 `CF_Authorization` — admin 호스트의 브라우저 요청) · `sessionid` · `csrftoken`(Django admin) · `jt-session` · `jt-csrf`(BFF 쿠키 이름).
+      - META · WSGI environ: `csrf-cookie`(Django가 META에 둔 CSRF 비밀) · `query-string` · `raw-uri` · `request-uri`(쿼리를 담는다).
+      - 비밀 이름: `password` · `passwd` · `secret` · `token` · `api-key` · `apikey` · `private-key` · `secret-key` · `preshared-key`.
+        - 접미 `-password` · `-secret` · `-token` · `-api-key` · `-private-key` · `-secret-key` · `-preshared-key`도 지운다.
+        - 예: `sasl.password` · `ssl.key.password` · `AUTHENTIK_API_TOKEN` · `AUTHENTIK_WEBHOOK_SECRET` · `OPENFGA_PRESHARED_KEY` · `SECRET_KEY` · `x-csrf-token` · `x-api-key`.
+      - 자격 URL 설정: `database-url` · `database-owner-url` · `dragonfly-url`.
+      - 원문 주체: `sub`. 로그는 `sub_hash`만 싣는다 — 클레임 dict를 통째로 넘긴 사고를 막는다.
+      - 넓히지 않는 것:
+        - `-key` · `-url` 일반 접미: `partition-key` · `idempotency-key` 같은 상관 값을 지우지 않는다.
+        - `sid`: 세션 식별자이고 자격이 아니다.
+        - 값 안의 비밀: 호출자 규칙이다(T062 K12).
+    - 쌍: 첫 항목이 마스킹 이름(str · bytes)인 길이 2 list · tuple은 쌍째 뺀다. WSGI 헤더 목록 · `list(response.items())` 꼴이다. 시퀀스의 원소면 원소째, Mapping의 값이면 키째 뺀다.
+    - 쓰기 실패: 표식 핸들러는 `logging.StreamHandler` 하위 클래스다.
+      - `handleError`는 레코드 값 없이 고정 JSON 한 줄을 `sys.stderr`에 쓴다: `ts` · `level` `"error"` · `logger` `"django_common.observability"` · `event` `"log_emit_failed"` · `error` = 예외 클래스 이름.
+      - 그 쓰기도 실패하면 버린다(재귀 0 · `logging.raiseExceptions`와 무관).
+      - 표준 `handleError`의 `Message: %r` · `Arguments:` · 트레이스백 출력은 없다. 이것이 repr 금지 우회를 막는다(B-4).
+    - 시험:
+      - oc-1 · oc-2: bytes 키 · 쌍 목록 · 이름 목록 사례마다 SENTINEL을 심고 이웃 값은 남는지 본다. `token_count` · `partition-key` · `sid` · `x-request-id`는 남는다(목록이 접미 규칙 밖으로 넓어지지 않았음을 가른다).
+      - 쓰기 실패 두 경로(쓰기에서 `OSError`를 내는 stream · 렌더 예외): stderr에 SENTINEL이 없고 고정 줄 하나만 있다.
+      - 변이: 정규화의 `.` 지우기 · bytes 판정 지우기 · 쌍 규칙 지우기 · 접미 규칙 지우기 · `handleError` 기본값 복원.
+  - **Y5 판별력 · 문서**(A-5 · A-9):
+    - oc-32: 복합 변이 M67 + M68(`trace_propagation_targets` 기본값 + StdlibIntegration 켬)을 한 번 돌려 oc-32가 잡는지 보인다. 독스트링에 적는다: 단일 방어(옵션 값)는 oc-25가 고정하고, oc-32는 두 겹을 함께 없앤 경우를 가른다.
+    - 시험 파일 1행의 범위(「oc-1..45」)를 실제 함수 범위로 맞춘다.
+    - 사실 ⑫ 정정: 라우터 재사용은 django-ninja 1.7.0에도 있다(`router.py:35` `RouterMount` · `:619` — 리뷰 A가 캐시 소스로 확인 · VD-T071-1에서 oc-43 통과). T072는 1.7.0 핀 위에서 라우터를 여러 API에 붙일 수 있다.
+  - **Y6 빌더 세부 결정 채택 → 계약**(r1 보고 ⑧ — 계약 행 · §공개 API에 적었다):
+    - `configure_logging`: `level`이 logging 수준 이름이 아니면(대소문자 무시) 핸들러를 바꾸기 전에 `ValueError`다.
+    - `sub_hash`: str가 아니면 `TypeError`, 빈 값이면 `ValueError`다.
+    - `problem`: 본문이 64 KiB를 넘으면 읽지 않는다(키 없음).
+    - `configure_otel`:
+      - 빈 env 값은 없는 것과 같다(샘플러 · 엔드포인트). 〔r3 Z1 — CAPTURE_ALL_METHODS는 공백뿐인 값도 거부〕
+      - semconv 판정은 대소문자를 무시하고 `http/dup`까지 거부한다. `MIDDLEWARE_POSITION`은 값이 비어도 있으면 거부한다.
+      - `APP_VERSION`은 비지 않은 str, `OUTBOX_SOURCE`는 kebab-case여야 한다.
+      - 계측 미들웨어가 `MIDDLEWARE`에 들어가지 않으면(의존성 충돌로 `instrument()`가 조용히 끝나면) `ImproperlyConfigured`다.
+    - `configure_sentry`:
+      - `SENTRY_DSN`은 str이고, 빈 값 · 없음 = 끔이다.
+      - DSN 꼴은 `sentry_sdk.utils.Dsn`으로 본다(가로채는 Transport를 넘기면 SDK가 DSN을 해석하지 않는다).
+      - DSN이 있으면 `ENV` ∈ {dev, prod, test} · `APP_GIT_SHA` 소문자 hex 7–64 · `OUTBOX_SOURCE` kebab-case여야 한다. 어기면 이름만 실은 `ImproperlyConfigured`다.
+      - `request`는 `url`(`?` · `#` 앞까지) · `method` · `headers`(허용 목록) · `env`(`SERVER_NAME` · `SERVER_PORT`)만 남긴다. D7이 지우라는 키보다 엄격하다(SDK가 뒤에 더할 키도 남지 않는다).
+  - **Y7 인계 보강**(A-2 · A-6 · A-7 · A-8 · B-7 · B-8 · B-9 · 빌더 ⑨ — D14에 더한다):
+    - T072:
+      - `SECRET_KEY` = `<pod>-env`의 필수 비밀이다.
+        - 없음 · 빈 값이면 기동 실패(이름만)다. 프로세스마다 난수로 채우지 않는다 — 다중 worker · 재시작마다 `sub_hash` · admin 세션 · CSRF 서명이 갈린다.
+        - env.example에 더한다(gen-3은 상위 집합을 허용한다).
+        - 회전하면 `sub_hash` 값이 바뀌고 세션이 끊긴다(런북 · A-2).
+      - wsgi.py 순서 = `django.setup(set_prefix=False)`(AppConfig.ready → `configure_logging`) → `configure_otel()` → `configure_sentry()` → `WSGIHandler()`.
+        - `get_wsgi_application()` 앞에서 configure_otel을 부르면 `otel_exporter_disabled` 경고가 루트 핸들러보다 먼저 난다. 그러면 lastResort 평문 stderr로 나간다(dev는 엔드포인트가 없어 기동마다 · A-7 a).
+        - `configure_sentry`는 미들웨어 적재(WSGIHandler) 전이어야 한다. 그 뒤에 적재되는 미들웨어를 SentryWrappingMiddleware로 감싸기 때문이다(빌더 ⑨).
+      - 프로브 `timeoutSeconds`: readiness · startup은 3 이상으로 둔다.
+        - 마감이 2.5 s라서, 기본 1 s면 kubelet이 먼저 실패로 판정하고 시간 초과된 프로브가 요청 스레드를 2.5 s 붙든다.
+        - 렌더 단언(gen-12)에 넣을지 정한다(A-7 b · B-7).
+      - 동시성 · 연결:
+        - gunicorn threads가 8을 넘으면 헬스 칸 상한(Y2)을 다시 본다.
+        - app role 연결 한도에 헬스 연결 몫을 남긴다(B-7).
+      - DB OPTIONS: `connect_timeout=2`에 더해 반쯤 열린 연결을 끊는 `tcp_user_timeout`(또는 keepalives)을 둘지 실측으로 정한다. 연결 뒤 `SELECT 1`에는 시간 상한이 없어 칸을 TCP 재전송 시간까지 붙들 수 있다(Y2).
+      - gunicorn · warnings(B-8 · 리뷰 A §7):
+        - accesslog를 두지 않는다. 기본 꼴은 쿼리가 든 요청 줄 · Referer · 주소를 싣는다(요청 로그는 RequestIdMiddleware가 맡는다).
+        - gunicorn 자체 로거(propagate False · 평문 stderr)는 루트 핸들러로 보내거나 「한 줄 = 객체 하나」의 예외로 적는다.
+        - AppConfig.ready에서 `configure_logging` 뒤 `logging.captureWarnings(True)`를 부른다. Python warnings(예: TenantContext 스트리밍 RuntimeWarning)가 평문 stderr로 나가지 않게 한다.
+      - settings 꼴(Y6): `APP_VERSION` 비지 않은 str(web) · `APP_GIT_SHA` 소문자 hex 7–64 · `ENV` ∈ {dev, prod, test} · `OUTBOX_SOURCE` kebab-case.
+      - 루트에 건 NinjaAPI는 `/docs` · `/openapi.json`을 공개한다. api-50의 `/api/openapi.json`과 함께 정한다(빌더 ⑨).
+      - ArgvIntegration이 `sys.argv`를 이벤트 extra에 싣는다. 명령줄에 비밀을 두지 않는다(빌더 ⑨).
+      - 생성 pod lock에서 sentry-sdk 숙성을 다시 확인한다(2026-11-06 최신 2.74.0 = 11-05 업로드 · 빌더 ⑨).
+    - T073: 고유 제약 위반 같은 DB 오류는 뷰에서 409 등으로 바꿔 500으로 새지 않게 한다. psycopg 예외 메시지에 「DETAIL: Key (col)=(value)」(행 값)가 남아 Sentry value · 로그 · span 예외에 실리기 때문이다(B-9). 〔r3 Z8 — 409는 계약에 없다: 계약 상태로 바꾸거나 계약을 고친다〕
+    - T075: `SECRET_KEY`의 kv 경로(예: `kv/{env}/django/<pod>` 키 `secret_key`)와 `<pod>-env` ES 매핑을 정하고 data-model kv 표에 더한다. 운영자 시드는 CSPRNG · dev ≠ prod · H4 블록 꼴이다(A-2).
+    - T092:
+      - `x-request-id`는 pod 수락 꼴(`^[A-Za-z0-9._:-]{1,128}$`) 안에서 만든다(예: `crypto.randomUUID()`). 꼴 밖이면 pod가 새 uuid4로 바꿔 BFF ↔ pod 상관이 조용히 끊긴다. T092 · T076 시험이 pod 로그 `request_id` = BFF 헤더 값을 단언한다(A-8 · bff-api 머리 문단 보정).
+      - `/api/health`는 결과를 몇 초 캐시하거나(Workers Cache API) rate limit을 건다. 방문자마다 상류를 부르지 않는다 — pod `/health` 한 번 = PG · Kafka SCRAM 한 번씩이다(B-7). 〔r3 Z8 — 캐시를 두면 계약 행 · 타임아웃 표에 TTL · 적중 때 upstream_ms · 실패 캐시를 적는다〕
+    - T098: gunicorn error log 줄도 librdkafka 줄(D9)처럼 원문으로 받는다(B-8).
+    - T100:
+      - `send_default_pii`를 넘기지 않는다(생략 = False · 넘기면 DeprecationWarning). `should_send_default_pii() is False`로 단언한다(oc-25 · A-6).
+      - DB 예외 value의 `DETAIL:` 줄을 before_send에서 지울지 정한다. 로그 · span 렌더에도 같은 결정을 적용한다(B-9).
+      - 헤더 허용 목록에 `x-request-id`가 없다(Y3).
+    - report.md 편차 후보(결과 절에 표시 — A-6): 〔r3 Z8 — `SECRET_KEY` 필수 비밀 · kv 경로를 더한다〕
+      - `/ready` = `SELECT 1`(⑩) · release = `<pod>@<git sha>`(⑩).
+      - `send_default_pii` 생략 · Sentry 헤더 거부 목록 → 허용 목록(D7).
+      - web 9100 · `http_requests_total` 소유(T072 — ⑪ · D10).
+      - T098 엔드포인트 스킴(⑩).
+  - **손대지 않는 것**: A-2 · A-6 · A-7 · A-8 · B-7 · B-8 · B-9는 코드 변경이 없다(인계 · 계약). D3 · D4 · D8 · D9 · D10 · D12 · D13 · D15는 그대로다.
+
+### T071 r2 결과 · r3 결정(리뷰 r2 반영 · Z1–Z8 · 2026-11-06) — Y1의 열거 문장 · CAPTURE_ALL_METHODS 근거 · 굳은 값 확인 · 빈 env 문장, Y2의 곧바로 fail, Y3의 헤더 허용 목록, Y4의 정규화 · 이름 목록, Y7의 T073 · T092 · report.md 후보, D14 T072의 「금지 env 넷」 · T092 줄은 이 절의 Z1 · Z3 · Z2 · Z4 · Z8이 고친다(앞 절 줄 끝 〔r3 …〕 표식)
+
+- **r2 결과**(워크플로 `wf_5a350cf4-69e` · 1.64M 토큰 · 약 2시간 49분 · 빌더 DONE_WITH_CONCERNS):
+  - 바뀐 파일(r1 대비):
+    - `observability.py` 656 → 796(+165/−25) · `health.py` 213 → 242(+47/−18).
+    - 시험 `test_observability_contract.py` 1857 → 2572(+783/−68 · oc-1..55) · `_obs_fakes.py` 193 → 203 · `obscontractapp/views.py` 90 → 97.
+    - pyproject · `__init__.py` · `uv.lock`은 r1과 바이트가 같다(의존성 변화 0).
+  - 빨강(20:34 · 20:36 — 최종 시험 바이트): `13 failed, 42 passed`. 빨강 뒤 시험 수정은 1건이다(oc-52 실패 출력에 위조 trace id 원문이 찍혀 비교를 bool 튜플로 접었다 — 단언 의미는 같다).
+  - 초록(최종 바이트): T063 21 ×2 · 계약 55 · 회귀 파일별 · 한 세션 묶음 746(9파일 합과 같다).
+  - 변이: 103개 중 102개를 잡았다. M65(Sentry `query_string` 남김)는 겹 방어(요청 키 허용 목록 + 마스킹 이름 `query-string`)라 혼자서는 드러날 행동이 없고, 두 겹을 함께 없앤 N05는 잡혔다.
+  - VD-T071-1 PASS: ninja 1.7.0 overlay에서 T063 21 · 계약 55가 통과했고, 지문은 전후 같으며 r1과도 같다.
+  - 빌더 세부(보고 ⑧ — 계약과 충돌 없음):
+    - oc-53의 렌더 예외는 in-process에서는 isoformat이 예외를 내는 datetime으로, 4300자리 int는 새 프로세스로 본다. pytest `LogCaptureHandler`가 형식화 실패를 다시 올리기 때문이다(`_pytest/logging.py:416-422`).
+    - bytearray 첫 항목 쌍도 덮는다(fail-closed). 굳은 값 검사는 정확히 빈 list만 통과시켰다(→ Z1 (a)).
+    - 작업 스레드 이름은 `django-common-health-<칸>`이다. `handleError`에 현재 예외가 없으면 `error` = `"unknown"`이다.
+- **리뷰 r2**: A approve_with_fixes(low 9 — T071 6 · 인계 3) · B approve_with_fixes(medium 1 · low 6 — T071 4 · 인계 2).
+  - 두 렌즈 모두 빌더 수치(줄 수 · diff · sha 6단계 · 빨강 · 초록 · 묶음 합 · 변이 정의 · VD 지문 · gitleaks · 바이트)가 증거와 맞는다고 확인했다. r1 지적 18건은 모두 코드 · 시험 · 계약 · 인계 중 한 곳으로 닫혔다.
+  - medium B-1(T071): 열거가 닫히지 않았다. opentelemetry-api가 import 때 읽는 `OTEL_PROPAGATORS`가 빠졌다.
+    - `none`이면 propagator가 비어(`propagate/__init__.py:130-132`) extract가 None을 돌려준다. 계측이 그 문맥을 attach해, 그 요청과 같은 스레드의 뒤 요청(`/healthz` 포함)이 AttributeError로 500이다(탐침 — liveness 재시작 루프 · Sentry 이벤트 0).
+    - `baggage`뿐이면 상류 traceparent를 조용히 버린다(identity-admin-api §관측 「상류 traceparent 이어받음」).
+    - 덧붙임: `OTEL_PYTHON_INSTRUMENTATION_HTTP_CAPTURE_ALL_METHODS`는 클라이언트가 고른 메서드 문자열을 span 이름 · `http.method`에 싣는다. Y1의 「메서드 이름만 바꾼다」는 틀렸다.
+  - low(T071):
+    - A-1 = B-3: Sentry 헤더 허용 목록의 `traceparent`가, OTel이 꼴 밖이라 버린 값의 원문을 이벤트에 남긴다. Y3이 x-request-id를 뺀 이유와 같다.
+    - A-2 · B-4 · B-5: 닫힌 마스킹 목록이 놓치는 것이 있다.
+      - 같은 비밀의 다른 철자: `csrfmiddlewaretoken` · `session_key` · camelCase · 쿠키 접두 `__Host-` · `__Secure-`.
+      - 접미 비대칭: 정확한 이름 `passwd` · `apikey`는 지우는데 `-passwd` · `-apikey` 접미는 없다.
+      - 쿼리 운반자 둘: OTel이 `request.META`에 두는 요청 속성 dict(`opentelemetry-instrumentor-django.duration_attr_key` — `http.url` · `http.target`)와 `Referer`.
+      - memoryview 키.
+    - A-3: 공백뿐인 `TRACED_REQUEST_ATTRS`를 env 검사는 받고 굳은 값 검사는 거부한다. OTel은 `[""]`로 굳히고 `getattr(request, "")`는 None이라 싣는 것이 없는데, 운영 경로(env가 import 전에 있다)는 기동 실패가 된다.
+    - A-4: 넓히지 않는다는 `-url` 접미가 시험에 고정되지 않았다.
+    - A-5: 계약의 「이 일곱이 전부다」가 실제보다 넓게 말한다.
+    - A-6: 모듈 독스트링이 Y6로 계약에 들어간 내용을 「계약 행이 말하지 않는 것」으로 되풀이한다(D13).
+    - B-2: 헬스 `_start`가 `RuntimeError`만 잡는다. 다른 예외(MemoryError 등)면 칸 자리가 영구히 새고 500이다. 8번 쌓이면 `/ready` 칸이 영구히 찬다(NotReady 고착 — `/healthz`는 200이라 재시작도 없다).
+  - low(인계):
+    - A-7: D14 T072 「금지 env 넷」이 낡았다 · report.md 후보에 `SECRET_KEY`가 없다 · T073 「409」는 계약에 없다.
+    - A-8: OTel 비공개 속성 결합이 pod CI에서 보이지 않는다. 범위가 `<1`이라 생성 pod lock이 검증 안 된 베타를 고를 수 있다.
+    - A-9: T092 `/api/health` 캐시 인계가 bff-api 행에 없다(「Workers Cache API」 ≠ wrangler `[cache]`).
+    - B-6: 전역 MeterProvider가 생기면 Django 계측의 `http.server.duration`에 `http.target`이 실린다(`otel_middleware.py:358-369`). 뷰에 닿지 않은 요청 · 404는 쿼리 · 원문 sub · sid가 든 RAW_URI다.
+    - B-7: 클라이언트 traceparent가 trace_id를 정하고 0.1 샘플링을 무시하게 한다(신뢰 경계).
+  - 컨트롤러 확인(설치 소스 직접 대조):
+    - `propagate/__init__.py:107-152`: import 때 한 번 읽는다. `none`이면 빈 Composite이고, 모르는 이름이면 import가 그 이름을 실은 ValueError다(`OTEL_PROPAGATORS=b3x` 실측).
+    - `util/http/__init__.py:189`: CAPTURE_ALL_METHODS는 부를 때마다 원문의 참/거짓으로 읽는다(공백도 켠다).
+    - `django/__init__.py:391-405`: `meter_provider` 인자를 받는다. `otel_middleware.py:110-116`: META 키 접두는 `opentelemetry-instrumentor-django.`다. 함께 `:206` · `:358-369` · `_semconv.py:209-217`(프로세스에 한 번)을 대조했다.
+    - `opentelemetry.instrumentation.django` import가 `opentelemetry.propagate`와 계측 미들웨어 모듈을 함께 올린다(실측 — observability import만으로는 올리지 않는다).
+  - 컨트롤러가 더 찾은 것: 계약 「트레이스 · Sentry」 행의 `service.name` = `OUTBOX_SOURCE`는 D5(「`OTEL_SERVICE_NAME` · `OTEL_RESOURCE_ATTRIBUTES`가 있으면 SDK 규칙대로 그것이 이긴다」)보다 좁게 말한다. 계약 문장만 고친다(Z8).
+- **r3 결정 Z1–Z8(컨트롤러)**: 계약(pod-template 「로그」 · 「트레이스 · Sentry」 행 · identity-admin-api 타임아웃 표 `/health` 행 · §관측)과 규칙 §Logging은 이 절과 같은 변경에서 「T071 r3」 표식으로 고쳤다.
+  - **Z1 OTel env · 굳은 값 · 지표**(B-1 · A-3 · A-5 · B-6 — Y1 정정):
+    - `_check_otel_env`에 둘을 더한다(모두 아홉 · 오류는 이름만 실은 `ImproperlyConfigured`). 〔r5 P5 — 열하나〕 〔r6 G1 — 열일곱(mTLS 클라이언트 키 · 인증서 넷 · 닫힌 꼴 밖 엔드포인트 둘)〕
+      - `OTEL_PROPAGATORS`: 비지 않으면(strip) 쉼표로 나눈 토큰(strip · 소문자)이 모두 `tracecontext` · `baggage` 가운데 하나여야 하고 `tracecontext`가 있어야 한다. `none` · 빈 토큰 · 그 밖의 이름은 거부한다. 〔r4 Q1 — 빈 값만 기본 · 토큰은 앞뒤 공백만 떼고 대소문자 그대로 · 공백뿐인 값 거부〕 〔r5 P1 — 떼는 것은 `str.strip`이 떼는 공백 전부(탭 · 유니코드 공백 포함)〕
+      - `OTEL_PYTHON_INSTRUMENTATION_HTTP_CAPTURE_ALL_METHODS`: 원문이 비지 않으면 거부한다. strip하지 않는다 — OTel이 원문의 참/거짓으로 읽어 공백도 켠다. 「빈 값은 없음과 같다」는 그대로다.
+    - `_check_otel_env()`는 configure_otel 안의 OTel import보다 먼저 부른다. 모르는 propagator 이름이 OTel import의 값 실은 ValueError보다 먼저 이름만 실은 `ImproperlyConfigured`가 되게 한다.
+    - 굳은 값 확인: instrument() 뒤, 삽입 확인과 같은 자리에서 본다. 실패하면 uninstrument · `provider.shutdown()` 뒤 이름만 실은 `ImproperlyConfigured`다.
+      - (a) `_DjangoMiddleware._traced_request_attrs`: 모든 항목이 공백뿐인 str인 list(빈 list 포함)면 통과한다. 공백 아닌 항목이 있거나, list가 아니거나, 속성이 없으면(판 올림) 거부한다. env 검사와 같은 판정이다(A-3).
+      - (b) propagator: `opentelemetry.propagate.get_global_textmap().fields`(공개 API · import 때 env로 굳는다)에 `traceparent`가 있어야 한다. 읽다가 예외가 나도 거부한다.
+      - (c) semconv: `_DjangoMiddleware._sem_conv_opt_in_mode`가 `_StabilityMode.DEFAULT`여야 한다. instrument()가 프로세스에 한 번 굳는 semconv 상태를 옮겨 둔 값이다. 속성이나 이름이 없으면 거부한다. 〔r4 Q3 — 이름이 없어도 AttributeError가 아니라 거부 · helper 직접 시험〕
+    - 지표: `instrument(..., meter_provider=NoOpMeterProvider())`로 Django 계측의 OTel 지표를 끈다. web 지표는 prometheus_client다(D10). 전역 MeterProvider(T072 · T098)가 생겨도 `http.target` 원문이 지표 라벨에 실리지 않는다(B-6).
+    - 열거(A-5 · B-1):
+      - 거부 기준 = 요청 값(헤더 · 요청 객체 속성 · 쿼리 · 클라이언트 메서드 원문)을 span에 싣거나, 계측 · SDK를 끄거나, 상류 traceparent 이어받기를 끄는 env. 〔r5 P5 — 다섯 절: 계측 미들웨어 위치를 바꾸는 env · 이 프로세스가 읽는 자격 값을 꼴이 틀릴 때 OTel이 원문 그대로 경고 로그에 싣는 env를 더한다〕
+      - 설치된 opentelemetry-* 배포 12개(api · sdk · proto · semantic-conventions · instrumentation · instrumentation-django · instrumentation-wsgi · util-http · exporter-otlp-proto-http · exporter-otlp-proto-common · exporter-otlp-common · exporter-http-transport — 판은 1.45.2 · 0.66b2)의 env 읽기를 다시 셌다. 기준에 드는 것은 아홉이다. 〔r5 P5 — 열하나〕 〔r6 G1 — 열일곱(mTLS 클라이언트 키 · 인증서 넷 · 닫힌 꼴 밖 엔드포인트 둘)〕
+      - 나머지는 받는다: 〔r4 Q2 — SDK 자체 지표 · 자격 provider 2 · `OTEL_LOGRECORD_ATTRIBUTE_*` · 신호별 PROTOCOL · `PYTHONPATH`를 더한다〕
+        - 샘플러 2는 D5가 검증하고, OTLP 엔드포인트 2는 스킴을 검증한다. 그 밖의 `OTEL_EXPORTER_OTLP_*`(헤더 · 시간 제한 · 압축 · 인증서)와 `OTEL_BSP_*`는 전송 설정이다. 〔r5 P5 — 헤더 둘(일반 · TRACES)은 거부로 옮긴다 · METRICS · LOGS 헤더는 이 프로세스가 읽지 않아 받는다〕 〔r6 G1 — 클라이언트 키 · 인증서 넷은 거부 · 엔드포인트는 닫힌 꼴 · CA 인증서 · 시간 제한 · 압축은 받는다〕
+        - `OTEL_SERVICE_NAME` · `OTEL_RESOURCE_ATTRIBUTES` · `OTEL_EXPERIMENTAL_RESOURCE_DETECTORS`는 자원(운영자 상수)이다. `service.name`은 env가 이긴다(D5). `process` 탐지기는 argv를 싣는다 — 명령줄에 비밀을 두지 않는다(T072 · Y7 ArgvIntegration과 같은 규칙).
+        - `OTEL_PYTHON_DJANGO_EXCLUDED_URLS` · `OTEL_PYTHON_EXCLUDED_URLS`는 인자가 이긴다. 헤더 캡처 `_SANITIZE_FIELDS` · 클라이언트 캡처 2는 무효다.
+        - 한도(`OTEL_ATTRIBUTE_*` · `OTEL_SPAN_*` · `OTEL_EVENT_*` · `OTEL_LINK_*`)는 자르거나 버리기만 한다. 응답 훅이 그 뒤에 URL 속성을 바꾼다.
+        - `OTEL_PYTHON_CONTEXT`는 모르는 이름이면 contextvars다. `OTEL_PYTHON_TRACER_PROVIDER` · `OTEL_PYTHON_METER_PROVIDER` · `_OTEL_PYTHON_LOGGER_PROVIDER`는 받는다 — Django 계측은 명시 provider를 쓴다(tracer = configure_otel의 것 · meter = NoOp). 〔r4 Q2 — env 이름은 `OTEL_PYTHON_LOGGER_PROVIDER`〕
+        - 지표 · 로그 SDK 설정(`OTEL_METRIC_*` · `OTEL_METRICS_EXEMPLAR_FILTER` · `OTEL_BLRP_*` · exporter-otlp-common 집계 env)은 쓰지 않는다.
+        - 자동 계측 · 배포판 전용 env는 `opentelemetry-instrument` 실행기와 `sdk/_configuration`만 읽는다. pod는 그 실행기를 쓰지 않는다(T072 wsgi). 대상: `OTEL_PYTHON_DISTRO` · `OTEL_PYTHON_CONFIGURATOR` · `OTEL_PYTHON_DISABLED_INSTRUMENTATIONS` · `OTEL_PYTHON_ID_GENERATOR` · `OTEL_PYTHON_*_CONFIGURATOR` · `OTEL_*_EXPORTER` · `OTEL_EXPORTER_OTLP_PROTOCOL` · `OTEL_CONFIG_FILE` · 로깅 자동 계측 · gevent 패치.
+      - 빌더는 이 열거를 설치 소스로 다시 센다(env 이름 → 읽는 곳 → 처분 표). 이 목록 밖의 env가 나오면 고치지 말고 NEEDS_CONTEXT로 보고한다. 〔r4 Q2 — r3 빌더가 열거 밖 둘(SDK 자체 지표 · 자격 provider)을 보고했다 · 받음〕
+    - 시험:
+      - oc-15에 사례를 더한다. 메시지에는 값이 없어야 한다.
+        - `OTEL_PROPAGATORS` 거부: `none` · ` None ` · `tracecontext,none` · `baggage` · `tracecontext,,baggage` · 감시 토큰 이름. 〔r4 Q1 — 공백뿐 · 대소문자 · 빈 토큰을 더한다〕
+        - `OTEL_PROPAGATORS` 받음: `tracecontext` · ` TraceContext , baggage ` · `baggage,tracecontext` · 빈 값 · 공백. 〔r4 Q1 — ` TraceContext , baggage ` · 공백은 거부로 옮긴다〕
+        - `CAPTURE_ALL_METHODS`: `1` · 공백뿐은 거부, 빈 값은 받음.
+      - 새 프로세스(`_run_child` — env를 import 전에 둔 운영 경로):
+        - 감시 토큰 이름의 `OTEL_PROPAGATORS` → 이름만 실은 `ImproperlyConfigured`다(ValueError 아님 · 감시 값 없음).
+        - 공백뿐인 `TRACED_REQUEST_ATTRS` → 통과한다.
+        - 지표: 전역 SDK MeterProvider + InMemoryMetricReader를 둔 채, 쿼리에 감시 값을 넣은 404 요청과 미들웨어가 단락하는 요청을 보낸다 → Django 계측 지표 data point 0 · 직렬화한 지표 어디에도 감시 값 없음.
+      - 굳은 값 (b) · (c): 시험 안에서 전역 textmap · semconv 상태를 바꾸고 원복한다(거부 · 계측 0 · provider shutdown).
+      - 변이: 두 거부 각각 지우기 · `tracecontext` 필수 지우기 · CAPTURE_ALL_METHODS를 strip으로 판정 · env 검사를 import 뒤로 옮기기 · (a)를 엄격한 빈 list로 되돌리기 · (b) 지우기 · (c) 지우기 · `meter_provider` 인자 지우기.
+  - **Z2 Sentry 헤더 허용 목록에서 `traceparent`를 뺀다**(A-1 · B-3 — Y3 보강):
+    - 허용 목록 = `host` · `user-agent` · `accept` · `content-type` · `content-length`.
+    - 근거: 검증된 trace 문맥은 `contexts.trace`와 태그 `trace_id`가 기록 중 span일 때만 싣는다. 헤더 원문은 OTel이 버린 값과 비샘플 요청의 클라이언트 id까지 남긴다.
+    - 시험: oc-52에 꼴 밖 `traceparent`(감시 값)를 더한다 → 이벤트 본문 · envelope 머리 어디에도 없다. oc-31 기대 헤더 목록에서 `Traceparent`를 뺀다(계약 변경 Z2 — 더 엄격). 변이: `traceparent` 다시 넣기.
+  - **Z3 헬스 스레드 시작 실패**(B-2 — Y2 보강):
+    - `_start`: 칸 자리를 얻은 뒤 결과 칸 · 스레드를 만들고 시작하는 구간에서 `Exception`이 나면 칸 자리를 놓고 None을 돌려준다. 그 검사만 곧바로 fail(latency_ms 0.0)이고 500은 없다(D6 「의존 예외는 모두 fail」). 〔r5 P4 — 자리는 스레드가 시작되지 않았을 때만 그 자리에서 놓는다(시작됐으면 그 스레드가 끝날 때)〕
+    - `Exception`이 아닌 `BaseException`이면 스레드가 시작되지 않았을 때만 자리를 놓고 다시 올린다. 〔r4 Q4 — 계약 타임아웃 행 · 규칙 문면을 맞춘다 · `worker.ident` 한계〕
+    - 한 번 얻은 자리는 정확히 한 번 놓는다. 작업 스레드의 finally와 실패 경로가 둘 다 놓지 않는다.
+    - 시험:
+      - 스레드 시작이 `RuntimeError` · `MemoryError`를 낼 때(스레드 생성자가 낼 때도): `/ready` → 503 `not_ready`. `/health` → 200이고 그 항목만 fail(latency_ms 0.0)이며 다른 항목은 그대로 판정한다. 호출 뒤 칸 여유가 8로 돌아온다.
+      - `BaseException` 하위 형: 그대로 올라오고 칸 여유가 8로 돌아온다.
+    - 변이: except를 `RuntimeError`로 좁히기 · Exception 경로의 놓기 지우기 · BaseException 경로의 놓기 지우기.
+  - **Z4 마스킹 목록 보강**(A-2 · B-4 · B-5 · A-4 — Y4 정정):
+    - 목록 기준(계약에 적는다):
+      - (1) 이 플랫폼 스택(Django · gunicorn · OTel · librdkafka · BFF)이 헤더 · 쿠키 · META/environ · settings · Kafka 설정에 실제로 두는 비밀 이름.
+      - (2) 일반 비밀 낱말과 그 구분자 · camelCase · 접미 변형.
+      - 값은 보지 않는다(호출자 규칙 — T062 K12). 기준 밖의 이름은 지적 대상이 아니다.
+    - 정규화: 지금 꼴(소문자 · `_` · `.` → `-` · 앞 `http-` 하나 제거) 뒤에, 앞의 `--host-` 또는 `--secure-` 하나를 뗀다(쿠키 접두 `__Host-` · `__Secure-`).
+    - camelCase: 원문의 소문자 · 숫자 → 대문자 경계에 `-`를 넣은 꼴도 같은 정규화로 판정한다. 두 꼴 가운데 하나라도 맞으면 지운다. 〔r5 P3 — 머리글자 끝 경계도 넣는다 · r6 G2 — 첫 경계만 넣은 꼴과 두 경계를 넣은 꼴을 따로 판정한다(원래 꼴까지 세 꼴)〕
+      - 예: `accessToken` → `access-token` · `clientSecret` · `sessionKey` · `privateKey`.
+      - `sessionId`는 지금처럼 원래 꼴 `sessionid`로 지워진다.
+    - 키 형: memoryview 키(와 쌍의 memoryview 첫 항목)도 bytes처럼 latin-1로 풀어 판정한다. 풀 수 없으면 판정 밖이다(예외를 내지 않는다).
+    - 더하는 이름:
+      - 정확한 이름:
+        - `referer` · `referrer`: 앞 페이지 URL의 쿼리를 싣는다(OAuth `code` 등).
+        - `csrfmiddlewaretoken`: Django 폼의 CSRF 토큰.
+        - `session-key`: `request.session.session_key` = `sessionid` 값.
+        - `passphrase` · `pgpassword`(libpq env).
+      - 접미:
+        - `-passwd` · `-apikey`: 정확한 이름과 대칭.
+        - `-access-key`: `AWS_SECRET_ACCESS_KEY`.
+        - `-passphrase`.
+        - `-key-pem`: librdkafka `ssl.key.pem` · `private_key_pem`. 인증서 PEM은 남는다.
+      - 접두: `opentelemetry-instrumentor-`. OTel이 `request.META`에 두는 항목 전부(요청 속성 dict · span · 토큰)다.
+    - 넓히지 않는 것(남는다 — 시험이 고정한다):
+      - 일반 `-key` · `-url` 접미: `partition-key` · `partitionKey` · `idempotency_key` · `AUTHENTIK_JWKS_URL` · `identity_m2m_url`.
+      - `sid` · `token_count` · `tokenCount` · `x-request-id`.
+      - 식별자 `AWS_ACCESS_KEY_ID` · 인증서 PEM(`ssl.ca.pem` · `ssl.certificate.pem`).
+    - 자격 URL 설정을 더 둘 때(`REDIS_URL` · Celery broker · result 등)는 그 settings를 만드는 과제가 이름을 목록에 더한다(T072 인계 — Z8).
+    - 시험:
+      - oc-1에 사례를 더한다: 더한 이름 · 접미 · 접두 · 쿠키 접두 · camelCase · memoryview(감시 값)와 남는 이웃.
+      - 실제 sink 사례: configure_logging + configure_otel 아래 뷰가 `request.META` · `request.headers`를 로그로 넘긴다(쿼리 · Referer에 감시 값). 그 줄에 감시 값이 없다.
+    - 변이(한 번에 하나씩 넣는다):
+      - 지우기: 정확한 이름 셋(`referer` · `csrfmiddlewaretoken` · `session-key`) · 접미 셋(`-passwd` · `-access-key` · `-key-pem`) · 접두 · 쿠키 접두 떼기 · camelCase 판정 · memoryview 판정.
+      - 더하기: 접미 `-url`(남는 사례가 잡는다 — A-4) · 접미 `-key`.
+  - **Z5 독스트링**(A-6 — D13):
+    - 모듈 독스트링의 「구현 메모(계약 행이 말하지 않는 것)」에는 계약이 말하지 않는 구현 세부만 남긴다. 예: exc_info 통과 · 깊이 세는 법 · 기반 형 메서드 판정 · 신호 · 스트리밍 전달 · 스레드 이름 · 마스킹 판정 순서.
+    - Y6 · r3로 계약에 들어간 항목은 지우거나 계약 행을 가리키는 한 줄로 바꾼다. 대상: level `ValueError` · problem 64 KiB · 삽입 확인 · 빈 env · 요청 키 허용 목록 · Dsn 꼴 · 칸 자리를 놓는 때 · 곧바로 fail.
+  - **Z6 의존 범위**(A-8): pyproject를 `opentelemetry-instrumentation-django>=0.66b2,<0.67`로 좁힌다.
+    - 이유: configure_otel이 계측 미들웨어 클래스의 비공개 속성(`_traced_request_attrs` · `_sem_conv_opt_in_mode`)과 `_StabilityMode`를 읽는다.
+      - 판 올림은 django-common의 의도한 변경이어야 하고, 계약 시험이 확인한다.
+      - 생성 pod lock이 검증 안 된 베타를 고르지 못한다.
+      - 계측 패키지들은 같은 판으로 서로 묶여 있다(instrumentation · wsgi · util-http · semantic-conventions가 같은 판).
+    - pyproject 주석에 이유를 적는다.
+    - `uv lock`(먼저 `--offline`)의 변화는 django-common `requires-dist`의 그 지정자 한 줄뿐이어야 한다. 판 변화는 0이고 `uv lock --check`가 통과해야 한다.
+  - **Z7 시험 안정**(빌더 r2 ⑨): oc-51의 50 ms 가정을 없앤다. 대역 probe에 들어온 스레드 수가 상한(8)이 될 때까지 기다린 뒤(시간 제한 HANG_LIMIT_S) 살아 있는 수를 센다.
+  - **Z8 계약 · 인계**(A-5 · A-7 · A-9 · B-7 · 컨트롤러 — 문서만):
+    - 계약 「트레이스 · Sentry」 행:
+      - 거부 env 아홉과 그 기준 · CAPTURE_ALL_METHODS 공백 규칙 · OTel import 전 검사. 〔r5 P5 — 열하나 · 기준 다섯 절 · 빈 값 일반 규칙의 MIDDLEWARE_POSITION 예외〕 〔r6 G1 — 열일곱(mTLS 클라이언트 키 · 인증서 넷 · 닫힌 꼴 밖 엔드포인트 둘)〕
+      - 굳은 값 확인 셋 · Django 계측 지표 끔.
+      - `service.name`은 env가 이긴다(D5).
+      - 헤더 허용 목록에서 `traceparent`를 뺀다.
+    - 계약 「로그」 행: 목록 기준 · 더한 이름 · 접미 · 접두 · 쿠키 접두 · camelCase · memoryview · 남는 이름.
+    - identity-admin-api:
+      - 타임아웃 표 `/health` 행: 스레드를 만들거나 시작하지 못해도 그 검사만 곧바로 fail이고, 자리는 바로 놓는다. 〔r5 P4 — 자리는 스레드가 시작되지 않았을 때만 바로 놓는다(시작됐으면 그 스레드가 끝날 때)〕
+      - §관측: 헤더 목록에 `referer` · 트레이스 신뢰 경계 · `OTEL_PROPAGATORS` · 지표 끔 · Sentry 헤더에서 `traceparent`를 뺀다.
+    - 규칙 §Logging(영어 · kr 번역 대기 줄).
+    - 인계:
+      - T072:
+        - pod env · ConfigMap에 거부 env 아홉을 두지 않는다. `OTEL_SDK_DISABLED=true`와 `tracecontext[,baggage]` 밖의 `OTEL_PROPAGATORS`도 포함이다(기동 실패). D14의 「금지 env 넷」을 대신한다. 〔r4 Q1 · Q5 — 소문자 정확 일치 · 공백뿐인 값 거부 · OTLP 헤더 자격 · 자격 provider env 금지〕 〔r5 P5 · P1 — 열하나(OTLP 헤더 둘은 기동 실패) · `sentry`도 거부〕 〔r6 G1 — 열일곱(mTLS 클라이언트 키 · 인증서 넷 · 닫힌 꼴 밖 엔드포인트 둘)〕
+        - 자격을 담는 URL 설정을 새로 두면(`REDIS_URL` · Celery broker · result 등) 그 이름을 django-common 마스킹 목록에 더한다(Z4).
+        - 생성물 기본 시험에 스모크를 둘지 정한다: configure_otel(InMemorySpanExporter) · configure_sentry(가짜 DSN · 가로채는 transport). 1차 방어는 범위 핀(Z6)이다.
+        - pod에 OTel MeterProvider를 둘 필요가 없다(Django 계측 지표는 끈다 — Z1). T098이 OTel 지표를 켜도 Django 계측 지표를 다시 켜지 않는다. 〔r6 G7 — pod에 지표 · 로그 OTLP exporter를 두는 과제는 그 신호의 OTLP env를 거부 env에 더한다〕
+      - T073: DB 무결성 오류(유일성 위반 등)를 500으로 흘리지 않는다. 계약에 있는 상태(400 `validation_error` 등)로 바꾸거나, 계약을 고쳐 409를 더한다(T073 설계 결정 · Y7의 「409 등」을 대신한다).
+      - T092:
+        - BFF는 브라우저가 보낸 `traceparent` · `tracestate`를 하류로 넘기지 않고 자기 span으로 새로 만든다(B-7 — 플래그 정책은 D14). 〔r5 P6 — bff-api 하류 호출 규약 헤더 줄에 적었다〕
+        - `/api/health` 캐시를 두면 bff-api `/api/health` 행 · 타임아웃 표에 적는다: TTL(isolate 메모리 — `/session/check` 2 s와 같은 꼴 권장) · 적중 때 `upstream_ms`의 뜻 · 실패(503) 캐시 여부.
+        - Workers Cache API는 wrangler `[cache]`(비활성 유지 — bff-api)와 다른 기능임을 한 줄로 밝힌다.
+        - rate limit을 고르면 그 꼴과 응답(429 problem+json 등)을 계약에 적는다(A-9).
+      - T076 · T072: admin 호스트 경로(브라우저 → Access → pod)의 클라이언트 `traceparent`를 지울지(Cloudflare Transform Rule 등) 받아들일지 정하고, 계약 §관측 신뢰 경계에 적는다(B-7). 〔r5 P6 — 결정 · 계약 기록은 T084(admin 호스트 경로를 만드는 과제) · T076은 검증만〕 〔r6 G6 — 검증은 T085(US4 E2E) · T076은 T084보다 먼저 돈다〕
+      - T100: Sentry `query_string`은 요청 키 허용 목록과 마스킹 이름 `query-string`이 겹으로 막는다(M65). 하나를 바꿀 때 다른 하나를 남긴다. 헤더 허용 목록에는 `x-request-id` · `traceparent`가 없다.
+      - report.md 편차 후보에 더한다: `SECRET_KEY` = `<pod>-env` 필수 비밀 · kv 경로 추가(T072 · T075 문면 밖 — A-7).
+  - **손대지 않는 것**: Y5 · Y6의 결과 · D3 · D4 · D8 · D9 · D10 · D12 · D13 · D15 · RequestIdMiddleware · sub_hash · 헬스 칸 구조(Y2) · 결과 공유 없음.
+
+### T071 r3 결과 · r4 결정(빌더 r3 NEEDS_CONTEXT 반영 · Q1–Q6 · 2026-11-07) — Z1의 `OTEL_PROPAGATORS` 토큰 규칙 · 받음 사례 · 받는 env 목록 · `_OTEL_PYTHON_LOGGER_PROVIDER` 이름 · (c) 판 올림 경로, Z3 줄의 계약 문면, Z8 T072 줄은 이 절의 Q1 · Q2 · Q3 · Q4 · Q5가 고친다(앞 절 줄 끝 〔r4 …〕 표식)
+
+- **r3 결과**(워크플로 `wf_cf8c8de0-0e4` · 68만 토큰 · 약 1시간 58분 · 빌더 NEEDS_CONTEXT — 리뷰 둘은 돌지 않았다):
+  - 바뀐 파일(r2 대비):
+    - `observability.py` 796 → 907(+148/−37) · `health.py` 242 → 267(+45/−20).
+    - 시험 `test_observability_contract.py` 2572 → 3148(+602/−26 · oc-1..62) · `obscontractapp/` middleware 34 → 50(`ShortCircuitMiddleware`) · urls 51 → 52 · views 97 → 104(`oc/dump`).
+    - pyproject 69 → 73(Z6 지정자 한 줄 + 주석). `uv.lock`은 r2 사본과 django-common requires-dist 지정자 한 줄(`<1` → `<0.67`)만 다르다 — 판 변화 0 · `uv lock --offline`이 성공해 온라인 실행 0 · `uv lock --check --offline` exit 0(두 번).
+    - `_obs_fakes.py` · `__init__.py`는 바이트가 같다.
+    - 시험에서 지운 26줄: 독스트링 20 · 계약 변경 Z2(허용 목록 상수 · oc-31 기대 헤더) · oc-31 입력을 감시 값으로 바꾼 강화 · oc-51 Z7 단언 추가. 지우거나 약해진 단언은 0이다(빌더 보고).
+  - 빨강(23:38 · 23:39 — 최종 시험 바이트 · `--show-capture=no`): `11 failed, 51 passed`. 빨강 뒤 시험 수정은 1건이다(oc-60이 첫 단언에서 멈춰 (b) · (c) 사례가 보이지 않아 모든 사례를 모아 한 번에 견주게 했다 — 단언 의미는 같다).
+  - 초록(최종 바이트 · sha step3 = step4 = step5): T063 21 ×2 · 계약 62 · 회귀 파일별 · 한 세션 묶음 753(9파일 합과 같다).
+  - 변이: 84개 중 83개를 잡았다(Z1 9 + 1 · Z2 1 · Z3 3 + 1 · Z4 12 + 2 · 바뀐 함수의 r2 변이 55 재실행). 생존은 M65(겹 방어 — r2와 같다).
+  - VD-T071-1 PASS(ninja 1.7.0 overlay · T063 21 · 계약 62 · 지문은 전후 같고 r1 · r2와도 같다).
+  - 위생: compileall · 바이트 검사 11파일 · gitleaks 파일별 11번 exit 0 · Docker dangling 볼륨 25 → 25 · uv는 `--offline` · 시험과 탐침은 루프백만.
+    - 첫 빨강 로그 하나(`red-contract-1.log`)의 pytest 「Captured log call」 칸에 무작위 감시 문자열 3개가 찍혔다(r2 마스킹 아래의 oc-56 — 비밀 아님). 그 뒤 빨강 · 변이는 `--show-capture=no`로 돌렸다.
+  - NEEDS_CONTEXT(빌더 ④ · ⑨): Z1 열거를 설치 소스로 다시 세니 열거 밖 env가 나왔다.
+    - `OTEL_PYTHON_SDK_INTERNAL_METRICS_ENABLED`(sdk `trace/__init__.py:1094` · `trace/export:107` · `:197` · otlp-http 내보내기 셋).
+    - `OTEL_PYTHON_EXPORTER_OTLP_HTTP_CREDENTIAL_PROVIDER` · `OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER`(otlp-http `_common:75` ← `trace_exporter:150`).
+    - 범주로는 덮였지만 이름이 없던 것: `OTEL_LOGRECORD_ATTRIBUTE_*` · `OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_PROTOCOL` · `PYTHONPATH`(실행기).
+    - Z1의 `_OTEL_PYTHON_LOGGER_PROVIDER`는 상수 이름이다. env 이름은 `OTEL_PYTHON_LOGGER_PROVIDER`다.
+  - 빌더 ⑧(설계 · 계약과 다르거나 문면이 모자란 곳 — 코드는 결정 그대로):
+    - ⑧-1: Z1 결정대로 env 검사는 공백뿐인 `OTEL_PROPAGATORS`와 대소문자가 다른 토큰을 받는다. 그런데 새 프로세스에서는 OTel import가 ValueError(「Propagator  not found」 · 「Propagator TraceContext not found」)로 기동을 끝낸다. oc-15의 「받음」 사례는 수집 때 propagate가 이미 올라와 있어서만 통과한다.
+    - ⑧-2: identity-admin-api 타임아웃 행의 「예외 종류와 무관」이 Z3의 BaseException 다시 올림과 어긋난다.
+    - ⑧-3: (c)의 「속성 없음」 경로는 instrument()가 그 속성을 늘 다시 써서 configure_otel을 거쳐서는 시험할 수 없다(코드로만 확인 · 변이 없음).
+    - ⑧-4: 「시작되지 않음」은 `worker.ident is None`으로 판정한다. start() 도중의 BaseException이면 자리를 일찍 놓을 수 있지만, 1회용 놓기라 두 번 놓지는 않는다.
+    - ⑧-5: 지표 시험의 단락 요청은 시험 미들웨어 `ShortCircuitMiddleware`가 만든다. 결정 밖으로 보강했다(시작 뒤 예외 사례 · 변이 Z1-10x · Z3-4x · Z4-13x · Z4-14x).
+  - 컨트롤러 확인(설치 소스 직접 대조 · 2026-11-07):
+    - `opentelemetry/propagate/__init__.py:107-151`(`_load_propagators`):
+      - `environ.get`이 비면(빈 값 · 없음) 기본 `tracecontext,baggage`다. 공백뿐인 값은 비지 않은 값이라 토큰 `""`가 된다.
+      - 토큰은 앞뒤 공백만 떼고(`str.strip`) entry point 이름과 대소문자까지 정확히 대조한다. 없으면 그 토큰을 실은 ValueError다. 〔r5 P1 — 떼는 것은 `str.strip`이 떼는 공백 전부(탭 · 유니코드 공백 포함)〕
+      - `none`만 대소문자를 가리지 않는다. 그 자리에서 빈 Composite로 끝낸다(앞 토큰도 버린다).
+    - 설치된 `opentelemetry_propagator` entry point는 `tracecontext` · `baggage` 둘뿐이다(opentelemetry-api). 〔r5 P1 — 틀렸다: 셋이다 · sentry-sdk 2.73.0이 `sentry`(`SentryPropagator`)를 등록한다〕
+    - SDK 자체 지표(`_tracer_metrics.py` · exporter-otlp-common `_exporter_metrics.py`):
+      - span 지표는 `otel.span.parent.origin` · `otel.span.sampling_result`만 싣는다. 내보내기 지표는 구성 요소 형 · 이름 · 엔드포인트 host · port · `error.type`만 싣는다.
+      - MeterProvider 인자가 없으면 전역(`get_meter_provider()`)으로 간다. SP-1 pod는 전역 MeterProvider를 두지 않는다. `OTEL_PYTHON_METER_PROVIDER`로 SDK MeterProvider가 생겨도 reader가 없다.
+    - 자격 provider: `opentelemetry_otlp_credential_provider` entry point는 설치돼 있지 않다(0개). 값이 있으면 OTLPSpanExporter 생성이 그 값(entry point 이름 — 비밀 아님)을 실은 RuntimeError로 기동을 끝낸다(fail-closed).
+    - OTLP 헤더 env: `parse_env_headers(..., liberal=True)`(`opentelemetry/util/re.py`)가 꼴이 틀린 쌍을 원문 그대로 WARNING 로그에 싣는다. 그 로그는 configure_logging 아래 stdout JSON으로 나간다(마스킹은 값을 보지 않는다).
+    - 헤더 캡처 env(재확인): 공백뿐인 값은 OTel이 `[""]`로 읽고, 빈 정규식의 `fullmatch`는 빈 헤더 이름만 맞으므로 캡처하는 헤더가 없다(`util/http/__init__.py:92-100` · `:211-215`). 지금 판정(strip 뒤 비면 받음)은 그대로 둔다.
+- **r4 결정 Q1–Q6(컨트롤러)**: 계약(pod-template 「트레이스 · Sentry」 행 · identity-admin-api 타임아웃 표 `/health` 행 · §관측)과 규칙 §Logging은 이 절과 같은 변경에서 「T071 r4」 표식으로 고쳤다.
+  - **Q1 `OTEL_PROPAGATORS` 판정을 OTel 해석과 똑같이 한다**(빌더 ⑧-1 — Z1 정정 · 컨트롤러 결정 오류): 〔r5 P1 — 해석 규칙만 같다 · 받는 이름은 더 좁다(OTel이 받는 `none` · `sentry`도 거부)〕
+    - 규칙:
+      - 값이 빈 문자열이거나 없으면 받는다(OTel 기본).
+      - 그 밖에는 쉼표로 나눈 토큰마다 앞뒤 공백만 떼고(`str.strip`) 대소문자 그대로 `tracecontext` 또는 `baggage`와 같아야 하고, `tracecontext`가 하나 이상 있어야 한다. 〔r5 P1 — 떼는 것은 `str.strip`이 떼는 공백 전부(탭 · 유니코드 공백 포함)〕
+      - 토큰이 겹치거나 순서가 바뀌어도 받는다.
+    - 거부로 옮기는 것: 공백뿐인 값(빈 토큰) · 대소문자가 다른 토큰(` TraceContext `) · 빈 토큰(`tracecontext,` · `,tracecontext`). OTel import는 이 값들로 그 값을 실은 ValueError를 낸다. 우리 검사가 그보다 먼저 이름만 실은 `ImproperlyConfigured`로 끝낸다.
+    - 코드(`_check_otel_env`):
+      - 전체 값의 `.strip()` 판정을 원문의 참/거짓으로 바꾼다.
+      - 토큰의 `.strip().lower()`를 `.strip()`으로 바꾼다.
+      - 메시지는 그대로다(이름만).
+    - 시험:
+      - oc-15:
+        - 「받음」의 ` TraceContext , baggage ` · 공백을 「거부」로 옮긴다(계약 변경 r4 Q1).
+        - 거부를 더한다: `TRACECONTEXT` · `tracecontext,` · `,tracecontext` · 탭뿐 · `tracecontext baggage`(쉼표 없음) · ` tracecontext ,BAGGAGE`.
+        - 받음을 더한다: ` tracecontext , baggage ` · `tracecontext,tracecontext` · `baggage, tracecontext,baggage`.
+      - 대조 시험(새 oc):
+        - 후보 값(oc-15의 `OTEL_PROPAGATORS` 값 전부 + 없음)마다 판정이 같아야 한다. 한쪽은 「우리 env 검사(`_check_otel_env`)가 받는다」다.
+        - 다른 쪽은 「`opentelemetry.propagate._load_propagators()`가 예외 없이 끝나고 그 `fields`에 `traceparent`가 있다」다. 이 함수는 OTel이 import 때 쓰는 함수이고, 부를 때 env를 읽는다.
+        - 후보에는 받는 값과 거부하는 값이 둘 다 있어야 한다(공허한 대조 금지). 감시 값은 넣지 않는다(oc-15 · oc-57이 본다). 실패 출력에 후보 원문 대신 이름표를 쓴다.
+        - 비공개 함수가 없어지면 시험이 실패한다. 판 올림 때 다시 확인하라는 신호라고 독스트링에 적는다.
+      - 새 프로세스(운영 경로 — env가 OTel import 전에 있다):
+        - 대소문자가 다른 토큰(`TraceContext`): 이름만 실은 `ImproperlyConfigured`다. ValueError가 아니고, `opentelemetry.propagate`는 올라오지 않는다.
+        - 기본이 아닌 받음 값(` baggage , tracecontext `): configure_otel이 성공하고, 전역 textmap `fields`에 `traceparent` · `baggage`가 있다.
+    - 변이: 토큰 `.lower()` 되살리기 · 전체 값 `.strip()` 판정 되살리기 · 토큰 `.strip()` 지우기.
+  - **Q2 열거 밖 env는 받는다**(빌더 ⑨ NEEDS_CONTEXT · 문서만):
+    - `OTEL_PYTHON_SDK_INTERNAL_METRICS_ENABLED`: SDK 자체 지표(span 시작 · 살아 있는 span 수 · 내보내기 수 · 시간)를 켠다.
+      - 라벨은 표본 결과 · 부모 출처 · 구성 요소 · 엔드포인트 host · port · `error.type`뿐이다. 요청 값이 없다.
+      - span · 계측 · propagation을 바꾸지 않는다.
+      - 지표는 전역 MeterProvider로 가는데, SP-1 pod는 그것을 두지 않는다.
+    - `OTEL_PYTHON_EXPORTER_OTLP_HTTP_CREDENTIAL_PROVIDER` · `…_TRACES_CREDENTIAL_PROVIDER`: 내보내기 전송 Session을 entry point로 고른다(전송 설정). 이 이미지에는 provider가 없어, 값이 있으면 기동이 실패한다(fail-closed · 메시지의 값은 entry point 이름).
+    - 범주로 덮였던 이름을 Z1 「나머지는 받는다」에 더한다: `OTEL_LOGRECORD_ATTRIBUTE_*`(로그 SDK — 쓰지 않는다) · `OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_PROTOCOL`(`_configuration` 전용) · `PYTHONPATH`(실행기 전용).
+    - Z1의 `_OTEL_PYTHON_LOGGER_PROVIDER`는 env `OTEL_PYTHON_LOGGER_PROVIDER`로 읽는다.
+    - 거부 env는 아홉 그대로다. 계약의 「이 아홉이 전부다」 근거에 이 절을 더한다. 〔r5 P5 — 열하나〕 〔r6 G1 — 열일곱(mTLS 클라이언트 키 · 인증서 넷 · 닫힌 꼴 밖 엔드포인트 둘)〕
+  - **Q3 굳은 값 (c)의 판 올림 경로**(빌더 ⑧-3):
+    - `_semconv_mode_default`: `_StabilityMode`에 `DEFAULT` 이름이 없어도 AttributeError가 아니라 False(거부)를 돌려준다(`getattr`). 모듈 · 속성 · 이름 가운데 하나라도 없으면 모두 False다.
+    - 시험(굳은 값 helper를 직접 부른다 — configure_otel을 거치면 instrument()가 속성을 다시 쓴다):
+      - (c): `_sem_conv_opt_in_mode`를 지운 클래스 → False · `DEFAULT`가 없는 `_StabilityMode` 대역 → False(예외 없음) · `_semconv` 모듈 import 실패 → False.
+      - (a): 계측 미들웨어 모듈 import 실패 → True(거부).
+      - 원복은 monkeypatch가 한다(`sys.modules` 항목 포함).
+    - 변이: (c) 속성이 없으면 DEFAULT로 보기 · (c) import 실패를 통과로 보기 · (a) import 실패를 통과로 보기 · `getattr`을 직접 속성 접근으로 되돌리기.
+  - **Q4 헬스 시작 실패 문면**(빌더 ⑧-2 · ⑧-4 · 문서만):
+    - identity-admin-api 타임아웃 표 `/health` 행과 규칙 §Logging:
+      - `Exception`이면 종류와 무관하게 그 검사만 곧바로 fail이고, 자리를 바로 놓는다. 〔r5 P4 — 자리는 스레드가 시작되지 않았을 때만 바로 놓는다(시작됐으면 그 스레드가 끝날 때)〕
+      - `KeyboardInterrupt` · `SystemExit` 같은 `BaseException`은 스레드가 시작되지 않았으면 자리를 놓고 그대로 올린다.
+    - 한계(코드 변경 없음 · 기록): 〔r5 P4 — 코드를 바꾼다: Exception 갈래도 같은 ident 판정〕
+      - 「시작되지 않음」 = `worker.ident is None`이다.
+      - start() 안의 BaseException이 새 스레드의 ident 설정보다 먼저 오면 자리를 일찍 놓을 수 있다. 그동안 그 칸의 살아 있는 스레드가 9가 될 수 있다. 〔r5 P4 — Exception 갈래도 같다〕 〔r6 G3 — 8을 넘을 수 있다(일찍 놓인 채 살아 있는 스레드 수만큼)〕
+      - 1회용 놓기라 두 번 놓지는 않는다. 그 BaseException은 프로세스 종료 신호라 받아들인다.
+  - **Q5 인계 보강**(문서만):
+    - T072 · T098: pod env에 OTLP 헤더 env(`OTEL_EXPORTER_OTLP_HEADERS` · `OTEL_EXPORTER_OTLP_TRACES_HEADERS`)로 자격을 두지 않는다. 〔r5 P5 — 이제 두 env는 기동 실패다(거부 env)〕 〔r6 G1 — mTLS 클라이언트 키 · 인증서 env 넷과 닫힌 꼴 밖 엔드포인트(사용자 정보 · 쿼리 등)도 기동 실패다〕
+      - 꼴이 틀린 쌍은 OTel이 원문을 WARNING 로그에 싣는다. 마스킹은 값을 보지 않는다.
+      - 자격은 수집기가 갖는다(Alloy · `grafana-cloud-credentials` — T098 문면은 pod → Alloy 4318).
+    - T072:
+      - 자격 provider env 둘을 두지 않는다(provider가 없어 기동이 실패한다).
+      - Z8의 「`tracecontext[,baggage]` 밖의 `OTEL_PROPAGATORS`」는 Q1 규칙(소문자 정확 일치 · 공백뿐인 값 거부)으로 읽는다. 〔r5 P1 — `sentry`(sentry-sdk가 등록)도 거부된다〕
+  - **Q6 받아들인 것**(빌더 ⑧-5): `ShortCircuitMiddleware`(시험 전용 앱 obscontractapp)와 결정 밖으로 보강한 시험 · 변이는 그대로 둔다.
+  - **손대지 않는 것**: Z2 · Z3 코드 · Z4 · Z5 · Z6 · Z7 · Z8(Q5가 보강하는 줄 밖) · D3 · D4 · D8 · D9 · D10 · D12 · D13 · D15 · RequestIdMiddleware · sub_hash · 헬스 칸 구조 · 헤더 캡처 env 판정.
+
+### T071 r4 결과 · r5 결정(리뷰 r4 반영 · P1–P6 · 2026-11-07) — Q1의 제목 · entry point 사실 줄 · 「앞뒤 공백만」, Q4의 Exception 갈래 · 한계, Q5의 T072 줄, Z1 · Z8의 거부 env 수 · 기준 문장 · 받는 OTLP 헤더, Z8의 T092 · T076 줄은 이 절의 P1 · P4 · P5 · P6이 고친다(앞 절 줄 끝 〔r5 …〕 표식)
+
+- **r4 결과**(워크플로 `wf_8c9174f9-1e2` · 145만 토큰 · 약 1시간 31분 · 빌더 DONE_WITH_CONCERNS · 리뷰 A · B 둘 다 approve_with_fixes — low 4씩 · high · medium 0):
+  - 바뀐 파일(r3 대비):
+    - `observability.py` 907 → 915(+15/−7) · 시험 `test_observability_contract.py` 3148 → 3364(+242/−26 · oc-1..65).
+    - 나머지 9파일은 r3 사본과 바이트가 같다(`health.py` · `__init__.py` · pyproject · `uv.lock` · `_obs_fakes.py` · obscontractapp 넷).
+    - 시험에서 지운 26줄: 독스트링 · 주석 16 · oc-15의 `OTEL_PROPAGATORS` 리터럴 10. 리터럴은 모듈 상수 `PROPAGATORS_REJECTED`(13) · `PROPAGATORS_ACCEPTED`(6)로 옮겨 oc-63과 함께 쓴다(받음 둘은 거부로 — 계약 변경 r4 Q1). 지우거나 약해진 단언은 0이다(기계 대조 — r3 assert 331줄이 r4에 모두 있다).
+  - 빨강(01:33 · `--show-capture=no`): `4 failed, 61 passed`(oc-15 · oc-63 · oc-64 cased · oc-65).
+    - 빨강 뒤 시험 수정은 1건이다. oc-65에 `c-both-missing`을 더했다(None 가드 변이를 잡으려고).
+    - 최종 시험 바이트로 r3 구현을 다시 돌려도 `4 failed`다.
+  - 초록(sha step06 = 07 = 08): T063 21 ×2 · 계약 65 · 회귀 파일별 · 한 세션 묶음 756(9파일 합과 같다).
+  - 대조(oc-63 · 후보 20): 우리 판정과 OTel `_load_propagators`가 모두 같다. r3 구현은 5개가 어긋났다.
+  - 변이 38개를 모두 잡았다(Q1 3 + 1 · Q3 4 + 1 · 바뀐 함수의 앞 변이 28 재실행 · 생존 0).
+  - VD-T071-1 PASS · `uv lock --check --offline` exit 0 · 위생(compileall · 바이트 · gitleaks 11 · Docker dangling 볼륨 25 → 25 · 루프백만).
+  - 빌더 ⑧:
+    - ⑧-1: 컨트롤러 사실 오류. sentry-sdk 2.73.0이 propagator entry point `sentry`를 등록한다. `tracecontext,sentry`는 우리가 거부하고 OTel은 받는다.
+    - ⑧-2: 「앞뒤 공백만」은 실제(`str.strip` — 유니코드 공백까지 뗀다)보다 좁게 말한다.
+    - ⑧-3: 결정 밖 보강 — oc-65 사례 둘 · 후보 상수 공유 · 변이 Q1-4x · Q3-5x.
+  - 리뷰 A(계약 · 문면 · 판별력 — r3 + r4 누적):
+    - Z1–Z7 · Q1 · Q3이 구현 · 시험 · 변이와 1:1이다. 공허한 단언이 없고, 빨강 · 수치가 증거와 맞는다.
+    - r2 지적 16건과 빌더 r3 ⑧ · ⑨는 모두 코드 · 시험 · 계약 · 인계 중 한 곳으로 닫혔다.
+    - low 4:
+      - A-1: entry point 사실 오류 · 「OTel 해석과 같다」의 과장 · `sentry` 거부가 시험에 고정되지 않음.
+      - A-2: Django 인증 폼 비밀번호 필드가 마스킹 목록 밖이다.
+      - A-3: 거부 env 문면 셋 — 빈 값 일반 규칙과 MIDDLEWARE_POSITION · 기준 문장과 MIDDLEWARE_POSITION · 「앞뒤 공백만」.
+      - A-4(인계): bff-api 하류 헤더 줄 · admin 호스트 결정의 소유(T076은 tester 과제).
+  - 리뷰 B(누출 · 실패 처리 · 부작용 — r3 + r4 누적):
+    - 열거를 다시 셌다(opentelemetry-* 12배포 AST · `os.environ` 직접 86곳 · entry point 그룹 14). 기준에 드는 것은 아홉이고, Q2 근거는 소스와 맞다.
+    - 53후보 대조에서 어긋나는 값은 `tracecontext,sentry` 둘뿐이다(의도된 좁힘).
+    - Sentry · 로그 · 헬스(시작 실패 11경로 · 동시 64건) 회귀는 0이다.
+    - low 4:
+      - B-1: camelCase 머리글자 경계 공백(`APIToken` 등 12꼴이 남는다).
+      - B-2: A-2와 같다.
+      - B-3: 헬스 `_start`의 Exception 갈래가 이미 시작된 스레드의 자리도 놓는다. 칸 상한을 하나 넘을 수 있고, Q4 기록 밖이다.
+      - B-4(인계): OTLP 헤더 env의 꼴이 틀린 쌍을 OTel이 원문 WARNING으로 남긴다. Q5는 문서뿐이라 강제 지점이 필요하다.
+  - 컨트롤러 확인(설치 소스 직접 대조 · 2026-11-07):
+    - `sentry_sdk-2.73.0.dist-info/entry_points.txt`에 `[opentelemetry_propagator] sentry = sentry_sdk.integrations.opentelemetry:SentryPropagator`가 있다. propagator entry point를 둔 배포는 opentelemetry-api와 sentry-sdk 둘이다.
+    - Django 6.1.2 `contrib/auth/forms.py`:
+      - `password1` · `password2`: `create_password_fields`(:90 · :97)가 만든다. `BaseUserCreationForm`(:222) · `AdminPasswordChangeForm`이 쓴다.
+      - `new_password1` · `new_password2`: `SetPasswordForm`(:497 — `PasswordChangeForm`의 부모)이 쓴다.
+      - Django 자신이 `@sensitive_variables("password1", "password2")`(:106 · :165)로 표시한다.
+    - `health._start`(:135-141): `except Exception`은 무조건 `release()`다. `except BaseException`만 `worker is None or worker.ident is None`일 때 놓는다.
+    - OTLP 헤더: `_common._resolve_headers`(:137-143)가 `OTEL_EXPORTER_OTLP_TRACES_HEADERS`(비면 `OTEL_EXPORTER_OTLP_HEADERS`)를 `parse_env_headers(liberal=True)`로 읽는다. 읽는 때는 OTLPSpanExporter 생성 때(엔드포인트가 있을 때)뿐이다. 지표 · 로그 OTLP exporter는 이 프로세스가 만들지 않는다.
+    - camelCase 둘째 경계(P3) 메모리 탐침: 지금 목록의 이름 · 접두 · 접미로 만든 camelCase 변형 1393개에서, 지금 지우는데 둘째 경계를 더하면 남게 되는 것은 0이고 새로 지우는 것은 332다. 남는 이웃(`AWSAccessKeyID` · `XRequestID` · `IDTokenType` · `partitionKey` · `MaxTokens` · `HTTPSProxy` · `APIVersion` 등)은 그대로 남는다. 〔r6 G2 — 틀렸다: 변형에 「머리글자 + 소문자 낱말」 꼴이 없었다 · `myAPIkey` · `xCSRFtoken` 등 10꼴이 남게 된다(리뷰 r5 B-2 · 컨트롤러 재현)〕
+- **r5 결정 P1–P6(컨트롤러)**: 계약(pod-template 「로그」 · 「트레이스 · Sentry」 행 · identity-admin-api 타임아웃 표 `/health` 행 · §관측 · bff-api 하류 호출 규약)과 규칙 §Logging은 이 절과 같은 변경에서 「T071 r5」 표식으로 고쳤다.
+  - **P1 `OTEL_PROPAGATORS` — 해석 규칙만 OTel과 같고, 받는 이름은 더 좁다**(A-1 · 빌더 r4 ⑧-1 · ⑧-2 · A-3 (iii) — 컨트롤러 사실 오류 정정):
+    - 사실 정정: 설치된 `opentelemetry_propagator` entry point는 셋이다 — `tracecontext` · `baggage`(opentelemetry-api)와 `sentry`(sentry-sdk 2.73.0 `SentryPropagator`). r4 절의 「둘뿐」 줄은 틀렸다.
+    - 문면 정정:
+      - Q1의 「OTel 해석과 똑같이」는 해석 규칙(쉼표 · `str.strip` · 대소문자 · 빈 토큰)에 한한다.
+      - 받는 이름 집합은 일부러 더 좁다: `tracecontext` · `baggage`만 받고, `tracecontext`가 있어야 한다. OTel이 받는 `none` · `sentry`도 거부한다.
+    - `sentry`를 거부하는 이유:
+      - `SentryPropagator.extract`는 클라이언트 `sentry-trace` 헤더로 원격 부모 span 문맥과 sampled 플래그를 정한다(리뷰 r4 B 탐침 — 강제 SAMPLED 원격 부모).
+      - inject는 나가는 요청에 `sentry-trace` · `baggage`를 싣는다. `trace_propagation_targets=[]`의 취지와 어긋난다.
+    - 공백: 토큰 앞뒤에서 떼는 것은 Python `str.strip`이 떼는 공백 전부다(탭 · NBSP · U+3000 같은 유니코드 공백 포함 — OTel도 같은 함수를 쓴다). 계약 · 규칙의 「앞뒤 공백만」을 이렇게 고친다.
+    - 코드: 독스트링만 고친다(`_check_otel_env` · 시험 모듈 머리 · oc-15 · oc-63). 「판정 = OTel 해석」을 「해석 규칙은 OTel과 같고 받는 이름은 더 좁다」로 바꾼다.
+    - 시험:
+      - 모듈 상수 `PROPAGATORS_NARROWED = (("sentry-pair", "tracecontext,sentry"),)`를 둔다.
+      - oc-15는 이 후보를 거부로 펼친다(이름만 실은 `ImproperlyConfigured`).
+      - oc-63은 이 후보마다 「우리는 거부」와 「OTel `_load_propagators`는 예외 없이 끝나고 `fields`에 `traceparent`가 있다(받음)」를 함께 단언한다. 의도된 좁힘을 고정하는 것이다. sentry-sdk가 그 entry point를 거두면 실패해 계약 문장을 다시 보게 한다.
+      - oc-63의 같음 대조는 `PROPAGATORS_ACCEPTED` · `PROPAGATORS_REJECTED`(+ 없음) 그대로다.
+      - `_load_propagators()`가 `sentry_sdk.integrations.opentelemetry`를 import해도 전역 textmap · Sentry 전역 상태가 바뀌지 않음을 확인한다(바뀌면 원복하고 단언한다).
+    - 변이: `_PROPAGATOR_NAMES`에 `sentry`를 더한다.
+  - **P2 Django 인증 폼 비밀번호 필드**(A-2 · B-2):
+    - 「쿠키 · 폼」 묶음에 정확한 이름 넷을 더한다(정규화 꼴): `password1` · `password2` · `new-password1` · `new-password2`.
+      - Django `UserCreationForm` · `AdminUserCreationForm` · `AdminPasswordChangeForm`의 `password1` · `password2`, `SetPasswordForm` · `PasswordChangeForm`의 `new_password1` · `new_password2`다.
+      - `old_password`는 이미 `-password` 접미로 지운다.
+    - 일반 규칙(이름 끝 숫자 떼기)은 고르지 않는다. 닫힌 목록이 모든 비밀 낱말 + 숫자로 넓어지기 때문이다.
+    - 시험:
+      - oc-1 지움에 넷을 더한다(감시 값 · camelCase `newPassword1` 꼴 포함).
+      - `request.POST` 꼴 QueryDict 사례를 더한다: `csrfmiddlewaretoken` · `password1` · `password2` · `old_password` · `new_password1` · `new_password2` · `username` 가운데 `username`만 남는다.
+      - 남는 이웃: `PASSWORD_RESET_TIMEOUT` · `PASSWORD_HASHERS` · `AUTH_PASSWORD_VALIDATORS`.
+    - 변이: 이름마다 하나씩 지운다(넷).
+  - **P3 camelCase 머리글자 경계**(B-1):
+    - `_CAMEL_BOUNDARY`에 둘째 경계를 더한다: 대문자 뒤 「대문자 + 소문자」 앞(`(?<=[A-Z])(?=[A-Z][a-z])`). `APIToken` → `API-Token`, `AWSSecretKey` → `AWS-Secret-Key`가 된다.
+    - 판정은 그대로 두 꼴(원래 꼴 · 경계에 `-`를 넣은 꼴)이고, 하나라도 맞으면 지운다.
+    - 지금 지우는 이름이 둘째 경계 때문에 남게 되는 일은 없다(컨트롤러 탐침 — 변형 1393개 중 0). 기존 oc-1 지움 사례가 모두 그대로 지워지는 것으로 다시 보인다. 〔r6 G2 — 틀렸다: 두 경계를 한 꼴에만 넣으면 `myAPIkey`가 `my-AP-Ikey`로 갈려 남는다 · 세 꼴 판정으로 고친다〕
+    - 시험:
+      - oc-1 지움에 더한다(감시 값): `APIToken` · `myAPIToken` · `XAPIToken` · `IDToken` · `JWTSecret` · `AWSSecretKey` · `DBPassword` · `XApiKey`.
+      - 남는 이웃에 더한다: `AWSAccessKeyID` · `XRequestID` · `IDTokenType`.
+    - 변이: 둘째 경계를 지운다.
+  - **P4 헬스 시작 실패 — 자리는 스레드가 시작되지 않았을 때만 그 자리에서 놓는다**(B-3 · Q4 정정):
+    - `_start`의 `except Exception`도 `except BaseException`과 같은 판정을 쓴다. `worker is None or worker.ident is None`일 때만 `release()`하고, 그다음 `return None`이다.
+    - 그 검사는 그대로 곧바로 fail이다(latency_ms 0.0). 이미 시작된 스레드의 자리는 그 스레드의 finally가 놓는다(1회용 놓기 · 두 번 놓지 않는다).
+    - 까닭: CPython 3.13 `Thread.start()`는 OS 스레드를 띄운 뒤 `self._started.wait()`에서도 예외를 낼 수 있다(메모리 압박의 MemoryError — 리뷰 r2 B-2가 문제 삼은 그 종류). 무조건 놓으면 살아 있는 스레드가 칸 상한 8을 하나 넘는다.
+    - 한계(Q4 기록을 두 갈래로 넓힌다):
+      - 「시작되지 않음」 = `worker.ident is None`이다. start() 안의 예외(Exception · BaseException)가 새 스레드의 ident 설정보다 먼저 오면 자리를 일찍 놓을 수 있다. 그동안 그 칸의 살아 있는 스레드가 9가 될 수 있다. 1회용 놓기라 두 번 놓지는 않는다. 〔r6 G3 — 「9」가 아니라 8을 넘을 수 있다(일찍 놓인 채 살아 있는 스레드 수만큼)〕
+      - 새 스레드가 ident를 둔 뒤 `run()`에 닿기 전에 죽으면(인터프리터 내부 실패) 그 자리는 돌아오지 않는다. start()가 정상으로 끝나든 예외를 내든 같다(r4까지의 정상 경로와 같다 · 받아들인다). 〔r6 G3 — 좁다: `_started.set()` 전에 죽으면 start()가 돌아오지 않는다(요청 스레드가 멈추고 자리도 돌아오지 않는다)〕
+    - 시험:
+      - oc-61의 「started」 사례(시작 뒤 RuntimeError)에 「작업 스레드가 살아 있는 동안 그 칸 여유 = 7」 단언을 더한다. 끝난 뒤 8은 그대로다.
+      - oc-62에 같은 꼴의 BaseException 「started」 사례를 더한다(시작 뒤 `_StartAborted` — 올라온다 · 살아 있는 동안 7 · 끝난 뒤 8).
+    - 변이: Exception 갈래의 ident 판정 지우기(무조건 놓기 — r4 코드로 되돌리기) · BaseException 갈래의 ident 판정 지우기.
+    - 계약 · 규칙 문면: 스레드를 만들거나 시작하다 예외가 나면, `Exception`(종류와 무관)이면 그 검사만 곧바로 fail이고 `BaseException`이면 그대로 올린다. 칸 자리는 스레드가 시작되지 않았을 때만 그 자리에서 놓고, 시작됐으면 그 스레드가 끝날 때 놓는다.
+  - **P5 OTLP 헤더 env 거부**(B-4 — Q5의 강제 지점 · A-3 (i) · (ii)):
+    - 거부 env에 둘을 더한다: `OTEL_EXPORTER_OTLP_HEADERS` · `OTEL_EXPORTER_OTLP_TRACES_HEADERS`.
+      - 값이 빈 문자열이 아니면(공백뿐인 값 포함) 이름만 실은 `ImproperlyConfigured`다. CAPTURE_ALL_METHODS와 같은 원문 참/거짓 판정이다.
+      - OTel import 전 검사(`_check_otel_env`)에 둔다. 거부 env는 모두 열하나가 된다. 〔r6 G1 — 열일곱(mTLS 클라이언트 키 · 인증서 넷 · 닫힌 꼴 밖 엔드포인트 둘)〕
+    - 까닭:
+      - pod는 자격 없이 클러스터 안 수집기(Alloy)로 보내고, 자격은 수집기가 갖는다(T098).
+      - 헤더는 pod에 자격을 두는 통로다. 꼴이 틀린 쌍(콜론 꼴 `Authorization: Bearer …` · 따옴표 · 세미콜론 · 비ASCII)은 OTel `parse_env_headers(liberal=True)`가 원문을 WARNING으로 남긴다. 그 줄은 configure_logging sink(stdout JSON → Loki)에 실린다(리뷰 r4 B-4 탐침 · 마스킹은 값을 보지 않는다).
+    - 거부 밖(받는다):
+      - `OTEL_EXPORTER_OTLP_METRICS_HEADERS` · `…_LOGS_HEADERS`: 이 프로세스가 읽지 않는다(지표 · 로그 OTLP exporter를 만들지 않는다). 〔r6 G7 — 조건부 근거다 · 그 exporter를 두는 과제가 거부 env에 더한다(T072 · T098 인계)〕
+      - 엔드포인트 URL의 사용자 정보: OTel 로그 · 지표 라벨에 실리지 않는다(host · port · path만 — 리뷰 r4 B-4 탐침). 〔r6 G1 — 틀렸다: requests가 Basic 인증으로 보내고, 빈 호스트면 URL째 ERROR 로그에 실린다 · 쿼리도 장애 때 WARNING에 실린다 → 닫힌 꼴 밖 엔드포인트는 거부〕
+      - `OTEL_EXPORTER_OTLP_*CLIENT_KEY` · `*CLIENT_CERTIFICATE` · `*CERTIFICATE`: 파일 경로다. 〔r6 G1 — 틀렸다: 경로 아닌 값은 requests 오류 원문으로 ERROR 로그에 실리고, 인증서만으로도 키를 함께 담은 PEM을 쓴다 → 클라이언트 키 · 인증서 넷은 거부 · CA 인증서는 받는다〕
+      - pod에 OTLP 자격을 두지 않는 것은 Q5 인계 그대로다(T072 · T098).
+    - 기준 문장 · 수(A-3 (ii)): 계약 「트레이스 · Sentry」 행의 기준을 다섯 절로 고친다.
+      - 요청 값을 span에 싣는 env.
+      - 계측 · SDK를 끄는 env.
+      - 상류 traceparent 이어받기를 끄는 env.
+      - 계측 미들웨어 위치를 바꾸는 env(D5 — 가장 바깥이어야 요청 로그 · 단락 응답이 span 안이다 · `OTEL_PYTHON_DJANGO_MIDDLEWARE_POSITION`).
+      - 이 프로세스가 읽는 자격 값을, 꼴이 틀릴 때 OTel이 원문 그대로 경고 로그에 싣는 env(OTLP 헤더 둘). 〔r6 G1 — 「이 프로세스의 span 내보내기에 OTLP 자격을 싣는 env(헤더 · mTLS 클라이언트 키 · 인증서 · 엔드포인트의 사용자 정보 · 쿼리)」로 넓힌다〕
+      - 이 기준에 드는 것은 열하나가 전부다(Z1 · Q2 열거 + 이 절). 〔r6 G1 — 열일곱(mTLS 클라이언트 키 · 인증서 넷 · 닫힌 꼴 밖 엔드포인트 둘)〕
+    - 빈 값 일반 규칙(A-3 (i)): 「빈 값은 없음과 같다 — `OTEL_PYTHON_DJANGO_MIDDLEWARE_POSITION`만 있으면 빈 값이어도 거부한다」로 고친다.
+    - 시험:
+      - oc-15 거부에 두 env를 더한다: 감시 값을 담은 값(콜론 꼴 `Authorization: Bearer <감시 값>` 포함) · 공백뿐인 값.
+      - oc-15 받음에 두 env의 빈 값을 더한다.
+      - 거부 메시지와 연쇄 예외에 값 · 감시 값이 없다. OTLPSpanExporter를 만들기 전에 끝나므로 OTel 로거의 WARNING도 없다(caplog로 단언한다).
+    - 변이: 두 env를 각각 검사에서 빼기 · 판정을 `.strip()` 판정으로 바꾸기(공백뿐인 값을 받게 된다).
+  - **P6 인계 · 계약 문면**(A-4 · 문서만):
+    - bff-api 하류 호출 규약 헤더 줄에 적는다: `traceparent`는 BFF가 자기 span으로 만든다. 브라우저가 보낸 `traceparent` · `tracestate`는 하류로 옮기지 않는다(Z8 T092 · r5).
+    - Z8의 admin 호스트 줄 소유를 고친다:
+      - 결정과 계약 기록(identity-admin-api §관측 신뢰 경계)은 T084가 맡는다. T084가 admin 호스트 경로(Access + Authentik forward-auth Middleware)를 만드는 과제다. Traefik `headers` 미들웨어나 Cloudflare Transform Rule로 지울 수 있다. 〔r6 G6 — 정확히는 admin 호스트 인증 미들웨어 사슬(Access + forward-auth)을 만드는 과제다 · Ingress는 T075〕
+      - T076은 검증만 한다(tester 과제 — 시험 경로만 쓴다). 〔r6 G6 — T076은 T084보다 먼저 돈다 · 검증은 T085(US4 E2E)〕
+      - identity-admin-api §관측 문장도 같이 고친다.
+    - Q5의 T072 줄에 더한다: `sentry`(sentry-sdk가 등록)도 거부되고(P1), OTLP 헤더 env 둘은 기동 실패다(P5). 〔r6 G1 — mTLS 클라이언트 키 · 인증서 env 넷과 닫힌 꼴 밖 엔드포인트도 기동 실패다〕
+  - **손대지 않는 것**: Z2 · Z5 · Z6 · Z7 · Q2(P5가 헤더 둘을 거부로 옮기는 것 밖) · Q3 · D3 · D4 · D8 · D9 · D10 · D12 · D13 · D15 · RequestIdMiddleware · sub_hash · 헬스 칸 구조(P4의 판정 밖) · 헤더 캡처 env 판정 · 쿠키 접두 · memoryview 판정 · 의존성.
+
+### T071 r5 결과 · r6 결정(리뷰 r5 반영 · G1–G8 · 2026-11-07) — r4 결과의 P3 탐침 줄, P3의 「남게 되는 일은 없다」, P4의 한계, P5의 「거부 밖」 · 기준 다섯째 절 · 수, P6의 T084 · T076 줄, Z8의 T072 · T076 줄은 이 절의 G1 · G2 · G3 · G6 · G7이 고친다(앞 절 줄 끝 〔r6 …〕 표식). r5가 대신했는데 표식이 빠진 D6 · D14 · Y2 · Z1 · Z3 · Z4 · Z8 줄에는 〔r5 …〕 표식을 더했다(G5)
+
+- **r5 결과**(워크플로 `wf_ac330432-677` · 137만 토큰 · 약 3시간 9분 · 빌더 DONE_WITH_CONCERNS · 리뷰 A approve_with_fixes — low 4 · 리뷰 B approve_with_fixes — medium 1 · low 2):
+  - 바뀐 파일(r4 대비):
+    - `observability.py` 915 → 932(+25/−8) · `health.py` 267 → 272(+10/−5) · 시험 `test_observability_contract.py` 3364 → 3691(+346/−19 · oc-1..65 그대로).
+    - 나머지 8파일은 r4 사본과 바이트가 같다(`__init__.py` · pyproject · `uv.lock` · `_obs_fakes.py` · obscontractapp 넷).
+    - 시험에서 지운 19줄은 독스트링 17 · 시그니처 2(인자 `caplog` · `monkeypatch`를 더하며 줄을 나눴다)다. r4의 assert 문 315개가 r5의 같은 함수에 모두 있다(r5 331 · 리뷰 A의 AST 셈으로는 338 → 354).
+  - 빨강(03:28 · `--show-capture=no`): `3 failed, 62 passed`(oc-1 · oc-15 · oc-61).
+    - 빨강 뒤 시험 수정은 2건이다. oc-1 독스트링 낱말 하나 · oc-61 경합 대역 사례(⑧-3).
+    - 최종 시험 바이트로 r4 구현을 다시 돌려도 oc-1 · oc-15 · oc-61이 빨강이다.
+  - 초록(최종 바이트): T063 21 ×2 · 계약 65 · 회귀 파일별 · 한 세션 묶음 756(9파일 합과 같다).
+  - P1 좁힘 대조: 후보 23개 중 22개는 우리 판정과 OTel `_load_propagators`가 같다. 다른 하나는 `tracecontext,sentry`(의도된 좁힘)다. `sentry_sdk.integrations.opentelemetry` import 뒤 전역 textmap · Sentry scope 셋과 클라이언트 · 전역 이벤트 처리기가 바뀌지 않는다(새 프로세스 탐침).
+  - P4 「살아 있는 동안」 칸 여유: oc-61 · oc-62 started 모두 7(r4 구현 · P4 변이에서는 8) · 끝난 뒤 8 · 초과 해제 0.
+  - P5 caplog: 거부 6사례 모두 이름만 · 감시 값 0 · OTel 기록 0. 대조 조각이 WARNING 1건으로 잡혀 받기 경로가 살아 있음을 보였다. r4 구현은 콜론 꼴 WARNING에 감시 값을 실었다(새 프로세스 탐침).
+  - 변이: 1차 63개 중 62개(Z3-4x 생존 — ⑧-3) → 시험 보강 뒤 최종 바이트로 63개 모두 · extra 4개 모두. 새 변이 11개(P1 1 · P2 4 · P3 1 · P4 2 · P5 3) · 바뀐 함수의 앞 변이 재실행.
+  - VD-T071-1 PASS · `uv lock --check --offline` exit 0 · 위생(compileall · 바이트 · gitleaks 11 · Docker dangling 볼륨 25 → 25 · 루프백만).
+  - 빌더 ⑧:
+    - ⑧-1 · ⑧-2: P5 caplog 처리기를 `opentelemetry` 로거에 직접 달고 그 블록 동안 전파를 껐다(실패 때 pytest 「Captured log」에 헤더 원문이 찍히지 않게). P5 사례는 oc-15 끝의 별도 블록이다(일반 거부 튜플은 내보내기 대역을 써서 exporter를 만들지 않는다).
+    - ⑧-3: 결정 밖 보강 — oc-61 경합 대역 사례(`_hidden_ident`로 그 스레드의 ident를 None으로 보이게 · `threading.Thread.ident` property 패치). P4 뒤로 두 놓기 경로가 겹치지 않아 「1회용 놓기」를 보는 시험이 없어졌기 때문이다(Z3-4x를 잡는다).
+    - ⑧-4 · ⑧-5 · ⑧-6: oc-1 진단 단언 · extra 변이 4 · P1 「Sentry 전역 상태」 범위(scope 셋 · 클라이언트 · 전역 이벤트 처리기) · 모듈 독스트링 문면도 고쳤다.
+  - 빌더 ⑨:
+    - ⑨-1: 기존 단언 4개(r1–r3에서 만든 oc-1 · oc-3 · oc-31)가 변이로 실패하면 pytest 단언 설명에 감시 값을 찍는다(M01 · M02 · M03 · Y4-2 로그 — 실행 때 만든 값 · 비밀 아님 · scratch 로그에만).
+    - ⑨-2: `_hidden_ident`는 CPython 3.13의 `Thread.ident`가 property라는 데 기댄다. ⑨-3: oc-63은 sentry-sdk의 `sentry` entry point와 OTel 비공개 함수 `_load_propagators`에 기댄다. ⑨-4: T072 인계는 P6 그대로다.
+  - 리뷰 A(계약 · 문면 · 판별력 — r4 사본 대비 r5):
+    - P1–P5가 구현 · 시험 · 변이와 1:1이고, 손대지 않기로 한 것에 코드 변경이 없다. 새 변이 11개는 실제 코드 변경이고 모두 잡혔다. 다시 돌린 앞 변이 50개의 범위가 지시와 같다. 공허한 단언이 없다. 빨강 · 수치가 증거와 맞다.
+    - 리뷰 r4 A-1..A-4 · B-1..B-4 · 빌더 r4 ⑧ · ⑨는 모두 한 곳 이상으로 닫혔다.
+    - low 4:
+      - A-1: 규칙 §Logging에 빈 값 일반 규칙이 없다(「any … value, whitespace included」는 빈 값 거부로, 「a middleware position」은 빈 값 받음으로 읽힌다).
+      - A-2: r5가 대신한 앞 절 일곱 줄에 〔r5 …〕 표식이 없다.
+      - A-3: 「T076은 검증만」은 실행 순서와 어긋난다 — T076(US6 E2E)은 결정 과제 T084(US4)보다 먼저 돈다. 검증은 T085가 맡아야 한다.
+      - A-4(인계): 지표 · 로그 헤더 env를 받는 근거(「그 exporter를 만들지 않는다」)는 조건부인데 인계 줄이 없다.
+  - 리뷰 B(누출 · 실패 처리 · 부작용 — r4 사본 대비 r5):
+    - 빌더 보고가 증거와 맞다. 리뷰 r4 지적은 대부분 닫혔다(A-1 · A-2/B-2 · A-4 · B-3 닫힘 · A-3 문면 닫힘).
+    - medium 1:
+      - B-1: P5는 OTLP 헤더 env 둘만 막는다. 같은 프로세스가 읽는 다른 OTLP 자격 통로가 남는다 — 엔드포인트 URL의 사용자 정보(requests가 Basic 인증으로 보낸다 · 빈 호스트면 URL째 ERROR 로그) · 쿼리(수집기가 닿지 않을 때 WARNING 로그) · 클라이언트 키 env(경로 대신 내용을 넣으면 ERROR 로그). 계약의 「열하나가 전부다」와 P5의 받는 이유가 사실과 다르다.
+    - low 2:
+      - B-2: P3이 두 경계를 한 꼴에 함께 넣어서, r4가 지우던 「머리글자 + 소문자 낱말」 꼴(`myAPIkey` · `googleAPIkey` · `xCSRFtoken` 등)이 남는다. P3의 「남게 되는 일은 없다」는 성립하지 않는다.
+      - B-3: P4 한계 서술이 CPython 3.13 소스보다 좁다. 새 스레드가 `_started.set()` 전에 죽으면 start()가 돌아오지 않는다.
+  - 컨트롤러 확인(설치 소스 직접 대조 · 메모리 안 탐침 · 2026-11-07):
+    - otlp-proto-http 1.45.2 `trace_exporter/__init__.py:139-150`이 `_common/__init__.py`의 다음을 부른다.
+      - `_resolve_endpoint`(:125-134): TRACES 엔드포인트 env 원문, 없으면 일반 env + `/v1/traces`.
+      - `_build_transport`(:182-211): CA(`verify`) · 클라이언트 키 · 인증서 env. `cert = (인증서, 키) if 둘 다 else 인증서` — 키 env가 없으면 인증서 값만 requests `cert`로 넘긴다(키를 함께 담은 PEM 한 파일로 클라이언트 인증을 한다).
+      - `_load_session_from_envvar`(:72-108) · `_resolve_headers`(:137-149) · `_resolve_timeout`(:152-165 — 잘못된 값을 `%r`로 WARNING) · `_resolve_compression`(:168-179 — 잘못된 값을 WARNING).
+    - `exporter/otlp/common/http.py`: 재시도하지 않는 실패는 ERROR 「Failed to export %s batch code: %s, reason: %s」에 예외 문자열을 싣고, 재시도하는 실패는 WARNING 「Transient error %s …」에 싣는다.
+    - requests 2.34.2: `models.py:677-678`이 URL 사용자 정보를 Basic 인증으로 바꾼다 · `:520` 「Invalid URL %r: No host supplied」 · `adapters.py:348-` 인증서 · 키 경로 검사 오류가 값을 싣는다.
+    - 탐침(`scratchpad/t071/probe-r6.py` — 감시 값은 실행 때 만들고 출력은 bool만):
+      - 사용자 정보 URL → Authorization Basic에 감시 값: True.
+      - 빈 호스트 사용자 정보 URL → InvalidURL 문자열에 감시 값: True.
+      - 닫힌 루프백 포트 + 쿼리 → ConnectionError 문자열에 감시 값: True.
+      - 키 env 자리에 PEM 내용 → OSError 문자열에 감시 값: True(http URL이어도).
+      - 실제 OTLPSpanExporter + 빈 호스트 사용자 정보 엔드포인트 → `opentelemetry.exporter.otlp.proto.http.trace_exporter` ERROR 1건에 감시 값.
+      - camelCase 30이름: r5(두 경계를 한 꼴에)는 r4(첫 경계만)가 지우던 10개를 남긴다(`myAPIkey` · `googleAPIkey` · `stripeAPIkey` · `userAPIkey` · `xAPIkey` · `dbAPIkey` · `xCSRFtoken` · `myPASSwd` · `myPASSphrase` · `myPREsharedKey`). 세 꼴 판정은 비밀 꼴 14개를 모두 지우고 이웃 16개(`AWSAccessKeyID` · `XRequestID` · `IDTokenType` · `PASSWORD_HASHERS` 등)를 모두 남긴다.
+    - CPython 3.13 `Lib/threading.py`: start() :976 `_start_joinable_thread` · :982 `self._started.wait()`(시간 제한 없음). `_bootstrap_inner` :1030 `_set_ident` · :1032 `_set_native_id` · :1033 `_started.set()` · :1044 `run()`.
+    - 엔드포인트 닫힌 꼴 정규식(G1)을 받을 값 5 · 거부할 값 21로 대조했다(전부 의도대로).
+- **r6 결정 G1–G8(컨트롤러)**: 계약(pod-template 「로그」 · 「트레이스 · Sentry」 행 · identity-admin-api §관측)과 규칙 §Logging · kr 미러 대기 줄은 이 절과 같은 변경에서 「T071 r6」 표식으로 고쳤다.
+  - **G1 OTLP 자격 통로 — mTLS 클라이언트 키 · 인증서 env 거부 · 엔드포인트 닫힌 꼴**(B-1 · P5 정정):
+    - 원칙: pod는 자격 없이 클러스터 안 수집기로 보내고, 자격은 수집기가 갖는다(P5 · T098).
+      - 이 프로세스가 만드는 내보내기는 OTLPSpanExporter 하나다. 그 생성자가 읽는 자격 통로는 헤더 · 엔드포인트의 사용자 정보 · 쿼리 · mTLS 클라이언트 키 · 인증서 · 자격 provider다.
+      - 헤더는 P5가 막았다. 이 절이 나머지를 막는다. 자격 provider는 Q2대로 받는다(provider가 설치돼 있지 않아 값이 있으면 OTLPSpanExporter 생성이 기동을 끝낸다 — 자격을 싣지 못한다).
+    - 거부 env 넷을 더한다: `OTEL_EXPORTER_OTLP_CLIENT_KEY` · `OTEL_EXPORTER_OTLP_TRACES_CLIENT_KEY` · `OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE` · `OTEL_EXPORTER_OTLP_TRACES_CLIENT_CERTIFICATE`.
+      - 판정은 원문 참/거짓(공백뿐인 값 포함)이다. 이름만 실은 `ImproperlyConfigured`이고, 이유는 「mTLS 자격 — 자격은 수집기가 갖는다」 꼴로 짧게 쓴다.
+      - 인증서 env도 거부하는 까닭: 키 env가 없으면 OTel이 인증서 값만 requests `cert`로 넘기므로, 키를 함께 담은 PEM 한 파일이 자격이 된다. 경로가 아닌 값(PEM 내용)은 requests 경로 검사 오류 원문이 내보내기 ERROR 로그에 실린다(http 엔드포인트여도).
+    - 엔드포인트 env 둘(`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` · `OTEL_EXPORTER_OTLP_ENDPOINT`)은 비지 않으면 닫힌 꼴만 받는다.
+      - `re.fullmatch`로 `scheme://host[:port][/path]`를 본다. scheme은 `http` · `https`(대소문자 무시)다. host는 `[A-Za-z0-9.-]+`다. port는 `:` 뒤 ASCII 십진 1–5자리이고 값이 1–65535다. path는 `/`로 시작하는 `[A-Za-z0-9._~/-]*`다. 〔r7 S1 — 스킴의 대소문자 무시도 ASCII로(`(?ai:https?)` — `(?i:)`는 유니코드 접기로 `ſ`(U+017F)를 `s`로 받는다)〕
+      - 글자 부류는 ASCII로 적는다(`\d` · `\w`는 유니코드 숫자 · 글자를 받는다). 끝 줄바꿈은 `fullmatch`라 받지 않는다.
+      - 그 밖은 이름만 실은 `ImproperlyConfigured`다: 사용자 정보(`@`) · 쿼리(`?`) · 조각(`#`) · 퍼센트 인코딩 · 공백 · 역슬래시 · IPv6 리터럴 · 빈 호스트 · 빈 · 비숫자 · 범위 밖 포트 · 스킴 없음 · 다른 스킴.
+      - 빈 값은 없음과 같다(지금처럼 — 둘 다 없으면 내보내기를 끄고 WARNING 한 줄). 공백뿐인 값은 꼴 밖이라 거부다.
+      - 검사 자리는 `_check_otel_env`다(OTel import 전 · `span_exporter` 인자와 무관 — 계약 변경: 전에는 `span_exporter`가 있으면 엔드포인트를 보지 않았다). `_otlp_endpoint`는 비지 않은 첫 값만 돌려준다(스킴 검사는 이 검사로 옮긴다 — 둘 다 두면 겹 방어라 한쪽을 지운 변이가 살아남는다).
+      - 까닭(리뷰 r5 B-1 · 컨트롤러 재현): 사용자 정보는 requests가 Basic 인증 헤더로 보낸다(헤더 거부의 우회다). 빈 호스트 · 범위 밖 포트면 OTel이 내보낼 때마다 「Invalid URL '<URL 전체>'」를 ERROR로 싣는다. 쿼리는 수집기 정지 · DNS 실패 같은 평범한 장애에서 WARNING 「Transient error … url: <경로?쿼리>」로 실린다.
+      - 한계: IPv6 리터럴 엔드포인트는 받지 않는다(클러스터 안 수집기는 서비스 DNS 이름이다).
+    - 받는다(이유):
+      - CA `OTEL_EXPORTER_OTLP_CERTIFICATE` · `…_TRACES_CERTIFICATE`: 서버 검증용 CA 묶음(공개)이다. 경로가 아니면 그 값이 ERROR에 실리지만 자격이 아니다.
+      - `OTEL_EXPORTER_OTLP_*TIMEOUT` · `*COMPRESSION`: 잘못된 값을 WARNING에 원문으로 싣지만 자격이 아니다.
+      - 자격 provider 둘: Q2 그대로다.
+      - 지표 · 로그 신호의 OTLP env(`OTEL_EXPORTER_OTLP_METRICS_*` · `…_LOGS_*`의 헤더 · 엔드포인트 · 클라이언트 키 · 인증서): 이 프로세스가 읽지 않는다(G7 인계).
+    - 기준 다섯째 절을 고친다: 「이 프로세스의 span 내보내기에 OTLP 자격을 싣는 env(헤더 · mTLS 클라이언트 키 · 인증서 · 엔드포인트의 사용자 정보 · 쿼리)」. 그 기준에 드는 것은 열일곱이다(열하나 + 클라이언트 키 · 인증서 넷 + 닫힌 꼴 밖 엔드포인트 둘).
+    - 시험(oc-15 · oc-18 — P5 블록처럼 caplog를 `opentelemetry` 로거에 달고, 엔드포인트를 둔 채 단언한다):
+      - 거부(env마다 · 이름만 · 메시지와 연쇄 예외에 값 · 감시 값 0 · OTel 로거 기록 0 · BSP 스레드 0):
+        - 클라이언트 키 · 인증서 넷: PEM 꼴 감시 값(`-----BEGIN PRIVATE KEY----- <감시 값>` 꼴) · 공백뿐인 값.
+        - 엔드포인트 둘 각각: 사용자 정보(`http://otel-user:<감시 값>@127.0.0.1:<닫힌 포트>/v1/traces`) · 빈 호스트 사용자 정보(`http://u:<감시 값>@:4318/v1/traces`) · 쿼리(`…/v1/traces?api_key=<감시 값>`) · 조각(`…#<감시 값>`) · 퍼센트 인코딩 · 역슬래시 · 공백뿐 · 끝 줄바꿈 · 포트 0 · 65536 · 빈 포트 · 비숫자 포트 · 전각 숫자 포트 · IPv6 리터럴 · 빈 호스트(사용자 정보 없음).
+        - `or` 대체: TRACES 빈 값 + 일반 env 꼴 밖 → 거부(일반 env 이름).
+        - `span_exporter`를 넘겨도 꼴 밖 엔드포인트는 거부다(계약 변경 r6 G1).
+      - 받음: `http://127.0.0.1:<닫힌 포트>` · `https://alloy.monitoring.svc.cluster.local:4318` · `http://alloy.monitoring.svc:4318/v1/traces` · `HTTP://Alloy.monitoring.svc:4318/` · 새 env 넷과 엔드포인트 둘의 빈 값 · CA `OTEL_EXPORTER_OTLP_CERTIFICATE` 경로.
+      - oc-18의 기존 거부 셋(스킴 없음 · grpc)은 그대로 거부다(메시지에 이름 · 값 없음).
+    - 변이: 키 · 인증서 env를 하나씩 빼기(4) · 엔드포인트 검사 지우기 · 사용자 정보 받기 · 쿼리 받기 · 포트 범위 검사 지우기 · `[0-9]`를 `\d`로 · `fullmatch`를 `match`로 · 일반 env 검사 빼기 · `span_exporter`가 있으면 검사 건너뛰기.
+  - **G2 camelCase 세 꼴 판정**(B-2 · P3 정정):
+    - `_is_masked`는 세 꼴을 판정한다: 원래 꼴 · 첫 경계(소문자 · 숫자 → 대문자)에만 `-`를 넣은 꼴 · 두 경계를 모두 넣은 꼴(r5 꼴). 하나라도 맞으면 지운다. 정규식은 둘로 나눈다(첫 경계만 · 두 경계).
+    - 단조성: 세 꼴 판정은 r4 판정(원래 · 첫 경계)과 r5 판정(원래 · 두 경계)의 합집합이다. r4 · r5가 지우던 이름은 모두 지우고, 둘 다 남기던 이름은 그대로 남긴다(지금 남는 이웃 28개 포함).
+    - 시험(oc-1): 지움에 더한다(감시 값) — `myAPIkey` · `googleAPIkey` · `xAPIkey` · `xCSRFtoken` · `myPASSwd` · `myPASSphrase` · `myPREsharedKey`. 남는 이웃은 그대로다.
+    - 변이: 첫 경계 꼴 판정 지우기(r5로 되돌리기) · 두 경계 꼴 판정 지우기(r4로 되돌리기).
+  - **G3 헬스 시작 실패 한계 문면**(B-3 · 문서만 — P4 한계 두 줄을 대신한다):
+    - 「시작되지 않음」 = `worker.ident is None`이다. start() 안의 예외가 새 스레드의 ident 설정보다 먼저 오면 자리를 일찍 놓는다. 그런 스레드가 살아 있는 동안 같은 경합이 또 나면, 그 칸의 살아 있는 스레드는 8을 넘을 수 있다(일찍 놓인 채 살아 있는 스레드 수만큼). 1회용 놓기라 두 번 놓지는 않는다.
+    - 새 스레드가 `_started.set()`(:1033) 전에 죽으면(ident를 두기 전이든 뒤든 — `_set_ident` · `_set_native_id`의 인터프리터 내부 실패) start()가 :982에서 돌아오지 않는다. 그 요청 스레드가 멈추고(2.5 s 마감은 `_start` 뒤에 잰다) 자리도 돌아오지 않는다.
+    - `_started.set()` 뒤 `run()` 전에 죽으면 자리만 돌아오지 않는다.
+    - 둘 다 CPython 성질이고 메모리 압박 급이라 받아들인다. 코드 · 계약은 바꾸지 않는다.
+  - **G4 규칙 §Logging 빈 값 일반 규칙**(A-1 · 문서만): 규칙 문장에 「non-empty」를 적고, 「an empty value counts as unset everywhere except `OTEL_PYTHON_DJANGO_MIDDLEWARE_POSITION`」을 더했다. 「a middleware position」은 `OTEL_PYTHON_DJANGO_MIDDLEWARE_POSITION`(빈 값이어도)으로 고쳤다. kr 미러 대기 줄에 r6 항목을 더했다.
+  - **G5 표식**(A-2 · 문서만):
+    - r5가 대신했는데 표식이 빠진 일곱 줄에 〔r5 …〕 표식을 더했다: D6 실행 줄 · D14 T072 줄 · Y2 칸 줄 · Z1 `OTEL_PROPAGATORS` 줄 · Z3 `_start` 줄 · Z4 camelCase 줄 · Z8 타임아웃 표 줄.
+    - 시험 독스트링의 〔r3 Z1〕 「아홉」 이력 문단은 바로 뒤 〔r5 P5〕 문단이 대신하므로 그대로 둔다(r2 「일곱」 관례).
+  - **G6 admin 호스트 traceparent 검증 자리**(A-3 · 문서만):
+    - 결정과 계약 기록은 T084가 맡는다. T084는 admin 호스트 인증 미들웨어 사슬(Access + Authentik forward-auth)을 만드는 과제다(Ingress는 T075).
+    - 검증은 T085(US4 E2E — admin 호스트 Access 단언과 같은 자리)가 한다. T076(US6 E2E)은 T084보다 먼저 돈다(tasks.md 순서 US6 → US4).
+    - T085 인계: 브라우저가 보낸 `traceparent`가 admin 경로에서 T084 결정대로 지워지거나 받아들여짐을 본다. 〔r7 S3 — 관찰 수단: pod까지 넘기면 pod 로그 `trace_id` 대조 · 가장자리에서 지우면 그 설정의 렌더 · API 단언 · 신원과 로그 읽기 권한은 T085 설계〕
+    - identity-admin-api §관측 · P6 · Z8 표식을 고쳤다.
+  - **G7 지표 · 로그 신호 OTLP env 인계**(A-4 · 문서만): T072 · T098 — pod에 지표 · 로그 OTLP exporter를 두는 과제는 그 신호의 OTLP env(`OTEL_EXPORTER_OTLP_METRICS_*` · `…_LOGS_*`의 헤더 · 클라이언트 키 · 인증서 · 엔드포인트)를 django-common 거부 env에 더하고, 계약 「트레이스 · Sentry」 행의 수와 기준 다섯째 절(「이 프로세스의 … 내보내기」)을 고친다.
+  - **G8 감시 값을 찍는 기존 단언 접기**(빌더 r5 ⑨-1 · 시험만):
+    - 변이 로그에 감시 값을 찍은 기존 단언을 같은 비교를 bool로 접은 단언으로 바꾼다: `same = <같은 식>` 다음 `assert same, "<이름표>"`. 대상은 oc-1 `out["bytes_maps"] ==` · oc-3 `isdisjoint(originals[0])` · oc-31 `out["extra"] ==` 등이다(r2 · r3 · r5 로그의 M01 · M02 · M03 · Y4-2 꼴).
+    - 비교 식 자체는 바꾸지 않는다(약해지지 않는다).
+    - r6 변이 로그 전체에서 감시 값 꼴이 0건임을 보고에 적는다. 남으면 같은 방식으로 접는다.
+  - **받아들인 것**(빌더 r5 ⑧): P5 caplog 처리기와 별도 블록 · `_hidden_ident` 경합 사례(⑨-2 — Python 판 올림 때 다시 확인) · oc-1 진단 단언 · extra 변이 · P1 「Sentry 전역 상태」 범위 · 모듈 독스트링 문면.
+  - **손대지 않는 것**: P1 · P2 · P4 코드 · P5의 헤더 판정 · Z2 · Z5 · Z6 · Z7 · Q2(자격 provider · SDK 자체 지표 등) · Q3 · D3 · D4 · D8 · D9 · D10 · D12 · D13 · D15 · RequestIdMiddleware · sub_hash · 헬스 칸 구조 · 헤더 캡처 env 판정 · 쿠키 접두 · memoryview 판정 · 의존성.
+
+### T071 r6 결과 · r7 결정(리뷰 r6 반영 · S1–S6 · 2026-11-07) — G1의 스킴 대소문자 무시, G6의 T085 인계 줄, D14의 T072 줄은 이 절의 S1 · S3 · S4가 고친다(앞 절 줄 끝 〔r7 …〕 표식)
+
+- **r6 결과**(워크플로 `wf_5b7e00bd-eff` · 128만 토큰 · 약 2시간 34분 · 빌더 DONE_WITH_CONCERNS · 리뷰 A approve_with_fixes — low 3 · 리뷰 B approve_with_fixes — low 2 · high · medium 0):
+  - 바뀐 파일(r5 대비):
+    - `observability.py` 932 → 974(+63/−21) · 시험 `test_observability_contract.py` 3691 → 3963(+300/−28 · oc-1..65 그대로).
+    - 나머지 9파일은 r5 사본과 바이트가 같다(`health.py` · `__init__.py` · pyproject · `uv.lock` · `_obs_fakes.py` · obscontractapp 넷).
+    - r5의 assert 331개가 r6의 같은 함수에 모두 있다(그대로이거나 접기 꼴 · r6 336). oc-1 지움 93 → 100(상위 집합) · 남는 이웃 28 그대로.
+    - 지운 28줄: 독스트링 15(oc-18 첫 문장의 「span_exporter가 없을 때」 지움 — 계약 변경 r6 G1) · 시그니처 2 · 접은 assert 11.
+  - 빨강(06:55 · `--show-capture=no`): `3 failed, 62 passed`(oc-1 · oc-15 · oc-18). 빨강 뒤 시험 수정은 1건이다(oc-18 `backslash-path` — 역슬래시가 포트 바로 뒤인 사례로는 path 부류에 역슬래시를 받는 변이를 잡지 못한다). 최종 시험 바이트로도 r5 구현은 oc-1 · oc-15 · oc-18이 빨강이다.
+  - 초록(최종 바이트): T063 21 ×2 · 계약 65 · 회귀 파일별 · 한 세션 묶음 756(9파일 합과 같다).
+  - G1 새 프로세스 탐침(출력은 bool): r5는 (a) 빈 호스트 사용자 정보 ERROR · (b) 닫힌 포트 + 쿼리 WARNING(Windows는 닫힌 루프백 포트 거부에 약 2 s가 걸려 12 s 창에서 보였다) · (c) 키 env의 PEM 꼴 값 ERROR에 감시 값이 실렸다. r6은 셋 다 이름만 실은 거부이고 OTel 기록 0 · 거부 중 새로 올라온 `opentelemetry.*` 모듈 0이다.
+  - G2: r6 판정 = r4 판정 ∪ r5 판정(빌더 30이름 · 리뷰 A 후보 152,766 · 리뷰 B 13,010 — 불일치 0).
+  - 변이 93개를 모두 잡았다: 새 24(G1 12 + extra 9 + 겹 방어 확인 M38-r6 + G2 2) · 다시 돌린 앞 변이 68(잡은 시험이 앞 라운드와 같다 — G8로 접은 단언의 변이 포함). 변이 로그 186개에서 감시 값 꼴 0건.
+  - VD-T071-1 PASS · `uv lock --check --offline` exit 0 · 위생(compileall · 바이트 · gitleaks 11 · Docker dangling 볼륨 25 → 25 · 루프백만 · 받음 사례의 이름 조회 0 — `getaddrinfo` 대역).
+  - 빌더 ⑧:
+    - ⑧-1: G8 접기를 지시문이 꼽은 3개 밖으로 넓혔다 — r2 · r3 변이 로그에서 감시 값을 실제로 찍은 단언 8개까지 모두 11개(식은 AST가 같다 · 앞 변이 13개 재실행으로 같은 시험이 잡고 이름표만 찍음을 보였다).
+    - ⑧-2: 같은 부류 안에서 사례를 더했다 — `userinfo-token`(값만 있는 사용자 정보) · `backslash-path` · `traces-valid`(유효한 TRACES + 꼴 밖 일반 env) · 기존 거부 셋의 대역 모드.
+    - ⑧-3–⑧-9: 받음 사례의 클러스터 이름은 내보내기 0이라 그대로 두고 `getaddrinfo` 대역으로 조회 0을 단언했다 · PEM 꼴 값은 `_pem_like()`로 실행 때 만든다(gitleaks private-key 규칙) · 엔드포인트 거부 메시지가 길다(값 없음) · 검사 순서 헤더 → mTLS → 엔드포인트 · 탐침 (b)는 12 s 창 · `opentelemetry.trace`는 r1부터 모듈 import 때 올라온다(판정 범위는 SDK · exporter · instrumentation · propagate와 「거부 중 새 모듈 0」) · host 부류는 `..` · `-x` 같은 이상한 DNS 꼴도 받고, 앞에 0이 붙은 포트(`00080`)는 값 80으로 받는다(결정 그대로 · 자격 통로 아님).
+  - 빌더 ⑨: T072 · T098 인계(키 · 인증서 env 없음 · 닫힌 꼴 엔드포인트 · 렌더 단언 권고) · 아직 드러나지 않은 잠재 단언 8개(실패하면 감시 값을 찍을 수 있다 — oc-1 `out["meta"] ==` · `out["items"] ==` · `out["headers"] ==` · `"top_pair" not in out` · oc-3 `probe.get("meta") ==` · oc-31 `request["url"] ==` · `unrecorded/out["contexts"] ==` · oc-27 `"?" not in str(...)`) · `_name_lookups`는 클러스터 이름에 `alloy`가 든다는 데 기댄다 · r5 ⑨-2 · ⑨-3 의존은 그대로. 〔r8 L4 — 「아직 드러나지 않은」은 틀렸다: r1 M03 · r2 · r3 Y4-8x가 그 자리에서 실패했다(빌더 r7 ⑧-2) · 8항목은 단언 9줄이다〕
+  - 리뷰 A(계약 · 문면 · 판별력 — r5 사본 대비 r6):
+    - G1 · G2 · G8이 구현 · 시험 · 변이와 1:1이고 손대지 않기로 한 것의 변경은 0이다. 계약 ↔ 구현이 열일곱 · 다섯째 절 · `span_exporter`와 무관 · env마다 따로 · `or` 대체 · 빈 값 · 공백뿐인 값 · 포트 · path 글자까지 맞는다(설치 소스 대조 — OTLPSpanExporter가 읽는 env는 열일곱과 받는 것뿐이다).
+    - 새 변이 24개는 실제 코드 변경이고 모두 잡혔다. 공허한 단언이 없다(거부 사례는 그 env 하나만 둔다). 시험은 더하기만(접기 11개는 비교 식의 `ast.dump`가 같다). 빨강 · 빌더 수치가 증거와 맞다. 리뷰 r5 지적 · 빌더 r5 ⑧ · ⑨는 모두 닫혔다.
+    - low 3:
+      - A-1: 스킴 `(?i:https?)`가 유니코드 대소문자 접기로 `ſ`(U+017F)를 `s`로 받는다 — `httpſ://…`가 기동을 통과하고 내보낼 때마다 ERROR(자격은 실리지 않는다).
+      - A-2: 다시 돌린 앞 변이에서 r2 Y6-E2(`_otlp_endpoint`의 빈 값 처리)가 빠졌다(읽기로는 oc-19가 잡는다).
+      - A-3(인계): G6의 T085 인계 줄이 관찰 수단을 정하지 않았다 — T085 때는 OTLP 내보내기 · Tempo가 없고(T098), admin 사슬을 지날 신원도 정해지지 않았다.
+  - 리뷰 B(누출 · 실패 처리 · 부작용 — r5 사본 대비 r6):
+    - 빌더 보고가 증거와 맞다. 리뷰 r5 지적은 모두 닫혔다(G1 — 38사례 × `span_exporter` 없음/있음 76번 모두 이름만 실은 거부 · 새 모듈 · 스레드 · tracer provider · env 변화 0 / G2 — 13,010이름 회귀 0 / G3 — CPython 3.13.15 줄과 맞다 / G8 — r6 로그 297파일 감시 값 0).
+    - 엔드포인트 우회(탭 · CR · LF · NBSP · 전각 · IDNA · `http:/` · 역슬래시 · 끝 점 · 8진 · 16진 · 10진 IPv4 · 대문자 스킴 · 긴 host · `..` path)는 자격 · 감시 값을 전송 헤더 · OTel 로그에 싣지 못했다.
+    - low 2:
+      - B-1: A-1과 같다.
+      - B-2(인계): OTLP 내보내기의 requests · urllib3가 스스로 읽는 env · 파일(`NETRC` · `~/.netrc` · `*_PROXY` 사용자 정보 · `SSLKEYLOGFILE`)은 G1 기준 밖이다. netrc는 수집기에 Basic 자격을 보내고, 포트가 틀린 프록시 URL은 사용자 정보째 OTel ERROR에 실린다(지금 pod에는 이런 env가 없다).
+  - 컨트롤러 확인(2026-11-07):
+    - `(?i:[htps])`에 맞는 ASCII 밖 코드 포인트는 U+017F 하나다. `(?ai:https?)`로 바꾸면 `httpſ://` · `HTTPſ://`는 거부되고 `HtTpS://…`는 받는다(메모리 안 탐침).
+    - OTel `exporter/http/transport/_requests.py:76`은 세션을 받지 않으면 `requests.Session()`(`trust_env` 기본 True)을 만든다. requests 2.34.2 `sessions.py:537-538`이 netrc 자격을 읽고 `:763` · `:845`가 프록시 env를 푼다. urllib3 2.8.0 `util/ssl_.py:321`이 `SSLKEYLOGFILE`을 읽는다.
+- **r7 결정 S1–S6(컨트롤러)**: 계약(pod-template 「트레이스 · Sentry」 행 · identity-admin-api §관측)과 규칙 §Logging · kr 미러 대기 줄은 이 절과 같은 변경에서 「T071 r7」 표식으로 고쳤다.
+  - **S1 엔드포인트 스킴의 대소문자 무시는 ASCII로**(A-1 · B-1):
+    - `_OTLP_ENDPOINT`의 스킴을 `(?ai:https?)`로 쓴다(`a` = ASCII 대소문자만). host · port · path는 이미 명시 ASCII 부류라 그대로다.
+    - 주석: 「`(?i)`만 쓰면 유니코드 대소문자 접기로 `ſ`(U+017F)를 `s`로 받는다」.
+    - 시험(oc-18): 거부 사례에 `scheme-long-s`(`"http" + chr(0x17F) + "://127.0.0.1:<닫힌 포트>/v1/traces"`) · `scheme-long-s-upper`(`"HTTP" + chr(0x17F) + …`)를 env마다 · 두 모드(대역 없이 · 대역 넘김)로 더한다. 값은 `chr`로 만든다(역슬래시-u 금지). 받음의 대소문자 섞인 ASCII 스킴(`HTTP://…` 등)은 그대로 받는다.
+    - 변이: `(?ai:`를 `(?i:`로 되돌린다(oc-18이 잡아야 한다).
+    - 계약 · 규칙: 「대소문자 무시」를 「ASCII 대소문자 무시」로 고쳤다.
+  - **S2 Y6-E2 재실행**(A-2 · 절차): r2 Y6-E2를 r6 바이트에 다시 묶어 최종 바이트로 돌린다(`_otlp_endpoint`의 `if value:`를 `if name in os.environ:`으로). oc-19가 잡아야 한다.
+  - **S3 T085 인계 — 관찰 수단**(A-3 · 문서만):
+    - T084가 pod까지 넘기기로 정하면: flag 01 traceparent를 보낸 admin 요청의 pod 로그 `trace_id`가 보낸 trace-id와 같으면 받아들임, 다르거나 없으면 지움이다(T085 때는 OTLP 내보내기가 없어도 계측과 로그의 `trace_id`는 있다 — 엔드포인트가 없으면 내보내기만 끈다).
+    - 가장자리에서 지우기로 정하면: 그 Middleware · Transform Rule의 렌더 · API 단언으로 본다.
+    - admin 사슬(Access + forward-auth)을 지날 신원과 tester가 jt-prod pod 로그를 읽을 권한(agent-view)은 T085 설계가 정한다.
+    - identity-admin-api §관측 괄호와 G6 표식에 적었다.
+  - **S4 requests · urllib3가 스스로 읽는 env · 파일 인계**(B-2 · 문서만):
+    - T072(템플릿 렌더 · 이미지 단언 — gen-12 꼴): pod env · ConfigMap · Secret 참조에 `NETRC` · `SSLKEYLOGFILE` · `HTTP_PROXY` · `HTTPS_PROXY` · `ALL_PROXY`(소문자 꼴 포함)가 없다. 런타임 사용자 홈에 `.netrc` · `_netrc`가 없다. 〔r8 L3 — sentry-sdk의 `CLIENT_CERT_FILE` · `CLIENT_KEY_FILE`도 없다 · 배포 매니페스트는 T075 lint〕
+    - T098: OTLP 엔드포인트는 닫힌 꼴의 상수로 둔다. 프록시를 들이는 과제가 생기면 `NO_PROXY`가 `.svc` · `.cluster.local`을 덮고, 사용자 정보 없는 프록시만 쓴다.
+    - 고르지 않은 것: django-common이 OTLPSpanExporter에 `trust_env=False` 세션을 넘기는 방법.
+      - 이 env · 파일은 opentelemetry-* 배포가 아니라 requests · urllib3가 프로세스 전체에서 읽는다(Sentry도 같다). 거부 기준(설치된 opentelemetry-* 배포의 env 읽기)의 영역 밖이다. 〔r8 L3 — Sentry는 경로가 다르다: sentry-sdk가 `*_PROXY`를 init 때 stdlib `getproxies()`로 직접 읽는다(NETRC는 읽지 않는다 · `SSLKEYLOGFILE`은 urllib3) · 꼴이 틀린 사용자 정보 프록시 URL이 init 예외에 실리는 길은 L2가 닫는다〕
+      - 세션을 넘기면 OTel이 `_load_session_from_envvar`를 건너뛰어 자격 provider env 둘이 조용히 무시된다. Q2를 거부로 바꾸고 계약의 수도 바꿔야 한다.
+      - `SSLKEYLOGFILE`은 `trust_env`와 무관하게 urllib3가 읽어 남는다.
+      - pod env와 이미지는 템플릿이 정하므로 T072의 렌더 · 이미지 단언이 생성 pod 전부를 덮는다. 〔r8 L3 — 넓다: 템플릿 생성물만 덮는다 · 배포 매니페스트(gitops base 복사본 · overlay · ExternalSecret)는 T075 validate lint가 덮는다〕
+  - **S5 잠재 단언 접기**(빌더 r6 ⑨-2 · 시험만): 빌더가 꼽은 잠재 단언 8개를 G8과 같은 방식(`same = <같은 식>` · `assert same, "<이름표>"`)으로 접는다. 비교 식은 글자 그대로 둔다(AST 대조로 보인다). 다시 돌린 변이 로그의 감시 값 꼴 0건을 보고에 적는다.
+  - **S6 받아들인 것**(빌더 r6 ⑧ · ⑨): ⑧-1 G8 넓힌 접기 · ⑧-2 같은 부류 안의 사례 · ⑧-3–⑧-9 · ⑨-3 `_name_lookups`의 `alloy` 의존(한계).
+  - **손대지 않는 것**: G1의 그 밖 판정(키 · 인증서 env · host · port · path · 빈 값 · `span_exporter`와 무관 · 검사 순서) · G2 · P1 · P2 · P4 · P5 · `health.py` 전부 · Z2 · Z5 · Z6 · Z7 · Q2 · Q3 · D3 · D4 · D8 · D9 · D10 · D12 · D13 · D15 · RequestIdMiddleware · sub_hash · 헤더 캡처 env 판정 · 쿠키 접두 · memoryview 판정 · 의존성.
+
+### T071 r7 결과 · r8 결정(리뷰 r7 반영 · L1–L6 · 2026-11-07) — r6 결과의 빌더 ⑨ 줄, S4의 근거 두 줄과 T072 줄, D14의 T072 · T075 · T098 줄은 이 절의 L1 · L3 · L4가 고친다(앞 절 줄 끝 〔r8 …〕 표식)
+
+- **r7 결과**(워크플로 `wf_479658da-01f` · 116만 토큰 · 약 1시간 10분 · 빌더 DONE_WITH_CONCERNS · 리뷰 A approve_with_fixes — low 2 · 리뷰 B approve_with_fixes — low 2 · high · medium 0):
+  - 바뀐 파일(r6 대비): `observability.py` 974 → 975(+3/−2 — 스킴 `(?ai:https?)`와 주석 두 줄) · 시험 3963 → 3990(+47/−20). 나머지 9파일은 r6 사본과 바이트가 같다.
+  - 빨강(09:26 · `--show-capture=no`): `1 failed, 64 passed`(oc-18 — 다른 항목 8 = `ſ` 사례 2 × env 2 × 모드 2). 빨강 뒤 시험 코드 수정은 0이다(변이 뒤 모듈 독스트링 한 문장을 사실대로 고쳤다 — 독스트링을 뺀 AST가 같다).
+  - 초록(최종 바이트): T063 21 ×2 · 계약 65 · 회귀 파일별 · 한 세션 묶음 756.
+  - 변이 24개를 모두 잡았다: S1-1(`(?ai:` → `(?i:`) → oc-18 · Y6-E2-r6 → oc-19 · 다시 돌린 엔드포인트 변이 20(잡은 시험이 r6과 같다) · S5 자리에 닿는 앞 변이 M03 · Y4-8x.
+  - S5: 빌더 r6 ⑨-2의 8항목은 단언 9줄이었다(oc-31 contexts가 둘). 모두 접었다(식의 `ast.dump` 같음).
+  - VD-T071-1 PASS · `uv lock --check --offline` exit 0 · 위생(compileall · 바이트 · gitleaks 11 · Docker dangling 볼륨 25 → 25 · 루프백만).
+  - 빌더 ⑧-2: r6 ⑨-2의 「r2–r6 로그에 나타난 적이 없다」는 틀렸다. 앞 라운드 변이 로그 1190개를 다시 뒤지니, 접은 9줄에서 실패한 로그가 3개였다 — r1 M03(oc-3 probe meta · 단언 설명에 감시 값 1개) · r2 · r3 Y4-8x(oc-1 top_pair · 감시 값 0 — 출력이 dict를 줄였다).
+  - 빌더 ⑨-1 · ⑨-2: S5 목록 밖에도 잠재 단언이 있다 — r1 로그에 감시 값을 실제로 찍은 oc-4 `observed == {…}`(M08) · oc-3 `isdisjoint(probe)`(M01 · M02) · oc-22 `http.target`(M45) · oc-7 튜플(M19)과 읽기로만 본 자리 여럿. 감시 값 꼴 검사는 `oc-<이름>-<16 hex>`와 PEM 머리만 센다(oc-52의 위조 trace · span id와 oc-27의 forwarded IP는 그 꼴 밖).
+  - 리뷰 A(계약 · 문면 · 판별력 — r6 사본 대비 r7):
+    - S1 · S2 · S5가 1:1이다. 전 코드 포인트를 스킴 · host · port · path 자리에 넣어 r7이 받는 ASCII 밖 글자가 0임을 보였다. 「ASCII 대소문자 무시」가 계약 · 규칙 · 주석 · 독스트링에서 같다. S4가 인용한 소스 위치가 설치본과 맞다. 빨강 · 빌더 수치가 증거와 맞다.
+    - low 2:
+      - A-1: S5 밖에 감시 값을 찍을 수 있는 단언이 남는다(oc-4 · oc-7 · oc-22는 r1 로그에서 실제로 찍었고 앞 단언에 가려지지 않는다 · oc-3 :1308 · oc-27 :2393). r6 결과 줄의 「아직 드러나지 않은」은 틀렸다.
+      - A-2(인계): S4 인계가 S4보다 좁다 — D14 T072 표식에 `_netrc`가 빠졌다. 렌더 단언은 템플릿 base만 덮고, T075 · T098의 gitops overlay env와 ExternalSecret `dataFrom` 키는 밖이다.
+  - 리뷰 B(누출 · 실패 처리 · 부작용 — r6 사본 대비 r7):
+    - 빌더 보고가 증거와 맞다. S1은 전 코드 포인트 대조와 차등 퍼즈 40만으로 닫혔다(r7이 받는 집합은 r6의 진부분집합 · 섞인 대소문자 ASCII 스킴 48개는 둘 다 받는다). S2 · S3는 닫혔고, S4의 결론(`trust_env=False`를 고르지 않음)은 소스와 맞다.
+    - low 2:
+      - B-1(인계): S4 근거 둘이 소스보다 넓다. ① 배포 pod의 env는 T075 gitops base 복사본 · overlay · ExternalSecret 템플릿이 정한다(`copier update` 미지원). ② Sentry는 sentry-sdk가 `*_PROXY`를 init 때 stdlib `getproxies()`로 직접 읽고, 꼴이 틀린 사용자 정보 프록시 URL은 configure_sentry가 감싸지 않은 `sentry_sdk.init`의 예외(기동 traceback)에 실린다.
+      - B-2: A-1과 같다(r1 로그 근거 자리 4곳).
+  - 컨트롤러 확인(2026-11-07):
+    - sentry-sdk 2.73.0 `transport.py:14`(`getproxies`) · `:585-586`(`CLIENT_CERT_FILE` · `CLIENT_KEY_FILE` env) · `:602-611` · `:804-811`(프록시 고르기). 〔r9 K5 — 줄 번호 정정: `:585-586` · `:602-611`은 httpcore 전송 경로(쓰지 않음) · 기본 HttpTransport는 `:755-794`(인증서 env → urllib3 옵션 · 연결 때 읽는다) · `:796-837`(프록시)〕
+    - 탐침(메모리 안 · 이름 조회 · 연결 차단 · 감시 값은 bool로만): `HTTPS_PROXY` · `HTTP_PROXY` = 범위 밖 포트의 사용자 정보 프록시 URL로 `sentry_sdk.init`(https · http DSN 각각) → `LocationParseError`가 감시 값을 싣는다(True) · 그 뒤 클라이언트는 서지 않는다(`is_active()` False).
+    - pytest 9.2.0의 단언 재작성기는 모듈 독스트링의 `PYTEST_DONT_REWRITE` 표식을 지킨다(`_pytest/assertion/rewrite.py`).
+- **r8 결정 L1–L6(컨트롤러)**: 계약(pod-template 「트레이스 · Sentry」 행)과 규칙 §Logging · kr 미러 대기 줄은 이 절과 같은 변경에서 「T071 r8」 표식으로 고쳤다.
+  - **L1 계약 시험 모듈의 단언 재작성을 끈다**(A-1 · B-2 · 빌더 r7 ⑨-1 · ⑨-2 — 단언 하나씩 접기를 대신해 부류를 닫는다):
+    - `tests/test_observability_contract.py` 모듈 독스트링에 `PYTEST_DONT_REWRITE` 표식을 둔다(pytest 공식 방법). 그러면 이 모듈의 단언은 실패해도 피연산자 값을 설명에 싣지 않는다 — 실패 출력은 소스 줄과 단언 메시지(이름표)뿐이다. 지금의 잠재 자리와 앞으로 더할 단언이 함께 닫힌다. 〔r9 K2 — 단언 설명에 한해서다 · pytest 캡처 칸은 addopts `--show-capture=no`가 닫는다〕
+    - G8 · S5 접기는 그대로 둔다(이름표가 실패 자리를 알려 준다). 진단이 필요한 단언은 메시지에 시험이 정한 이름 목록만 싣는다(값은 싣지 않는다 — 바꾼 메시지는 보고에 적는다).
+    - 모듈 독스트링의 노출 단언 원칙 문장을 이 방식으로 고친다.
+    - 검증:
+      - r1 근거 변이 M01 · M02 · M08 · M09 · M19 · M45와 r6 Y3-4를 최종 바이트에 다시 묶어 돌린다(두 시험 파일 전체). 잡은 시험이 앞 기록과 같고, 실패 출력이 소스 줄 · 이름표뿐이어야 한다. 〔r9 K5 — 실패 출력 조건은 계약 모듈에 한한다 · T063 모듈은 재작성이 켜져 있다(받아들인 한계)〕
+      - 감시 값 꼴 검사를 이 모듈이 만드는 합성 값 전부로 넓힌다(`oc-<이름>-<16 hex>` · PEM 머리 · oc-52의 위조 trace · span id · oc-27의 forwarded IP · 그 밖의 위조 상수). 빨강 · 변이 로그에서 0건이어야 한다.
+    - 대가: 이 모듈의 단언 실패는 값 비교 설명을 보여 주지 않는다. 디버깅 때는 표식을 잠시 빼고 로컬에서만 돌린다(그 출력은 공유하지 않는다). 〔r9 K1 — 또 하나: 재작성되지 않은 assert는 `-O` · `PYTHONOPTIMIZE`에서 지워진다 → 가드로 수집을 실패시키고 oc-66이 표식을 지킨다〕
+  - **L2 `sentry_sdk.init` 실패는 이름만 실은 설정 오류**(B-1 ②):
+    - configure_sentry는 `sentry_sdk.init(...)`이 `Exception`을 내면, 예외 클래스 이름만 실은 `ImproperlyConfigured`를 except 블록 밖에서 올린다(`__cause__` · `__context__` 없음 — 메시지 · 연쇄 예외에 값이 없다). `BaseException`(`KeyboardInterrupt` 등)은 그대로 올린다.
+    - 까닭: §Settings의 「기동 실패는 설정 이름만 싣는다」. sentry-sdk가 init 때 스스로 읽는 프록시 env의 사용자 정보가 꼴이 틀리면 urllib3 예외 메시지째 기동 traceback(stderr → Loki)에 실린다(리뷰 r7 B-1 · 컨트롤러 재현). init 안의 다른 실패에도 같은 꼴을 쓴다.
+    - init이 예외를 내면 전역 클라이언트는 서지 않는다(탐침 — `is_active()` False). 감싼 뒤에도 전역 Sentry 상태가 바뀌지 않음을 시험으로 본다.
+    - 시험(configure_sentry 계약 시험에 더한다):
+      - 꼴이 틀린 사용자 정보 프록시 env(`HTTPS_PROXY` + https DSN · `HTTP_PROXY` + http DSN — 루프백 DSN · 범위 밖 포트 · 감시 값) → `ImproperlyConfigured` · 메시지에 예외 클래스 이름 · 메시지 · `__cause__` · `__context__`에 감시 값 0 · 연쇄 예외 없음 · 전역 클라이언트 비활성 · 네트워크 0.
+      - `sentry_sdk.init`을 `ValueError(<감시 값>)`을 내는 대역으로 바꾼 사례 → 같은 단언.
+      - `BaseException` 하위 형을 내는 대역 → 그 예외가 그대로 올라온다(같은 객체).
+    - 변이: 감싸기 지우기(r7로) · except 블록 안에서 올리기(`__context__`가 남는다) · `BaseException`까지 잡기 · 메시지에 예외 문자열 싣기.
+    - 계약 · 규칙: pod-template 「트레이스 · Sentry」 행과 규칙 §Logging의 Sentry 문장에 적었다.
+  - **L3 S4 인계 바로잡기**(A-2 · B-1 ① · 문서만):
+    - D14 T072 줄: `.netrc` · `_netrc`(requests는 Linux에서도 `~/.netrc` · `~/_netrc`를 둘 다 본다 — `utils.py:78` · `:243`)와 sentry-sdk가 스스로 읽는 `CLIENT_CERT_FILE` · `CLIENT_KEY_FILE`을 더한다.
+    - S4의 덮는 범위를 고친다: T072의 렌더 · 이미지 단언은 템플릿 생성물을 덮고, 배포 매니페스트(gitops base 복사본 · overlay · ExternalSecret)는 T075의 validate lint가 덮는다.
+    - T075 인계(D14 T075 줄): gitops 렌더 결과(`apps/<pod>/base` · overlays)의 container env · envFrom ConfigMap data 키 · ExternalSecret 키에 `NETRC` · `SSLKEYLOGFILE` · `HTTP_PROXY` · `HTTPS_PROXY` · `ALL_PROXY`(소문자 꼴 포함) · `CLIENT_CERT_FILE` · `CLIENT_KEY_FILE`이 없음을 lint로 본다. ExternalSecret은 키 목록을 명시(`data`)하고 `dataFrom`(키 이름이 Vault 값으로 정해지는 꼴)을 쓰지 않는다. 〔r9 K5 — lint 기준을 넓혔다: 실효 env 이름 · 대소문자 무시 · template.data 키 · 렌더 밖 envFrom · `SSL_CERT_FILE` · `REQUESTS_CA_BUNDLE`〕 〔r10 I4 — 키 = template.data 키 ∪ (템플릿 없음 · `mergePolicy: Merge`면 `data[].secretKey`) · `templateFrom`은 FAIL 또는 허용 목록〕
+    - S4 「(Sentry도 같다)」를 고친다: sentry-sdk는 `*_PROXY`를 init 때 stdlib `getproxies()`로 직접 읽는다(NETRC는 읽지 않는다 · `SSLKEYLOGFILE`은 urllib3를 거친다). 꼴이 틀린 사용자 정보 프록시 URL이 init 예외에 실리는 길은 L2가 닫는다. `trust_env=False`를 고르지 않은 결론은 그대로다(그 세션은 OTel 경로만 닫는다).
+    - D14 T098 줄에 S4의 T098 문장을 표식으로 단다.
+  - **L4 r6 결과 줄 정정**(빌더 r7 ⑧-2 · A-1의 기록 부분 · 문서만): r6 결과의 빌더 ⑨ 줄 「아직 드러나지 않은 잠재 단언 8개」는 틀렸다(r1 M03 · r2 · r3 Y4-8x가 그 자리에서 실패했다 · 단언은 9줄). 표식으로 고쳤다.
+  - **L5 받아들인 것**(빌더 r7 ⑧): ⑧-1 9줄 접기 · ⑧-3 S1 주석 첫 줄 낱말 · ⑧-4 대소문자 섞인 ASCII 스킴 받음은 탐침으로만 보였다(리뷰 B가 48개를 다시 보였다).
+  - **손대지 않는 것**: S1 · G1 · G2 · P1 · P2 · P4 · P5 판정 · `health.py` 전부 · configure_sentry의 init 인자 · `before_send` · Z2 · Z5 · Z6 · Z7 · Q2 · Q3 · D3 · D4 · D8 · D9 · D10 · D12 · D13 · D15 · RequestIdMiddleware · sub_hash · 헤더 캡처 env 판정 · 쿠키 접두 · memoryview 판정 · 의존성.
+
+### T071 r8 결과 · r9 결정(리뷰 r8 반영 · K1–K7 · 2026-11-07) — L1의 「실패 출력」 문장 · 대가 · 검증 줄, r8 컨트롤러 확인의 sentry-sdk 줄 번호, L3의 T075 줄, D14의 T075 줄은 이 절의 K1 · K2 · K5가 고친다(앞 절 줄 끝 〔r9 …〕 표식)
+
+- **r8 결과**(워크플로 `wf_eca8c3b3-408` · 135만 토큰 · 약 1시간 43분 · 빌더 DONE_WITH_CONCERNS · 리뷰 A approve_with_fixes — low 5 · 리뷰 B approve_with_fixes — low 5 · high · medium 0):
+  - 바뀐 파일(r7 대비): `observability.py` 975 → 990(+33/−18 — 최상위 노드 가운데 configure_sentry 하나만 다르다 · init 인자는 AST가 같다) · 시험 3990 → 4154(+210/−46). 나머지 9파일은 r7 사본과 바이트가 같다.
+  - 빨강(10:57 · `--show-capture=no`): `1 failed, 64 passed`(oc-26 — 이름표 `http-proxy` · `https-proxy` · `value-error`). 실패 출력은 소스 줄과 이름표뿐이었다. BaseException 사례는 r7에서도 통과한다(탐침으로 보였다).
+  - 초록(최종 바이트): T063 21 ×2 · 계약 65 · 회귀 파일별 · 한 세션 묶음 756.
+  - L2 기동 탐침(새 프로세스 · 프록시 env · configure_sentry를 잡지 않고 부름): r8은 rc 1 · 마지막 줄은 이름만 실은 `ImproperlyConfigured` · 감시 값 · 사용자 이름 · 연쇄 표지 0 · 소켓 시도 0. r7은 감시 값이 실렸다. 실패 뒤 스레드 · scope 클라이언트 · 통합 집합 · 전역 이벤트 처리기는 그대로다.
+  - 재작성 탐침(pytest 9.2.0): r8 시험 모듈은 재작성되지 않는다(`@py_assert` 0 · r7은 4800).
+  - 변이 28개를 모두 잡았다: L2-1..4 → oc-26 · r1 근거 변이 M01 · M02 · M08 · M09 · M19 · M45와 r6 Y3-4(잡은 시험이 앞 기록과 같고 실패 출력에 비교 설명 0) · configure_sentry · `_sentry_before_send`의 앞 변이 17.
+  - 넓힌 감시 값 꼴 9가지(감시 값 · PEM 머리 · 16자 이상 hex · 문서용 IP · JWT · 프록시 사용자 이름 · DRAGONFLY_URL 사용자 정보 · BEARER_SUB · TENANT_ID): 시험 · 탐침 로그 87개에서 0건.
+  - VD-T071-1 PASS · `uv lock --check --offline` exit 0 · 위생(compileall · 바이트 · gitleaks 11 · Docker dangling 볼륨 25 → 25 · 루프백만).
+  - 빌더 ⑧: 진단 메시지는 「시험이 정한 이름 집합의 부분 목록」을 내는 단언 32줄에만 더했다(`_leaks(…) == []` 25 · 이름 부분 목록 7 — 비교 식의 `ast.dump` 같음 · SUT 출력에서 오는 목록과 판정 dict 비교는 맨 단언) · 네트워크 0은 시험 안 socket 대역으로 본다 · 사례마다 `ALL_PROXY` · `NO_PROXY` · `REQUEST_METHOD`도 대소문자 둘 다 지운다 · raise에 `from None` · L2 사례는 oc-26에 두었다(계약 65 그대로) · `observability.py` 모듈 독스트링의 설계 목록에 r7 S1 · r8 L2가 없다.
+  - 빌더 ⑨: T072 기동 배선은 configure_sentry를 except 블록 밖에서 부른다 · T063 모듈은 재작성이 켜져 있어 그 고정 표식 `QS-MARK`가 비교 설명에 찍힌다 · oc-26은 urllib3 2.8.0의 `LocationParseError` 이름에 기댄다 · 인증서 env는 ValueError 대역이 대신한다.
+  - 리뷰 A(계약 · 문면 · 판별력 — r7 사본 대비 r8): L1 · L2가 1:1이고, 변이 · 빨강 · 빌더 수치가 증거와 맞다. low 5:
+    - A-1: 「실패 출력 = 소스 줄 + 이름표」는 `--show-capture=no` 실행에서만 맞다. 저장소 설정(addopts `--tb=short`뿐)으로 돌려 실패하면 pytest 「Captured log call」 칸에 감시 값이 실린다(탐침).
+    - A-2: 재작성을 끈 모듈의 assert는 `-O` · `PYTHONOPTIMIZE`에서 지워진다(364 → 0). 표식이 빠져도 알아챌 시험이 없다.
+    - A-3: 규칙 Sentry 문장에 `Exception`과 `BaseException`의 경계가 없다.
+    - A-4: 빌더 파일의 문면 잔여 — `observability.py` 설계 목록 · 시험 머리의 「메시지는 〔r8 Ln〕」.
+    - A-5(인계): T063 모듈은 재작성이 그대로 켜져 있다 — 처리를 정해 적어야 한다.
+  - 리뷰 B(누출 · 실패 처리 · 부작용 — r7 사본 대비 r8): 빌더 보고가 증거와 맞다. low 5:
+    - B-1: A-2와 같다(r7까지는 재작성된 단언이 `-O`에서도 남았다 — L1이 연 조건부 우회).
+    - B-2: A-1과 같다.
+    - B-3: L2 시험은 사용자 정보 가운데 비밀번호 자리만 감시 값으로 둔다. 비밀번호만 가린 프록시 URL을 메시지에 싣는 변이가 oc-26을 통과한다.
+    - B-4(인계): r8 컨트롤러 확인의 `transport.py:585-586` · `:602-611`은 쓰지 않는 httpcore 전송 경로다. 기본 HttpTransport에서 인증서 env는 연결 때에야 읽혀 init에서 실패하지 않는다 — L2 밖이고 기동 신호도 없다.
+    - B-5(인계): T075 lint가 키 이름만 대조하면 envFrom prefix 합성 이름 · 대소문자 섞인 이름 · ExternalSecret 템플릿 키 · 렌더 밖 참조가 빠진다.
+  - 컨트롤러 확인(2026-11-07): sentry-sdk 2.73.0 `transport.py` — `:553-591`은 `_get_httpcore_pool_options`(httpcore 전송)이고, 기본 `HttpTransport`(:751 · `make_transport` :1215-1216)는 `:755-794` `_get_pool_options`에서 `SSL_CERT_FILE` · `REQUESTS_CA_BUNDLE` · `CLIENT_CERT_FILE` · `CLIENT_KEY_FILE`을 urllib3 옵션으로 넘기고 `:796-837` `_make_pool`에서 프록시를 고른다. 리뷰 B-4와 맞다.
+- **r9 결정 K1–K7(컨트롤러)**: 규칙 §Logging · §Tests와 kr 미러 대기 줄은 이 절과 같은 변경에서 「T071 r9」 표식으로 고쳤다.
+  - **K1 `-O` 가드와 재작성 자기 점검**(A-2 · B-1):
+    - 시험 모듈 머리(`from __future__` 다음)에 가드를 둔다: `if not __debug__: raise RuntimeError("…")` — 메시지는 「이 모듈은 단언 재작성을 끈다(PYTEST_DONT_REWRITE) · `-O` · `PYTHONOPTIMIZE`에서는 assert가 지워지므로 돌리지 않는다」 꼴(값 없음). `-O`에서는 수집 오류로 끝나고, 보통 실행에서는 컴파일러가 이 블록을 지운다.
+    - 자기 점검 시험 oc-66을 더한다: 이 모듈의 시험 함수 가운데 단언 재작성을 거친 것이 없다(`__code__.co_varnames`에 `@py_assert`로 시작하는 이름이 없다). 표식이 빠지면 이 시험이 실패한다. 〔r10 I1 — 판정은 `@`로 시작하는 지역 이름 전부 · 모듈 독스트링의 표식 낱말도 단언한다〕
+    - 검증: 가드 문이 optimize 1 컴파일에는 남고 optimize 0에서는 사라짐을 AST · dis로 보인다(보고). 변이 「표식 낱말 지우기」를 oc-66이 잡아야 한다.
+  - **K2 django-common pytest 기본에 `--show-capture=no`**(A-1 · B-2 — 문면을 좁히는 대신 캡처 칸도 닫는다):
+    - `packages/django-common/pyproject.toml`의 pytest addopts에 `--show-capture=no`를 더하고, `--tb=short`(T063 r1)와 같은 꼴의 근거 주석을 단다: 실패한 시험의 Captured log 칸이 관측 계약 시험이 심은 합성 감시 값을 찍는다.
+    - 이 설정은 django-common의 모든 시험 모듈에 걸린다. 디버깅 때는 명령줄에 `--show-capture=all`을 주고 로컬에서만 돌린다(그 출력은 공유하지 않는다). `-rA` · `-rP`(통과 시험의 캡처 요약)도 쓰지 않는다. 〔r10 I2 — 금지는 실패 출력을 넓히는 옵션의 부류다(`-l`/`--showlocals` · `short`가 아닌 `--tb`(`long` · `auto`) · `--full-trace` · `no`가 아닌 `--show-capture` · `log_cli`/`--log-cli-level` · `--log-file`/`log_file` · `no`가 아닌 `junit_logging` · `-o`/`--override-ini`로 addopts 덮기 — 마감 F1) · `-rA` · `-rP`는 `--show-capture=no`에서 무해하다 · 공유 실행은 패키지 ini가 골라지게 돌린다 · `-O` 금지〕
+    - 의존성 변화는 없다(`uv.lock` 바이트 같음 · `uv lock --check --offline` 통과).
+    - 검증: M08(oc-4)을 추가 플래그 없이 한 번 돌려 실패 출력에 감시 값 꼴 0을 보인다.
+    - 규칙 §Tests에 적었다. T072 인계: 생성 pod의 pytest 설정에도 같은 기본을 둘지 정한다.
+  - **K3 L2 시험 강화**(B-3): 프록시 사용자 이름도 감시 값으로 둔다. 메시지는 기대 문자열 전체와 견준다(예외 클래스 이름만 바뀐다). 변이 L2-5(비밀번호만 가린 프록시 URL을 메시지에 싣기)를 oc-26이 잡아야 한다.
+  - **K4 빌더 파일 문면 잔여**(A-4 · 빌더 r8 ⑧-6): `observability.py` 모듈 독스트링의 설계 정본 목록에 「T071 r6 결과 · r7 결정」 S1과 「T071 r7 결과 · r8 결정」 L2를 더한다. 시험 모듈 머리의 표식 문구를 사실대로 고친다(사례는 〔r8 Ln〕 · 메시지 32줄은 모듈 독스트링 〔r8 L1〕 문단이 덮는다).
+  - **K5 문서 · 인계**(A-3 · A-5 · B-4 · B-5 · 문서만):
+    - 규칙 §Logging의 Sentry 문장에 경계를 적었다(`Exception`만 바꾸고 `BaseException`은 그대로 올린다).
+    - r8 컨트롤러 확인의 sentry-sdk 줄 번호를 표식으로 고쳤다. 기본 HttpTransport에서 인증서 env는 init 때 실패하지 않는다 — L2 밖이고 기동 신호도 없다. T072 렌더 · 이미지 단언과 T075 lint가 유일한 방어선이다.
+    - T075 lint 기준을 넓혔다(D14 T075 표식): 컨테이너마다 실효 env 이름(`env[].name` ∪ envFrom prefix + 키)을 셈한다 · 금지 목록은 대소문자 무시로 대조한다 · ExternalSecret 키는 `target.template.data` 키로 본다(없으면 `data[].secretKey`) · 렌더 밖 객체를 가리키는 envFrom은 FAIL로 두거나 허용 목록으로 둔다 · Sentry TLS 신뢰를 바꾸는 `SSL_CERT_FILE` · `REQUESTS_CA_BUNDLE`도 목록에 넣는다. 〔r10 I4 — 키 = template.data 키 ∪ (템플릿이 없거나 `mergePolicy: Merge`면 `data[].secretKey`) · `templateFrom`(KeysAndValues · literal 등)은 FAIL 또는 허용 목록 · T075가 ESO 2.10.0 소스로 Merge 동작을 대조한다(cluster.tests.ps1 ca-1 꼴)〕
+    - T063 모듈의 재작성(A-5 · 빌더 r8 ⑨-2)은 받아들인 한계로 둔다: 그 모듈의 needle은 고정 공개 표식(`QS-MARK`)이고 무작위 값은 trace id뿐이다. T063 산출물은 이 태스크가 바꾸지 않는다. L1 검증 문구는 계약 모듈에 한한다. K2의 `--show-capture=no`는 그 모듈의 캡처 칸에도 걸린다. 〔r10 I3 — 근거 정정: 비교 설명에 실릴 수 있는 것은 고정 공개 표식(`QS-MARK` · `MARK-*`)과 무작위 trace · span id(비밀 아님)뿐이다 · 무작위 비밀 needle(Dragonfly · PG app 비밀번호)은 `_assert_absent`가 Secret · 위치 목록으로 접는다 · 그 모듈에 단언을 더할 때도 이 접기를 지킨다〕
+  - **K6 받아들인 것**(빌더 r8 ⑧ · ⑨): ⑧-1 진단 메시지 32줄의 기준 · ⑧-2 socket 대역 · ⑧-3 프록시 관련 env를 대소문자 둘 다 지우기 · ⑧-4 `from None` · ⑧-5 L2 사례를 oc-26에 두기 · ⑨-1 T072 인계(configure_sentry를 except 블록 밖에서 부른다) · ⑨-3 `LocationParseError` 이름 의존(urllib3 판 올림 때 다시 본다).
+  - **손대지 않는 것**: L2의 감싸기 꼴 · S1 · G1 · G2 · P1 · P2 · P4 · P5 판정 · `health.py` 전부 · configure_sentry의 init 인자 · `before_send` · Z2 · Z5 · Z6 · Z7 · Q2 · Q3 · D3 · D4 · D8 · D9 · D10 · D12 · D13 · D15 · RequestIdMiddleware · sub_hash · 헤더 캡처 env 판정 · 쿠키 접두 · memoryview 판정 · 의존성.
+
+### T071 r9 결과 · r10 결정(리뷰 r9 반영 · I1–I6 · 2026-11-07) — K1의 oc-66 판정, K2의 금지 목록, K5의 T063 근거 · T075 키 규칙, L3의 T075 줄, D14의 T072 · T075 줄은 이 절의 I1 · I2 · I3 · I4 · I5가 고친다(앞 절 줄 끝 〔r10 …〕 표식)
+
+- **r9 결과**(워크플로 `wf_fc788a1b-169` · 104만 토큰 · 약 1시간 7분 · 빌더 DONE · 리뷰 A approve_with_fixes — low 4 · 리뷰 B approve_with_fixes — low 5 · high · medium 0):
+  - 바뀐 파일(r8 대비): 시험 4154 → 4198(+58/−14 — 가드 · oc-66 · oc-26 강화 · 머리 문구) · `pyproject.toml` 73 → 78(addopts에 `--show-capture=no` 한 항목과 주석 — 그 밖의 값은 TOML 대조로 같다) · `observability.py` 990 → 992(모듈 독스트링만 — 그 밖의 AST 같음). 나머지는 r8 사본과 바이트가 같다(`uv.lock` 포함).
+  - 빨강 없음(모두 강화): r8 구현 + r9 시험 = `66 passed`. 사전 확인으로 L2-5가 r8 시험에서 살아남음을 실행으로 보였다(리뷰 r8 B-3).
+  - 초록(최종 바이트): T063 21 ×2 · 계약 66 · 회귀 파일별 · 한 세션 묶음 757(9파일 합).
+  - K1: 가드는 `from __future__` 다음(본문 두 번째 문)이다. optimize 0에서는 가드가 지워지고(assert 적재 366), optimize 1에서는 RuntimeError를 올린다(assert 0). `python -O -B -m pytest`는 수집 오류(exit 2 · 값 없는 고정 문구)로 끝났다. 재작성 탐침: 최종본은 `@py_assert`를 가진 시험 함수 0/66, 표식을 지우면 63/66(도우미에 단언을 맡긴 oc-34..36 제외).
+  - K2: M08(oc-4)을 추가 플래그 없이 — r8 pyproject는 Captured log call 칸에 감시 값 꼴이 실렸고(True), r9 pyproject는 그 칸이 없고 감시 값 꼴 0이다.
+  - 변이 6개를 모두 잡았다: K1-1(표식 낱말 지우기) → oc-66 · L2-5 → oc-26(r8 시험에서는 생존) · L2-1..4 → oc-26. r9 로그 53개에서 감시 값 꼴 0건.
+  - VD-T071-1 PASS · `uv lock --check --offline` exit 0 · 위생(compileall · 바이트 · gitleaks 11 · Docker dangling 볼륨 25 → 25 · 루프백만).
+  - 빌더 ⑧: oc-66에 자기 존재 단언을 더했다(검사 대상이 비면 공허하다) · oc-26은 기존 `expected in message` 원소를 남기고 통째 비교 원소를 더했다 · 시험 독스트링에 〔r9 K1〕 · 〔r9 K2〕 문단 · 변이 실행기는 r9부터 K2 기본에 맡긴다 · 표식 낱말이 독스트링 · 가드 메시지 두 곳에 있다(pytest는 독스트링만 본다) · ruff 기본 규칙이면 가드 뒤 import가 E402다(저장소에 ruff 설정 없음).
+  - 빌더 ⑨: T072가 생성 pod에도 `--show-capture=no`를 둘지 정한다 · CI 배선 때 `-O` · `PYTHONOPTIMIZE` · `--show-capture=all` · `-rA` · `-rP` 금지 · `SENTRY_INIT_FAILURE`는 구현 고정 문구와 함께 바뀐다 · ruff 도입 때 E402.
+  - 리뷰 A(계약 · 문면 · 판별력 — r8 사본 대비 r9): K1–K4가 1:1이고 K1 · K2의 실효를 재현했다(pytest 9.2.0 `rewrite.py:774-775` 표식 · `:777-788` `@py_assert` 지역 이름). low 4:
+    - A-1: K2의 공유 실행 금지 목록이 과녁을 빗나간다 — `-rA` · `-rP`는 `--show-capture=no` 기본에서 캡처 내용을 찍지 않는다. 같은 로그 레코드를 내보내는 `log_cli`/`--log-cli-level` · `--log-file` · `junit_logging`이 빠졌다.
+    - A-2: K5가 적은 T063 한계의 전제가 좁다 — 무작위 span id와 무작위 비밀 needle(Dragonfly · PG app 비밀번호)도 있다. 결론은 T063 자체 설계(Secret · 위치 목록 접기) 덕에 성립한다.
+    - A-3(인계): T075 ExternalSecret 키 규칙에 `templateFrom` · `mergePolicy`가 빠졌다.
+    - A-4(인계): r9의 T072 인계 둘(생성 pod `--show-capture=no` · configure_sentry 호출 자리)이 D14 T072 줄에 표식으로 없다.
+  - 리뷰 B(누출 · 실패 처리 · 부작용 — r8 사본 대비 r9): K1 · K2 · K3이 실효가 있다(재작성이 다시 켜지는 길을 oc-66이 잡는다 · `--show-capture=no`이면 실패 · 오류 · -rP/-rA · teardown 캡처 칸이 모두 닫힌다 · 메시지 통째 비교는 어느 조각이 덧붙어도 잡는다). low 5:
+    - B-1: K2는 캡처 칸만 닫는다 — `-l/--showlocals` · `--full-trace` · `log_cli` · `--log-file` · `junit_logging`은 열려 있고, 패키지 ini가 골라져야 한다는 조건(루트에서 여러 패키지를 주면 addopts가 적용되지 않는다)이 규칙 · 주석 · CI 인계에 없다. pyproject 주석의 까닭 괄호도 고친다.
+    - B-2(인계): A-3과 같다.
+    - B-3(인계): A-4와 같고, CI 배선 조건이 놓일 줄이 없다.
+    - B-4: oc-66은 pytest 내부 임시 이름의 접두 `@py_assert`에 기댄다 — 이름이 바뀌면 조용히 통과한다(fail-open).
+    - B-5: A-2와 같다.
+- **r10 결정 I1–I6(컨트롤러)**: 규칙 §Tests와 kr 미러 대기 줄은 이 절과 같은 변경에서 「T071」 꼬리로 고쳤다.
+  - **I1 oc-66 판정 넓히기**(B-4): 시험 함수의 `__code__.co_varnames`에 `@`로 시작하는 이름이 하나라도 있으면 실패한다(파이썬 식별자는 `@`로 시작할 수 없으니 재작성기의 임시 이름만 걸린다). 모듈 독스트링에 `PYTEST_DONT_REWRITE`가 있음도 함께 단언한다(표식을 직접 본다).
+    - 변이: K1-1(표식 낱말 지우기)을 다시 돌리고, 두 절이 각각 따로 잡음을 보인다 — `@` 절을 끈 꼴 + K1-1 → 독스트링 절이 잡는다 · 독스트링 절을 지운 꼴 + K1-1 → `@` 절이 잡는다.
+  - **I2 공유 실행 규칙을 부류로**(A-1 · B-1):
+    - 규칙 §Tests 문장을 고쳤다: 공유 실행(CI 포함)은 패키지 자체 설정을 쓴다 — `packages/django-common`에서 돌리거나 그 안의 경로만 주어 그 `pyproject.toml`이 골라지게 한다 · `python -O` · `PYTHONOPTIMIZE`로 돌리지 않는다 · 실패 출력을 넓히는 옵션(`-l`/`--showlocals` · `--tb=long` · `--full-trace` · `no`가 아닌 `--show-capture` · `log_cli`/`--log-cli-level` · `--log-file`/`log_file` · `no`가 아닌 `junit_logging`)을 더하지 않는다 · 그런 옵션은 로컬에서만 쓰고 출력을 공유하지 않는다. `-rA` · `-rP`는 `--show-capture=no`에서 머리줄만 찍으므로 따로 금지하지 않는다. 〔마감 F1 — 목록에 `short`가 아닌 `--tb`(`auto` 포함)와 `-o`/`--override-ini`로 addopts 덮기를 더했다(규칙 §Tests) · pyproject 주석 · 시험 독스트링의 같은 목록은 다음 수정 때 맞춘다〕
+    - 빌더: `pyproject.toml` 주석과 시험 모듈 독스트링 〔r9 K2〕 문단을 같은 원칙으로 맞춘다(목록은 규칙을 가리켜도 된다). pyproject 주석의 까닭 괄호를 사실대로 고친다(실패한 시험의 Captured log 칸에는 마스킹하지 않은 키 값의 repr와 stdlib 메시지 인자가 실린다 — 우리 JSON 렌더러를 거치지 않는다).
+  - **I3 T063 한계 근거 정정**(A-2 · B-5 · 문서만): T063 모듈의 비교 설명에 실릴 수 있는 것은 고정 공개 표식(`QS-MARK` · `MARK-*`)과 무작위 trace · span id(비밀 아님)뿐이다. 무작위 비밀 needle(Dragonfly · PG app 비밀번호)은 `_assert_absent`가 Secret · 위치 목록으로 접어, 재작성이 켜진 실행에서도 실리지 않는다(T062 · T063 설계). 그 모듈에 단언을 더할 때도 이 접기를 지킨다.
+  - **I4 T075 ExternalSecret 키 규칙**(A-3 · B-2 · 문서만): ExternalSecret 키 = `target.template.data` 키 ∪ (템플릿이 없거나 `mergePolicy: Merge`면 `data[].secretKey`). `templateFrom`(templateAs KeysAndValues · literal 등)은 `dataFrom`처럼 FAIL로 두거나 허용 목록으로 둔다. T075가 ESO 2.10.0 소스로 Merge 동작을 한 번 대조한다(판정 꼴은 `tests/platform/cluster.tests.ps1` ca-1과 같게).
+  - **I5 D14 T072 인계 표식**(A-4 · B-3 · 문서만): 생성 pod pyproject addopts와 T065 하네스 명령에 `--show-capture=no`를 둘지 정한다 · configure_sentry는 except 블록 밖에서 부른다 · ci.yml의 test 자리를 채우는 과제(US 단계 — 아직 태스크 이름이 없다 · T072 설계가 맡을 곳을 정한다)는 django-common pytest를 패키지 ini로 돌리고 `-O` · `PYTHONOPTIMIZE`와 실패 출력을 넓히는 옵션을 쓰지 않는다.
+  - **I6 r10의 리뷰 꼴**: r10의 코드 변경은 oc-66 판정 한 곳과 주석 · 독스트링 문면뿐이다. 그래서 리뷰 두 렌즈를 따로 돌리지 않고, 커밋 전 읽기 전용 독립 확인 1회가 r10 변경과 T071 전체(계약 ↔ 코드 ↔ 시험 ↔ 규칙 ↔ build-notes 표식 · 위생 · r9 지적 닫힘)를 함께 본다. 그 확인이 문서만으로 닫을 지적만 내면 컨트롤러가 고치고 커밋한다. 코드가 필요한 지적이 나오면 라운드를 하나 더 연다.
+  - **받아들인 것**(빌더 r9 ⑧ · ⑨): ⑧-1 oc-66 자기 존재 단언 · ⑧-2 oc-26 원소 더하기 · ⑧-3 독스트링 문단 · ⑧-4 변이 실행기의 K2 기본 · ⑧-5 표식 낱말 두 곳 · ⑧-6 oc-34..36(도우미 단언)은 `@` 검사 밖 · ⑧-7과 ⑨-4 ruff E402(도입 때 처리) · ⑨-3 `SENTRY_INIT_FAILURE` 고정.
+  - **손대지 않는 것**: L2 · K1 가드 · K3 · S1 · G1 · G2 · P1 · P2 · P4 · P5 판정 · `health.py` 전부 · `observability.py` 전부 · configure_sentry · 그 밖의 앞 결정 전부 · 의존성.
+
+### T071 결과(r1 → r10 · 커밋 전 확인 · 2026-11-05..07) — D1–D15 · Y · Z · Q · P · G · S · L · K · I의 정정은 뒤 절과 이 절이 우선한다(앞 절 줄 끝 〔…〕 표식)
+
+- **경과**: 조사 `wf_4b472661-c84`(1.77M) → r1 `wf_c09020d9-a4d`(1.65M · 약 2시간 36분) → r2 `wf_5a350cf4-69e`(1.64M · 약 2시간 49분) → r3 `wf_cf8c8de0-0e4`(0.68M · 약 1시간 58분 · 빌더 NEEDS_CONTEXT — 리뷰 없음) → r4 `wf_8c9174f9-1e2`(1.45M · 약 1시간 31분) → r5 `wf_ac330432-677`(1.37M · 약 3시간 9분) → r6 `wf_5b7e00bd-eff`(1.28M · 약 2시간 34분) → r7 `wf_479658da-01f`(1.16M · 약 1시간 10분) → r8 `wf_eca8c3b3-408`(1.35M · 약 1시간 43분) → r9 `wf_fc788a1b-169`(1.04M · 약 1시간 7분) → r10 + 커밋 전 확인 `wf_8170e4bb-cb0`(0.77M · 약 55분). 빌드 · 리뷰 합계는 약 12.39M 토큰이다(조사 포함 약 14.16M).
+- **리뷰 회차별 지적**(높음 · 중간 · 낮음):
+  - r1: A 0 · 2 · 7 / B 0 · 2 · 7
+  - r2: A 0 · 0 · 9 / B 0 · 1 · 6
+  - r3: 리뷰 없음(빌더 NEEDS_CONTEXT — 열거 밖 env 둘 · `OTEL_PROPAGATORS` 결정 오류)
+  - r4: A 0 · 0 · 4 / B 0 · 0 · 4(A-2 = B-2)
+  - r5: A 0 · 0 · 4 / B 0 · 1 · 2(B-1 medium = OTLP 자격 통로가 헤더 밖에 남음)
+  - r6: A 0 · 0 · 3 / B 0 · 0 · 2(A-1 = B-1 — 스킴 `ſ`)
+  - r7: A 0 · 0 · 2 / B 0 · 0 · 2(A-1 = B-2)
+  - r8: A 0 · 0 · 5 / B 0 · 0 · 5(A-1 = B-2 · A-2 = B-1)
+  - r9: A 0 · 0 · 4 / B 0 · 0 · 5(A-1 ≈ B-1 · A-2 = B-5 · A-3 = B-2 · A-4 = B-3)
+  - 커밋 전 확인(r10과 함께 · 읽기 전용 1회): 0 · 0 · 7(C-1–C-7 — 「[코드]」 표시 둘(C-1 · C-7)은 주석 · 독스트링 문면뿐이라 동작이 그대로다 · 확인이 적은 문서 길로 닫았다 · r11 없음)
+- **r10 결과**(빌더 DONE):
+  - 시험 4198 → 4211(+23/−10 — oc-66 판정 `@py_assert` → `@` 접두 · 독스트링 표식 단언 `"oc-66 marker"` 추가 · 〔r9 K2〕 문단 · 머리 표식) · `pyproject.toml` 78 → 81(주석만 — TOML 값 전체 같음). 나머지는 r9 사본과 바이트가 같다.
+  - 빨강 없음(r9 구현 + r10 시험 = 66 passed). 초록: T063 21 ×2 · 계약 66 · 회귀 파일별 · 한 세션 묶음 757. VD-T071-1 PASS · `uv lock --check --offline` exit 0.
+  - 변이 3개를 모두 잡았다: K1-1(표식 낱말 지우기) → oc-66 `@` 절 · I1-1(`@` 절 끔 + K1-1) → 독스트링 절 · I1-2(독스트링 절 지움 + K1-1) → `@` 절.
+  - 탐침: 실패한 시험의 pytest 캡처 칸에는 마스킹하지 않은 키 값의 repr와 stdlib 메시지 인자가 실린다(우리 JSON 줄에서는 repr 탐침이 `<타입 이름>`이다 · 메시지 인자는 JSON 줄에도 실린다 — 값은 검사하지 않는다는 규칙 그대로) · 재작성기 임시 이름 접두가 바뀌면 r9 판정은 0/66으로 통과하고(fail-open) r10 `@` 절은 63/66을 잡는다 · 루트에서 두 패키지 경로를 함께 주면 루트 pyproject가 골라져 addopts가 빠진다.
+- **커밋 전 확인 반영**(마감 정정 — 컨트롤러가 문서만 고쳤다 · 사본 드라이런 → 적용 → cmp 같음):
+  - **F1**(C-1) 규칙 §Tests의 「실패 출력을 넓히는 옵션」 목록: `--tb=long`을 「`short`가 아닌 `--tb`(`long` · `auto`)」로 고쳤다(pytest 기본 auto는 첫 · 마지막 항목을 long으로 찍어 함수 인자를 싣는다 — `_pytest/python.py:1819-1840` · `_code/code.py:1100-1101`) · 「`-o`/`--override-ini`로 addopts를 덮지 않는다」를 더했다. 같은 목록을 옮긴 `pyproject.toml` 주석 · 시험 모듈 독스트링 〔r10 I2〕는 동작에 닿지 않는 미러 문면이라 그대로 두고, 다음에 그 파일을 고칠 때 규칙(정본)에 맞춘다(받아들인 잔여).
+  - **F2**(C-2) 커밋에 tasks.md T071 체크 · 학습 로그 `content/tmp/003-t071/` · 이 절을 함께 싣는다.
+  - **F3**(C-3) 표식: K1의 oc-66 판정 줄 · L3의 T075 줄에 〔r10 …〕 · K2 표식의 목록을 `--log-file`/`log_file`로 · r10 절 머리의 고치는 줄 목록에 K1 · L3을 더했다.
+  - **F4**(C-4) 계약 · 규칙 문면을 구현(모두 fail-closed 쪽)에 맞췄다 — pod-template 「로그」 · 「트레이스 · Sentry」 행 · identity-admin-api §관측 · 규칙 §Logging:
+    - `OTEL_SEMCONV_STABILITY_OPT_IN`: 쉼표 토큰을 앞뒤 공백을 떼고 대소문자를 무시해 `http`이거나 `http/`로 시작하면 거부한다.
+    - `problem`: 본문 `type`이 `https://joshuatech.dev/problems/<slug>`(slug = 소문자로 시작하는 소문자 · 숫자 · `-`) 꼴일 때만 그 slug — 그 밖의 type · 스트리밍 응답 · 64 KiB 초과는 키 없음.
+    - JSON 폴백: UUID · Decimal은 문자열 · date · datetime · time은 ISO 8601 · 그 밖은 `<타입 이름>`.
+    - 비율 샘플러: ARG가 [0, 1]의 수여야 한다(없음 · 빈 값 · 숫자 아님 · NaN도 거부).
+  - **F5**(C-5) `sentry_sdk.init` 실패 메시지의 「(프록시 · 인증서)」는 운영자가 볼 env 범위 안내이고 실패 원인 주장이 아니므로 그대로 둔다(기본 HttpTransport에서 인증서 env는 init 때 실패하지 않는다 — K5). 바꿀 때는 구현 문구와 시험 상수 `SENTRY_INIT_FAILURE`를 함께 바꾼다.
+  - **F6**(C-6) D14에 T084 · T085 줄을 더했다(admin 호스트 경로의 브라우저 traceparent — T084가 정해 계약 §관측에 적고 T085가 S3 관찰 수단으로 검증한다).
+  - **F7**(C-7) 시험 모듈 독스트링 「빨간 상태」 문단에 r10 문장이 없다(머리 표식 · oc-66 독스트링에는 있다) — 받아들인 잔여(다음에 그 파일을 고칠 때 한 문장을 더한다).
+- **최종 산출물**(`packages/django-common/` 아래 · 저장소 루트 `uv.lock`):
+  - `src/django_common/observability.py` 992줄(`d5d4e478f42d…`) · `src/django_common/health.py` 272줄(`d6b19c72c675…`) · `src/django_common/__init__.py` 11줄(`591348853825…`)
+  - `pyproject.toml` 81줄(`0a7b1497b466…`) · 루트 `uv.lock` 939줄(`fa2505e2e3db…`)
+  - `tests/test_observability_contract.py` 4211줄(`600f7374ea2a…` · oc-1..66) · `tests/_obs_fakes.py` 203줄(`4e5fe29d7d92…`) · `tests/obscontractapp/`(`__init__.py` · `middleware.py` · `urls.py` · `views.py`)
+  - T063 `tests/test_observability.py`(783줄 · `320bab1bc61c…`)는 바뀌지 않았다.
+- **컨트롤러 독립 검증**(커밋 전 · 2026-11-07):
+  - `uv run --offline --no-sync --directory packages/django-common pytest tests/test_observability.py -q` → `21 passed`(**T063 PASS**) · `tests/test_observability_contract.py -q` → `66 passed`.
+  - `uv lock --check --offline` → `Resolved 63 packages`.
+  - Docker dangling 볼륨 25 → 25 · 실행 중 컨테이너 목록 같음.
+  - 코드 산출물 12파일 바이트 위생 문제 0 · gitleaks 파일별 rc 0. 문서 5파일은 라운드마다 반영 직후 같은 검사(문제 0 · rc 0).
+- **한계**(받아들인 것):
+  - 헬스 시작 실패: 「시작되지 않음」 = `worker.ident is None`의 창 · 새 스레드가 `_started.set()` 전에 죽으면 start()가 돌아오지 않는다(CPython 성질 — G3).
+  - 엔드포인트 닫힌 꼴은 IPv6 리터럴을 받지 않는다 · host 부류는 `..` · `-x` 같은 이상한 DNS 꼴도 받는다 · 앞에 0이 붙은 포트는 값으로 받는다(자격 통로 아님 — G1 · r6 ⑧).
+  - requests · urllib3 · sentry-sdk가 프로세스 전체에서 스스로 읽는 env · 파일(`NETRC` · `.netrc` · `_netrc` · `*_PROXY` · `SSLKEYLOGFILE` · `SSL_CERT_FILE` · `REQUESTS_CA_BUNDLE` · `CLIENT_CERT_FILE` · `CLIENT_KEY_FILE`)은 django-common이 거부하지 않는다 — T072 렌더 · 이미지 단언과 T075 gitops lint가 방어선이다(S4 · L3 · K5 · I4). 기본 HttpTransport의 인증서 env는 init 때 실패하지 않아 기동 신호가 없다(K5).
+  - 마스킹은 값을 보지 않는다(비밀을 로그 필드로 넘기지 않는 것은 호출자 규칙 — D2 · Z4).
+  - 시험의 판 의존: oc-63은 sentry-sdk의 `sentry` entry point와 OTel 비공개 `_load_propagators`에 · `_hidden_ident`는 CPython 3.13 `Thread.ident` property에 · oc-26은 urllib3 `LocationParseError` 이름에 · oc-66은 pytest 재작성기의 `@` 임시 이름과 독스트링 표식에 · `_name_lookups`는 클러스터 이름의 `alloy`에 기댄다 — 판 올림 때 다시 본다.
+  - 계약 시험 모듈은 단언 재작성을 끈다(값 비교 설명 없음 · `-O`에서 수집 실패). T063 모듈은 재작성이 켜져 있다(그 비밀 needle은 `_assert_absent`가 접는다 — I3).
+  - 미러 문면 잔여: `pyproject.toml` 주석 · 시험 모듈 독스트링의 공유 실행 금지 목록(F1) · 「빨간 상태」 문단의 r10 문장(F7).
+  - 변이: r2 · r3의 M65(겹 방어 — 두 겹을 함께 없앤 변이는 잡혔다).
+- **문면과 다르게 한 것**(report.md 후보):
+  - `/ready` = `SELECT 1`(django-health-check 미채택 — 검사 테이블이 RLS 허용 목록을 깬다).
+  - Sentry release = `<pod>@<APP_GIT_SHA>`(문면 「digest」는 빌드 뒤 정해져 이미지에 구울 수 없다).
+  - `send_default_pii` 생략 · Sentry 헤더 거부 목록 → 허용 목록(D7).
+  - OTLP는 http 4318(research gRPC 4317과 다름 — 계약 · 문면 http) · 엔드포인트 env는 스킴을 포함한 닫힌 꼴(T098 문면 값에는 스킴이 없다).
+  - web 9100 · `http_requests_total` 소유는 T072(D10).
+  - `SECRET_KEY` = `<pod>-env` 필수 비밀 · kv 경로 추가(T072 · T075 문면 밖 — `sub_hash` 키).
+  - 문면에 없던 기동 거부: OTel env 열일곱(요청 값 · 계측 끄기 · traceparent 이어받기 · 미들웨어 위치 · OTLP 자격 — 기준은 계약 「트레이스 · Sentry」 행) · `sentry_sdk.init` 실패의 이름만 실은 오류(L2).
+  - django-common pytest 기본에 `--show-capture=no`(K2 — 규칙 §Tests).
+- **실측으로 뒤집힌 가정**(컨트롤러 결정 · 사실 오류 — 학습 로그 사고 · 오류 절):
+  - r3 Z1: `OTEL_PROPAGATORS`를 너그럽게(대소문자 무시 · 공백뿐 = 빈 값) 받기로 했다 → OTel import가 그 값으로 값 실은 오류를 낸다(빌더 실측 · r4 Q1).
+  - r4: 「설치된 propagator entry point는 둘뿐」 → sentry-sdk가 `sentry`를 등록한다(r5 P1).
+  - r4 P3 근거: camelCase 변형 1393개에서 회귀 0 → 생성기가 「머리글자 + 소문자 낱말」 꼴을 만들지 않았다(r6 G2).
+  - r5 P5 받음 근거: 엔드포인트 사용자 정보는 로그에 실리지 않는다 · 클라이언트 키는 파일 경로다 → requests가 Basic 인증으로 보내고, 꼴이 틀린 값과 평범한 장애 때 로그에 실린다(r6 G1).
+  - r6 G1: 「글자 부류는 ASCII」 → 스킴의 `(?i)`가 유니코드 접기로 `ſ`를 받았다(r7 S1).
+  - r6 · r7: 감시 값 단언을 목록으로만 접었다 → 목록 근거가 틀렸고 1차 전용 변이 자리가 빠졌다 → 부류를 닫았다(r8 L1) → 재작성 끄기가 `-O` 공허 통과를 열었다(r9 K1) → 자기 점검이 pytest 내부 이름에 기댔다(r10 I1).
+  - r7 S4 근거: 「(Sentry도 같다) · 템플릿이 pod env를 정한다」 → sentry-sdk는 `*_PROXY`를 스스로 읽고 init 예외에 싣는다 · 배포 env는 T075 gitops가 정한다(r8 L2 · L3).
+
+## T072 (2026-11-07 설계 확정 — US6 구현 · `templates/django-pod` 완성 → T065 PASS · 세션 모델 Opus 5.5)
+
+- **과제 문면(tasks.md T072 · :189)**: `copier.yml`(질문 · `_tasks: uv lock` · `_min_copier_version 9.17`) + 생성 트리(pydantic-settings settings · urls · Ninja api · core 예 · events · management · Celery beat = outbox dead purge) + `pyproject.toml.jinja` + `Dockerfile`(uv 0.12.8 빌더 → `python:3.13-slim-trixie@sha256:…`) + `compose.dev.yml` + `env.example` + `tests/`(6종 + `makemigrations --check` + migration linter) + `deploy/base/` → T065 PASS.
+- **설계 정본 = `design/t072-design.md`**(2026-11-07 확정 · 1,363줄): 문면과 정본의 어긋남 A1–A15(report.md 후보 R1–R17) · 하네스 · 계약 · gitops 어긋남 G1–G8 · 소스로 확인한 사실 ①–㉟ · 결정 D1–D22 · 계약 · 규칙 보정 C1–C31 · 빌드 조각 ①–④ · VD(T072 안 19 · 라이브 L1–L18) · 인계 · 사용자 결정 UD-0–UD-2 · 위험 · 설계 비판 반영표 X1–X33(X33 = 설계 커밋 전 gitleaks 실측 — 숫자가 든 자리값을 generic-api-key가 잡는다). 빌드 라운드의 결과와 정정은 이 절에 이어 적는다(설계 문서는 태스크가 닫히면 고치지 않는다).
+- **경과**
+  - 조사 `wf_2688d649-760`(리더 5 — 하네스 · 명세 · 라이브러리 · 도구 · 배포 모양 · 발견 252 · 열린 질문 62 · 보고 `.superpowers/t072/research/*.json`).
+  - 설계 초안 `wf_0ccb979c-612`(설계자 1 + 비판 2렌즈 — A 계약 · 하네스 · 인계 approve_with_fixes medium 6 · low 12 / B 보안 · 운영 · gitops approve_with_fixes medium 3 · low 13 · 보고 `.superpowers/t072/design-draft.md` · `design-criticA.json` · `design-criticB.json`).
+  - 컨트롤러 반영(X1–X33): 기각 0. 다른 방법으로 닫은 셋 — X8(base ConfigMap 자리값 대신 `POD_NAMESPACE` 클러스터 교차 규칙) · X13(ENV=test를 래퍼로 옮기지 않고 X8이 클러스터 안 ENV=test를 거부) · X24(래퍼가 셸 env에서 실패하는 대신 덮어쓰기 — T066 자식 기동과 호환).
+- **설계 커밋의 계약 · 규칙 보정**(「T072 보정 2026-11-07」 표식): contracts/pod-template.md 45곳(C1–C31) · data-model.md 2곳(§6 C29 · §8 C27 `kv/{env}/django/<pod>`) · contracts/gitops-repo.md 4곳(C28 — base 파일 목록 · ES 예시 template.data 조립 · `-migrate` hook · ConfigMap 키) · 규칙 `.claude/rules/django-pod.md` 8곳(§Template · §Auth · §Settings 둘 · §Tests · §Migrations · §Dragonfly · §Logging) · kr 미러 translation-pending 줄.
+- **사용자 결정**
+  - UD-0 독립 uv 프로젝트(T065 사용자 확인 항목) = 종결 — 2026-11-03 고지 · 이의 없음(설계 ㉙).
+  - **UD-1 uv 판**(0.12.8 유지 + 완화 vs 0.13.x 올림 — GHSA-hq85 High · 로컬 uv 0.12.6) — 대기, 조각 ③ 전에 받는다.
+  - **UD-2 Python 숙성 창**(생성 pod `exclude-newer = "3 days"` vs 하한 · 제외 핀만) — 대기, 조각 ② 전에 받는다.
+- **다음**: 조각 ① 하네스 test-first(빨강 만들기 — D21) 빌드 → 리뷰 2렌즈(A 완전성 · B 실패 양상).
+
+### T072 조각 ① r1 결과 · r2 결정(리뷰 r1 반영 · E1–E14 · 2026-11-09) — 설계 D21의 「기존 변이 2건」 · runtime_wiring 전제 · gen-28 문구 · gen-34 ④, D20 스크립트 2단계, D17 Job 스크립트 시험 문장은 이 절이 우선한다(설계 문서 해당 줄 끝 〔r1 …〕 · 〔r2 …〕)
+
+- **r1 빌드 · 리뷰**(`wf_a13976b1-0b9` · 에이전트 4 · 1.86M 토큰 · 108분 · 보고 `.superpowers/t072/reviews/{build-1a-report.md,build-1b-report.md,review-1-A.json,review-1-B.json,workflow-1-result.json}`)
+  - ①a(렌더 검사) DONE_WITH_CONCERNS: `_render.py` 765 → 1,485 · `test_render_helpers.py` 549 → 1,322 · `golden-render.yaml` 432 → 590 · 새 `golden-cronjob.yaml` 564. CHECKS 17(기존 10 + 7) · `run_checks(docs, *, has_celery=True)`를 `_render.py`로 옮김 · 새 변이 render-70..155(86) · `_CRON_TABLE` 21. 교차 행렬: 기존 68 가운데 충돌 셋(render-09 → hook_order · render-18 → runtime_wiring · render-21 → external_secrets — 설계는 둘로 봤다) → 의도를 지키며 고쳐 충돌 0. 자기검사 184 passed · `-k "tool or render or check"` 268 passed · 기존 155 ID 손실 0.
+  - ①b(트리 · 생성 시험) DONE_WITH_CONCERNS: `_tree.py` 373 → 984 · `_layout.py` 142 → 222 · `_proc.py` 316 → 571 · `conftest.py` 196 → 592 · `test_check_helpers.py` 451 → 1,494 · `test_generate.py` 236 → 575. `-k` 인프라 465 passed(57 deselected = gen 노드 전부) · 전체 실행(`JT_SAMPLE_POD_ROOT=C:\jt72`) 22 failed · 468 passed · 32 errors = 기대 표와 노드별 일치 · dangling 볼륨 25 → 25 · gitleaks 0. 새 gen 노드 ID 39개(조각 ②–④가 노드 ID로 고른다 — `scratchpad/t072/build-1b/gen-node-ids.txt`).
+  - 리뷰: A approve_with_fixes(medium 1 · low 7) · B approve_with_fixes(medium 1 · low 7). 차단 결함 없음.
+- **설계와 다르게 한 것 · 설계 오류**(리뷰 A-7 — 받아들임): ① 기존 변이 충돌은 셋(render-18 포함) ② runtime_wiring 전제 「initContainers의 pg-ca는 gen-11이 본다」는 틀렸다 → db_tls가 web pod initContainers도 본다(render-155) ③ cron 표 「CronJob 둘」은 identification 소유(변형 identify가 「정확히 1」을 맡는다) · cronjob 몫은 「실행 컨테이너 둘」 ④ `copier_copy_argv(pretend=)` 인자 추가(gen-28) ⑤ 이미지 탐침의 `.env*` · `*.pem` · `*.key` 검사에서 `/src/apps/<pod>/.venv` 제외(certifi `cacert.pem` 오탐 — venv 안은 PyPI 내용) ⑥ env 위생 `*_PROXY`는 접미 규칙(계약 문구 · `NO_PROXY` 포함) · `PROMETHEUS_MULTIPROC_DIR`는 모든 컨테이너에서 금지(D11 「어디에도」) ⑦ validator 문구 앞머리 = `invalid <질문 이름>:`(영어 · ASCII · copier 9.19.1은 `--data` 값의 validator 실패를 처리하지 않은 `ValueError`로 올려 `--quiet`에도 트레이스백이 찍힌다 → gen-28은 「0 아닌 종료 + stderr 마지막 줄에 문구 + ASCII」를 본다 — D2 원문은 「0 아닌 종료 · 문구」만 요구해 모순은 없다) ⑧ 골든 relay의 pg-ca subPath 꼴은 render-26 · 27이 기대어 남겼다(골든 머리 주석에 「본보기 아님」 표기 — 템플릿은 `/etc/pg` 디렉터리 마운트).
+- **VD 결과**
+  - VD-T072-18 닫음: 짧은 루트 `C:\jt72`(변형 경로 약 100자)에서 경로 길이 문제 없음.
+  - VD-T072-7(2026-11-09 실측 · UD-1 B 기준): `ghcr.io/astral-sh/uv:0.13.7-python3.13-trixie-slim` 인덱스 `sha256:6ff812e34a0e14b4b8bc9ddf25e77b3e16bac6e0c4d9b67641f40366fa382d4c` = Docker Hub `astral/uv` 같은 인덱스 · linux/arm64 매니페스트 있음 · `PYTHON_VERSION=3.13.18`(빌드 2026-11-03). 런타임 `python:3.13-slim-trixie` 인덱스 `sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90`(arm64 빌드 2026-11-05 · 3.13.18 — 설계 D18의 `09a17cad…`보다 새것 · 조각 ③에서 다시 확인). uv 보안 권고: 0.13.7에 걸리는 것 0건(GitHub advisory API · GHSA-hq85 `<0.13.4` · GHSA-2cv4 `>=0.12.7,<0.12.18`).
+- **사용자 결정(2026-11-09)**: UD-1 = B(uv 0.13.7 — CI setup-uv 3곳 · 빌더 이미지 태그 · digest · 로컬 uv. 로컬은 winget 설치라 `uv self update`가 안 되므로 `winget upgrade --id astral-sh.uv --version 0.13.7`을 사용자 승인 아래 조각 ① r2 뒤 실행 · 되돌리기 `winget install --id astral-sh.uv --version 0.12.6 --force`) · UD-2 = B(생성 pod `[tool.uv] exclude-newer = "3 days"` — VD-T072-17 조각 ② 시작 · 실패하면 C). 둘 다 report.md 편차 후보(R18 uv 판 · R19 숙성 창).
+- **r2 결정(E1–E13 = 빌더 지시문 `.superpowers/t072/prompts/fix-1-r2.md` · E14 = 컨트롤러)**
+  - **E1**(A-1 medium) runtime_wiring에 배선 셋: migrate `JT_SETTINGS_PROFILE=migrate` 리터럴 하나 · 런타임 컨테이너엔 없음 / 런타임 컨테이너 전부 envFrom ConfigMap + `-env`(가정 ⑩ 갱신) / 런타임 필수 이름 집합 ⊆ 실효 env · migrate 실효 env ⊇ {DATABASE_OWNER_URL, JT_SETTINGS_PROFILE} · 런타임 전용 이름 0.
+  - **E2**(A-2) external_secrets: data ≥ 1 · template 참조 ⊆ secretKey · `-env` 순번 = D20 표 · `-migrate` data[0,1].
+  - **E3**(A-3 · B-1 medium) 명령 스모크: startup_check 클래스 접미 `OperationalError` · 새 `check_purge_failure`(0 아닌 종료 · `OperationalError` 예외 줄 · 금지 줄 0 · 트레이스백 허용 — outbox_purge는 dc 명령 그대로라 X25 밖 · D21 ④ 정정).
+  - **E4**(A-4) gen-28 받아들임 = `--skip-tasks` 실제 생성 + 답변 파일 주입 값 대조(공허한 초록 제거).
+  - **E5**(A-5) 격리 변이 render-156(참조 없는 ConfigMap의 multiproc 키) · render-157(`-env` target.name 삭제).
+  - **E6**(A-6) Ingress ↔ Service 결속(이름 · 포트 http 80 → targetPort http · selector ⊆ web 라벨) · CronJob suspend 없음 또는 false.
+  - **E7**(A-8 · B-8) migrate Job 스크립트 확정 = 골든이 본보기: `psycopg.OperationalError`만 재시도 · `JT_DB_CONNECT_WAIT_SECONDS`(1–600 · 기본 120) · 재시도 줄 stdout · 최종 실패 stderr 한 줄 · `sys.exit(subprocess.call(...))` / 조각 ② D17 시험 둘(종료 코드 전달 · 접속 실패 1 s).
+  - **E8**(B-2) 가리기를 자르기 앞으로 · 16자 이상 창 누출 탐지 · **E9**(B-3) docker logs 실패 = 문제 줄 · HTTP 본문 누출 판정 · **E10**(B-4) 생성물 pytest 자식 env에서 PYTEST_ADDOPTS 등 6개 지움 · **E11**(B-5) 스모크 레이블 `jt.harness=t072-smoke` + 세션 · 다른 세션 잔여만 지움 · finally 겹침 · `rm -f -v` · **E12**(B-6) `_proc.run` Popen + 트리 종료(Windows taskkill /T · POSIX killpg) · **E13**(B-7) `JT_HARNESS_BUDGET_SECONDS` · wait_until 남은 시간 · remove 총합 60 s · 단계 로그.
+  - **E14**(A-7 · 컨트롤러) 위 「설계와 다르게 한 것」 기록 · 설계 문서 해당 줄 끝 〔r1 …〕 · 〔r2 …〕 표식 · UD 결정 반영.
+- **다음**: r2 빌드 · 리뷰(`wf_3ece5679-a33`) → 로컬 uv 0.13.7(winget) → 루트 · dc · 하네스 잠금의 `--locked` 확인 → 조각 ②.
+
+### T072 조각 ① r2 결과 · r3 결정(리뷰 r2 반영 · F1–F6) · uv 판 올림 커밋과 푸시 검증(2026-11-09)
+
+- **r2 빌드 · 리뷰**(`wf_3ece5679-a33` · 에이전트 3 · 1.43M 토큰 · 78분 · 보고 `.superpowers/t072/reviews/{build-1-r2-report.md,review-1-r2-A.json,review-1-r2-B.json,workflow-1-r2-result.json}`)
+  - 빌더 DONE_WITH_CONCERNS: E1–E13 반영(위치는 보고) · 새 변이 render-156..176(21) · cron-22 · 23 · 가짜 psycopg로 migrate 스크립트를 실제로 돌리는 시험 13 · `_proc.run` Popen + 트리 종료(옛 `run(timeout=3)`이 손자 프로세스로 40.18 s 막히던 것이 4.18 s) · `-k` 인프라 546 passed(465 → +81 · 사라진 ID 0) · 전체 실행 25 failed · 546 passed · 32 errors = 기대 표와 노드별 일치(r1 대비 변화는 gen-28 받아들임 3건 PASS → FAIL — E4 의도) · dangling 25 → 25 · gitleaks 0.
+  - 결정 문구와 다르게 한 것(받아들임): a E1(c) 미룸 규칙(다른 검사가 이미 보는 이름은 그 검사로 — 기존 변이를 고치지 않으려는 것) · b migrate 런타임 전용 이름은 ASCII 대소문자 무시 · c E3 「OperationalError 예외 줄」은 0열 예외 줄(모듈 경로 접두 허용 — 실제 꼴 `django.db.utils.OperationalError:`) · d E6에 넷째 조건(Service selector가 celery · migrate · CronJob pod를 고르면 위반) · e render-158 소문자 키 사례 · f E7 「그 밖의 예외」도 같은 stderr 한 줄 + 종료 1(트레이스백 없음) · g 가리기도 16자 창 단위 · `SmokeLog`를 `_tree.py`로 · h docker logs 결과는 메모 한 줄 · i 쓸기는 `--format`으로 이름 · 세션을 받고 이름 접두 `jt-smoke-`도 요구 · 늦은 재삭제는 시간 초과로 끝난 모든 docker run · j Windows `CREATE_NEW_PROCESS_GROUP` 안 씀(Ctrl+C 전달 유지) · k 예산 env 값이 잘못되면 실패 · `wait_until`을 `_proc.py`로 · l E4는 주입한 키만 단언.
+  - 리뷰: A approve_with_fixes(low 4) · B approve_with_fixes(low 3) — high · medium 0.
+- **r3 결정 F1–F6**(빌더 지시문 `.superpowers/t072/prompts/fix-1-r3.md` — 조각 ②와 한 워크플로의 첫 빌더)
+  - **F1**(A-1) runtime_wiring 필수 이름: 정본 원천 키는 컨테이너가 그 원천을 envFrom으로 참조하지 않을 때만 합친다(참조하면 prefix까지 계산) · 변이 relay `<pod>-config` prefix · migrate `<pod>-migrate` prefix.
+  - **F2**(A-2) 쓸기 안전 조건 커밋 시험(가짜 docker `ps` — `--filter label=jt.harness=t072-smoke` · 지울 대상 id만 · 현재 세션 · 접두 없는 이름 제외 · ps 실패).
+  - **F3**(A-3) purge 판정 변이 격리 셋(`Unknown command` · `ImproperlyConfigured` · `ImportError` 줄을 OperationalError 트레이스백에 하나씩).
+  - **F4**(A-4 · B-3 일부) 정리 시간 독스트링 = 시간 상한 합 + 시간 초과 호출마다 트리 종료 + 출력 수거.
+  - **F5**(B-1) 쓸기는 오래된 것만: 레이블 `jt.created` · 다른 세션이면서 30분보다 오래됐거나 `jt.created`가 없는 것만 지움 · 젊은 다른 세션은 지우지 않고 문제 한 줄 · 「하네스 동시 실행 금지(고정 IMAGE_TAG · 쓸기 공유)」 문서화.
+  - **F6**(B-2) 쓸기를 `image` 픽스처 안 — Dockerfile 확인 뒤 · buildx 앞(빈 템플릿의 빨강 사유와 docker 호출 0 유지).
+  - **조각 ④ CI 인계**(B-3): `JT_HARNESS_BUDGET_SECONDS` = job timeout − 설치 − 정리 헤드룸(10분 이상 — 정리 최악은 컨테이너당 141–287 s + 이미지 rm 160 s) · `JT_SAMPLE_POD_ROOT`를 runner.temp 아래 + `if: always()`로 `harness-stages.log`만 artifact · `KUBECONFORM_CACHE`. 정리 상한은 「총합 60 s」가 아니라 「시간 상한 60 s + 종료 오버헤드(최악 약 141 s)」다.
+- **uv 판 올림(UD-1 B) 커밋 `34db25508037dd097a95ae782a68045875f4d3e7`**: 로컬 uv 0.12.6 → 0.13.7(`winget upgrade --id astral-sh.uv --version 0.13.7` — 사용자 승인) · CI lint · test job의 setup-uv `version` 0.12.8 → 0.13.7(주석에 plan 편차 · GHSA-hq85 · Renovate bump 때 템플릿 빌더 이미지와 로컬을 함께 올린다). 루트 · 하네스 잠금은 `uv lock --check`(오프라인 · 온라인) 63 · 25 패키지 그대로 · `uv sync --locked --dry-run` 루트는 로컬 editable 재연결만 · actionlint OK · tests/scripts ci-gitleaks 14 · events-compat 117 · kubeconform-deploy 58 passed. T072 커밋은 셋이 된다(설계 · uv · 구현 — 설계 X11).
+- **푸시 검증(사용자 지시 「버전업 끝나면 한번 푸시해서 검증하자」)**: `ee40a57..34db255` → `003-platform-foundation`(11커밋 — T068–T071 구현 · T072 설계 · uv) · 초안 PR #1 CI 실행 `42552882195` 6 job 전부 success(gitleaks 전체 이력 · lint · test · events-compat · events-test · kubeconform). lint · test 로그: `Successfully installed uv version 0.13.7` · `uv sync --locked` → `Resolved 63 packages` · CPython 3.13.18. 하네스 · 템플릿 변경(조각 ①)은 미커밋이라 푸시에 없다.
+- **다음**: 한 워크플로로 조각 ① r3(F1–F6) → ②a(copier · 생성 Python 프로젝트 · 시험 인프라 — VD-T072-17 먼저) → ②b(시험 1군) → ②c(시험 2군 · 생성물 전체 초록) → 리뷰 2렌즈(조각 ② + r3 확인).
+
+### T072 조각 ① r3 결과 · 조각 ② r1 결과 · r2 결정(H1–H15 · 2026-11-09) — 설계 D11의 지표 근거 · D14 워커 명령의 Windows 갈래는 설계 문서 줄 끝 〔②c …〕 · 〔②a · ②c …〕가 우선한다
+
+- **워크플로 `wf_54e2fd30-d02`**(조각 ① r3 → ②a → ②b → ②c → 리뷰 2렌즈 · 에이전트 6 · 3.83M 토큰 · 279분 · 보고 `.superpowers/t072/reviews/{build-1-r3-report.md,build-2a-report.md,build-2b-report.md,build-2c-report.md,review-2-A.json,review-2-B.json,workflow-2-result.json}`)
+- **조각 ① r3**(F1–F6) DONE_WITH_CONCERNS: `-k` 인프라 570 passed(546 → +24 · 사라진 ID 0) · 판별력 사본 14개 전부 실패(missed 0) · 새 변이 render-177 · 178 · 나이 문턱 1800 s(1800은 젊음 · 1801은 지움) · 쓸기를 `image` 픽스처 안 buildx 앞으로(빈 템플릿은 「Dockerfile 없음」 · docker 호출 0 유지) · 「하네스 동시 실행 금지」 문서화. 편차(받아들임): `smoke_sweep` 픽스처 없앰(요청 순서 캐시 함정) · 현재 세션 행은 `jt.created`가 없어도 지우지 않음 · id · 열 · 숫자 가드 · `wait_until` 최악 식을 좁힘. 리뷰 두 렌즈가 F1–F6 반영을 확인했다 — **조각 ① 수렴**.
+- **조각 ②a**(copier · 생성 Python 프로젝트 · 시험 인프라) DONE_WITH_CONCERNS: `copier.yml` + `template/` 51파일. 생성물 `uv sync --locked` · `manage.py check` · `makemigrations --check` 종료 0.
+  - **VD-T072-17 = 통과(UD-2 B 유지)**: uv 0.13.7은 `exclude-newer = "3 days"`를 받고, `uv.lock` `[options]`에 계산된 시각이 아니라 기간(`exclude-newer-span = "P3D"` + 효과 없는 하위 호환 줄)을 기록한다. `uv lock --check` · `uv sync --locked`는 기간 값만 견준다(upload-time을 2099년으로 고쳐도 exit 0 · 기간을 바꾸면 exit 1) → 날이 지나도 `--locked`가 깨지지 않는다. 창 안의 판이 하한 핀에 꼭 필요한 날이면 `uv lock`이 실패하고 copier가 대상을 지운다(위험 절).
+  - **VD-T072-2**: Django 6.1.3 · django-ninja 1.7.0 · psycopg 3.3.8 · celery 5.6.3 · kombu 5.7.0 · pydantic-settings 2.16.2 · sentry-sdk 2.74.0 · PyJWT 2.15.1(django-common 시험 재실행 불필요) · gunicorn 26.2.0 · prometheus-client 0.26.0 · confluent-kafka 2.16.1 · redis 8.1.0 · django-migration-linter 6.0.0 · pytest 9.2.0 · pytest-django 4.14.0 · testcontainers 4.15.0(77 패키지).
+  - VD-T072-9(NoDecode 쉼표 분해 · hide_input · `Field(repr=False)` · `case_sensitive`는 Windows에서 효과 없음 — os.environ이 대문자화) · VD-T072-10(Ninja 루트 장착 · `/api/openapi.json` 자격 없이 403 · `/docs` 404 · 쿼리 · JSON 오류 400 · 예외 → handler500 · 롤백) · VD-T072-12(`LOGGING_CONFIG=None` — django 로거 핸들러 0 · 500에 django.request 한 줄) · VD-T072-15(migrate 프로필이 SECRET_KEY · DRAGONFLY_URL 없이 `migrate` exit 0 · celery 미import) · VD-T072-1(StrictUndefined · `_exclude` · validator 문구 · Windows 조건부 파일 이름).
+  - 편차(받아들임): 모든 URL 설정을 공백 없는 출력 가능 ASCII로 · DRAGONFLY_URL은 사용자와 비밀번호 둘 다 · migrate 프로필 owner URL에도 공개 도메인 · TLS 규칙 · 래퍼가 OTLP 엔드포인트 env도 지움 · `MIGRATION_LINTER_OPTIONS`(키 이름은 linter 소스) · `startup_check`는 시스템 검사 없이 stderr 한 줄 + `sys.exit(1)`(CommandError 접두를 피함) · 스냅샷 `openapi.json`을 ②a가 실제 API에서 만듦 · `conf.load(environ=)` 시험 진입점 · celery.py가 앱 생성 전에 `DJANGO_SETTINGS_MODULE`을 setdefault(Django fixup) · README에 deploy/base 인터페이스를 D20대로 미리 적음.
+- **조각 ②b**(시험 1군) DONE_WITH_CONCERNS: 시험 다섯 파일 37개(health 8 · tenant_rls 15 · migrations 4 · logging 5 · openapi_snapshot 5) · 템플릿 코드 수정 0 · 생성물 사본 변이 35개 전부 잡힘. VD-T072-3(linter 6.0.0 × Django 6.1.3 — DB 필요 · 판정 줄은 `print` · 옵션은 argparse dest · RunSQL 정규식 분석 · `0001` DO 블록 OK) · VD-T072-14(적용 순서상 outbox · rls_widget 권한은 DEFAULT PRIVILEGES에서만 온다 · reverse_sql 실측 — `migrate core zero` 뒤 권한 0 · 재적용 복구) · VD-T072-11(정적 GET · HEAD 200 · 탈출 `../` · `%2e%2e` · 역슬래시 400 · POST · m2m 호스트 403).
+- **조각 ②c**(시험 2군) DONE_WITH_CONCERNS: `test_outbox` 15 · `test_auth_middleware` 81 · 도우미 `tests/_boot.py`(T066 `_boot` 꼴) · 깨끗한 생성물 **133 passed in 93.84 s**(실패 · 오류 · skip 0) · 변이 38 전부 잡힘 · 변형 두 벌에서도 통과(no-celery 93 · no-admin 84). 시험이 드러낸 결함 둘을 고침: `conf.load(environ=)`가 process env를 함께 읽던 것(pydantic-settings `model_validate`) → 값 소스를 좁힌 하위 클래스 · relay 레지스트리에 `http_requests`가 생기던 것 → 지연 등록(위 D11 표식). VD-T072-4(Celery 5.6.3 + kombu 5.7.0 + pod 사용자 — NOPERM 0 · 원격 제어를 켜면 `auth:NoPermissionError`로 즉시 죽음 → 판정 표식에 `NoPermissionError` 추가 · 키 접두를 빼면 발행 실패) · VD-T072-13(Windows solo · 종료 정리 OK) · VD-T072-16(Windows `--beat` 거부 → 워커 + 별도 beat — 위 D14 표식).
+- **하네스 노드(②c 끝)**: gen-2 · 3 · 4 · 5 · 18 · 26 · 27 · 28 · 32(둘) 통과 · gen-1 · 25 · 29(둘)의 남은 위반은 Dockerfile · compose · deploy 파일뿐(조각 ③ · ④).
+- **리뷰**: A approve_with_fixes(medium 2 · low 6 — T066 가정 ①–⑨ 충족 · 변이 여섯 모두 잡힘) · B approve_with_fixes(medium 1 · low 7 — 런타임 코드의 비밀 누출 길 없음 · 생성물 133 passed 136 s).
+- **r2 결정 H1–H15**(빌더 지시문 `.superpowers/t072/prompts/fix-2-r2.md` — 워크플로 `wf_2bcb721d-660`)
+  - **H1**(A-1 medium) `IN_CLUSTER_URL_SETTINGS` 일반화 — 목록에 더한 이름도 공개 도메인 검사(꼴 틀림 · 필드 없음은 닫힌 쪽) + 목록 자기검증 시험(T073이 `AUTHENTIK_API_URL` · `OPENFGA_API_URL`을 더하면 T066 api-49가 그대로 통과).
+  - **H2**(A-2 medium) prod 모양 양성 기동(접두 "" · Kafka 사용자 `<pod>` · `<snake>_app`).
+  - **H3**(A-3) 거부 규칙 회귀 시험 일곱 · **H4**(A-4) 예약 pod 이름(키워드 · 템플릿 내부 · 의존 최상위 import 이름 · stdlib 모듈 이름) · gen-28 사례 다섯 · **H5**(A-5 · B-7) README 순번 「7번 뒤(8번부터)」 · 스냅샷 갱신 명령 · **H8**(A-8 ④) linter `include_apps = ["<pod_snake>", "core"]`.
+  - **H9**(B-1 medium) `addopts`에 `--ds=tests.settings` + conftest 가드 + 하네스 `POD_PYTEST_ENV`에 `DJANGO_SETTINGS_MODULE` · `DJANGO_CONFIGURATION`.
+  - **H10**(B-2) `CELERY_BROKER_URL` · `CELERY_BROKER_READ_URL` · `CELERY_BROKER_WRITE_URL` · `CELERY_RESULT_BACKEND` · `GUNICORN_CMD_ARGS` — 검증된 설정을 대신하므로 런타임 거부(X18의 「런타임 거부 없음」과 다른 부류) + 래퍼 · 워커 자식 env에서 지움 + 하네스 env_hygiene 금지 목록.
+  - **H11**(B-3) pg-tls 시험 이미지 `clean_up=False` · **H12**(B-4) `register_assert_rewrite` + `-O` · 넓히는 옵션 가드 · **H13**(B-5) 실패 메시지의 맨 비밀번호 가림 · **H14**(B-6) README psql `\getenv` · **H15**(B-8) gunicorn `keepalive = 95`(Traefik 백엔드 유휴 90 s보다 길게 — VD-L19).
+  - 컨트롤러 몫: **H6**(A-6) 설계 D11 표식 · 계약 지표 행 문장(이번 문서 갱신) · **H7**(A-7) django-common 4xx `django.request` 줄의 request_id 없음 — RequestIdMiddleware가 Django `log_response`보다 먼저 contextvars를 비운다 → django-common(T071 소유) 후속 · T098 인계(선택지: request_finished 신호까지 묶기 · `record.request`의 id를 읽는 processor · 템플릿이 `django.request`를 ERROR로) · **H8 (1)–(3)** 조각 ④ 지시문에 migrate Job 스크립트 시험 (a) · (b)와 Kafka CA 마운트 대조, 조각 ③ 지시문에 README 로컬 실행(Dragonfly URL은 nopass ACL이라도 더미 비밀번호 꼴) · **B-3 인계** django-common conftest의 같은 pg-tls `DockerImage` 꼴(동시 세션 충돌) · **B-8** VD-L19(gunicorn keepalive 대 Traefik idleConnTimeout 실측 — T097 · T075).
+
+### T072 조각 ② r2 결과 · r3 결정(J1–J7 · 2026-11-09) — 설계 D2 · D4 · D11 · D21 · X18 줄 끝 〔② r2 …〕 · 〔r3 J…〕 표식과 계약 · data-model · 규칙 문장은 이 절과 같은 날 맞췄다
+
+- **워크플로 `wf_2bcb721d-660`**(r2 빌더 → 리뷰 2렌즈 · 에이전트 3 · 1.54M 토큰 · 86분 · 보고 `.superpowers/t072/reviews/{build-2-r2-report.md,review-2-r2-A.json,review-2-r2-B.json,workflow-2-r2-result.json}`)
+- **빌더** DONE_WITH_CONCERNS: H1–H15 반영 · 생성물 시험 133 → **157**(auth_middleware 100 · logging 8 · health 9 · migrations 5) · 깨끗한 생성물 `157 passed in 103.82s` · 하네스 노드 30 passed · 4 failed(gen-1 · 25 · 29 둘 — 남은 위반은 ③ · ④ 파일뿐) · `-k` 인프라 579 passed(570 → +9 · 사라진 ID 0) · gen-28 15 → 21 · 판별력 사본 변이 21 missed 0 · gitleaks 30 대상 0.
+  - 예약 이름(H4): 생성 venv에서 키워드 32 ∪ 템플릿 내부 5 ∪ 잠금 배포 최상위 import 이름 104(`packages_distributions()` 119 가운데 import되는 것) ∪ stdlib 191 → `^[a-z][a-z0-9_]*$` **332개**. pywin32의 import되지 않는 top_level 15개(authorization · shell 등)는 거짓 거부를 피해 뺐다.
+  - 편차(받아들임): `check_pytest_hygiene`가 `--ds=tests.settings`를 **요구**(없거나 다른 `--ds`면 위반 — 결정 문구 「받게」보다 엄격) · 가드에 `--full-trace`(pytest 9.2는 fulltrace일 때 long 강제) · 값은 `config.getoption(…, 기본값)` · H1 확장 흉내 시험(RuntimeEnv 하위 클래스 + 목록 monkeypatch — 현재 목록만으로는 옛 코드와 가르지 못한다) · H10 거부는 has_celery와 무관 · README `read -rs` 줄 · H8 · H15 시험.
+  - 걱정(컨트롤러 판정): ① 규칙 「로컬에서만」 대 가드의 로컬 거부 → 규칙 §Tests에 생성 pod 문장을 더했다(가드가 더 닫힌 쪽 · 나머지 넓히는 옵션은 로컬 전용) ② README `\getenv` 절차 미실행 → 조각 ③ VD-T072-20(compose)에서 실행 ③ `GUNICORN_CMD_ARGS` → master 종료는 소스 근거뿐 → 조각 ③ 실측 ④ 「specs가 16:34에 바뀌었다」 = 컨트롤러 문서 갱신(정상).
+- **리뷰**: A approve_with_fixes(low 4 — 결정 반영 확인 · 끝 조건 재실행 · 판별력 변이 7 중 6 · 생존 = git sha 길이 하한) · B approve_with_fixes(medium 1 · low 2 — 가드 탐침 · H10 Celery 실측 1.3 s 종료 1).
+- **r3 결정 J1–J7**(빌더 지시문 `.superpowers/t072/prompts/fix-2-r3.md`)
+  - **J1**(B-1 medium) `_wrapper_environ()`이 셸 env 전체를 돌려주고 assert 식 안 호출 인자로 넘겨, 지키려는 회귀가 생기면 pytest 단언 재작성의 where 설명이 개발자 · CI env 값을 찍는다(기본 앞 4항목 · `-vv` 전부 — 가짜 토큰으로 실측) → 래퍼 이름만 · 결과를 지역 변수로 받아 단언 · 7파일에서 같은 꼴 전수 정리.
+  - **J2**(A-1 · B-2 low · A-2 일부) 예약 이름에 INSTALLED_APPS 앱 라벨(contrib 6 — `django.setup()` 라벨 중복 실측) · 생성 트리 최상위 디렉터리 `deploy` · `compose`(pod 패키지와 합쳐지고 dockerignore 재제외에 지워진다) · gen-28 사례 넷.
+  - **J3**(A extra) APP_GIT_SHA 7자 미만 거부 사례.
+  - **J4**(B-3 low) gunicorn `forwarded_allow_ips = "127.0.0.1,::1"` 고정 + 시험(env `FORWARDED_ALLOW_IPS`가 기본값을 정하는 길 차단 — gunicorn 26.2 config.py:1373).
+  - **J5**(A-3 handover → 주석) keepalive 95의 종료 시간 부수 효과 주석.
+  - **J6**(A-4 일부) README 「가드 밖」 목록 · 「모든 프로세스」 → runtime 프로필 · `read -rs` 펜스 · 중복 문구.
+  - **J7** 리뷰 A가 B의 루트 `C:\jt72s2` 안에 만든 탐침 사본 · `C:\jt72s2v\apps$n` — 저장소 밖 임시물이라 T072 끝에 컨트롤러가 정리한다.
+  - 컨트롤러 몫(이번 문서 갱신): 계약(pod_name 행 · addopts · env 위생 다섯 · pytest 위생) · data-model §6 · 설계 표식 다섯(D2 · D4 · D11 · D21 · X18) · 규칙 §Settings(env 다섯 기동 거부) · §Tests(생성 pod `--ds` · 가드) · 한국어 미러 미반영 목록.
+  - **조각 ③ 지시문 반영**(A-2): dockerignore 재제외 `apps/<pod>/compose*` → `apps/<pod>/compose.dev.yml` · `apps/<pod>/compose/`로 좁힘 · 실측 후보 둘 추가(`GUNICORN_CMD_ARGS` → 워커 부팅 실패 → master 종료 · SIGTERM 뒤 유휴 keep-alive 연결이 있을 때 web 종료 시간 ≈ graceful_timeout).
+  - **인계**: T075 VD(롤링 중 502 0 + SIGTERM → web 워커 종료 시간 — VD-L19) · T075 gitops lint 거울 후보(`FORWARDED_ALLOW_IPS` · gunicorn이 요청마다 읽는 process env `SCRIPT_NAME` — 전역 script prefix를 만들고 경로가 맞지 않으면 시끄럽게 실패) · dc conftest pg-tls `DockerImage` force 삭제 꼴(r1 B-3 인계 그대로).
+
+### T072 조각 ② r3 결과 · 조각 ③ r1 결과 · r2 결정(M1–M11 · 2026-11-09) — 설계 D18 「변이」 첫 문장은 거짓으로 판정했다(줄 끝 〔③ …〕) · D18 dockerignore · ARG 위치 · D19 compose · D2 예약 이름 줄 끝 표식과 계약 · 규칙 문장은 이 절과 같은 날 맞췄다
+
+- **워크플로 `wf_3e700d6a-659`**(② r3 빌더 → 리뷰 2렌즈 → ③ 빌더 → 리뷰 2렌즈 · 에이전트 6 · 2.60M 토큰 · 157분 · 보고 `.superpowers/t072/reviews/{build-2-r3-report.md,review-2-r3-A.json,review-2-r3-B.json,build-3-report.md,review-3-A.json,review-3-B.json,workflow-2r3-3-result.json}`)
+- **조각 ② r3**(J1–J6) DONE_WITH_CONCERNS: 생성물 시험 157 → **159**(`159 passed in 103.84s`) · 하네스 노드 35 passed · 4 failed(③ · ④ 파일뿐) · `-k` 579 passed(사라진 ID 0) · gen-28 21 → 26.
+  - J1: AST 전수(단언 358 · 호출 든 것 166) → 고친 것 12(env 매핑 인자 4 · 피연산자 1 · 시험이 만든 JWT 인자 7) · RED 탐침 11종(심은 값 1–8회 · JWT 1–24회) → GREEN 0회.
+  - J2: 예약 332 → **341**(앱 라벨 6 · `deploy` · `compose` · **`dockerfile`** — 대소문자 무시 파일 시스템에서 `Dockerfile`과 부딪혀 copier FileExistsError · 편차 받아들임) · gen-28 사례 **다섯**(r3 결정 절의 「넷」은 `dockerfile`을 빼고 센 수).
+  - 리뷰 A · B approve_with_fixes(low만): 문면(`dockerfile`) · 예약 템플릿 묶음 자기검사(선택 → M11) · README 한 문장(→ M9).
+  - **보안 사고(저장소 밖 · 커밋 경로 없음)**: r2 리뷰 B와 r3 리뷰 A의 RED 탐침이 실제 process env 전체로 돌아, `-vv` 실패 출력 로그에 세션 토큰(메시징 · 에이전트 훅 · 실행 토큰 — 이름만 기록)이 평문으로 남았다(`C:\jt72s2x\e2b-*.log` · `C:\jt72r3m\j1-pre-*.log` 4개). 컨트롤러가 이름만 세는 grep으로 찾아 4개를 지웠다(값 출력 0). 교훈: 누출을 재현하는 탐침은 허용 목록 env + 심은 가짜 값으로만 돌린다(이후 지시문 「누출 탐침 위생」).
+- **조각 ③ r1** DONE_WITH_CONCERNS: 새 파일 넷(Dockerfile 35줄 · dockerignore 25 · compose 58 · aclfile 3) · README 「로컬 실행」 1–6단계 · 「이미지」 절 · 하네스 판별력 보강(탐침 `pod_entries` 허용 목록 5 · `.venv` 감시 파일 · 빌드 감시 파일 심기/지우기 · `uv sync` `--locked` · `--no-editable` 정적 검사) · `-k` 619 passed(새 ID 40) · 하네스 노드 gen-6 · 33 · 34 넷 · 35 통과(빌드 45.0 s · 스모크 web 18.5 · relay 35.3 · celery 31.4 · commands 28.7 s) · 생성물 159 passed.
+  - VD-T072-7: 빌더 `uv:0.13.7-python3.13-trixie-slim` 인덱스 `6ff812e3…`(arm64 `78ed610f…`) · 런타임 `python:3.13-slim-trixie` 인덱스 `e48f59cd…`(arm64 `7e9b0661…` · 설계 `09a17cad…`는 낡음) · 둘 다 Python 3.13.18 · dragonfly · kafka 핀 = 현재 태그. 범위 밖: pg-tls의 `postgres:18.6-alpine` 핀 `10a5c69a…`는 태그가 `123b1799…`로 움직였다(pull은 된다 · 인계).
+  - VD-T072-5 적용(BuildKit v0.33.1 — ignore가 Dockerfile과 함께 적재 · 컨텍스트 4.52 kB) · VD-T072-6 통과(`django_common` = venv site-packages · `/src/packages` 없음) · VD-T072-8(gunicorn 26.2.0 · 제어 소켓 기본 경로 `$HOME/.gunicorn` = `/nonexistent` → `--no-control-socket` 필수 · `/healthz`까지 QEMU 15 s · 첫 요청 975 ms · `GUNICORN_CMD_ARGS` 빈 값/유효 값 → 종료 3 · 이름만 · 해석 불가 값은 master argparse가 값을 찍고 종료 2 · `docker stop` 유휴 keep-alive 있으면 30.3 s / 없으면 0.9 s) · VD-T072-16(D14 Linux 명령이 읽기 전용 루트에서 beat 일정 파일 셋(sqlite dbm `-shm` · `-wal`) · compose Dragonfly에 붙인 워커 ready 17 s · NOPERM 0) · **VD-T072-20 통과**(compose `up --wait` 35 s · postgres TLS · Dragonfly nopass aclfile = NOAUTH / AUTH 아무 값 OK / revoked 쓰기 NOPERM · Kafka 광고 127.0.0.1 · README 절차(컨테이너 안 psql → migrate 20 → `startup_check: OK`) · `down -v` 잔여 0).
+  - 편차(받아들임): compose 포트 셸 env(이 PC의 6379를 관계없는 컨테이너가 쓴다) · `name: <pod>-dev` · pg_isready healthcheck · Kafka KRaft env 전부 · README 부트스트랩을 컨테이너 안 psql로(호스트에 psql 없음) · compileall 없음(기동 15 s).
+  - 환경: arm64 binfmt가 꺼져 있어 빌더가 `tonistiigi/binfmt@sha256:400a4873…` `--install arm64`(privileged 손 컨테이너 · `--rm`)로 등록했다 — Docker Desktop · WSL 재시작 때 사라진다. 사본 `C:\jt72m`(157 MB) 지우기는 권한에서 거부됐다(T072 끝 정리 목록).
+  - 판별력(사본 변이 8): ① dockerignore 삭제 = 빌드 성공 · web 기동 · **gen-33만 잡는다**(이번 판정) ② `.env*` 줄 ③ `.venv` 줄(감시 파일로만) ④ `USER app`(gen-6은 통과) ⑤ `--no-editable` ⑥ digest ⑦ `--no-control-socket`(web 쓰기 오류 1) ⑧ `ENV APP_GIT_SHA`(gen-34만).
+- **조각 ③ 리뷰**: A approve_with_fixes(low 7) · B approve_with_fixes(**medium 1** · low 6).
+- **r2 결정 M1–M11**(빌더 지시문 `.superpowers/t072/prompts/fix-3-r2.md`)
+  - **M1**(③B-1 medium) dockerignore가 pod 안에서는 거부 목록 — 작업 트리의 IDE 설정 · `*.env` · SSH 키 · `secrets/` 12개 가운데 11개가 공개 이미지 마지막 층에 실렸다(실측) → pod 안까지 허용 목록 + `*.crt` · `*.p12` · `*.pfx` 재제외 · test-first 감시 파일 셋 추가.
+  - **M2**(③A-3) 생성 dockerignore 정적 검사 · 심기 단언 · 주석 실측대로(Windows 합쳐진 venv 유지 · Linux uv 재생성 — Linux에서 `.venv` 감시 파일만으로는 공허).
+  - **M3**(③A-1) `--no-dev` 필수 + 따옴표 셸 꼴 + 탐침의 dev 전용 배포 부재(`--no-dev` 삭제 시 pytest · testcontainers 등 11개가 공개 이미지에 — 실측).
+  - **M4**(③A-2) build-arg 배선 단언 + ARG를 COPY 뒤로.
+  - **M5**(③A-4 · ③B-3) compose 내용 판정(`config --format json`) + Dragonfly 주 포트 HTTP 끔.
+  - **M6**(③A-6) deploy 명령 결속 렌더 단언(web = 이미지 CMD · relay · celery 상수 — 조각 ④ deploy가 지켜야 한다).
+  - **M7**(③B-2) README 부트스트랩 재실행 시 실패한 `CREATE ROLE … PASSWORD` 문장이 서버 로그에 평문(실측) → `SET log_min_error_statement = panic` · `log_statement = 'none'`.
+  - **M8**(③B-4) README `GUNICORN_CMD_ARGS` 문장(해석 불가 값은 gunicorn이 값을 찍는다) · **M9**(②B-3) README 단언 위생 문장 · **M10**(③B-7 ① 앞당김) 저장소 루트 `.dockerignore` = `*` · **M11**(②A-3) 예약 이름 템플릿 묶음 자기검사 gen-37.
+  - 컨트롤러 몫(이번 문서 갱신): 설계 D18 dockerignore · 「변이」 · ARG · D19 compose · D2 예약 이름 표식 · 계약 pod_name 행 · Dockerfile 행 · 규칙 §Settings(해석 불가 `GUNICORN_CMD_ARGS`) · §Tests(단언 식 위생) · kr 미반영 목록.
+  - **인계**: T073 — identity-admin은 거부 목록을 쓴다(운영 `~revoked:*`) → 생성물 compose aclfile · 시험 `DRAGONFLY_USERS`의 `%R~revoked:*`를 바꾸는 절차 또는 copier 질문(③A-7 · ③B-6) / CI · T116 — Renovate가 `**/tests/**`(pg-tls) · `.jinja`를 보지 않고 템플릿과 생성 pod를 따로 올린다 · uv 빌더 이미지와 setup-uv `version`을 묶지 않는다 · pg-tls 핀 갱신(③B-5) / T074 — publish-pod.yml이 revision 라벨 == `github.sha`를 단언(③B-7 ② · 기본값 `0000000`이 꼴 검사를 통과한다).
+
+### T072 조각 ③ r2 결과 · 조각 ④ r1 결과 · 마지막 라운드 결정(N1–N14 · 2026-11-10) — 설계 D20 hook 성질 3은 Argo 소스로 정정했다(줄 끝 〔④ r1 B-2 정정〕)
+
+- **워크플로 `wf_30b09a39-605`**(③ r2 빌더 → 리뷰 2렌즈 → ④ 빌더 → 리뷰 2렌즈 · 에이전트 6 · 3.20M 토큰 · 199분 · 보고 `.superpowers/t072/reviews/{build-3-r2-report.md,review-3-r2-A.json,review-3-r2-B.json,build-4-report.md,review-4-A.json,review-4-B.json,workflow-3r2-4-result.json}`)
+- **조각 ③ r2**(M1–M11) DONE: `-k` 619 → **740**(새 ID 121) · gen-37 신설 · 판별력 표 전부 잡음(M2(a) `.venv` 줄 삭제는 허용 목록이 venv를 다시 넣지 않아 정적 검사가 유일한 방어선) · M4 빌드 캐시 9.3 s → 0.7 s · M7 재실행 로그 비밀번호 0 · M10 루트 `.dockerignore` = 이름 어긋난 빌드 컨텍스트 2 B로 COPY 실패. 편차(받아들임): 따옴표 셸 꼴 재분해 깊이 4 · compose `network_mode: host` 위반 · HTTP 플래그 abseil 의미 · STARTUP · PURGE 명령 상수도 `_render`에서 · 정적 CMD 검사 「정확히 같음」. 리뷰 A · B **low만**(A-1 이미지 Cmd/Entrypoint 꼴 미판정 — 셸 꼴은 PID 1 dash가 SIGTERM을 삼켜 15.5 s 뒤 SIGKILL · A-2 gen-35가 비활성 프로필을 못 봄 · B-1 재제외 대소문자 · 흔한 비밀 이름 · B-2 README `--log-level debug` 단서 · B-3 gen-37 최상위 이름이 상수에만 기댐) → **조각 ③ 사실상 수렴**(마지막 라운드 N4–N7로 닫음).
+- **조각 ④ r1** DONE_WITH_CONCERNS: deploy/base 10파일(kustomization 17 · configmap 28 · ES-env 65 · ES-migrate 37 · migrate-job 104 · deployment 206 · celery 97 · cronjob 78 · service 17 · ingress 53) · 렌더 기본 8문서(ConfigMap 1 · ES 2 · Job 1 · Deployment 2 · Service 1 · Ingress 1) · 변형 8문서(CronJob) · CHECKS 17 위반 0 · kubeconform Valid 6 · Skipped 2(ES). 생성물 시험 159 → **162**((a) 종료 코드 전달 + CONNECT 경계 · (b) 접속 실패 한 줄 · Kafka CA 대조) · **하네스 전체 `809 passed in 327.68s`(T065 PASS 조건 첫 충족)** · ps1 58 → 62 · events vitest 267 · django-common 765 · actionlint 0 · VD-T072-19 gitops `validate.sh` 임시 복제본 `PASS 39 · FAIL 0 · WARN 4`(WARN = 기존 platform/system-upgrade digest 경고) + ESO 2.10.0 CRD 파생 스키마로 ES 직접 검증 Valid 8.
+  - CI: test job `persist-credentials: false` · `timeout-minutes: 60` · kustomize/kubeconform 설치 복제 · django-common 시험(timeout 10) · 하네스(`JT_HARNESS_BUDGET_SECONDS=1800` · `JT_SAMPLE_POD_ROOT` runner.temp 아래 · `KUBECONFORM_CACHE`) · `if: always()` `harness-stages-<run_attempt>`(upload-artifact v7.0.2 `cf430e03…` · 보존 7일 · 로그 42줄 ASCII) · kubeconform job setup-uv + 생성 스텝 셋 + `--generated` 셋 · static-11..14 · r-1(경보선).
+  - 편차(받아들임): (b)의 실패 클래스 = `OperationalError` 계열(Windows psycopg 3.3.8은 거부된 접속을 `connect_timeout` 5 s 뒤 하위 클래스 `ConnectionTimeout`으로 · Linux는 0.02 s `OperationalError`) · (a)의 CONNECT 확인 = PUBLIC 의사 role(`aclexplode` · `has_database_privilege`) — 시험 세션에 CREATEROLE이 없다(의도).
+  - 걱정: GRANT에서 owner를 빼는 변이는 owner가 DB 소유자라 판별 불가(설계상 동치) · kubeconform `-strict`는 CRD 파생 스키마에서 모르는 필드를 거부하지 않는다(enum은 잡는다) · 하네스 `pid_alive`가 한국어 Windows + `PYTHONUTF8=1`에서 cp949 디코드 오류(→ N14) · 임시 gitops 복제본 삭제 거부(컨트롤러 정리).
+- **조각 ④ 리뷰**: A approve_with_fixes(**medium 1** — migrate Job 스크립트 성질이 골든에만 묶여 출하 스크립트 변이 다섯(재시도 대상 확대 · 범위 검사 삭제 · 재시도 줄 stderr · 상수 종료 1 · 기본값 무효화)이 하네스 · 생성물 시험을 모두 통과 · low 5) · B approve_with_fixes(low 5 — 경계 SQL · URL 해석 실패가 트레이스백 · 첫 배포 app role 지연 재시도 없음 · hook 성질 3 문장이 Argo v3.5.2와 다름 · setup-uv 체크섬 대조 없음 · owner Secret 상주 · celery 무감시).
+- **마지막 라운드 결정 N1–N14**(빌더 지시문 `.superpowers/t072/prompts/fix-34-final.md` — 조각 ③ r3 + 조각 ④ r2를 한 빌더로)
+  - **N1**(④B-1) migrate 스크립트: URL 해석 실패 한 줄 · 경계 SQL 재시도(`OperationalError` · `UndefinedObject` — app role 지연) · 그 밖 한 줄 · 골든 먼저.
+  - **N2**(④A-1 medium) 렌더 스크립트 = 골든 스크립트(바이트) 단언 + 생성물 (a) 성공 경로(매니페스트 env 그대로 = 기본 120) · (b) 재시도 ≥ 1 마감.
+  - **N3**(④A-2) 렌더 ≅ 골든 gen-38(예외 = relay pg-ca 마운트 꼴 하나) + 생성물 dev 모양 기동 env를 base ConfigMap에서.
+  - **N4**(③A-1) 이미지 `Config.Cmd` = WEB_COMMAND · Entrypoint 없음 · **N5**(③A-2) gen-35 `--profile "*"` · **N6**(③B-1) 재제외 대소문자 무관 + 흔한 비밀 이름 + django-common src 문장 · **N7**(③B-3) gen-37 실제 트리.
+  - **N8**(④A-3) static-15 test job 배선 · **N9**(④A-5) r-1 대상 수 무관(T073 인계 없앰) · **N10**(④A-6) notice 문구 · ci.yml N 순서 주석 · **N11**(④B-3) setup-uv 세 곳 `checksum`(공식 `.sha256` + 직접 계산 대조) + static-14 범위 · **N12**(④B-2) README · ES 주석 hook 성질 두 갈래 · **N13** README 문장 셋(`op: test` · celery 무감시 · `--log-level debug`) · **N14** 하네스 `pid_alive` 디코드.
+  - 컨트롤러 몫(이번 문서 갱신): 계약 Celery 행 `--loglevel INFO` · gitops-repo `<pod>-env` 열거(django `secret_key` · 소비자) · 설계 D20 경계 스크립트 · hook 성질 3 정정 · D18 이미지 판정 · D22 CI 표식.
+  - **인계**: T073 — identity-admin 거부 목록 쓰기 ACL(③ r1 A-7 · B-6) / T075 — hook ES 성질 두 갈래와 VD-L1 · owner Secret(`<pod>-migrate`)이 sync 사이에도 상주(대안 = ES만 `BeforeHookCreation,HookSucceeded` — 하네스 gen-22 · 계약 C28과 함께 바꿔야 한다 · T084 회전 매트릭스) / T098 · T114 — celery 프로브 · 지표 없음 · dead purge 정지 감시(`outbox_oldest_dead_seconds` 꼴 게이지 + 경보 후보) · relay liveness는 지표 스레드만 본다 / T116 · CI — Renovate 범위(③ r1 B-5) · setup-uv `version`과 `checksum`을 함께 올리는 규칙 / T074 — revision 라벨 == `github.sha` 단언.
+
+### T072 마지막 라운드 결과(N1–N14) · 마감 라운드(Z1–Z4) · 수렴(2026-11-10)
+
+- **마지막 라운드 `wf_a7c15931-7ab`**(빌더 → 리뷰 2렌즈 · 에이전트 3 · 1.75M 토큰 · 132분 · 보고 `.superpowers/t072/reviews/{build-34-final-report.md,review-final-A.json,review-final-B.json,workflow-34-final-result.json}`) — 빌더 DONE_WITH_CONCERNS: N1–N14 반영 · 하네스 전체 `895 passed in 349.89s` · 인프라 740 → 823 · gen 69 → 72(gen-38 셋) · 생성물 162 → **165**(성공 경로 · URL 실패 · 경계 실패) · ps1 63 · django-common 765 · events vitest 267 · actionlint 0 · gitleaks 64 대상 0. N11 체크섬 `71279f8d…57dc`(uv 0.13.7 `uv-aarch64-unknown-linux-gnu.tar.gz` — 릴리스 `.sha256` · 직접 계산 · gh api 자산 digest 셋 일치 · setup-uv v10.0.1 `action.yml`에 `checksum` 입력 · 불일치면 throw).
+  - 편차(받아들임): 대문자 감시 파일 `JT-HARNESS-CASE.PEM`(NTFS에서 `JT-HARNESS.PEM`은 `jt-harness.pem`과 같은 파일) · (b) 마감 8(Windows 첫 시도가 `connect_timeout` 5 s — 실측 11.3 s · 재시도 ≥ 1) · 성공 경로 `ENV=test`(시험 DB는 TLS require · ENV 없는 migrate 프로필은 verify-full + CA 파일 요구) · 경계 실패 사례 DB = `postgres`(owner가 PUBLIC CONNECT로 붙고 `postgres_app` role이 없어 실제 `UndefinedObject`) · `_redact`가 URL 비밀번호도 가림(netloc만 싣는 예외 문구 — RED 실측).
+  - 리뷰: A approve_with_fixes(low 2 — static-15가 env 경로 · `if: always()`를 안 봄 · Compose `*` 펼침 실측 단언 없음) · B approve_with_fixes(low 2 — 이름 꼴 다섯 대소문자 · compose 주석 옛 명령). 리뷰 B 실측: 실제 PostgreSQL에서 app role 지연(`db_boundary_retry UndefinedObject` ×3 → 종료 0) · DB 지연(`db_connect_retry` ×3 → 0) · 연결 끊김 — stderr 0–1줄 · 비밀번호 0.
+- **마감 라운드 `wf_401e8ac5-f31`**(빌더 → 리뷰 2렌즈 · 에이전트 3 · 1.18M 토큰 · 83분 · 보고 `{build-final2-report.md,review-final2-A.json,review-final2-B.json,workflow-final2-result.json}`) — 결정 Z1–Z4(지시문 `.superpowers/t072/prompts/fix-final2.md`): **Z1** ps1 static-16(이름 여덟을 `_proc.POD_PYTEST_ENV` 튜플에서 읽어 ci.yml 전체 env 키 0 + 최상위 · job test 주석 밖 줄 0) · static-17(upload `if: always()` 정확히) **Z2** gen-35 본문에 프로필 탐침 파일(`jt-probe`) — 러너 Compose가 `*`를 펼치지 않으면 FAIL **Z3** 이름 꼴 다섯 대괄호 꼴 + 감시 파일 `JT-HARNESS-NAME.ENV` **Z4** compose 머리 주석. 빌더 DONE_WITH_CONCERNS(더 엄격한 편차 — ID 둘 · 이름 여덟 · `${{ always() }}`도 FAIL) · **하네스 전체 `918 passed in 367.34s`** · ps1 **65** · 생성물 165 · 실빌드 옛 꼴 대문자 이름 다섯 실림 → 새 꼴 0.
+  - **리뷰 A · B 둘 다 approve · 발견 0** — 렌즈 A 하네스 전체 `918 passed in 386.45s` 독립 재현 · 렌즈 B 손 빌드(비밀 꼴 20개 0 · 과잉 거르기 0).
+- **T072 수렴** — 하네스 `uv run --directory templates/django-pod --locked pytest -q` 전체 초록 = **T065 PASS**. 조각별 라운드: ① r1–r3 · ② r1–r3 · ③ r1–r2 + 마지막 · ④ r1 + 마지막 · 마감(Z). 남은 것은 인계뿐이다.
+- **인계 모음**(리뷰 B 마감 extra 포함)
+  - **T073**: identity-admin 거부 목록 쓰기 ACL(생성물 compose aclfile · 시험 `DRAGONFLY_USERS`) · ps1 static-16 ①이 모든 job에 여덟 이름을 적용 — 다른 job이 `DJANGO_SETTINGS_MODULE` · `PYTHONPATH`를 env로 쓰면 범위를 정한다 · `IN_CLUSTER_URL_SETTINGS` 확장은 모델 필드 + 래퍼 자리값과 함께.
+  - **T074**: publish-pod.yml이 revision 라벨 == `github.sha` 단언(기본값 `0000000`이 꼴 검사를 통과) · 루트 컨텍스트 + `-f apps/<pod>/Dockerfile`(루트 `.dockerignore` = `*`).
+  - **T075**: hook ES 성질 두 갈래 + VD-L1 · owner Secret(`<pod>-migrate`) 상주(대안 `BeforeHookCreation,HookSucceeded` — 하네스 gen-22 · 계약 C28과 함께) · SIGTERM → web 종료 ≈ graceful_timeout(유휴 keep-alive) · VD-L19 · gitops lint 거울에 `CELERY_*` 넷 · `GUNICORN_CMD_ARGS` · `FORWARDED_ALLOW_IPS` · `SCRIPT_NAME` 후보.
+  - **T084**: 회전 매트릭스에 owner Secret 상주 · ESO 5분 갱신.
+  - **T098 · T114**: celery 프로브 · 지표 없음 · dead purge 정지 감시(`outbox_oldest_dead_seconds` 꼴 게이지 + 경보 후보) · relay liveness는 지표 스레드만 본다 · django-common 4xx `django.request` 줄 request_id 없음(② r1 H7).
+  - **T116 · CI**: Renovate 범위(`**/tests/**` 무시 — pg-tls 핀 낡음 · `.jinja` 미관리 · 템플릿과 생성 pod 따로 갱신) · setup-uv `version`과 `checksum`을 함께 올리는 규칙 · test job `continue-on-error`는 ps1 판정 밖 · 간접 env 경로(`UV_ENV_FILE` · 각 ini addopts)는 static-16 범위 밖.
+  - **dc(T071 소유)**: conftest pg-tls `DockerImage` force 삭제 꼴(동시 세션 충돌 · ② r1 B-3).
+  - **push 뒤 첫 CI(VD-T072-CI)에서 볼 것**: setup-uv 세 곳 checksum 통과 · 러너 Compose `*` 지원(gen-35 탐침) · Linux 하네스(arm64 네이티브 빌드 · 스모크 넷 · gen-37 · gen-38) · 생성물 (b) `db_connect_failed OperationalError`(약 7 s · 재시도 ≈ 3) · 경계 `db_boundary_failed UndefinedObject` · test job 60분 · 하네스 1800 s 안 · `harness-stages` artifact · kubeconform job 세 벌 PASS · ac-24h flake 감시.

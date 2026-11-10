@@ -1,0 +1,4331 @@
+{
+  "description": "223개 원본 변이 로그의 실제 실패 근거 감사. 당시 원시 종료 코드는 저장하지 않았으며, 완전한 실패 요약과 동결 하네스 종료 계약으로 exit 1을 추론해 보강한 분류 함수에 다시 적용했다. 원시 종료 코드를 재수집한 결과가 아니다.",
+  "summary": {
+    "Total": 223,
+    "WithActualFailureEvidence": 223,
+    "NoFailureEvidence": 0,
+    "Escaped": 0,
+    "LintAndCases": 57,
+    "LintOnly": 12,
+    "CasesOnly": 154
+  },
+  "reclassification_summary": {
+    "RunnerError": 0,
+    "ExitCodeSource": "inferred-from-complete-failing-summary",
+    "RawExitRecollected": false,
+    "ParallelClassifierControls": 6,
+    "Caught": 223,
+    "SequentialClassifierControls": 6
+  },
+  "rows": [
+    {
+      "id": "A01",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-06b"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A02",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "D-18",
+        "D-37"
+      ],
+      "complete_harness_summary": "PASS 120 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A03",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 6,
+      "failed_case_ids": [
+        "G4-53",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-42"
+      ],
+      "complete_harness_summary": "PASS 116 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A04",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-07"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A05",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-04"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A06",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-05"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A07",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-05"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A08",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-10"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A09",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-15"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A10a",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 16,
+      "failed_case_ids": [
+        "G4-21",
+        "G4-22",
+        "G4-23",
+        "G4-31",
+        "D-01",
+        "D-13",
+        "D-15",
+        "D-16",
+        "D-17",
+        "D-23",
+        "D-24",
+        "D-25",
+        "D-27",
+        "D-28",
+        "D-32",
+        "D-34"
+      ],
+      "complete_harness_summary": "PASS 106 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A10b",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 16,
+      "failed_case_ids": [
+        "G4-21",
+        "G4-22",
+        "G4-23",
+        "G4-31",
+        "D-01",
+        "D-13",
+        "D-15",
+        "D-16",
+        "D-17",
+        "D-23",
+        "D-24",
+        "D-25",
+        "D-27",
+        "D-28",
+        "D-32",
+        "D-34"
+      ],
+      "complete_harness_summary": "PASS 106 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A11",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 16,
+      "failed_case_ids": [
+        "G4-21",
+        "G4-22",
+        "G4-23",
+        "G4-31",
+        "D-01",
+        "D-13",
+        "D-15",
+        "D-16",
+        "D-17",
+        "D-23",
+        "D-24",
+        "D-25",
+        "D-27",
+        "D-28",
+        "D-32",
+        "D-34"
+      ],
+      "complete_harness_summary": "PASS 106 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A12",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 8,
+      "failed_case_ids": [
+        "G4-21",
+        "G4-22",
+        "G4-23",
+        "D-01",
+        "D-13",
+        "D-23",
+        "D-24",
+        "D-27"
+      ],
+      "complete_harness_summary": "PASS 114 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A13",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 0,
+      "failed_case_ids": [],
+      "complete_harness_summary": "PASS 122 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A13b",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 0,
+      "failed_case_ids": [],
+      "complete_harness_summary": "PASS 122 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A14",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-10"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A15",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 3,
+      "failed_case_ids": [
+        "G4-53",
+        "G4-33",
+        "G4-42"
+      ],
+      "complete_harness_summary": "PASS 119 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A16",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 0,
+      "failed_case_ids": [],
+      "complete_harness_summary": "PASS 122 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A17",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 0,
+      "failed_case_ids": [],
+      "complete_harness_summary": "PASS 122 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A18",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-34"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A19",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-35"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A20",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 60,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-53",
+        "G4-54",
+        "G4-55",
+        "G4-EOF1",
+        "G4-EOF2",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-03",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-33",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13a",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-14a",
+        "G4-14c",
+        "G4-15",
+        "G4-15b",
+        "G4-15c",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-20",
+        "G4-26",
+        "G4-27",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-34",
+        "G4-35",
+        "G4-36b",
+        "G4-38",
+        "G4-38b",
+        "G4-42",
+        "G4-46b",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 62 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A22",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 60,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-53",
+        "G4-54",
+        "G4-55",
+        "G4-EOF1",
+        "G4-EOF2",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-03",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-33",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13a",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-14a",
+        "G4-14c",
+        "G4-15",
+        "G4-15b",
+        "G4-15c",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-20",
+        "G4-26",
+        "G4-27",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-34",
+        "G4-35",
+        "G4-36b",
+        "G4-38",
+        "G4-38b",
+        "G4-42",
+        "G4-46b",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 62 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A26",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-13b"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A26b",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-02g"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A28",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 6,
+      "failed_case_ids": [
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-30",
+        "G4-30b",
+        "G4-38",
+        "G4-42"
+      ],
+      "complete_harness_summary": "PASS 116 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A30",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-22"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A31",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 0,
+      "failed_case_ids": [],
+      "complete_harness_summary": "PASS 122 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A32",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 0,
+      "failed_case_ids": [],
+      "complete_harness_summary": "PASS 122 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A33",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 0,
+      "failed_case_ids": [],
+      "complete_harness_summary": "PASS 122 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A34",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 0,
+      "failed_case_ids": [],
+      "complete_harness_summary": "PASS 122 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A37",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 16,
+      "failed_case_ids": [
+        "G4-21",
+        "G4-22",
+        "G4-23",
+        "G4-31",
+        "D-01",
+        "D-13",
+        "D-15",
+        "D-16",
+        "D-17",
+        "D-23",
+        "D-24",
+        "D-25",
+        "D-27",
+        "D-28",
+        "D-32",
+        "D-34"
+      ],
+      "complete_harness_summary": "PASS 106 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A38",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 37,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-54",
+        "G4-55",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-35",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 85 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A5-12",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "G4-06",
+        "R3-BASH"
+      ],
+      "complete_harness_summary": "PASS 118 / 120   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A5-13",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "G4-06",
+        "R3-BASH"
+      ],
+      "complete_harness_summary": "PASS 118 / 120   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A5-14",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "G4-06",
+        "R3-BASH"
+      ],
+      "complete_harness_summary": "PASS 118 / 120   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A5-15",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-06"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A5-17",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-EOF1"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A5-18",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-EOF2"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A5-19",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "G4-EOF3",
+        "G4-EMPTY"
+      ],
+      "complete_harness_summary": "PASS 120 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A5-20",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 0,
+      "failed_case_ids": [],
+      "complete_harness_summary": "PASS 122 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A5-21",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 59,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-53",
+        "G4-54",
+        "G4-55",
+        "G4-EOF1",
+        "G4-EOF2",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-03",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-33",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13a",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-14a",
+        "G4-14c",
+        "G4-15",
+        "G4-15b",
+        "G4-15c",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-20",
+        "G4-26",
+        "G4-27",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-35",
+        "G4-36b",
+        "G4-38",
+        "G4-38b",
+        "G4-42",
+        "G4-46b",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 63 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "A5-23",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-01"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "B01",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "R-12"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "B02",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "R-13"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "B03",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 8,
+      "failed_case_ids": [
+        "R-01",
+        "R-04",
+        "R-09",
+        "R-10b",
+        "R-12",
+        "R-13",
+        "R-14",
+        "R-17"
+      ],
+      "complete_harness_summary": "PASS 114 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "B04",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "R-02"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "B05",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "R-03",
+        "R-04"
+      ],
+      "complete_harness_summary": "PASS 120 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "B06",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 8,
+      "failed_case_ids": [
+        "R-01",
+        "R-04",
+        "R-09",
+        "R-10b",
+        "R-12",
+        "R-13",
+        "R-14",
+        "R-17"
+      ],
+      "complete_harness_summary": "PASS 114 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "B09",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "R-08"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "B11",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 10,
+      "failed_case_ids": [
+        "R-01",
+        "R-02",
+        "R-04",
+        "R-07",
+        "R-09",
+        "R-10b",
+        "R-12",
+        "R-13",
+        "R-14",
+        "R-17"
+      ],
+      "complete_harness_summary": "PASS 112 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "D01",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-22"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "D02",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-05"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "D03",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-06"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "D04",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-07"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "D05",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 20,
+      "failed_case_ids": [
+        "G4-21",
+        "G4-22",
+        "G4-23",
+        "G4-31",
+        "D-01",
+        "D-13",
+        "D-15",
+        "D-16",
+        "D-17",
+        "D-18",
+        "D-19",
+        "D-20",
+        "D-23",
+        "D-24",
+        "D-25",
+        "D-27",
+        "D-28",
+        "D-32",
+        "D-34",
+        "D-37"
+      ],
+      "complete_harness_summary": "PASS 102 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "D06",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-20"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "D07",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-31"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "D08",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-32"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M01",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-06b"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M02",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-07b"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M03",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-08"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M04",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-16"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M05",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-16b"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M06",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-09"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M07",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-17"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M08",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-18"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M09",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-10"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M10",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-03"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M11",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-05"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M12",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 3,
+      "failed_case_ids": [
+        "D-15",
+        "D-16",
+        "D-34"
+      ],
+      "complete_harness_summary": "PASS 119 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M13",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "D-09",
+        "D-10"
+      ],
+      "complete_harness_summary": "PASS 120 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M14",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "D-18",
+        "D-37"
+      ],
+      "complete_harness_summary": "PASS 120 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M15",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-19"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M16",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-20"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M17",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "G4-31",
+        "D-25"
+      ],
+      "complete_harness_summary": "PASS 120 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M18",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 51,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-53",
+        "G4-54",
+        "G4-55",
+        "G4-EOF2",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-03",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-33",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13a",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-20",
+        "G4-27",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-35",
+        "G4-38",
+        "G4-38b",
+        "G4-42",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 71 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M19",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 10,
+      "failed_case_ids": [
+        "G4-02b",
+        "G4-53",
+        "G4-EOF2",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-33",
+        "G4-38",
+        "G4-38b",
+        "G4-42"
+      ],
+      "complete_harness_summary": "PASS 112 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M20",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 14,
+      "failed_case_ids": [
+        "G4-21",
+        "G4-22",
+        "G4-23",
+        "G4-31",
+        "D-01",
+        "D-13",
+        "D-15",
+        "D-16",
+        "D-23",
+        "D-24",
+        "D-25",
+        "D-27",
+        "D-32",
+        "D-34"
+      ],
+      "complete_harness_summary": "PASS 108 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M21",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 16,
+      "failed_case_ids": [
+        "G4-21",
+        "G4-22",
+        "G4-23",
+        "G4-31",
+        "D-01",
+        "D-13",
+        "D-15",
+        "D-16",
+        "D-17",
+        "D-23",
+        "D-24",
+        "D-25",
+        "D-27",
+        "D-28",
+        "D-32",
+        "D-34"
+      ],
+      "complete_harness_summary": "PASS 106 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M22",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 16,
+      "failed_case_ids": [
+        "G4-21",
+        "G4-22",
+        "G4-23",
+        "G4-31",
+        "D-01",
+        "D-13",
+        "D-15",
+        "D-16",
+        "D-17",
+        "D-23",
+        "D-24",
+        "D-25",
+        "D-27",
+        "D-28",
+        "D-32",
+        "D-34"
+      ],
+      "complete_harness_summary": "PASS 106 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M23",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-23"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M24",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 11,
+      "failed_case_ids": [
+        "G4-21",
+        "G4-22",
+        "G4-23",
+        "G4-31",
+        "D-01",
+        "D-13",
+        "D-15",
+        "D-23",
+        "D-24",
+        "D-25",
+        "D-27"
+      ],
+      "complete_harness_summary": "PASS 111 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M25",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 8,
+      "failed_case_ids": [
+        "G4-21",
+        "G4-23",
+        "D-01",
+        "D-13",
+        "D-14",
+        "D-23",
+        "D-24",
+        "D-27"
+      ],
+      "complete_harness_summary": "PASS 114 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M26",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 45,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-53",
+        "G4-54",
+        "G4-55",
+        "G4-EOF2",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-02c",
+        "G4-02g",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-33",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-14a",
+        "G4-14c",
+        "G4-15b",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19b",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-36b",
+        "G4-38",
+        "G4-38b",
+        "G4-42",
+        "G4-46b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 77 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M27",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-14c"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M28",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 11,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-54",
+        "G4-55",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-19b",
+        "G4-30b",
+        "G4-38",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 111 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M29",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-15c"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M30",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-30"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M31",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 37,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-54",
+        "G4-55",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-35",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 85 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M32",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 37,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-54",
+        "G4-55",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-35",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 85 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M33",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 4,
+      "failed_case_ids": [
+        "G4-30",
+        "G4-30b",
+        "G4-38",
+        "G4-42"
+      ],
+      "complete_harness_summary": "PASS 118 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M34",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 10,
+      "failed_case_ids": [
+        "R-01",
+        "R-02",
+        "R-04",
+        "R-07",
+        "R-09",
+        "R-10b",
+        "R-12",
+        "R-13",
+        "R-14",
+        "R-17"
+      ],
+      "complete_harness_summary": "PASS 112 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M35",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 0,
+      "failed_case_ids": [],
+      "complete_harness_summary": "PASS 122 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M36",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 5,
+      "failed_case_ids": [
+        "G4-02g",
+        "G4-06d",
+        "G4-13a",
+        "G4-13b",
+        "G4-13c"
+      ],
+      "complete_harness_summary": "PASS 117 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M37",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-27"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M38",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-26"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M39",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-16"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M40",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-19b"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M41",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-15d"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M42",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 7,
+      "failed_case_ids": [
+        "G4-31",
+        "D-15",
+        "D-16",
+        "D-17",
+        "D-28",
+        "D-32",
+        "D-34"
+      ],
+      "complete_harness_summary": "PASS 115 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M43",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 16,
+      "failed_case_ids": [
+        "G4-21",
+        "G4-22",
+        "G4-23",
+        "G4-31",
+        "D-01",
+        "D-13",
+        "D-15",
+        "D-16",
+        "D-17",
+        "D-23",
+        "D-24",
+        "D-25",
+        "D-27",
+        "D-28",
+        "D-32",
+        "D-34"
+      ],
+      "complete_harness_summary": "PASS 106 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M44",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-13a"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M45",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-02b"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M45b",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 37,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-54",
+        "G4-55",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-35",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 85 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M46",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-13b"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M47",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "R-02"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M48",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "R-07"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M49",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "R-06"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M50",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "R-01"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M51",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "R-10"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M52",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "R-09"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "M53",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 0,
+      "failed_case_ids": [],
+      "complete_harness_summary": "PASS 122 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N01",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 3,
+      "failed_case_ids": [
+        "D-11",
+        "D-26",
+        "D-36"
+      ],
+      "complete_harness_summary": "PASS 119 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N02",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-36b"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N03",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-36b"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N04",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-36"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N05",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 12,
+      "failed_case_ids": [
+        "G4-04",
+        "G4-05",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13b",
+        "G4-13c",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18"
+      ],
+      "complete_harness_summary": "PASS 110 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N06",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 51,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-53",
+        "G4-54",
+        "G4-55",
+        "G4-EOF2",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-03",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-33",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13a",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-20",
+        "G4-27",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-35",
+        "G4-38",
+        "G4-38b",
+        "G4-42",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 71 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N07",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 10,
+      "failed_case_ids": [
+        "G4-02b",
+        "G4-53",
+        "G4-EOF2",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-33",
+        "G4-38",
+        "G4-38b",
+        "G4-42"
+      ],
+      "complete_harness_summary": "PASS 112 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N08",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 11,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-54",
+        "G4-55",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-19b",
+        "G4-30b",
+        "G4-38",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 111 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N09",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 20,
+      "failed_case_ids": [
+        "G4-21",
+        "G4-22",
+        "G4-23",
+        "G4-31",
+        "D-01",
+        "D-15",
+        "D-16",
+        "D-17",
+        "D-18",
+        "D-19",
+        "D-20",
+        "D-23",
+        "D-24",
+        "D-25",
+        "D-27",
+        "D-28",
+        "D-29",
+        "D-32",
+        "D-34",
+        "D-37"
+      ],
+      "complete_harness_summary": "PASS 102 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N10",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 37,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-54",
+        "G4-55",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-35",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 85 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N11",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 60,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-53",
+        "G4-54",
+        "G4-55",
+        "G4-EOF1",
+        "G4-EOF2",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-03",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-33",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13a",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-14a",
+        "G4-14c",
+        "G4-15",
+        "G4-15b",
+        "G4-15c",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-20",
+        "G4-26",
+        "G4-27",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-34",
+        "G4-35",
+        "G4-36b",
+        "G4-38",
+        "G4-38b",
+        "G4-42",
+        "G4-46b",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 62 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N11b",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 12,
+      "failed_case_ids": [
+        "G4-04",
+        "G4-05",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13b",
+        "G4-13c",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18"
+      ],
+      "complete_harness_summary": "PASS 110 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N12",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-37"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N13",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "G4-06c",
+        "G4-06d"
+      ],
+      "complete_harness_summary": "PASS 120 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N14",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-06c"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N15",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 3,
+      "failed_case_ids": [
+        "G4-06",
+        "G4-06c",
+        "G4-06d"
+      ],
+      "complete_harness_summary": "PASS 119 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N16",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 43,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-53",
+        "G4-54",
+        "G4-55",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-03",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-33",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-20",
+        "G4-27",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-35",
+        "G4-42",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 79 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N17",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "R-14b"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N18",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "R-14"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N19",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "R-14"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N20",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "R-14b"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N21",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-38b"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N22",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "G4-38",
+        "G4-42"
+      ],
+      "complete_harness_summary": "PASS 120 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N23",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "G4-38",
+        "G4-42"
+      ],
+      "complete_harness_summary": "PASS 120 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N24",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-38"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "N25",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "R-12",
+        "R-13"
+      ],
+      "complete_harness_summary": "PASS 120 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "P01",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 51,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-53",
+        "G4-54",
+        "G4-55",
+        "G4-EOF2",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-03",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-33",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13a",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-20",
+        "G4-27",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-35",
+        "G4-38",
+        "G4-38b",
+        "G4-42",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 71 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "P02",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 10,
+      "failed_case_ids": [
+        "G4-02b",
+        "G4-53",
+        "G4-EOF2",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-33",
+        "G4-38",
+        "G4-38b",
+        "G4-42"
+      ],
+      "complete_harness_summary": "PASS 112 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "P03",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "D-13",
+        "D-14"
+      ],
+      "complete_harness_summary": "PASS 120 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "P04",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 11,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-54",
+        "G4-55",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-19b",
+        "G4-30b",
+        "G4-38",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 111 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "P05",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 37,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-54",
+        "G4-55",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-35",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 85 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "P06",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 60,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-53",
+        "G4-54",
+        "G4-55",
+        "G4-EOF1",
+        "G4-EOF2",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-03",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-33",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13a",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-14a",
+        "G4-14c",
+        "G4-15",
+        "G4-15b",
+        "G4-15c",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-20",
+        "G4-26",
+        "G4-27",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-34",
+        "G4-35",
+        "G4-36b",
+        "G4-38",
+        "G4-38b",
+        "G4-42",
+        "G4-46b",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 62 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "P07",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 12,
+      "failed_case_ids": [
+        "G4-04",
+        "G4-05",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13b",
+        "G4-13c",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18"
+      ],
+      "complete_harness_summary": "PASS 110 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "P08",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "G4-38",
+        "G4-42"
+      ],
+      "complete_harness_summary": "PASS 120 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "P09",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "G4-38",
+        "G4-42"
+      ],
+      "complete_harness_summary": "PASS 120 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "P10",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-42"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "P11",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-38"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "P11b",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-38"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "P12",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 51,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-53",
+        "G4-54",
+        "G4-55",
+        "G4-EOF2",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-03",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-33",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13a",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-20",
+        "G4-27",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-35",
+        "G4-38",
+        "G4-38b",
+        "G4-42",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 71 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "P13",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "G4-06",
+        "R3-BASH"
+      ],
+      "complete_harness_summary": "PASS 118 / 120   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "P14",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "G4-06",
+        "R3-BASH"
+      ],
+      "complete_harness_summary": "PASS 118 / 120   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "P15",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "G4-06",
+        "R3-BASH"
+      ],
+      "complete_harness_summary": "PASS 118 / 120   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "P16",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-06"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "P17",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-06"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R1-03",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-34"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R1-05",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-01"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R2-02",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 40,
+      "failed_case_ids": [
+        "G4-21",
+        "G4-22",
+        "G4-23",
+        "G4-31",
+        "D-01",
+        "D-02",
+        "D-03",
+        "D-04",
+        "D-05",
+        "D-06",
+        "D-07",
+        "D-08",
+        "D-09",
+        "D-10",
+        "D-11",
+        "D-12",
+        "D-13",
+        "D-14",
+        "D-15",
+        "D-16",
+        "D-17",
+        "D-18",
+        "D-19",
+        "D-20",
+        "D-21",
+        "D-22",
+        "D-23",
+        "D-24",
+        "D-25",
+        "D-26",
+        "D-27",
+        "D-28",
+        "D-29",
+        "D-30",
+        "D-31",
+        "D-32",
+        "D-34",
+        "D-35",
+        "D-36",
+        "D-37"
+      ],
+      "complete_harness_summary": "PASS 82 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R3-UNCERTAIN",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-06"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R4-01",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "G4-06",
+        "R3-BASH"
+      ],
+      "complete_harness_summary": "PASS 118 / 120   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R4-02",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-06"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R4-03",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-06"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R4-04",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-06"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R4-05",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-06"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R4-06",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 12,
+      "failed_case_ids": [
+        "G4-04",
+        "G4-05",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13b",
+        "G4-13c",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18"
+      ],
+      "complete_harness_summary": "PASS 110 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R4-07",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 51,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-53",
+        "G4-54",
+        "G4-55",
+        "G4-EOF2",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-03",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-33",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13a",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-20",
+        "G4-27",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-35",
+        "G4-38",
+        "G4-38b",
+        "G4-42",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 71 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R4-08",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 10,
+      "failed_case_ids": [
+        "G4-02b",
+        "G4-53",
+        "G4-EOF2",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-33",
+        "G4-38",
+        "G4-38b",
+        "G4-42"
+      ],
+      "complete_harness_summary": "PASS 112 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R4-09",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 38,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-54",
+        "G4-55",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-27",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-35",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 84 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R4-10",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 11,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-54",
+        "G4-55",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-19b",
+        "G4-30b",
+        "G4-38",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 111 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R4-10b",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 37,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-54",
+        "G4-55",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-35",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 85 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R4-11",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 60,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-53",
+        "G4-54",
+        "G4-55",
+        "G4-EOF1",
+        "G4-EOF2",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-03",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-33",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13a",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-14a",
+        "G4-14c",
+        "G4-15",
+        "G4-15b",
+        "G4-15c",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-20",
+        "G4-26",
+        "G4-27",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-34",
+        "G4-35",
+        "G4-36b",
+        "G4-38",
+        "G4-38b",
+        "G4-42",
+        "G4-46b",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 62 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R4-12",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-01"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R4-13",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "G4-07",
+        "G4-07b"
+      ],
+      "complete_harness_summary": "PASS 120 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R4-14",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-07b"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R4-14b",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-07"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R4-14c",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-19"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R4-15",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-06"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-01",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 12,
+      "failed_case_ids": [
+        "G4-04",
+        "G4-05",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13b",
+        "G4-13c",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18"
+      ],
+      "complete_harness_summary": "PASS 110 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-02",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 51,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-53",
+        "G4-54",
+        "G4-55",
+        "G4-EOF2",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-03",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-33",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13a",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-20",
+        "G4-27",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-35",
+        "G4-38",
+        "G4-38b",
+        "G4-42",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 71 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-03",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 10,
+      "failed_case_ids": [
+        "G4-02b",
+        "G4-53",
+        "G4-EOF2",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-33",
+        "G4-38",
+        "G4-38b",
+        "G4-42"
+      ],
+      "complete_harness_summary": "PASS 112 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-04",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-06"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-05",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-06"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-06",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-06"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-07",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "G4-06",
+        "R3-BASH"
+      ],
+      "complete_harness_summary": "PASS 118 / 120   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-07b",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "G4-06",
+        "R3-BASH"
+      ],
+      "complete_harness_summary": "PASS 118 / 120   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-08",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "G4-06",
+        "R3-BASH"
+      ],
+      "complete_harness_summary": "PASS 118 / 120   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-09",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 11,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-54",
+        "G4-55",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-19b",
+        "G4-30b",
+        "G4-38",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 111 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-09b",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 37,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-54",
+        "G4-55",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-35",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 85 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-09c",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 60,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-53",
+        "G4-54",
+        "G4-55",
+        "G4-EOF1",
+        "G4-EOF2",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-03",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-33",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13a",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-14a",
+        "G4-14c",
+        "G4-15",
+        "G4-15b",
+        "G4-15c",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-20",
+        "G4-26",
+        "G4-27",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-34",
+        "G4-35",
+        "G4-36b",
+        "G4-38",
+        "G4-38b",
+        "G4-42",
+        "G4-46b",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 62 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-09d",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 12,
+      "failed_case_ids": [
+        "G4-04",
+        "G4-05",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13b",
+        "G4-13c",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18"
+      ],
+      "complete_harness_summary": "PASS 110 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-10",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 51,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-53",
+        "G4-54",
+        "G4-55",
+        "G4-EOF2",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-03",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-33",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13a",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-20",
+        "G4-27",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-35",
+        "G4-38",
+        "G4-38b",
+        "G4-42",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 71 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-11",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 10,
+      "failed_case_ids": [
+        "G4-02b",
+        "G4-53",
+        "G4-EOF2",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-33",
+        "G4-38",
+        "G4-38b",
+        "G4-42"
+      ],
+      "complete_harness_summary": "PASS 112 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-11b",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 11,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-54",
+        "G4-55",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-19b",
+        "G4-30b",
+        "G4-38",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 111 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-12",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 37,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-54",
+        "G4-55",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-35",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 85 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-13",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 60,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-53",
+        "G4-54",
+        "G4-55",
+        "G4-EOF1",
+        "G4-EOF2",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-03",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-33",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13a",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-14a",
+        "G4-14c",
+        "G4-15",
+        "G4-15b",
+        "G4-15c",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-20",
+        "G4-26",
+        "G4-27",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-34",
+        "G4-35",
+        "G4-36b",
+        "G4-38",
+        "G4-38b",
+        "G4-42",
+        "G4-46b",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 62 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-14",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-06"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-15",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-06"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-16",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-35"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "R5-17",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 0,
+      "failed_case_ids": [],
+      "complete_harness_summary": "PASS 122 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V01",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 3,
+      "failed_case_ids": [
+        "G4-15b",
+        "G4-15d",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 119 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V02",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 2,
+      "failed_case_ids": [
+        "G4-15",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 120 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V03",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V04",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-46b"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V05",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-29"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V06",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 10,
+      "failed_case_ids": [
+        "G4-02b",
+        "G4-53",
+        "G4-EOF2",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-33",
+        "G4-38",
+        "G4-38b",
+        "G4-42"
+      ],
+      "complete_harness_summary": "PASS 112 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V07",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-06d"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V08",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 11,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-54",
+        "G4-55",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-19b",
+        "G4-30b",
+        "G4-38",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 111 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V09",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-38"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V10",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "R-16"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V11",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "R-10b"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V12",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "R-14b"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V13",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-47"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V14",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-47b"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V15",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-03"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V16",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 10,
+      "failed_case_ids": [
+        "G4-21",
+        "G4-22",
+        "G4-23",
+        "D-01",
+        "D-13",
+        "D-15",
+        "D-23",
+        "D-24",
+        "D-27",
+        "D-34"
+      ],
+      "complete_harness_summary": "PASS 112 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V17",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-01"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V18",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "R-17"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V19",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 37,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-54",
+        "G4-55",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-15b",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-35",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 85 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V20",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "G4-13b"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V21",
+      "classification": "CAUGHT",
+      "lint_failure_count": 1,
+      "failed_case_count": 60,
+      "failed_case_ids": [
+        "G4-01",
+        "G4-02b",
+        "G4-53",
+        "G4-54",
+        "G4-55",
+        "G4-EOF1",
+        "G4-EOF2",
+        "G4-EOF3",
+        "G4-EMPTY",
+        "G4-02",
+        "G4-02c",
+        "G4-02g",
+        "G4-03",
+        "G4-04",
+        "G4-05",
+        "G4-06",
+        "G4-06c",
+        "G4-06d",
+        "G4-32",
+        "G4-33",
+        "G4-07",
+        "G4-06b",
+        "G4-07b",
+        "G4-08",
+        "G4-09",
+        "G4-10",
+        "G4-13a",
+        "G4-13b",
+        "G4-13c",
+        "G4-13e",
+        "G4-14a",
+        "G4-14c",
+        "G4-15",
+        "G4-15b",
+        "G4-15c",
+        "G4-15d",
+        "G4-16",
+        "G4-16b",
+        "G4-17",
+        "G4-17b",
+        "G4-18",
+        "G4-19",
+        "G4-19b",
+        "G4-20",
+        "G4-26",
+        "G4-27",
+        "G4-30",
+        "G4-30b",
+        "G4-30c",
+        "G4-30d",
+        "G4-34",
+        "G4-35",
+        "G4-36b",
+        "G4-38",
+        "G4-38b",
+        "G4-42",
+        "G4-46b",
+        "G4-47",
+        "G4-47b",
+        "G4-48"
+      ],
+      "complete_harness_summary": "PASS 62 / 122   (lint 실패 파일 1 개)",
+      "has_failure_evidence": true
+    },
+    {
+      "id": "V22",
+      "classification": "CAUGHT",
+      "lint_failure_count": 0,
+      "failed_case_count": 1,
+      "failed_case_ids": [
+        "D-23"
+      ],
+      "complete_harness_summary": "PASS 121 / 122   (lint 실패 파일 0 개)",
+      "has_failure_evidence": true
+    }
+  ]
+}

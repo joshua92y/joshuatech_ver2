@@ -1,0 +1,28 @@
+# {{ pod_name }} 비밀이 아닌 설정(base = dev 값 — prod overlay가 값을 패치한다). 평문 스칼라만 쓴다(블록 스칼라 | 금지 — 끝 줄바꿈).
+# ACCESS_AUD_M2M · ACCESS_EXPECTED_CN 자리값은 기동 게이트 2가 overlay 누락을 기동 실패로 바꾼다. sync-wave -1: Deployment보다 먼저.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ pod_name }}-config
+  labels:
+    app.kubernetes.io/name: {{ pod_name }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+data:
+  ACCESS_AUD_ADMIN: ""
+  ACCESS_AUD_M2M: PLACEHOLDER-SET-IN-OVERLAY
+  ACCESS_EXPECTED_CN: PLACEHOLDER-SET-IN-OVERLAY
+  ACCESS_TEAM_DOMAIN: joshua-tech.cloudflareaccess.com
+  ADMIN_HOST: ""
+  ALLOWED_HOSTS: {{ pod_name }}.jt-dev.svc
+  AUTH_ACTOR_SUB: ""
+  AUTHENTIK_AUDIENCE: {{ pod_name }}
+  ENV: dev
+{%- if has_admin %}
+  FORCE_SCRIPT_NAME: ""
+{%- endif %}
+  KAFKA_BOOTSTRAP: jt-kafka-kafka-bootstrap.data.svc:9093
+  KAFKA_USERNAME: dev-{{ pod_name }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""
+  OTEL_TRACES_SAMPLER: parentbased_traceidratio
+  OTEL_TRACES_SAMPLER_ARG: "0.1"

@@ -1,0 +1,589 @@
+# CI 골격(T002) — FR-037 공급망 강화 정책 반영
+# - runs-on: ubuntu-24.04-arm — 운영 노드(OCI Ampere A1)와 이미지/도구가 모두 arm64이므로
+#   퍼블릭 arm64 러너에서 같은 아키텍처로 검사한다.
+# - 모든 액션은 전체 커밋 SHA로 핀한다(주석의 vX.Y.Z는 사람용 표기).
+#   태그→SHA 갱신은 Renovate(config:best-practices의 pinGitHubActionDigests)가 유지한다.
+# - 설치는 pnpm install --frozen-lockfile --ignore-scripts · uv sync --locked 만 허용
+#   (잠금파일이 정본, 라이프사이클 스크립트 실행 금지).
+# - job kubeconform(T047 M1 · T072): pod 배포 매니페스트(생성물의 deploy/base — gitops apps/<pod>/base로 복사된다)를
+#   kustomize build → kubeconform -strict로 검사한다(scripts/ci/kubeconform-deploy.sh). T072부터 템플릿으로 렌더 · 검사 전용 생성물
+#   세 벌(copier copy --skip-tasks — 기본 · has_celery=false · has_admin=false)을 만들어 --generated로 넘긴다(경보선이 꺼진다).
+# - job test(T072): packages/django-common 계약 시험 + 템플릿 하네스(templates/django-pod/tests — Docker · kustomize · kubeconform).
+# - job gitleaks(T049 AC5): job id `gitleaks`는 ruleset(main)의 required check 이름이다 — 바꾸지 않는다.
+#   gitleaks-action(v3.0.0)을 쓰지 않는다. 그 판의 PR 경로는 PR 커밋 목록(GET /pulls/{n}/commits)을 per_page · 페이지 넘김
+#   없이 한 번만 불러 첫 30개(기본 페이지)만 받고, 범위를 `--no-merges --first-parent <첫 커밋>^..<30번째 커밋>`으로 자른다
+#   (src/gitleaks.js 160–171행 · dist/index.js 127929–127941행 — 이 브랜치의 PR 295커밋이면 약 10%). push 경로도 push된 커밋만 본다.
+#   대신 gitleaks 8.30.1 linux_arm64 바이너리를 버전 + sha256으로 고정해 직접 받는다(릴리스의 공식 checksums 파일 값 —
+#   gitops validate.yml 스텝 3과 같은 값). 이 job이 받은 전체 이력(모든 ref + HEAD)을 --log-opts로 명시해 스캔하고,
+#   같은 범위를 git으로 센 기대 커밋 수와 gitleaks가 보고한 검사 커밋 수가 다르면 실패한다(조용한 부분 검사 방지 — 규칙은 job 주석).
+#   일일 schedule(새 규칙으로 옛 이력을 다시 보는 정기 실행)은 아직 없다 — 그 소유는 별도 항목이다.
+# - job events-compat · events-test(T067): packages/events 스키마(JSON Schema 2020-12)의 호환성 게이트와 테스트를 두 job으로
+#   나눈다. 판정 · 기준 규칙의 정본은 scripts/ci/events-compat.sh 머리 주석이다.
+#   events-compat(게이트)은 PR 코드를 돌리지 않는다 — 스텝은 Node 설치(체크아웃 전 · 빈 작업 공간) → 체크아웃(전체 이력) → 게이트
+#   스크립트 순서이고, 체크아웃 뒤에 도는 것은 게이트 스크립트 하나뿐이다(같은 러너에서 게이트보다 먼저 도는 PR 코드는 게이트 스크립트 ·
+#   git 객체 · 속성 · 다음 스텝의 환경을 바꿀 수 있다). 예외는 부트스트랩뿐이다 — 게이트 스텝 안에서 이 변경의 검사기가 돌지만 기준이
+#   비어 지킬 것이 없다. Node 설치가 체크아웃보다 먼저인 까닭: setup-node는 설치 뒤 작업 공간에서 node · npm · yarn --version을 돌리고,
+#   러너의 Yarn 1은 --version을 처리하기 전에 cwd와 그 위 디렉터리의 .yarnrc · .yarnrc.yml에 적힌 yarnPath를 실행한다 — 체크아웃 뒤라면
+#   게이트 파일을 하나도 바꾸지 않은 PR의 코드가 게이트 앞에 돈다. 그래서 Node 버전은 ci.yml의 고정값(node-version)이고 PR 내용에서 읽지 않는다.
+#   그 값은 .node-version과 같아야 한다 — CI에서는 job events-test의 schemas.test.mjs sch-23이, 로컬에서는 하네스 st-5 · st-15가
+#   지킨다(둘이 갈라진 채 검사기가 새 판에만 있는 Node API를 쓰면 머지 뒤 게이트가 그 검사기를 옛 Node로 돌려 교착이 된다).
+#   이 검사들은 줄 단위 드리프트 검사다 — 실수로 갈라진 값 · 옮겨진 핀 · 늘어난 setup-node 스텝을 잡는다. YAML 이어짐 줄 · 이스케이프 ·
+#   별칭 · 가짜 job 블록처럼 ci.yml을 일부러 꼬아 쓰는 편집은 이 검사의 범위가 아니다 — ci.yml을 고치는 PR은 게이트를 통째로 바꿀 수도
+#   있으므로, 그런 편집은 아래 「한계」대로 게이트 파일 리뷰(코드 소유자)가 막는다.
+#   이 보호는 GitHub 호스티드 러너(job마다 새 VM — 체크아웃 전 작업 공간이 비어 있다)를 전제한다 — 작업 공간을 재사용하는 자체 호스티드
+#   러너면 이전 job이 체크아웃한 PR 파일을 체크아웃 전 탐침이 실행할 수 있어 이 보호는 무효다. 캐시 없음: setup-node에 cache 입력을
+#   두지 않고 package-manager-cache: false를 둔다(cache가 없어도 체크아웃의 package.json이 npm을 가리키면 자동 캐시가 켜지고 복원
+#   경로는 체크아웃의 .npmrc가 고른다 — 같은 PR의 이전 실행이 저장한 파일이 게이트 앞에 풀린다 · 체크아웃 전이라 읽을 package.json이
+#   없어도 심층 방어로 둔다).
+#   기준은 PR이면 merge 커밋의 첫째 부모(둘째 부모 = PR head 확인), push면 before(0이면 빈 기준)이고, 기준 스키마와 검사기는 기준 커밋의
+#   트리에서 git ls-tree + git cat-file blob으로 꺼낸다(git archive 아님 — .gitattributes가 끼어들지 않는다 · 경로 성분이 트리가 아니거나
+#   git이 실패하면 2). 변경 쪽은 CI에서 HEAD 커밋(= GITHUB_SHA)의 트리에서 같은 방법으로 꺼내고, 작업 트리의 스키마는 그 blob과 바이트가
+#   같아야 한다(git hash-object --no-filters · .json 집합도 같다 — 체크아웃은 PR의 .gitattributes로 바이트를 바꿀 수 있다). 변경 쪽은 다음
+#   기준의 모양도 지켜야 한다 — .json은 일반 파일 · 이름 꼴, 검사기 경로는 스키마 수와 상관없이 경로 성분이 디렉터리이고 검사기가 일반
+#   파일(링크 · gitlink면 2), 검사기가 없는 것은 스키마가 있을 때 2(머지된 뒤에는 되돌리는 PR까지 2로 막힌다). 검사기는 기준 커밋의
+#   check-compat.mjs이고(PR이 검사기를 약하게 고쳐 제 스키마 변경을 통과시키지 못하게), 기준에 검사기도 스키마도 없을 때만 이 변경의
+#   것을 쓴다(부트스트랩 — 스키마만 있으면 2). 출력 계약: 검사기는 0 · 1로 끝날 때 stderr에 요약 줄
+#   (check-compat: checked N · added M · violations K)을 쓰고, 게이트는 요약 줄 정확히 하나 · K는 앞 0 없는 9자리 이하 · K가 종료 코드와
+#   맞음 · stdout의 위반 줄 수 = K가 아니면 2로 끝난다.
+#   events-test는 PR 코드를 도는 job이다(의존성 설치 · vitest — 테스트가 import하는 PR의 검사기 · package.json 스크립트 포함). 토큰 · 비밀을
+#   run 스텝에 넘기지 않는다 — 액션의 기본 token 입력(contents: read)과 캐시 토큰은 체크아웃 뒤 setup-node 탐침이 실행하는 PR 코드가
+#   물려받을 수 있다(게이트와는 다른 VM · PR 범위 캐시라 게이트 무결성과는 무관). 한계: 같은 PR이 이 파일(ci.yml)이나
+#   scripts/ci/events-compat.sh를 바꾸면 그 PR에서는 바뀐 것이 돈다(체크아웃이 PR의 .gitattributes로 바꾼 바이트 포함) — 리뷰가 막는다.
+#   게이트 job이 PR 내용에서 읽는 것은 이 둘뿐이고(Node 버전은 ci.yml의 고정값) 스키마 · 검사기는 커밋 객체에서 읽는다. 머지된 게이트
+#   파일(ci.yml · events-compat.sh · check-compat.mjs)의 변경은 그 뒤 모든 PR의 게이트가 된다 — 기준 쪽 검사기 규칙은 같은 PR 안의 약화만
+#   막으므로 리뷰가 막는다. 검사기를 더 엄격하게 하거나 잘못 고친 변경이 머지되면 그것이 기준 쪽 검사기가 되어 기준 스키마에서 2(또는
+#   거짓 위반 1)로 끝나고, 되돌리는 PR까지 이후 모든 PR이 막힌다. 복구는 게이트 스크립트를 함께 고친 PR이 먼저다(그 PR에서는 그 PR의
+#   스크립트가 돈다 — 코드 소유자 리뷰 · 뒤에 스크립트를 원래대로 돌리는 PR이 하나 더 필요). required check를 비켜 가는 운영자 머지는 같은
+#   ruleset의 다른 required check까지 비켜 가므로 마지막 수단이다. 머지 전에는 job events-test가 잡는다: 패키지 밖 검사기 사본으로 실제
+#   스키마를 자기 자신 · 빈 기준과 비교(schemas.test.mjs sch-14 — 머지 뒤 게이트가 기준 쪽 사본을 돌리는 조건과 같다) · 요약 줄(sch-21) ·
+#   CLI 경로의 Node 내장 모듈 자립(sch-9) · 게이트 Node 고정값 = .node-version(sch-23). 패키지 밖 사본은 NODE_PATH · NODE_OPTIONS를 지운
+#   env로 돌고, 그 env에서 사본 위치가 ajv를 해석하지 못함을 sch-24가 먼저 확인한다 — pnpm의 vitest 실행 shim이 NODE_PATH에
+#   .pnpm/node_modules(ajv가 호이스트된 곳)를 넣어, 그대로 물려주면 사본이 ajv를 찾아 게이트 조건(node_modules 없음)을 재현하지 못한다.
+#   단 events-test가 그 시험을 실제로 돌릴 때만이다 — 시험 실행 경로(시험 파일 · packages/events/package.json의 test 스크립트 · vitest
+#   설정 · 루트 pnpm-workspace.yaml · package.json · pnpm-lock.yaml · .npmrc(pnpm node-options 등) · .pnpmfile.cjs 등 events-test가 읽는
+#   pnpm · vitest 설정과 훅 파일 — events-test는 PR 코드를 도는 job이라 이 목록은 닫힌 목록이 아니다)를 바꾸는 변경(앞선 PR 포함)은 이
+#   방어를 끌 수 있다. events-test 명령은 pnpm --filter @jt/events --fail-if-no-match test다 — 걸러 낸 프로젝트가 없으면 pnpm이 exit 0으로
+#   끝나므로, 워크스페이스에서 packages/events를 빼는 변경이 빈 통과가 되지 않게 한다. 그래서 이 파일들의 변경은 리뷰가 막는다 — 운영자
+#   인계: packages/events/ · scripts/ci/ · .github/workflows/ · 모든 깊이의 .gitattributes · 루트 pnpm-workspace.yaml · package.json ·
+#   pnpm-lock.yaml · .npmrc · .pnpmfile.cjs(아직 없는 경로도 지정할 수 있다) · .github/CODEOWNERS 자신에 CODEOWNERS · 코드 소유자 리뷰
+#   필수 · events-compat · events-test를 ruleset(main)의 required check로 지정(교착 방어가 events-test에 기댄다).
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gitleaks:
+    # 커밋 히스토리 비밀 스캔(머리 주석 「job gitleaks」). checkout 뒤에는 고정한 gitleaks와 러너의 git만 돈다 —
+    # 저장소의 코드를 실행하지 않고 토큰도 쓰지 않는다.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    env:
+      # gitleaks 8.30.1 linux_arm64 릴리스 자산의 sha256 — 릴리스의 gitleaks_8.30.1_checksums.txt 값(gitops validate.yml과 같은 값).
+      # 버전을 바꾸면 sha256도 함께 바꾼다 — 둘 중 하나만 바꾸면 설치 스텝이 실패한다.
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 전체 이력: 모든 브랜치(refs/remotes/origin/*) · 태그를 받고, PR 이벤트에서는 merge 커밋을
+          # refs/remotes/pull/<N>/merge로 받아 HEAD로 둔다(checkout v7.0.1 src/ref-helper.ts getRefSpecForAllHistory).
+          # 얕은 체크아웃이면 스캔 스텝이 실패한다
+          fetch-depth: 0
+          # 뒤 스텝은 push · fetch를 하지 않는다 — .git/config에 토큰을 남기지 않는다
+          persist-credentials: false
+      - name: gitleaks 설치(버전 고정 + sha256 대조)
+        run: |
+          set -euo pipefail
+          bin="$RUNNER_TEMP/bin"
+          dl="$RUNNER_TEMP/dl"
+          mkdir -p "$bin" "$dl"
+          # fetch <url> <파일 이름> <sha256> — 받은 파일을 sha256으로 대조한다. 맞지 않으면 실패(풀지도 설치하지도 않는다)
+          fetch() {
+            if [[ ! $3 =~ ^[0-9a-f]{64}$ ]]; then
+              printf '::error::%s: sha256 값의 형식이 틀렸다: %q\n' "$2" "$3"
+              return 1
+            fi
+            # 멈춘 내려받기가 job 제한 시간까지 붙잡지 않게 시간 한도를 둔다. --proto · --proto-redir: 리다이렉트(릴리스 자산은
+            # objects.githubusercontent.com으로 302)까지 https만 허용한다 — gitops validate.yml의 fetch()와 이 두 옵션만 다르다
+            curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 --connect-timeout 10 --max-time 120 -o "$dl/$2" "$1"
+            printf '%s  %s\n' "$3" "$dl/$2" | sha256sum -c -
+          }
+          fetch "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_arm64.tar.gz" gitleaks.tar.gz "$GITLEAKS_SHA256"
+          tar -xzf "$dl/gitleaks.tar.gz" -C "$bin" gitleaks
+          chmod 0755 "$bin/gitleaks"
+          # 버전 확인 — 설치한 바이너리가 기대 버전이 아니면 실패
+          got=$("$bin/gitleaks" version || true)
+          if [[ $got != "$GITLEAKS_VERSION" ]]; then
+            printf '::error::gitleaks 버전 불일치: 실제 %q · 기대 %s\n' "$got" "$GITLEAKS_VERSION"
+            exit 1
+          fi
+          printf '  %-12s %s\n' gitleaks "$got"
+      # 대조 규칙(gitleaks 8.30.1 소스 + 로컬 실측 — T049 AC5)
+      # - 셈: gitleaks는 `git log -p -U0 <--log-opts>` 출력의 텍스트 hunk마다 그 커밋을 센다(detect/detect.go 216–221행 →
+      #   262행 "N commits scanned."). 삭제된 파일과 바이너리는 hunk 전에 건너뛴다(sources/git.go 323–334행). 그래서 세지 않는
+      #   커밋은 빈 커밋 · 삭제만 · 바이너리만 · 이름 바꾸기나 모드만 · 빈 파일 추가만이다. 줄을 지우기만 한 수정은 센다(hunk가 있다).
+      #   머지는 --remerge-diff(git ≥ 2.35)로 자동 재머지 대비 차이만 낸다 — 충돌 해결로 들어온 내용이 스캔되고, 깨끗한 머지는
+      #   차이가 없어 세지 않는다.
+      #   한계: git 모드는 추가된 텍스트 줄만 본다 — NUL이 든 "바이너리" 텍스트 · 압축 파일 내용(--max-archive-depth 0) · 커밋 메시지 ·
+      #   기본 allowlist 경로(gitleaks.toml · 잠금 파일 · pdf/docx/bin 등)의 비밀은 잡지 못한다(T049 로컬 실측). --max-archive-depth는
+      #   양쪽 셈이 어긋나므로 git 모드에 켜지 않는다.
+      # - 범위: --log-opts를 주면 기본값(--full-history --all --diff-filter=tuxdb — sources/git.go 93–94행)이 통째로 빠지고
+      #   그 값만 공백으로 나뉘어 git log에 붙는다. 그래서 범위 --all(refs/ 아래 모든 ref + HEAD)을 직접 적는다. diff-filter는
+      #   기본값에서 t(형식 변경)만 뺀 uxdb다 — 기본값으로는 심볼릭 링크 → 파일 같은 형식 변경으로 들어온 내용을 보지 않는다.
+      # - 기대 커밋 수: 같은 범위 · 같은 옵션의 `git log --numstat`에서 바이너리('-')가 아니고 추가 + 삭제 줄이 1 이상인 파일이
+      #   하나라도 있는 커밋 수. git rev-list --all 범위의 부분집합이어야 하고(머지는 재머지 차이가 있을 때만 든다), 나머지(텍스트
+      #   변경 없는 커밋 — 깨끗한 머지 포함)는 로그에 목록으로 남긴다. 범위는 gitleaks 호출과 따로 적는다 — --log-opts만 좁히면
+      #   대조가 실패한다.
+      # - 실패: 검사 커밋 수 줄이 정확히 하나가 아니거나 · 값이 기대 수와 다르거나 · gitleaks 로그에 ERR 줄이 있거나 · 누출이
+      #   있거나 · 결과 줄 없이 끝나면. ERR: 8.30.1은 git이 stderr에 오류를 내면 그 자리에서 스캔을 멈추고도 "no leaks found"와
+      #   exit 0으로 끝난다(sources/git.go 414–420행 — 로컬 실측: 0 commits scanned · exit 0).
+      # - 속성: 작업 트리의 .gitattributes를 읽지 않는다(GIT_ATTR_SOURCE = 빈 트리, git 2.41+). PR이 diff 속성(-diff · binary)으로
+      #   파일을 바이너리로 돌리면 gitleaks는 그 내용을 건너뛰고, 기대 수도 같은 속성을 따르므로 대조로는 잡지 못한다
+      #   (로컬 실측: 오래된 커밋의 가짜 비밀이 통과했다).
+      # - 설정: 규칙은 워크플로가 고정한다(--config = 기본 규칙 확장, --ignore-gitleaks-allow). 작업 트리에 .gitleaks.toml ·
+      #   .gitleaksignore가 있으면 실패 — gitleaks가 둘을 무조건 읽고(root.go 178–190 · 317–321), .gitleaks.toml 내용은 기본 allowlist라
+      #   스캔되지도 않는다. 예외는 이 파일(ci.yml)에서만 준다.
+      # - 출력: --redact로 값을 가린다(공개 저장소의 로그). PR이 고른 글자(경로 · 커밋 제목)가 찍히는 구간은 워크플로 명령
+      #   해석을 막는다(stop-commands). 버전 · 범위 · 기대 커밋 수 · 검사 커밋 수 · 결과를 job 요약에 한 줄씩 남긴다.
+      - name: 전체 이력 스캔 + 검사 커밋 수 대조
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          gl="$RUNNER_TEMP/bin/gitleaks"
+          work="$RUNNER_TEMP/gitleaks-scan"
+          mkdir -p "$work"
+          # 요약 다섯 줄 — 성공 · 실패와 무관하게 끝에 남긴다(구하지 못한 값은 '—')
+          ver='—' range='—' expected='—' scanned='—' result='실패 — 스캔 전에 멈춤'
+          # on_exit는 아래 trap on_exit EXIT로 불린다 — shellcheck는 trap 호출을 세지 않는다(SC2329)
+          # shellcheck disable=SC2329
+          on_exit() {
+            local rc=$?
+            {
+              printf -- '- **gitleaks 버전** · %s\n' "$ver"
+              printf -- '- **범위** · %s\n' "$range"
+              printf -- '- **기대 커밋 수** · %s\n' "$expected"
+              printf -- '- **검사 커밋 수** · %s\n' "$scanned"
+              printf -- '- **결과** · %s · exit %d\n' "$result" "$rc"
+            } >> "$GITHUB_STEP_SUMMARY" || true
+            exit "$rc"
+          }
+          trap on_exit EXIT
+          ver="$("$gl" version) · linux_arm64 · sha256 ${GITLEAKS_SHA256:0:12}… · $(git --version)"
+
+          # --- 1 체크아웃: 전체 이력이고 HEAD가 이 이벤트의 커밋이다 ---
+          if [[ $(git rev-parse --is-shallow-repository) != false ]]; then
+            printf '::error::얕은 체크아웃이다 — 전체 이력이 아니다(checkout의 fetch-depth: 0 필요)\n'
+            exit 1
+          fi
+          head_sha=$(git rev-parse --verify 'HEAD^{commit}')
+          if [[ $head_sha != "$GITHUB_SHA" ]]; then
+            printf '::error::HEAD %s 가 이벤트 커밋(GITHUB_SHA %s)이 아니다\n' "$head_sha" "$GITHUB_SHA"
+            exit 1
+          fi
+          what='push'
+          if [[ $EVENT_NAME == pull_request ]]; then
+            # merge 커밋 ref가 HEAD이고 PR head가 그 이력 위에 있어야 PR의 커밋 전부가 --all 범위에 든다
+            merge_ref="refs/remotes/${GITHUB_REF#refs/}"
+            if [[ $GITHUB_REF != refs/pull/*/merge || $(git rev-parse --verify --quiet "${merge_ref}^{commit}" || true) != "$head_sha" ]]; then
+              printf '::error::PR merge 커밋 ref %s 가 HEAD가 아니다(GITHUB_REF %s)\n' "$merge_ref" "$GITHUB_REF"
+              exit 1
+            fi
+            if [[ ! $PR_HEAD_SHA =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || ! git merge-base --is-ancestor "$PR_HEAD_SHA" "$head_sha"; then
+              printf '::error::PR head %q 가 HEAD(merge 커밋)의 이력 위에 없다\n' "$PR_HEAD_SHA"
+              exit 1
+            fi
+            # 전제: GitHub의 merge ref는 부모 둘(첫째 base 끝 · 둘째 PR head)인 머지 커밋이다 — 러너에서만 확인된다(초안 PR 실행)
+            if [[ $(git rev-parse --verify --quiet 'HEAD^2' || true) != "$PR_HEAD_SHA" ]]; then
+              printf '::error::PR head %q 가 HEAD(merge 커밋)의 둘째 부모가 아니다 — 전제: GitHub의 merge ref는 부모 둘(base 끝 · PR head)\n' "$PR_HEAD_SHA"
+              exit 1
+            fi
+            what="PR merge 커밋 $merge_ref"
+          fi
+
+          # --- 1b 탐지 설정은 워크플로가 고정한다 — PR 내용(.gitleaks.toml · .gitleaksignore · gitleaks:allow)으로 끌 수 없다 ---
+          for f in .gitleaks.toml .gitleaksignore; do
+            if [[ -e $f || -L $f ]]; then
+              printf '::error::%s 가 체크아웃에 있다 — gitleaks는 작업 트리의 이 파일을 무조건 읽는다(cmd/root.go 178–190 · 317–321). 탐지 설정은 워크플로가 고정한다\n' "$f"
+              exit 1
+            fi
+          done
+          printf '[extend]\nuseDefault = true\n' > "$work/gitleaks.toml"
+
+          # --- 2 기대 커밋 수: 같은 범위를 git으로 센다(작업 트리의 .gitattributes 무시) ---
+          empty_tree=$(git hash-object -t tree /dev/null)
+          export GIT_ATTR_SOURCE="$empty_tree"
+          total=$(git rev-list --count --all)
+          merges=$(git rev-list --count --merges --all)
+          git rev-list --all | LC_ALL=C sort > "$work/range"
+          # --attr-source는 git 2.41 미만에서 알 수 없는 옵션이라 실패한다 — 속성 무시가 조용히 꺼지지 않는다
+          git --attr-source="$empty_tree" log --numstat --format='format:@%H' --all --full-history --diff-filter=uxdb --remerge-diff \
+            | awk -F '\t' '/^@/ { c = substr($0, 2); next } NF >= 3 && $1 != "-" && ($1 + $2) > 0 { print c }' \
+            | LC_ALL=C sort -u > "$work/expected"
+          if [[ -n $(LC_ALL=C comm -13 "$work/range" "$work/expected") ]]; then
+            printf '::error::기대 커밋 목록에 git rev-list --all 범위 밖의 커밋이 있다\n'
+            exit 1
+          fi
+          LC_ALL=C comm -23 "$work/range" "$work/expected" > "$work/no-text"
+          expected_n=$(wc -l < "$work/expected")
+          none_n=$(wc -l < "$work/no-text")
+          # 머지는 재머지 차이(--remerge-diff)가 있을 때만 기대 목록에 든다 — 깨끗한 머지는 텍스트 변경 없는 커밋 쪽이다
+          merges_text_n=$(git rev-list --merges --all | LC_ALL=C sort | LC_ALL=C comm -12 - "$work/expected" | wc -l)
+          expected="$expected_n (git rev-list --all $total − 텍스트 변경 없는 커밋 $none_n · 머지 $merges개 중 재머지 차이가 있는 $merges_text_n개를 센다)"
+          range="--log-opts='--all --full-history --diff-filter=uxdb --remerge-diff' · ref $(git for-each-ref | wc -l)개 + HEAD ${head_sha:0:12}($what) · 속성 출처 빈 트리"
+          printf '범위: %s\n기대 커밋 수: %s\n' "$range" "$expected"
+          if [[ $expected_n -eq 0 ]]; then
+            printf '::error::기대 커밋 수가 0이다 — 스캔할 이력이 없다\n'
+            exit 1
+          fi
+
+          # --- 3 스캔: PR이 고른 글자가 찍히는 구간은 워크플로 명령 해석을 막는다(토큰은 실행마다 새로 만든다) ---
+          token=$(cat /proc/sys/kernel/random/uuid 2> /dev/null || printf 'stop-%s-%s%s%s' "$(date -u +%s%N)" "$RANDOM" "$RANDOM" "$RANDOM")
+          printf '::stop-commands::%s\n' "$token"
+          if [[ $none_n -gt 0 ]]; then
+            printf '텍스트 변경 없는 커밋 %d개(깨끗한 머지 포함 — gitleaks가 세지 않는다 — 앞 50개):\n' "$none_n"
+            head -n 50 "$work/no-text" | git log --no-walk=unsorted --stdin --format='  %h %s'
+          fi
+          scan_rc=0
+          "$gl" git --no-banner --no-color --redact -v --config "$work/gitleaks.toml" --ignore-gitleaks-allow --log-opts='--all --full-history --diff-filter=uxdb --remerge-diff' . 2> "$work/log" || scan_rc=$?
+          sed 's/\x1b\[[0-9;]*m//g' "$work/log" > "$work/log.plain"
+          cat "$work/log.plain"
+          printf '::%s::\n' "$token"
+
+          # --- 4 판정 ---
+          fail=0 notes=''
+          mapfile -t count_lines < <(grep -E '^[^ ]+ INF [0-9]+ commits scanned\.$' "$work/log.plain" || true)
+          if [[ ${#count_lines[@]} -eq 1 ]]; then
+            scanned_n=${count_lines[0]% commits scanned.}
+            scanned_n=${scanned_n##* }
+            scanned=$scanned_n
+            if [[ $scanned_n -ne $expected_n ]]; then
+              printf '::error::검사 커밋 수 %s ≠ 기대 %s — 범위 전체를 검사하지 않았다\n' "$scanned_n" "$expected_n"
+              fail=1 notes+=' · 검사 커밋 수 불일치'
+            fi
+          else
+            printf '::error::gitleaks 로그에서 검사 커밋 수 줄("<n> commits scanned.")이 %d개다 — 1개여야 한다\n' "${#count_lines[@]}"
+            fail=1 notes+=" · 검사 커밋 수 줄 ${#count_lines[@]}개"
+          fi
+          if grep -Eq '^[^ ]+ (ERR|FTL|PNC) ' "$work/log.plain"; then
+            printf '::error::gitleaks 로그에 오류 줄이 있다 — git 오류로 스캔이 중간에 멈췄을 수 있다\n'
+            fail=1 notes+=' · gitleaks 오류 줄'
+          fi
+          leaks=$(sed -n 's/^[^ ]* WRN leaks found: \([0-9][0-9]*\)$/\1/p' "$work/log.plain")
+          if [[ $scan_rc -eq 0 ]] && grep -Eq '^[^ ]+ INF no leaks found$' "$work/log.plain"; then
+            found='누출 0건'
+          elif [[ $leaks =~ ^[0-9]+$ ]]; then
+            found="누출 ${leaks}건"
+            printf '::error::gitleaks가 비밀 %s건을 찾았다 — 값은 가렸다(위 Finding 블록의 File · Line · Commit)\n' "$leaks"
+            fail=1
+          else
+            found="판정 불가(gitleaks exit $scan_rc)"
+            printf '::error::gitleaks가 exit %d로 끝났고 결과 줄이 없다\n' "$scan_rc"
+            fail=1
+          fi
+          if [[ $fail -eq 0 ]]; then
+            result="통과 — $found · 검사 커밋 수 일치"
+          else
+            result="실패 — $found$notes"
+          fi
+          printf '결과: %s\n' "$result"
+          exit "$fail"
+
+  lint:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version-file: '.node-version'
+          cache: pnpm
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          # uv 버전 핀 0.13.7 — T072 UD-1(2026-11-09 사용자 결정)로 plan Technical Context의
+          # 0.12.8에서 올렸다(0.12.x는 GHSA-hq85 High에 걸린다 · 0.13.4 수정 · plan.md는 승인 뒤
+          # 고정이라 편차는 report.md 후보). Renovate가 이 version 입력을 추적해 astral-sh/uv 릴리스
+          # 기준 bump PR을 연다(automerge 전역 off). 그 PR을 머지할 때는 템플릿 Dockerfile의 uv 빌더
+          # 이미지 태그 · digest(uv:<ver>-python3.13-trixie-slim)와 로컬 uv를 같은 변경에서 함께 올린다.
+          version: "0.13.7"
+          # uv 0.13.7 linux aarch64 릴리스 자산 uv-aarch64-unknown-linux-gnu.tar.gz의 sha256(T072 마지막 라운드 N11) — 출처: 릴리스의
+          # .sha256 파일 값 = 그 tar.gz를 받아 직접 계산한 값 = GitHub 릴리스 자산 digest(2026-11-10 대조). setup-uv v10.0.1은 내장 표
+          # (0.12.4까지)에 없는 판을 이 입력 없이는 대조하지 않고 받는다. 판을 올리면 checksum도 같은 변경에서 함께 올린다(Renovate bump
+          # PR 포함 — T116). 세 job(lint · test · kubeconform)이 같은 값이다(arm64 러너 — tests/scripts/kubeconform-deploy.tests.ps1 static-14).
+          checksum: "71279f8d3c67241e807b9d8db872d1bf541579fb9f08b7d1eb1682196d1e57dc"
+      - name: 의존성 설치(잠금파일 고정 · 스크립트 실행 금지)
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          uv sync --locked
+      - name: lint 자리(placeholder) — US 단계에서 채움
+        run: echo "lint 자리(placeholder) — US 단계에서 채움"
+
+  test:
+    # 시험(T072 D22): packages/django-common 계약 시험 + 템플릿 하네스(templates/django-pod/tests — 생성 → uv sync --locked → 생성물
+    # 시험 → arm64 이미지 빌드 · 탐침 · 기동 스모크 → kustomize build · kubeconform → 렌더 단언 = T065). 둘 다 Docker를 쓴다(testcontainers ·
+    # buildx 기본 docker 드라이버 — arm64 러너라 에뮬레이션 없음). 시험은 패키지 · 하네스의 ini 그대로 돈다(-O 없음 · 실패 출력을 넓히는
+    # 옵션 없음 — 규칙 django-pod.md §Tests).
+    # 하네스 시간 예산 JT_HARNESS_BUDGET_SECONDS = job 상한 60분 − 설치 10분(체크아웃 · pnpm · uv · Python · 도구 — 넉넉히) − django-common
+    # 시험 10분(그 스텝의 상한 — 로컬 실측 765개 105 s) − 정리 헤드룸 10분(예산이 다한 뒤에도 도는 docker rm · 이미지 rm — 컨테이너당 최악
+    # 141–287 s · 이미지 rm 160 s · build-notes T072 조각 ① r3 B-3) = 30분 = 1800 s. 예산은 하네스 수집 때부터 센다 — 다하면 남은 명령을
+    # 돌리지 않고 실패한다(정리 호출은 예산 밖 · 자기 상한 — templates/django-pod/tests/_proc.py).
+    # 하네스는 JT_SAMPLE_POD_ROOT/harness-stages.log(단계 시작 · 끝 · 결과 · 초 · 정리 메모 — ASCII · 값 없음)를 남긴다. 실패해도 그
+    # 파일 하나만 짧은 보존으로 올린다(생성 트리 · 시험 출력 · 로그 원문은 올리지 않는다 — 실패 원인은 이 job 로그의 pytest 요약이 싣는다).
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 뒤 스텝이 저장소의 코드(시험 · 하네스)를 돌린다 — .git/config에 토큰을 남기지 않는다(push · fetch를 하는 스텝이 없다)
+          persist-credentials: false
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version-file: '.node-version'
+          cache: pnpm
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          # uv 버전 핀 0.13.7 — T072 UD-1(2026-11-09 사용자 결정)로 plan Technical Context의
+          # 0.12.8에서 올렸다(0.12.x는 GHSA-hq85 High에 걸린다 · 0.13.4 수정 · plan.md는 승인 뒤
+          # 고정이라 편차는 report.md 후보). Renovate가 이 version 입력을 추적해 astral-sh/uv 릴리스
+          # 기준 bump PR을 연다(automerge 전역 off). 그 PR을 머지할 때는 템플릿 Dockerfile의 uv 빌더
+          # 이미지 태그 · digest(uv:<ver>-python3.13-trixie-slim)와 로컬 uv를 같은 변경에서 함께 올린다.
+          version: "0.13.7"
+          # uv 0.13.7 linux aarch64 릴리스 자산 uv-aarch64-unknown-linux-gnu.tar.gz의 sha256(T072 마지막 라운드 N11) — 출처: 릴리스의
+          # .sha256 파일 값 = 그 tar.gz를 받아 직접 계산한 값 = GitHub 릴리스 자산 digest(2026-11-10 대조). setup-uv v10.0.1은 내장 표
+          # (0.12.4까지)에 없는 판을 이 입력 없이는 대조하지 않고 받는다. 판을 올리면 checksum도 같은 변경에서 함께 올린다(Renovate bump
+          # PR 포함 — T116). 세 job(lint · test · kubeconform)이 같은 값이다(arm64 러너 — tests/scripts/kubeconform-deploy.tests.ps1 static-14).
+          checksum: "71279f8d3c67241e807b9d8db872d1bf541579fb9f08b7d1eb1682196d1e57dc"
+      - name: 의존성 설치(잠금파일 고정 · 스크립트 실행 금지)
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          uv sync --locked
+      - name: 도구 설치 — kustomize · kubeconform(버전 고정 + sha256 대조 — job kubeconform과 같은 값 · 하네스가 PATH에서 찾는다)
+        env:
+          # linux arm64 공식 릴리스 자산의 sha256(각 릴리스의 체크섬 파일 값).
+          # 버전을 바꾸면 sha256도 함께 — gitops 저장소 validate.yml의 값과 같이 움직인다.
+          KUSTOMIZE_VERSION: v5.8.1
+          KUSTOMIZE_SHA256: 0953ea3e476f66d6ddfcd911d750f5167b9365aa9491b2326398e289fef2c142
+          KUBECONFORM_VERSION: v0.8.0
+          KUBECONFORM_SHA256: 1f53fc8e81258197a35e8603054162a5af1de8c5af13746c71ab680d9534ed87
+        run: |
+          set -euo pipefail
+          bin="$RUNNER_TEMP/bin"
+          dl="$RUNNER_TEMP/dl"
+          mkdir -p "$bin" "$dl"
+          # fetch <url> <파일 이름> <sha256> — 받은 파일을 sha256으로 대조한다. 맞지 않으면 실패(풀지도 설치하지도 않는다)
+          fetch() {
+            if [[ ! $3 =~ ^[0-9a-f]{64}$ ]]; then
+              printf '::error::%s: sha256 값의 형식이 틀렸다\n' "$2"
+              return 1
+            fi
+            curl -fsSL --retry 3 --connect-timeout 10 --max-time 120 -o "$dl/$2" "$1"
+            printf '%s  %s\n' "$3" "$dl/$2" | sha256sum -c -
+          }
+          fetch "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_arm64.tar.gz" kustomize.tar.gz "$KUSTOMIZE_SHA256"
+          tar -xzf "$dl/kustomize.tar.gz" -C "$bin" kustomize
+          fetch "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-arm64.tar.gz" kubeconform.tar.gz "$KUBECONFORM_SHA256"
+          tar -xzf "$dl/kubeconform.tar.gz" -C "$bin" kubeconform
+          chmod 0755 "$bin/kustomize" "$bin/kubeconform"
+          # 버전 확인 — 설치한 바이너리가 기대 버전이 아니면 실패
+          want_got() {
+            if [[ $3 != "$2" ]]; then
+              printf '::error::%s 버전 불일치: 실제 %q · 기대 %s\n' "$1" "$3" "$2"
+              return 1
+            fi
+            printf '  %-12s %s\n' "$1" "$3"
+          }
+          want_got kustomize "$KUSTOMIZE_VERSION" "$("$bin/kustomize" version)"
+          want_got kubeconform "$KUBECONFORM_VERSION" "$("$bin/kubeconform" -v)"
+          # 다음 스텝부터 PATH 맨 앞에 온다(GITHUB_PATH는 앞에 붙인다)
+          printf '%s\n' "$bin" >> "$GITHUB_PATH"
+      - name: django-common 계약 시험(패키지 ini 그대로)
+        # 위 예산 계산의 django-common 몫 — 넘으면 이 스텝이 실패한다(하네스 시간을 먹지 않게)
+        timeout-minutes: 10
+        run: uv run --directory packages/django-common --locked pytest -q
+      - name: 템플릿 하네스(T065 · T072 — templates/django-pod/tests)
+        env:
+          # 생성 트리(미니 저장소)를 러너 임시 디렉터리에 둔다 — 저장소 밖 · 저장소의 조상이 아니다(하네스가 거부하는 자리 밖)
+          JT_SAMPLE_POD_ROOT: ${{ runner.temp }}/jt-sample-pod
+          # job 머리 주석의 계산: 60분 − 설치 10분 − django-common 시험 10분 − 정리 헤드룸 10분 = 1800 s
+          JT_HARNESS_BUDGET_SECONDS: "1800"
+          KUBECONFORM_CACHE: ${{ runner.temp }}/kubeconform-cache
+        run: uv run --directory templates/django-pod --locked pytest -q
+      - name: 하네스 단계 기록 올리기(harness-stages.log 하나 · 실패해도)
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          # 재실행(run_attempt)마다 다른 이름 — 같은 실행의 앞 시도가 올린 것과 부딪히지 않게
+          name: harness-stages-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/jt-sample-pod/harness-stages.log
+          # 하네스가 단계 기록 전에 끝났으면(설치 · django-common 시험 실패) 올릴 것이 없다 — 이 스텝은 실패하지 않는다
+          if-no-files-found: ignore
+          retention-days: 7
+
+  kubeconform:
+    # pod 배포 매니페스트 스키마 검사(T047 M1 · T072). 템플릿(templates/django-pod)으로 렌더 · 검사 전용 생성물 세 벌을 $RUNNER_TEMP/gen
+    # 아래에 만들고(copier copy --skip-tasks — _tasks(uv lock)를 돌리지 않아 --trust가 필요 없고 형제 packages/django-common이 없는 배치를
+    # 허용한다 · 계약 pod-template.md 머리 · 하네스 venv의 copier — uv run --locked) 셋 다 --generated로 넘긴다 — 템플릿의 deploy/base가
+    # 생성물로 검사되고 경보선이 꺼진다. 대상 규칙 · 판정 · 경보선은 scripts/ci/kubeconform-deploy.sh 머리 주석이 정본이다.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 뒤 스텝이 저장소의 스크립트를 실행한다 — .git/config에 토큰을 남기지 않는다(push · fetch를 하는 스텝이 없다)
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          # uv 버전 핀 0.13.7 — T072 UD-1(2026-11-09 사용자 결정)로 plan Technical Context의
+          # 0.12.8에서 올렸다(0.12.x는 GHSA-hq85 High에 걸린다 · 0.13.4 수정 · plan.md는 승인 뒤
+          # 고정이라 편차는 report.md 후보). Renovate가 이 version 입력을 추적해 astral-sh/uv 릴리스
+          # 기준 bump PR을 연다(automerge 전역 off). 그 PR을 머지할 때는 템플릿 Dockerfile의 uv 빌더
+          # 이미지 태그 · digest(uv:<ver>-python3.13-trixie-slim)와 로컬 uv를 같은 변경에서 함께 올린다.
+          version: "0.13.7"
+          # uv 0.13.7 linux aarch64 릴리스 자산 uv-aarch64-unknown-linux-gnu.tar.gz의 sha256(T072 마지막 라운드 N11) — 출처: 릴리스의
+          # .sha256 파일 값 = 그 tar.gz를 받아 직접 계산한 값 = GitHub 릴리스 자산 digest(2026-11-10 대조). setup-uv v10.0.1은 내장 표
+          # (0.12.4까지)에 없는 판을 이 입력 없이는 대조하지 않고 받는다. 판을 올리면 checksum도 같은 변경에서 함께 올린다(Renovate bump
+          # PR 포함 — T116). 세 job(lint · test · kubeconform)이 같은 값이다(arm64 러너 — tests/scripts/kubeconform-deploy.tests.ps1 static-14).
+          checksum: "71279f8d3c67241e807b9d8db872d1bf541579fb9f08b7d1eb1682196d1e57dc"
+      - name: 도구 설치 — kustomize · kubeconform(버전 고정 + sha256 대조)
+        env:
+          # linux arm64 공식 릴리스 자산의 sha256(각 릴리스의 체크섬 파일 값).
+          # 버전을 바꾸면 sha256도 함께 — gitops 저장소 validate.yml의 값과 같이 움직인다.
+          KUSTOMIZE_VERSION: v5.8.1
+          KUSTOMIZE_SHA256: 0953ea3e476f66d6ddfcd911d750f5167b9365aa9491b2326398e289fef2c142
+          KUBECONFORM_VERSION: v0.8.0
+          KUBECONFORM_SHA256: 1f53fc8e81258197a35e8603054162a5af1de8c5af13746c71ab680d9534ed87
+        run: |
+          set -euo pipefail
+          bin="$RUNNER_TEMP/bin"
+          dl="$RUNNER_TEMP/dl"
+          mkdir -p "$bin" "$dl"
+          # fetch <url> <파일 이름> <sha256> — 받은 파일을 sha256으로 대조한다. 맞지 않으면 실패(풀지도 설치하지도 않는다)
+          fetch() {
+            if [[ ! $3 =~ ^[0-9a-f]{64}$ ]]; then
+              printf '::error::%s: sha256 값의 형식이 틀렸다\n' "$2"
+              return 1
+            fi
+            curl -fsSL --retry 3 --connect-timeout 10 --max-time 120 -o "$dl/$2" "$1"
+            printf '%s  %s\n' "$3" "$dl/$2" | sha256sum -c -
+          }
+          fetch "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_arm64.tar.gz" kustomize.tar.gz "$KUSTOMIZE_SHA256"
+          tar -xzf "$dl/kustomize.tar.gz" -C "$bin" kustomize
+          fetch "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-arm64.tar.gz" kubeconform.tar.gz "$KUBECONFORM_SHA256"
+          tar -xzf "$dl/kubeconform.tar.gz" -C "$bin" kubeconform
+          chmod 0755 "$bin/kustomize" "$bin/kubeconform"
+          # 버전 확인 — 설치한 바이너리가 기대 버전이 아니면 실패
+          want_got() {
+            if [[ $3 != "$2" ]]; then
+              printf '::error::%s 버전 불일치: 실제 %q · 기대 %s\n' "$1" "$3" "$2"
+              return 1
+            fi
+            printf '  %-12s %s\n' "$1" "$3"
+          }
+          want_got kustomize "$KUSTOMIZE_VERSION" "$("$bin/kustomize" version)"
+          want_got kubeconform "$KUBECONFORM_VERSION" "$("$bin/kubeconform" -v)"
+          # 다음 스텝부터 PATH 맨 앞에 온다(GITHUB_PATH는 앞에 붙인다)
+          printf '%s\n' "$bin" >> "$GITHUB_PATH"
+      # 렌더 · 검사 전용 생성(T072 D22) — 하네스 venv(templates/django-pod 잠금)의 copier. --directory가 cwd를 바꾸므로 경로는 절대 경로다.
+      # run 본문에는 워크플로 식을 넣지 않는다(셸 변수만 — GITHUB_WORKSPACE · RUNNER_TEMP는 러너가 주는 env · static-3)
+      - name: 템플릿 생성(렌더 · 검사 전용) — 기본(has_celery · has_admin)
+        run: uv run --directory templates/django-pod --locked python -m copier copy --defaults --skip-tasks --quiet --data pod_name=sample-pod "$GITHUB_WORKSPACE/templates/django-pod" "$RUNNER_TEMP/gen/default/apps/sample-pod"
+      - name: 템플릿 생성(렌더 · 검사 전용) — has_celery=false
+        run: uv run --directory templates/django-pod --locked python -m copier copy --defaults --skip-tasks --quiet --data pod_name=sample-pod --data has_celery=false "$GITHUB_WORKSPACE/templates/django-pod" "$RUNNER_TEMP/gen/no-celery/apps/sample-pod"
+      - name: 템플릿 생성(렌더 · 검사 전용) — has_celery=false · has_admin=false
+        run: uv run --directory templates/django-pod --locked python -m copier copy --defaults --skip-tasks --quiet --data pod_name=sample-pod --data has_celery=false --data has_admin=false "$GITHUB_WORKSPACE/templates/django-pod" "$RUNNER_TEMP/gen/no-admin/apps/sample-pod"
+      # 출력의 이름표 <생성물 N: sample-pod>(루트 밖 --generated — 절대 경로를 찍지 않는다)의 N은 --generated 순서다: 1 default ·
+      # 2 no-celery · 3 no-admin(세 벌 모두 디렉터리 이름이 sample-pod라 이름표의 이름만으로는 갈리지 않는다 — T072 마지막 라운드 N10)
+      - name: pod 배포 매니페스트 스키마 검사 — scripts/ci/kubeconform-deploy.sh(생성물 세 벌)
+        run: bash scripts/ci/kubeconform-deploy.sh --generated "$RUNNER_TEMP/gen/default/apps/sample-pod" --generated "$RUNNER_TEMP/gen/no-celery/apps/sample-pod" --generated "$RUNNER_TEMP/gen/no-admin/apps/sample-pod"
+
+  events-compat:
+    # packages/events 스키마 호환성 게이트(T067 · 머리 주석 「job events-compat · events-test」). 이 job은 PR 코드를 돌리지 않는다 —
+    # 스텝은 Node 설치(체크아웃 전 · 빈 작업 공간 · 캐시 없음) → 체크아웃 → 게이트 스크립트이고, 체크아웃 뒤에 도는 것은 게이트 스크립트
+    # 하나뿐이다(같은 러너에서 게이트보다 먼저 도는 PR 코드는 게이트를 바꿀 수 있다 · 예외는 부트스트랩뿐 — 게이트 스텝 안에서 이 변경의
+    # 검사기가 돌지만 기준이 비어 지킬 것이 없다). Node 버전은 이 job의 고정값(node-version)이고 .node-version과 같아야 한다 — CI에서는
+    # job events-test의 schemas.test.mjs sch-23이, 로컬에서는 하네스 st-5 · st-15가 지킨다(갈라진 채 검사기가 새 Node API를 쓰면 머지 뒤
+    # 게이트 교착). 빈 작업 공간은 GitHub 호스티드 러너(job마다 새 VM) 전제다 — 작업 공간을 재사용하는 자체 호스티드 러너면 무효다.
+    # 의존성 설치와 테스트는 job events-test가 한다. 기준 · 커밋 트리 읽기 · 변경 쪽(CI = HEAD 커밋 + 작업 트리 바이트 일치) · 다음 기준의
+    # 모양 · 기준 쪽 검사기 · 부트스트랩 · 출력 계약 · 종료 코드 규칙은 scripts/ci/events-compat.sh 머리 주석이 정본이다.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      # Node 설치가 체크아웃보다 먼저다 — setup-node(v6.5.0)는 설치 뒤 작업 공간을 cwd로 node · npm · yarn --version을 돌리고
+      # (「Environment details」), 러너의 Yarn 1은 --version을 처리하기 전에 cwd와 그 위 디렉터리의 .yarnrc · .yarnrc.yml에 적힌 yarnPath를
+      # 실행한다 — 체크아웃 뒤라면 게이트 파일을 하나도 바꾸지 않은 PR(.yarnrc.yml + 스크립트 하나)의 코드가 게이트 앞에 돈다. 이 스텝에서
+      # 작업 공간은 비어 있다(GitHub 호스티드 러너 — job마다 새 VM. 작업 공간을 재사용하는 자체 호스티드 러너면 이전 job이 체크아웃한 PR
+      # 파일을 이 탐침이 실행할 수 있어 이 보호는 무효다).
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          # 버전은 고정값이다 — .node-version을 읽을 체크아웃이 아직 없다(node-version-file을 쓰지 않는다). 값은 .node-version과
+          # 같아야 한다 — CI에서는 job events-test의 packages/events/tests/schemas.test.mjs sch-23이(핀은 이 스텝 키 깊이의 with: 아래
+          # 줄이어야 한다 — 같은 job의 다른 스텝이나 env: 같은 다른 키 아래로 옮긴 핀은 버전 입력이 아니다. 또 이 job 블록 전체에서
+          # setup-node를 가리키는 줄은 앞의 `- ` 유무 · 따옴표 · 대소문자 · 흐름 매핑 꼴과 상관없이 — 줄 단위 드리프트 검사 · 의도적으로
+          # 꼬아 쓴 ci.yml은 코드 소유자 리뷰 — 이 스텝 머리 하나, node-version 키 줄은 이 핀 하나, node-version-file 키 줄은 0이어야 하고(꼴이
+          # 다른 둘째 setup-node 스텝도 PATH 앞에 제 Node를 놓는다), 이 파일 원문에 NEL · LS · PS가 없어야 한다 — 파서마다 줄바꿈 여부가
+          # 달라 블록 경계가 갈린다), 로컬에서는 tests/scripts/events-compat.tests.ps1 st-5 · st-15가(스텝 구성은 st-3이) 지킨다(갈라진 채
+          # 검사기가 새 Node API를 쓰면 머지 뒤 게이트 교착)
+          node-version: '24'
+          # 캐시를 복원하지 않는다 — cache 입력 없음 + package-manager-cache: false. setup-node는 cache가 없어도 체크아웃의
+          # package.json(devEngines.packageManager · packageManager)이 npm을 가리키면 자동 캐시를 켜고 복원 경로는 체크아웃의 .npmrc가
+          # 고른다 — 같은 PR의 이전 실행이 저장한 파일(스키마 · 게이트 스크립트)이 게이트 앞에 풀린다. 체크아웃 전이라 읽을 package.json이
+          # 없어도 심층 방어로 둔다
+          package-manager-cache: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 기준 커밋(PR = HEAD^1 · push = before)의 스키마와 검사기를 git으로 꺼낸다 — 전체 이력이 필요하다.
+          # PR 이벤트에서는 merge 커밋(첫째 부모 = base 끝 · 둘째 부모 = PR head)이 HEAD다
+          fetch-depth: 0
+          # 뒤 스텝은 push · fetch를 하지 않는다 — .git/config에 토큰을 남기지 않는다
+          persist-credentials: false
+      # 체크아웃 뒤에는 이 게이트 스텝 하나뿐이다(액션 없음 — tests/scripts/events-compat.tests.ps1 st-3c가 지킨다)
+      - name: 스키마 호환성 검사(기준 커밋 ↔ 이 체크아웃) — scripts/ci/events-compat.sh
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: bash scripts/ci/events-compat.sh
+
+  events-test:
+    # packages/events 스키마 · 검사기 테스트(vitest — T064 · T067). PR 코드를 도는 job이다 — 의존성 설치 · 테스트 · 테스트가 import하는
+    # PR의 검사기 · package.json 스크립트. 게이트(events-compat)와 job을 나눈 것은 PR 코드가 같은 러너에서 게이트보다 먼저 돌아 게이트
+    # 스크립트 · git 객체 · 속성 · 다음 스텝의 환경을 바꾸지 못하게 하려는 것이다. 토큰 · 비밀을 run 스텝에 넘기지 않는다 — 액션의 기본
+    # token 입력(contents: read)과 캐시 토큰은 체크아웃 뒤 setup-node 탐침이 실행하는 PR 코드가 물려받을 수 있다(게이트와는 다른 VM · PR
+    # 범위 캐시라 게이트 무결성과는 무관). 검사기를 더 엄격하게 하거나 잘못 고친 변경과 게이트 Node 고정값의 드리프트를 머지 전에 잡는
+    # 곳도 이 job이다(머리 주석의 한계 — sch-14 패키지 밖 사본 · sch-21 · sch-9 · sch-23, 이 job이 그 시험을 실제로 돌릴 때만). 패키지 밖
+    # 사본은 NODE_PATH · NODE_OPTIONS를 지운 env로 돈다 — 아래 테스트 스텝은 pnpm의 vitest 실행 shim을 거치고, 그 shim이 NODE_PATH에
+    # .pnpm/node_modules(ajv가 호이스트된 곳)를 넣는다. 그 env에서 사본 위치가 ajv를 해석하지 못함은 sch-24가 먼저 확인한다. 이 방어는
+    # 시험 실행 경로(시험 파일 · packages/events/package.json의 test 스크립트 · vitest 설정 · 루트 pnpm-workspace.yaml · package.json ·
+    # pnpm-lock.yaml · .npmrc(pnpm node-options 등) · .pnpmfile.cjs 등 events-test가 읽는 pnpm · vitest 설정과 훅 파일 — events-test는 PR
+    # 코드를 도는 job이라 이 목록은 닫힌 목록이 아니다)를 바꾸는 변경(앞선 PR 포함)으로 꺼질 수 있다. 교착 방어(sch-9 · sch-14 · sch-21 ·
+    # sch-23 · sch-24)가 이 job에 기대므로 required check 지정과 그 경로의 코드 소유자 리뷰(머리 주석의 운영자 인계 — 루트 .npmrc ·
+    # .pnpmfile.cjs 포함)를 운영자에게 인계한다.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 뒤 스텝이 PR 코드를 돌린다 — .git/config에 토큰을 남기지 않는다(push · fetch를 하는 스텝이 없다)
+          persist-credentials: false
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version-file: '.node-version'
+          cache: pnpm
+      - name: 의존성 설치(잠금파일 고정 · 스크립트 실행 금지)
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      # --fail-if-no-match: 걸러 낸 프로젝트가 없으면 pnpm은 exit 0으로 끝난다 — 워크스페이스(루트 pnpm-workspace.yaml)에서 packages/events를
+      # 빼는 변경이 시험 0개의 빈 통과가 되지 않게 한다(머리 주석의 한계 — 시험 실행 경로)
+      - name: 스키마 · 검사기 테스트(vitest)
+        run: pnpm --filter @jt/events --fail-if-no-match test

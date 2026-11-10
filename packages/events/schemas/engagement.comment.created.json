@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://joshuatech.dev/events/engagement.comment.created/v1",
+  "x-version": "1.0.0",
+  "title": "engagement.comment.created",
+  "description": "engagement가 댓글을 만들었다(subject comment:<comment_id> · 발행 SP-2). 소비 예정: notification, insights.",
+  "type": "object",
+  "properties": {
+    "comment_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "댓글 id(engagement의 id 체계 — 형식은 두지 않는다)"
+    },
+    "target": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*:[^\\x00-\\x1f\\x7f-\\x9f]+$(?!\\n)",
+      "description": "댓글 대상 <종류>:<id>(예: note:<slug> — 봉투 subject와 같은 pattern · id 부분은 제어 문자가 없는 비지 않은 문자열)"
+    },
+    "author_sub": {
+      "type": "string",
+      "minLength": 1,
+      "description": "작성자 sub"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "작성 시각(RFC 3339)"
+    },
+    "body_excerpt": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "본문 앞부분(200 코드 포인트 이하 · 빈 문자열 허용 — 본문이 첨부뿐이거나 정규화 뒤 비는 경우)"
+    }
+  },
+  "required": [
+    "comment_id",
+    "target",
+    "author_sub",
+    "created_at",
+    "body_excerpt"
+  ]
+}

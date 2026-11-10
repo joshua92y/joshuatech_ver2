@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://joshuatech.dev/events/media.object.ready/v1",
+  "x-version": "1.0.0",
+  "title": "media.object.ready",
+  "description": "media가 업로드 객체의 변환을 마쳤다(subject media:<media_id> · 발행 SP-2). 소비 예정: portfolio-core · engagement 첨부 연결.",
+  "type": "object",
+  "properties": {
+    "media_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "미디어 객체 id(media의 id 체계 — 형식은 두지 않는다)"
+    },
+    "owner_sub": {
+      "type": "string",
+      "minLength": 1,
+      "description": "소유자 sub"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "image",
+        "file"
+      ],
+      "description": "객체 종류"
+    },
+    "variants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "변환본 이름(예: thumb)"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https://[A-Za-z0-9._~:/?#@!$&'()*+,;=%\\[\\]-]+$(?!\\n)",
+            "description": "변환본의 https 절대 URL(scheme은 https만 · RFC 3986 글자만). 렌더하거나 가져오기 전에 허용 호스트를 확인하는 것은 소비자 몫이다"
+          }
+        },
+        "required": [
+          "name",
+          "url"
+        ],
+        "description": "변환본 하나"
+      },
+      "description": "변환본 목록(빈 배열 허용)"
+    },
+    "bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "원본 크기(바이트)"
+    }
+  },
+  "required": [
+    "media_id",
+    "owner_sub",
+    "kind",
+    "variants",
+    "bytes"
+  ]
+}

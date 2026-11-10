@@ -1,0 +1,13 @@
+"""{{ pod_name }} Celery 작업(T072 D14) — 기본 beat 작업은 outbox dead purge 하나(contracts/events.md · 계약 「Celery」 행)."""
+
+from __future__ import annotations
+
+from {{ pod_snake }}.celery import PURGE_TASK, app
+
+
+@app.task(name=PURGE_TASK)
+def purge_dead_outbox() -> int:
+    """dead_at + 30 d가 지난 dead outbox 행을 지운다(django_common.outbox.purge_dead — DB 시계 · 멱등) · 지운 행 수."""
+    from django_common.outbox import purge_dead
+
+    return purge_dead()

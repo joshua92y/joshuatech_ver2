@@ -1,0 +1,18 @@
+"""{{ pod_name }} 루트 urlconf(T072 D9) — Ninja API 하나(/healthz · /ready · /health · /api/openapi.json)와 RFC 9457 처리기.
+{%- if has_admin %}
+
+admin은 이 urlconf에 없다 — AdminHostMiddleware가 ADMIN_HOST 요청만 ADMIN_URLCONF({{ pod_snake }}.urls_admin)로 보낸다(m2m 호스트의
+/admin/은 404).
+{%- endif %}
+"""
+
+from django.urls import path
+
+from {{ pod_snake }}.api import api
+
+urlpatterns = [path("", api.urls)]
+
+handler400 = "{{ pod_snake }}.errors.bad_request"
+handler403 = "{{ pod_snake }}.errors.permission_denied"
+handler404 = "{{ pod_snake }}.errors.page_not_found"
+handler500 = "{{ pod_snake }}.errors.server_error"

@@ -1,0 +1,69 @@
+> translation-pending (2026-11-03) — 영어 원본 §Table grades(`check_rls` 프레임워크 면제 `FRAMEWORK_TABLES` · ENABLE+FORCE 둘 다) · §Tests(DeprecationWarning 자기 모듈 한정 `filterwarnings`) · §Outbox and events(`tenant_id` UUID 필수·컨텍스트 충돌 규칙 · DLQ prod/dev 접두) · §Auth(`ACCESS_EXPECTED_CN` = Client ID · 거부 목록 클라이언트 재시도 0 · 면제 정확 일치 · 웹훅 HMAC 정규형 규약 — T062) · §Logging(마스킹 Mapping 재귀 · X-Request-ID 형식 · span 속성 · `/health` 병렬 — T063) · §Tests(`--tb=short` — T063) · §Template and structure(독립 uv 프로젝트 · path 소스 · 저장소 루트 빌드 컨텍스트 · copier update 미지원 · 하네스 — T065) · §Auth(Access 전용 경로 `AUTH_ACCESS_ONLY_PATHS` · `ADMIN_HOST` 정확 일치 · 호스트 400 선행 · 프로브 Host) · §Settings(공개 호스트 기동 실패 · 호출 시점 읽기) · §Errors 신설(RFC 9457 · 검증 400 — T066) · §Auth(admin 경로 접두 `ADMIN_SCRIPT_NAME` — `ADMIN_HOST` 요청 한정 · 전역 `FORCE_SCRIPT_NAME` 금지 · `stripPrefix`) · §Settings(기동 실패 메시지에 값 금지 · `from None` · 비밀 빈 값 금지) · §Errors(`handler400` `invalid_host` · `handler404` `not_found` · `handler500` — T066 r1) · §Auth(접두는 미들웨어에서 · 상대 `STATIC_URL` 요청 단위 접두 삭제 → `ADMIN_SCRIPT_NAME`이 있으면 절대 `STATIC_URL` `<ADMIN_SCRIPT_NAME>/static/`) · §Settings(ConfigMap 값에 `FORCE_SCRIPT_NAME` · `input_value` 잘림 꼬리 · `hide_input_in_errors=True` · 비밀 이름은 pod 계약이 열거) · §Errors(그 밖의 Django 400 → `validation_error` · `handler500` → `internal_error` · 오류 핸들러는 urlconf마다 — T066 r2) · §Errors(`handler403` → `forbidden` · CSRF 실패 응답은 T072) · §Tests(인증 미들웨어 영역에 호스트 거부 · Django 자체 400/403/404/500 · 기동 설정 위생 — T066 r3) · §Errors(CSRF 실패도 403 `forbidden` problem+json — `CSRF_FAILURE_VIEW`) · §Auth(정적 자산 서빙은 템플릿 기본 테스트 · `CSRF_TRUSTED_ORIGINS`에 `https://<ADMIN_HOST>`) · §Tests(CSRF 실패 · `has_admin` 정적 자산 — T066 r4) · §Table grades(A 등급 모델 규칙 — UUID PK · 인덱스 이름 · 클래스 이름 16자 · M2M 명시 through · `check_rls` 판정 규칙 전부와 함수 + 명령 `--database` — T068) · §Auth(`TenantContextMiddleware` 동작 · `TENANT_CONTEXT_EXEMPT_PATHS` · durable · 뷰 예외 롤백 · 스트리밍 경고 · 컨텍스트 도우미 — T068) · §Errors(`problem_response` — T068) · §Table grades(check_rls r2 — 정책 식 정본 비교 · PUBLIC · django_migrations 스키마 한정 · superuser 확장만 제외 · SECURITY DEFINER · 재작성 규칙 · 모델 이름 검사 · `--require-rls-role` · ASCII 성공 줄) · §Auth(frozenset · Ninja catch-all 처리기 · `tenant_context` — T068 r2) · §Table grades(check_rls r3 — 정책 pg_depend 의존 검사 · 스캔 search_path 고정 · session_user 멤버십 · Django 스키마 0개/2개 · 함수 확장 제외 · 시그니처) · §Auth(`tenant_context` atomic 밖 TME · `assume_role` 금지 — T068 r3) · §Table grades(check_rls r4 — 정책 의존 문구(NULLIF 안 연산자 · initdb 부트스트랩 pinned) · A 표 정책은 tenant_isolation 하나(RESTRICTIVE 금지) · 상속 · 파티션 부모 A · `--require-rls-role` 관계 소유 멤버십 · 검사 범위 경계 — T068 r4) · §Table grades(A 등급 관계가 낀 상속 · 파티션 링크는 양쪽 A · B ↔ 프레임워크 링크와 스캔 밖 자식은 판정 밖 — T068 r5) · §Auth(assume_role 문장 — RLS를 비켜 갈 수 있는 자격일 때만 기동 실패 — T068 r5) · §Outbox and events(publish 입력 검사 · 릴레이 한 패스 = durable 트랜잭션 + SET LOCAL 120s · 두 단계 · DLQ 실패 뒤 메인 우선 · 루프 백오프 · Kafka 설정 검증 `client_config` · 지표 모듈 릴레이 전용 · purge_dead · outbox_requeue — T069) · §Outbox and events(jsonb 왕복 관문 — 타입 · 깊이 64 · NUL · 지수 float · PG 텍스트 꼴 크기 · 바이트 예산 · relay 값 = payload::text · 무종료 수명 주기 · fatal 재생성 · 금지 키 확대 · outbox_purge — T069 r2) · §Outbox and events(크기 상한 선택 조건 · 신호 없는 직접 DELETE · error_cb 치명 판정 · 값 없는 진단 로그 · 백오프 하한 0.5 s · 종료 경로 · 깊이 세는 법 · 직렬화 실패 · 하한 조기 거부 · default.topic.config · topic. 접두 · NUL · SASL_SSL TLS 양성 목록 — T069 r3) · §Outbox and events(치명 출처 = produce · flush/poll 예외 · DR — error_cb 아님 · 패스 전 poll(0) · 치명 뒤 DLQ 건너뜀 · 첫 오류 대기 1 s · 고정값 별칭 · purge CronJob — T069 r4) · §Outbox and events(치명 뒤 결과를 돌려준 첫 빈 패스는 대기 유지 · 재생성 간격(상한에서 약 600 s) · 고친 뒤 최악 지연 약 600 s · 긴 대기 중 지표 지연 · 진단 필드 SystemError 원인 이름 — T069 r5) · §Auth(Bearer RS256 · leeway 5 s · 클레임 모양 · 키 fetch 실패 503 `auth_keys_unavailable` · 모르는 kid · 거부 목록 URL 쿼리 금지 · 값 이상 503 · 호스트 선행 · Ninja callable 없음 — T070) · §Auth(비면제 경로 속성 지움 · 팀 기준 URL 정규형 · null 클레임 = 있음 · 키 fetch 2 s는 소켓 동작마다 · 키 URL 스킴 오류 · lookup 인자 오류 · 웹훅 뷰 호스트 검사 · 프로브 Host 필수) · §Settings(ConfigMap `ACCESS_TEAM_DOMAIN` · `AUTHENTIK_AUDIENCE` — T070 r2) · §Auth(팀 기준 URL LDH 호스트 · 포트 1–65535 · `check_settings()` 기동 검사 · 키 fetch 실패 백오프 · 연결은 주소마다 · 거부 목록 0.2 s는 맺어진 연결 · lookup `sid` 문장 · 웹훅 body는 bytes만 — T070 r3) · §Auth(마지막 라벨 `0x` 16진 꼴 거부 · 인증 문자열 설정은 공백 없는 출력 가능 ASCII만 — T070 r4) · §Auth(인증 문자열 설정의 근거 — 우연히만 동작하던 값도 · 라이브러리가 떼거나 지우는 URL 글자(urlsplit · urllib.request · int) — T070 r5 · r6 · r6 마감) · §Logging(로그 필드 · 마스킹 키 확대 · sub_hash · 예외 렌더 · X-Request-ID 설정 무관 · OTel env 거부 · 헬스 스레드 · Sentry — T071) · §Logging(마스킹 닫힌 이름 목록 · 접미 · bytes 키 · 쌍 · 쓰기 실패 고정 줄 · 헬스 칸별 상한 · OTel 거부 env 일곱 · Sentry Logs · x-request-id · trace 문맥 — T071 r2) · §Logging(마스킹 목록 기준 · 쿠키 접두 · camelCase · memoryview · referer · OTel META 접두 · 접미 대칭 · OTel 거부 env 아홉(`OTEL_PROPAGATORS` · `CAPTURE_ALL_METHODS`) · OTel import 전 검사 · 굳은 값 셋 · Django 계측 지표 끔 · Sentry 헤더 traceparent 뺌 · 헬스 스레드 시작 실패 — T071 r3) · §Logging(`OTEL_PROPAGATORS` 토큰 소문자 정확 일치 · 공백뿐인 값 거부 · 굳은 값을 확인할 수 없으면 불일치 · 헬스 시작 실패 Exception/BaseException 구분 — T071 r4) · §Logging(camelCase 머리글자 경계 · Django 인증 폼 비밀번호 필드 · `OTEL_PROPAGATORS` 공백 = `str.strip` · `sentry` 거부 · OTLP 헤더 env 거부 · 거부 기준 다섯 절 · 헬스 시작 실패의 자리는 시작 전일 때만 놓는다 — T071 r5) · §Logging(camelCase 세 꼴 판정 · OTLP mTLS 클라이언트 키 · 인증서 env 거부 · 엔드포인트 닫힌 꼴(`span_exporter`와 무관) · 다섯째 절 = span 내보내기의 OTLP 자격 · 빈 값 일반 규칙과 MIDDLEWARE_POSITION 예외 — T071 r6) · §Logging(엔드포인트 스킴은 ASCII 대소문자 무시 — T071 r7) · §Logging(Sentry init 실패 = 예외 클래스 이름만 실은 `ImproperlyConfigured` — T071 r8) · §Logging(Sentry init 실패는 `Exception`만 바꾸고 `BaseException`은 그대로 — T071 r9) · §Tests(django-common addopts `--show-capture=no` — T071 r9) · §Tests(django-common 공유 실행 = 패키지 ini · `-O` 금지 · 실패 출력을 넓히는 옵션 금지 — T071 r10) · §Tests(`short`가 아닌 `--tb` · `-o` addopts 덮기 금지 — T071 마감) · §Logging(semconv 토큰 판정 · problem 조건 · JSON 폴백 예외 · 비율 샘플러 ARG — T071 마감) · §Template and structure(렌더 · 검사 전용 생성의 형제 없는 배치 예외 — T072) · §Auth(프로브 Host = downward API `POD_IP` — T072) · §Settings(ConfigMap 키 갱신 · `IDENTITY_M2M_URL` 삭제 · 템플릿 settings 규칙 — 프로필 · 게이트 2 · SECRET_KEY 강도 · URL 사용자 정보 · 클러스터 교차 규칙 — T072) · §Tests(생성 pod `--show-capture=no` — T072) · §Migrations(Job은 `<pod>-migrate`만 · hook ES · app role GRANT 마이그레이션 — T072) · §Dragonfly(브로커 transport 값 — T072) · §Logging(원문 줄 예외 · `LOGGING_CONFIG = None` — T072) · §Settings(검증된 설정을 대신하는 env 다섯 기동 거부 — T072 r2) · §Tests(생성 pod `--ds=tests.settings` · conftest 실행 가드 — T072 r2) · §Settings(해석할 수 없는 `GUNICORN_CMD_ARGS` 값은 gunicorn 사용법 오류가 값을 찍는다 — T072 ③) · §Tests(단언 식 안에 env 매핑 · 토큰 · 비밀 · 자격 URL 금지 — T072 r3) 개정분 미반영. /finish에서 동기화.
+> 번역본(편의용). 정본은 영어 원본 `.claude/rules/django-pod.md`이며 충돌 시 영어가 우선한다. 동기화: /finish.
+
+```yaml
+paths:
+  - "apps/*/pyproject.toml"
+  - "apps/*/*.py"
+  - "apps/*/**/*.py"
+  - "apps/*/Dockerfile"
+  - "packages/django-common/**"
+  - "templates/django-pod/**"
+```
+
+# Rules for Django pods (`apps/<pod>/`, `packages/django-common/`, `templates/django-pod/`)
+
+범위: `apps/*` 아래의 Django pod 파일 형상(`*.py`, `pyproject.toml`, `Dockerfile`)과 `packages/django-common/`, `templates/django-pod/`. `apps/web`은 JS 트리라 이 glob들 중 어느 것에도 매치되지 않으므로 이 규칙은 그곳에서 절대 로드되지 않는다(`web.md`가 관장). 기록 계약: `specs/003-platform-foundation/contracts/pod-template.md`(+ outbox는 `contracts/events.md`). 충돌 시 계약이 우선한다; 계약을 먼저 개정한다.
+
+## Template and structure
+
+- pod는 `copier copy templates/django-pod apps/<pod>`로 생성한다; 생성된 pod는 수정 없이 자기 테스트를 통과해야 하고 `packages/django-common`에 의존한다(공통 코드를 pod로 복사하지 않는다).
+- 템플릿 변경은 생성 결과를 그린 상태로 유지해야 한다; 템플릿 변경을 커밋하기 전에 생성된 pod의 테스트 스위트를 실행한다.
+
+## Table grades (TenantModel / GlobalModel)
+
+- 등급 A(테넌트 범위): `TenantModel`을 상속 — `tenant_id` UUID NOT NULL, 인덱스 `(tenant_id, id)`, `rls_policies(<table>)` 마이그레이션 헬퍼를 통한 `ENABLE` + `FORCE ROW LEVEL SECURITY` + `tenant_isolation` 정책. 행(row)은 요청 트랜잭션의 `app.tenant_id` 컨텍스트를 통해서만 도달 가능하다; 컨텍스트 없음 → 0행.
+- 등급 B(pod 전역): `GlobalModel`을 상속. 허용 목록만: `tenant`, `tenant_membership`, `outbox`, `session_revocation_log`. B등급 테이블 추가는 `contracts/pod-template.md`와 이 규칙을 먼저 개정해야 한다.
+- `check_rls`(CI + 기동 시)는 통과해야 한다: 모든 A등급 테이블에 FORCE RLS + 정책이 있고, RLS 없는 모든 테이블은 B 허용 목록에 있다.
+- 역할(role): owner 역할은 `bypassrls`를 가지며 마이그레이션/시드 전용이다 — 런타임에는 절대 쓰지 않는다; app 역할은 `NOBYPASSRLS`다. DB와 역할 이름은 환경별로 분리한다(dev는 `dev_` 접두); 역할을 환경 간에 절대 공유하지 않는다.
+
+## Outbox and events
+
+- 발행은 `transaction.atomic()` 안에서 `django_common.outbox.publish(topic, subject, data, *, tenant_id=None)`로만 한다. 테넌트 컨텍스트도 없고 `tenant_id` 인자도 없으면 → `OutboxUsageError`; 컨텍스트 없는 경로(webhook, admin revoke, 기동 잡)는 반드시 `tenant_id`를 명시적으로 전달한다.
+- 릴레이는 app 역할로 실행되고 `dead_at IS NULL`만 선택한다(`FOR UPDATE SKIP LOCKED`); `attempts >= 10` → 엔벨로프를 `<pod>.dlq`로 발행하고 `dead_at`을 설정한다; dead 행은 `dead_at + 30 d`에 purge된다(Celery beat, 템플릿의 유일한 기본 beat 잡).
+
+## Auth
+
+- 요청 인증 체인: Bearer JWT(svc DNS를 통한 JWKS; `iss` 공개 URL, `aud`, `exp`, `nbf` 검증) + `Cf-Access-Jwt-Assertion`(`aud`가 {M2M, ADMIN}에 속하고 `common_name == ACCESS_EXPECTED_CN`) + 거부 목록(`revoked:sub:{sub}`, `revoked:sid:{sid}`). 거부 목록 조회 실패 = 503 `denylist-unavailable`, fail-closed(0.2초 타임아웃).
+- `AUTH_ACTOR_SUB` 설정됨 → `act.sub`를 추가 검증; 미설정(빈 값) = impersonation 모드, `act` 검사 없음. 빈 문자열은 `AUTH_ACTOR_SUB`와 dev `ADMIN_HOST`의 유효한(VALID) 값이다 — 필수 설정 검사는 존재 여부를 단언하지, 비어 있지 않음을 단언하지 않는다.
+- 예외: 헬스 엔드포인트 3개만. webhook 경로는 명시적으로 나열하며 대신 HMAC + 타임스탬프 ±5분 + 멱등성 키를 쓴다.
+- admin urlconf는 `request.get_host() == ADMIN_HOST`일 때만 마운트한다; dev의 `ADMIN_HOST`는 빈 값 → admin이 아예 없다.
+
+## Settings
+
+- pydantic-settings → Django settings; 필수 값 누락은 기동 시 `ImproperlyConfigured`를 던진다. 시크릿은 env(ESO `<pod>-env`)에서만 온다; 비밀이 아닌 값(`ACCESS_AUD_*`, `ACCESS_EXPECTED_CN`, `AUTH_ACTOR_SUB`, `ADMIN_HOST`, `ALLOWED_HOSTS`, `IDENTITY_M2M_URL`)은 ConfigMap에서 온다. 메일은 `MAILERS`로만(`EMAIL_*` 금지).
+- `DATABASE_OWNER_URL`은 migrate Job의 env(`<pod>-migrate`)에만 존재한다; 런타임 env에는 절대 나타나지 않는다.
+
+## Tests (mandatory, constitution II)
+
+- 모든 pod는 6개 기본 테스트 영역을 탑재하고 그린으로 유지한다: 헬스 3종(`/healthz`, `/ready` DB만, `/health` 항상 200), 테넌트 RLS(A: 교차 테넌트 0행, 컨텍스트 없음 0행, owner 전부; B: app 역할이 전부 읽음), outbox(사용 오류, 릴레이, DLQ, purge), 인증 미들웨어(토큰/Access/거부 목록/actor 매트릭스), 로깅(필드 존재, `authorization`/`cookie`/`x-authentik-signature` 부재), 마이그레이션 + OpenAPI 스냅샷. 절대 삭제하거나 건너뛰지 않는다.
+- pytest는 `-W error::DeprecationWarning`으로 실행한다; `filterwarnings` 항목은 자기 모듈로만 범위를 한정한다.
+
+## Migrations
+
+- 마이그레이션은 Argo PreSync migrate Job(owner 역할)만 실행한다; 앱은 절대 마이그레이션하지 않는다. Job의 첫 단계는 `manage.py migrate` 전에 멱등한 CONNECT 경계 SQL(`REVOKE CONNECT ... FROM PUBLIC; GRANT CONNECT ...`)이다.
+- 2단계(two-phase) 규칙: 컬럼 삭제, NOT NULL 추가, 타입 변경은 반드시 두 릴리스에 걸쳐 expand → contract로 나눈다.
+- RLS 정책 변경은 전용 마이그레이션으로만 간다 — 스키마나 데이터 변경과 절대 섞지 않는다.
+- CI 게이트: `makemigrations --check` + `django-migration-linter`가 통과해야 한다(린터가 파괴적 연산을 잡는다).
+
+## Dragonfly
+
+- 자기 소유 키는 전부 `<pod>:` 접두를 쓴다 — Celery `broker_transport_options.global_keyprefix`와 캐시 `KEY_PREFIX`. Dragonfly 사용자 = pod 이름; 거부 목록 키는 ACL `%R~revoked:*`로 읽기 전용이다. `socket_timeout` 0.2초.
+
+## OpenAPI snapshot refresh
+
+- 스냅샷은 의도적으로만 바뀐다: 의도한 API 변경이나 django-ninja 마이너 범프 후에 스위트를 실행하고, 스냅샷 diff를 라우트별로 검토한 뒤, 원인이 된 변경과 같은 커밋에 갱신된 스냅샷을 커밋한다. 빌드를 그린으로 만들려고 맹목적으로 재생성하지 않는다.
+
+## Logging
+
+- structlog JSON을 stdout으로, `ts level logger event request_id tenant_id sub_hash trace_id span_id` 필드로. 프로세서는 `authorization`, `cookie`, `x-authentik-signature`와 로깅되는 URL의 쿼리 스트링을 제거한다.

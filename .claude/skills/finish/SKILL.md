@@ -27,7 +27,7 @@ Write `specs/<feature>/report.md`:
 ```
 
 ## 2. Learning note draft
-Write `content/study/<NNN-slug>.mdx` following `.claude/rules/content.md`: full frontmatter with `draft: true`, `change: "<NNN-slug>"`, `sources` listing spec, plan, report, and any decisions touched; the five sections `## 문제`, `## 배운 개념`, `## 선택과 대안`, `## 결과와 검증`, `## 다음 학습`. Sources of substance: the spec's decision table, plan Complexity Tracking, approval review findings, the report. If a note already exists, ask before creating a `-2` file.
+Write `content/study/<NNN-slug>.mdx` following `.claude/rules/content.md`: full frontmatter with `draft: true`, `change: "<NNN-slug>"`, `sources` listing spec, plan, report, and any decisions touched; the five sections `## 문제`, `## 배운 개념`, `## 선택과 대안`, `## 결과와 검증`, `## 다음 학습`. Sources of substance: the spec's decision table, plan Complexity Tracking, approval review findings, the report, and the per-task learning logs under `content/tmp/<NNN>-*/` (`.claude/rules/content.md` §`content/tmp/`). After step 6 reports the Study contract boundary ✅, delete the consumed `content/tmp/<NNN>-*/` directories in the same commit as the note. If a note already exists, ask before creating a `-2` file.
 
 ## 3. CHANGELOG
 Under `## [Unreleased]` in `CHANGELOG.md` add one bullet per user-visible change in the right category (Added/Changed/Fixed/Removed), each linking `specs/<NNN-slug>/`.

@@ -1,0 +1,50 @@
+"""{{ pod_name }} Ninja API(T072 D9) — 루트 하나에 헬스 라우터(/healthz · /ready · /health)를 달고 OpenAPI는 /api/openapi.json이다.
+
+- 인증은 Ninja auth가 아니라 미들웨어(django_common.auth.JwtAuthMiddleware)가 URL 해석 전에 판정한다 — /api/openapi.json도
+  자격이 필요한 경로다(헬스 3종만 면제).
+- 오류 응답은 RFC 9457(django_common.problem.problem_response): Ninja 요청 검증 실패(쿼리 누락 · 타입 · 잘못된 JSON 본문 →
+  HttpError 400 포함)는 400 validation_error(Ninja 기본 422 {detail}을 쓰지 않는다) · HttpError 403 · 404와 Http404는 forbidden ·
+  not_found. HttpError의 그 밖 상태는 HTTP_ERROR_SLUGS에 슬러그를 더한 뒤에만 쓴다(표 밖이면 다시 올려 500 — 슬러그 없는 응답을
+  조용히 만들지 않는다).
+- catch-all Exception 처리기는 두지 않는다 — DEBUG가 꺼져 있으면 Ninja가 예외를 다시 올려 Django handler500(500 internal_error)이
+  되고, TenantContextMiddleware가 요청 트랜잭션을 롤백한다(Ninja 처리기가 응답으로 바꾸면 롤백이 불리지 않는다 — 계약 「DB 연결」 행).
+- docs(/docs)는 끈다. OpenAPI 스냅샷은 tests/snapshots/openapi.json(info.title은 따로 비교 — 갱신 절차는 README).
+"""
+
+from __future__ import annotations
+
+from django.http import Http404, HttpRequest, HttpResponse
+from django_common.health import health_router
+from django_common.problem import problem_response
+from ninja import NinjaAPI
+from ninja.errors import HttpError, ValidationError
+
+TITLE = {{ (description or pod_name) | tojson }}
+OPENAPI_URL = "/api/openapi.json"
+# Ninja HttpError 상태 → 오류 슬러그(contracts/identity-admin-api.md §오류 슬러그). pod가 새 상태를 쓰면 여기에 더한다.
+HTTP_ERROR_SLUGS: dict[int, str] = {400: "validation_error", 403: "forbidden", 404: "not_found"}
+
+
+def install_error_handlers(api: NinjaAPI) -> None:
+    """api에 RFC 9457 처리기 셋을 단다(시험 probe API도 이 함수를 재사용한다 — tests/probe_urls.py)."""
+
+    @api.exception_handler(ValidationError)
+    def _validation_error(request: HttpRequest, exc: ValidationError) -> HttpResponse:
+        return problem_response("validation_error", 400)
+
+    @api.exception_handler(HttpError)
+    def _http_error(request: HttpRequest, exc: HttpError) -> HttpResponse:
+        slug = HTTP_ERROR_SLUGS.get(exc.status_code)
+        if slug is None:
+            raise exc
+        return problem_response(slug, exc.status_code)
+
+    @api.exception_handler(Http404)
+    def _not_found(request: HttpRequest, exc: Http404) -> HttpResponse:
+        return problem_response("not_found", 404)
+
+
+# 루트 하나 — 헬스 면제는 경로 정확 일치라 API를 나눌 필요가 없다. health_router는 이 API에만 단다(라우터는 API 하나에만 붙는다).
+api = NinjaAPI(title=TITLE, version="1", openapi_url=OPENAPI_URL, docs_url=None)
+api.add_router("", health_router)
+install_error_handlers(api)

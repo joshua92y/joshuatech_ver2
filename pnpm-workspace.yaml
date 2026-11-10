@@ -1,0 +1,10 @@
+# pnpm 워크스페이스 — TypeScript/Node 패키지만 (Python은 루트 pyproject.toml의 uv workspace)
+packages:
+  - apps/web
+  - packages/content
+  - packages/events
+
+# npm 숙성 3일(분 단위) — Renovate 정책(config:best-practices ⊃ security:minimumReleaseAgeNpm)과 같은 창을 로컬
+# `pnpm add`/`pnpm install` 해석에도 적용한다(T064 리뷰 B-1: tinybench 6.2.3이 배포 19시간 만에 잠금에 들어감).
+# CI의 `--frozen-lockfile`은 해석을 건너뛰므로 영향이 없다.
+minimumReleaseAge: 4320
