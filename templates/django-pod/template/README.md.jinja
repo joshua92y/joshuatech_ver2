@@ -272,6 +272,12 @@ docker buildx build --platform linux/arm64 -f apps/{{ pod_name }}/Dockerfile \
 {%- endif %}
 | migrate(Job) | 256Mi | 512Mi |
 
+## 뷰 응답 규칙
+
+django-ninja 핀이 1.7.0에 머무는 동안 뷰는 dict 또는 선언한 응답 스키마의 정확한 인스턴스만 돌려준다. 하위 클래스 인스턴스는 선언
+밖 필드를 응답에 실을 수 있다(규칙 django-pod.md §Errors). 200이 아닌 응답은 `Status(code, body)`로 낸다(튜플 반환은 폐기 경고가
+난다).
+
 ## OpenAPI 스냅샷 갱신
 
 `tests/snapshots/openapi.json` = `api.get_openapi_schema()`에서 `info.title`을 뺀 값이다(title은 따로 비교한다). API를 일부러
@@ -286,13 +292,15 @@ uv run --locked python -c "import json, os, pathlib, django; os.environ['DJANGO_
 ## 재생성
 
 `copier update`는 지원하지 않는다(모노레포 안 템플릿이라 `_commit`이 없다). 템플릿이 바뀌면 같은 답으로 다시 생성하고 diff로
-옮긴다 — 저장소 루트에서 상대 경로로 생성하고, `.copier-answers.yml`의 답(`description` · `owns_events` · `consumes_events` ·
-`has_celery` · `has_admin`)도 `--data`로 그대로 준다:
+옮긴다 — 저장소 루트를 cwd로 두고 하네스 잠금의 copier로 돌린다(맨 `copier`가 아니다). `.copier-answers.yml`에 기록된 답은
+`--defaults`가 다시 쓴다(`--data`로 되풀이하지 않는다):
 
 ```sh
-copier copy --trust --defaults --overwrite --data pod_name={{ pod_name }} templates/django-pod apps/{{ pod_name }}
+uv run --project templates/django-pod --locked python -m copier recopy --trust --defaults --overwrite apps/{{ pod_name }}
 ```
 
-생성 pod가 고친 파일(conf.py의 목록 · 모델 · 시험 등)은 diff를 보고 다시 옮긴다.
+손으로 고친 템플릿 소유 파일은 템플릿 꼴로 되돌아가고, 템플릿에 없는 pod 소유 파일은 그대로 남는다 — `git diff`를 보고 고친
+자리(conf.py의 목록 · 시험 상수 등)를 다시 옮긴다.
 
-생성 뒤 `_tasks: uv lock`이 실패하면 copier가 대상 디렉터리를 지운다 — `--no-cleanup`으로 남겨 원인을 본다.
+`_tasks: uv lock`이 실패하면 copier는 자기가 새로 만든 대상 디렉터리만 지운다(`--no-cleanup`으로 남겨 원인을 본다). 이미 있던
+디렉터리는 지우지 않으므로 반쯤 생성된 채 남는다 — `git status`로 확인하고 원인을 고친 뒤 같은 명령을 다시 돈다.

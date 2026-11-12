@@ -1,0 +1,52 @@
+{
+  "components": {
+    "schemas": {}
+  },
+  "info": {
+    "description": "",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/health": {
+      "get": {
+        "description": "상세 — DB · Dragonfly · Kafka 병렬(항목마다 자기 칸) · 항상 200(ok | degraded).",
+        "operationId": "django_common_health_health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/healthz": {
+      "get": {
+        "description": "liveness — 프로세스만(I/O 0).",
+        "operationId": "django_common_health_healthz",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Healthz"
+      }
+    },
+    "/ready": {
+      "get": {
+        "description": "readiness — default 별칭 DB 검사 하나(/ready 칸) · 200 {\"status\": \"ok\"} 또는 503 not_ready(detail 없음).",
+        "operationId": "django_common_health_ready",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Ready"
+      }
+    }
+  },
+  "servers": []
+}

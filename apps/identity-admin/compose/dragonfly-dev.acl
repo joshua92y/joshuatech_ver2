@@ -1,0 +1,3 @@
+USER default OFF +auth +hello
+USER admin ON nopass ~* &* +@all
+USER identity-admin ON nopass %R~revoked:* ~identity-admin:* +@all

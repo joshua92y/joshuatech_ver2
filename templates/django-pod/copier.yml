@@ -1,9 +1,11 @@
 # Copier template for a Django pod (T072 — design: specs/003-platform-foundation/design/t072-design.md D2).
 # Contract of record: specs/003-platform-foundation/contracts/pod-template.md
-# Usage (from the repository root):
-#   copier copy --trust --defaults --data pod_name=<pod> templates/django-pod apps/<pod>
+# Usage (from the repository root, with the harness copier and a relative template path):
+#   uv run --project templates/django-pod --locked python -m copier copy --trust --defaults --data pod_name=<pod> templates/django-pod apps/<pod>
+#   (add --overwrite when apps/<pod> already exists.)
 #   --trust is required: _tasks runs `uv lock` inside the generated pod (needs PyPI). If the task fails, copier deletes
-#   the destination; rerun with --no-cleanup to keep it for debugging.
+#   only a destination it created itself (rerun with --no-cleanup to keep it for debugging); an existing directory is
+#   left half-generated — check git status, fix the cause and rerun.
 # Render-only generation (CI kubeconform job, harness variants): add --skip-tasks instead of --trust (no uv lock).
 #   Such a tree may live without a sibling packages/django-common; never run uv lock or uv sync in it.
 # NOTE: this directory is intentionally NOT a uv workspace member — the generated pyproject under template/ is
