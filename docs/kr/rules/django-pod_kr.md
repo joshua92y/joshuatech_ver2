@@ -17,7 +17,8 @@ paths:
 
 ## Template and structure
 
-- pod는 `copier copy templates/django-pod apps/<pod>`로 생성한다; 생성된 pod는 수정 없이 자기 테스트를 통과해야 하고 `packages/django-common`에 의존한다(공통 코드를 pod로 복사하지 않는다).
+- pod는 `copier copy --trust --defaults --data pod_name=<pod> templates/django-pod apps/<pod>`로 생성한다(`--trust`는 템플릿의 `_tasks: uv lock` 때문에 필요하다). 저장소 루트에서 하네스 copier(`uv run --project templates/django-pod --locked python -m copier …`)와 상대 템플릿 경로로 돌려 `.copier-answers.yml`에 로컬 절대 경로가 남지 않게 하고, 대상 디렉터리가 이미 있으면 `--overwrite`를 더한다(T073). 기본 생성 pod(sample-pod)는 수정 없이 자기 테스트를 통과해야 한다; 고유 로직을 더하는 pod(identity-admin)는 템플릿 소유 파일을 확장 지점에서만 고치고 고친 자리마다 표식을 달며 그 목록을 README에 둔다(T073). 모든 pod는 `packages/django-common`에 의존한다(공통 코드를 pod로 복사하지 않는다).
+- 모노레포 안 템플릿 경로는 git 저장소 루트가 아니라서 copier가 작업 트리를 읽고 `_commit`을 남기지 않는다; `copier update`는 SP-1에서 지원하지 않는다 — 다시 생성하고 diff로 옮긴다: 저장소 루트에서 `uv run --project templates/django-pod --locked python -m copier recopy --trust --defaults --overwrite apps/<pod>`를 돌리고(기록된 답을 다시 쓰고, 손으로 고친 템플릿 소유 파일은 되돌아가며, 템플릿이 만들지 않는 pod 소유 파일은 남는다) `git diff`에서 표식 달린 수정을 되살린다. `_tasks: uv lock`이 실패하면 copier는 자기가 만든 대상 디렉터리만 지운다 — 이미 있던 디렉터리는 반쯤 생성된 채 남는다(T073).
 - 템플릿 변경은 생성 결과를 그린 상태로 유지해야 한다; 템플릿 변경을 커밋하기 전에 생성된 pod의 테스트 스위트를 실행한다.
 
 ## Table grades (TenantModel / GlobalModel)
@@ -25,7 +26,7 @@ paths:
 - 등급 A(테넌트 범위): `TenantModel`을 상속 — `tenant_id` UUID NOT NULL, 인덱스 `(tenant_id, id)`, `rls_policies(<table>)` 마이그레이션 헬퍼를 통한 `ENABLE` + `FORCE ROW LEVEL SECURITY` + `tenant_isolation` 정책. 행(row)은 요청 트랜잭션의 `app.tenant_id` 컨텍스트를 통해서만 도달 가능하다; 컨텍스트 없음 → 0행.
 - 등급 B(pod 전역): `GlobalModel`을 상속. 허용 목록만: `tenant`, `tenant_membership`, `outbox`, `session_revocation_log`. B등급 테이블 추가는 `contracts/pod-template.md`와 이 규칙을 먼저 개정해야 한다.
 - `check_rls`(CI + 기동 시)는 통과해야 한다: 모든 A등급 테이블에 FORCE RLS + 정책이 있고, RLS 없는 모든 테이블은 B 허용 목록에 있다.
-- 역할(role): owner 역할은 `bypassrls`를 가지며 마이그레이션/시드 전용이다 — 런타임에는 절대 쓰지 않는다; app 역할은 `NOBYPASSRLS`다. DB와 역할 이름은 환경별로 분리한다(dev는 `dev_` 접두); 역할을 환경 간에 절대 공유하지 않는다.
+- 역할(role): owner 역할은 `bypassrls`를 가지며 마이그레이션 전용이다 — 런타임에는 절대 쓰지 않는다; app 역할은 `NOBYPASSRLS`다. B 등급 표만 쓰는 시드 명령(identity-admin `seed_tenant`)은 runtime 프로필 · app 역할로 돈다(T073). DB와 역할 이름은 환경별로 분리한다(dev는 `dev_` 접두); 역할을 환경 간에 절대 공유하지 않는다.
 
 ## Outbox and events
 
@@ -44,6 +45,10 @@ paths:
 - pydantic-settings → Django settings; 필수 값 누락은 기동 시 `ImproperlyConfigured`를 던진다. 시크릿은 env(ESO `<pod>-env`)에서만 온다; 비밀이 아닌 값(`ACCESS_AUD_*`, `ACCESS_EXPECTED_CN`, `AUTH_ACTOR_SUB`, `ADMIN_HOST`, `ALLOWED_HOSTS`, `IDENTITY_M2M_URL`)은 ConfigMap에서 온다. 메일은 `MAILERS`로만(`EMAIL_*` 금지).
 - `DATABASE_OWNER_URL`은 migrate Job의 env(`<pod>-migrate`)에만 존재한다; 런타임 env에는 절대 나타나지 않는다.
 
+## Errors
+
+- 핀이 django-ninja 1.7.0에 머무는 동안 뷰는 dict 또는 선언한 응답 스키마의 정확한 인스턴스만 반환한다 — 하위 클래스 인스턴스는 반환하지 않는다(1.7.0에서는 하위 클래스 인스턴스가 선언 밖 필드를 응답에 실을 수 있다; django-ninja #1823 · 1.7.3에서 고쳐짐). 200이 아닌 응답은 `(code, body)` 튜플이 아니라 `Status(code, body)`로 낸다(T073).
+
 ## Tests (mandatory, constitution II)
 
 - 모든 pod는 6개 기본 테스트 영역을 탑재하고 그린으로 유지한다: 헬스 3종(`/healthz`, `/ready` DB만, `/health` 항상 200), 테넌트 RLS(A: 교차 테넌트 0행, 컨텍스트 없음 0행, owner 전부; B: app 역할이 전부 읽음), outbox(사용 오류, 릴레이, DLQ, purge), 인증 미들웨어(토큰/Access/거부 목록/actor 매트릭스), 로깅(필드 존재, `authorization`/`cookie`/`x-authentik-signature` 부재), 마이그레이션 + OpenAPI 스냅샷. 절대 삭제하거나 건너뛰지 않는다.
@@ -58,7 +63,7 @@ paths:
 
 ## Dragonfly
 
-- 자기 소유 키는 전부 `<pod>:` 접두를 쓴다 — Celery `broker_transport_options.global_keyprefix`와 캐시 `KEY_PREFIX`. Dragonfly 사용자 = pod 이름; 거부 목록 키는 ACL `%R~revoked:*`로 읽기 전용이다. `socket_timeout` 0.2초.
+- 자기 소유 키는 전부 `<pod>:` 접두를 쓴다 — Celery `broker_transport_options.global_keyprefix`와 캐시 `KEY_PREFIX`. Dragonfly 사용자 = pod 이름; 거부 목록 키는 ACL `%R~revoked:*`로 읽기 전용이다. `socket_timeout` 0.2초. 예외: 거부 목록을 쓰는 유일한 pod인 identity-admin은 `~revoked:* ~identity-admin:* +@all`이고, 그 생성물의 compose aclfile과 시험 conftest도 같은 규칙이다(`contracts/denylist.md` §ACL). pod가 스스로 파생하는 키도 자기 접두 아래에 둔다(identity-admin: `identity-admin:session-floor:{sub}` · `identity-admin:denylist:reapplied-at`)(T073).
 
 ## OpenAPI snapshot refresh
 

@@ -4492,3 +4492,37 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
   - **T116 · CI**: Renovate 범위(`**/tests/**` 무시 — pg-tls 핀 낡음 · `.jinja` 미관리 · 템플릿과 생성 pod 따로 갱신) · setup-uv `version`과 `checksum`을 함께 올리는 규칙 · test job `continue-on-error`는 ps1 판정 밖 · 간접 env 경로(`UV_ENV_FILE` · 각 ini addopts)는 static-16 범위 밖.
   - **dc(T071 소유)**: conftest pg-tls `DockerImage` force 삭제 꼴(동시 세션 충돌 · ② r1 B-3).
   - **push 뒤 첫 CI(VD-T072-CI)에서 볼 것**: setup-uv 세 곳 checksum 통과 · 러너 Compose `*` 지원(gen-35 탐침) · Linux 하네스(arm64 네이티브 빌드 · 스모크 넷 · gen-37 · gen-38) · 생성물 (b) `db_connect_failed OperationalError`(약 7 s · 재시도 ≈ 3) · 경계 `db_boundary_failed UndefinedObject` · test job 60분 · 하네스 1800 s 안 · `harness-stages` artifact · kubeconform job 세 벌 PASS · ac-24h flake 감시.
+
+## T073 (2026-11-10 조사 · 11-12 설계 확정 — US6 구현 · `apps/identity-admin` 생성 · 모델 · API · beat · 시드 → T066 PASS · 세션 모델 Opus 5.5 → Fable 5.2)
+
+- **VD-T072-CI 닫음**(T072 절 끝의 「push 뒤 첫 CI에서 볼 것」 · 2026-11-10): PASS — 초안 PR #1 CI 실행 `42734451060` 6 job success · test job 5분 10초 · django-common `765 passed in 88.97s` · 하네스 `918 passed in 187.92s`(arm64 네이티브 빌드) · setup-uv 세 곳 checksum 통과 · artifact `harness-stages-1` 577 B · kubeconform `결과: PASS · 대상 3 · 실패 0`.
+- **t072 정정(G5 — 닫힌 설계 문서라 여기에 적는다)**: `design/t072-design.md` §인계 T073의 「아니면 `_tasks: uv lock`이 루트 잠금을 고친다」는 틀렸다. `apps/identity-admin`을 루트 `members`에 둔 채 생성하면 `uv lock`이 실패한다(T073 조사 실측 — 조사 template P3). 그래서 루트 워크스페이스 정리(`members`에서 빼고 `exclude`)가 생성보다 먼저다(t073 D2).
+- **과제 문면(tasks.md T073 · :190)**: `copier copy`로 `apps/identity-admin` 생성(`owns_events` 셋) → 모델 `Tenant` · `TenantMembership` · `SessionRevocationLog`(B 등급) + 마이그레이션 + 시드 명령 `seed_tenant --tenant-id <고정 UUID>`(멱등 · 멤버십 2건 · 파생 쓰기 3종의 유일한 주체) + API 넷(`/session/check` · `/sessions/revoke` · `/webhooks/authentik` · `/tenants/me`) + Celery beat 3종(30 s 재적용 · 일 1회 대조 · 일 1회 purge) + Authentik API 클라이언트(svc DNS만 · dev 쓰기 끔) → T066 PASS.
+- **설계 정본 = `design/t073-design.md`**(2026-11-12 확정 · 2,775줄): 문면 · 정본 · T066 시험의 어긋남과 report.md 편차 후보 29행 · 소스로 확인한 사실 · 결정 D1–D30 · 계약 · 규칙 보정 C1–C49(48항목 — 설계 커밋 46 + 조각 ⓪ 2) · 빌드 조각 ⓪–⑦ · VD(T073 안 VD-T073-1–16과 CI · 라이브로 넘긴 12) · 인계 · 사용자 결정(확정 3 · 대기 6) · 위험 · 반영표(Y1–Y24 · E1–E14 · W1–W36 · Z1–Z22 · 마감 확인 9건). 빌드 라운드의 결과와 정정은 이 절에 이어 적는다(설계 문서는 태스크가 닫히면 고치지 않는다).
+- **설계의 뼈대**
+  - 폐기 최종성(D29 · 사용자 결정): 기존 폐기 로그의 사용자 단위 행에서 사용자별 not-before 키(세션 하한 `identity-admin:session-floor:{sub}` · 30일)를 파생하고, `/session/check`가 「하한 > 세션 시작 시각」이거나 「세션 나이 > 30일」이면 inactive로 판정한다. 새 표 · 새 열 0. 불변식 = 하한 수명 ≥ 세션 최대 나이(같은 상수 `REVOCATION_LOG_RETENTION`).
+  - 집행 지점은 BFF의 `/session/check` 하나다(교환 토큰에 `sid`가 없어 pod 경계는 `revoked:sid`를 보지 못한다). BFF 계약을 함께 보정했다 — `issued_at` = callback ID 토큰 `iat`(refresh에서 불변) · 세션 쿠키를 쓰는 네 라우트의 확인 자리 · inactive 처리(RFC 7009 → 쿠키 삭제 → 401) · 캐시 키 둘(구현은 T089 · T092).
+  - 일 1회 대조(D17 · 사용자 결정): Authentik logout 이벤트를 72시간 창으로 읽어 유실 웹훅을 이벤트 시각 기준으로 기록한다(권한 `view_event`의 실제 부여는 T081).
+  - 문면에 없는 관리 명령 `revoke_sessions --sub`(D30 — SP-1에는 관리자 폐기를 부를 다른 길이 없다 · 사용자 단위만).
+- **경과**
+  - 조사 `wf_f01d2b5d-63b`(리더 5 — 발견 164 · 열린 질문 74 · 보고 `.superpowers/t073/research/*.json`).
+  - 설계 초안 `wf_a09c5a74-a30`(D1–D28 · C1–C35 · UD-1–6 — 비판 둘은 세션 중단으로 실패) → 2026-11-12 재개(세션 모델 Fable 5.2) · 비판 `wf_79a84bf9-f57`(A high 1 · medium 6 · low 8 / B high 1 · medium 3 · low 7) → 컨트롤러 결정 Y1–Y24.
+  - 폐기 최종성 분석 `wf_6a1dd5d0-d8f`(사실 검증 2 → 설계 변형 4 → 판정 → 반박 · 보고 `.superpowers/t073/epoch/`): 판정은 전용 영구 표를 골랐고, 반박이 「로그 파생 하한 키 + 서버가 집행하는 세션 절대 수명」이 같은 최종성을 새 표 없이 갖는다는 것을 보였다 → 사용자 결정 둘 → 결정 E1–E14.
+  - 최종 설계 `wf_8b1b5785-fb3`(정본 작성 1 → 계약 · 규칙 반영 3 → 검토 3렌즈 · 에이전트 7 · 3.29M 토큰 · 127분): 검토 A · B · C 모두 approve_with_fixes(high 0 · medium 6 · low 30) → 컨트롤러 결정 W1–W36.
+  - 검토 반영 `wf_7bdc5270-c6d`(설계 고치기 1 → 계약 다시 맞추기 3 → 재검토 2렌즈 · 에이전트 6 · 2.26M 토큰 · 96분): 설계 2,277 → 2,625줄 · §4 재반영 37건 · 재검토 A · B 모두 approve_with_fixes(high 0 · medium 3 · low 19) → 컨트롤러 결정 Z1–Z22.
+  - 마감 `wf_66532cef-008`(설계 고치기 1 → 계약 다시 맞추기 1 → 변경분 확인 1 · 에이전트 3 · 1.80M 토큰 · 72분): 설계 2,625 → 2,748줄 · §4 재반영 16건 · 변경분 확인 approve_with_fixes(high 0 · medium 0 · low 2 · 제안 일곱) → 컨트롤러가 직접 반영(설계 §10 (마) 9건 → 2,775줄).
+  - 커밋 전 컨트롤러 확인: §4 블록 106개 · 151줄이 대상 문서에 글자 그대로 있음(누락 0) · 위생 검사(UTF-8 · LF · BOM · TAB · 줄 끝 공백) 통과 · 계약 9문서의 바뀐 줄 전문 통독 · `spec.md` · `plan.md` · `tasks.md` · `apps/` · `packages/` · `templates/` 무변경.
+- **검토가 바꾼 것(W · Z — 설계 본문에 반영됨 · 여기에는 요지만)**
+  - 첫 검토의 medium 여섯: 「tester-m2m 직접 호출은 pod에서 403」과 양립하지 않는 T079 · T085 문면을 편차 27로 올림(W1) · 관리 명령에서 `--sid` 삭제(330 s 뒤 효력 0인데 출력은 성공 — W13) · Celery 앱은 커밋 뒤 콜백 안에서 import(템플릿의 migrate 프로필 celery 미import 단언 — W22) · 3-way 재생성 리허설은 조각 ⑥ 뒤 컨트롤러 단계로(W23) · 조각 ①은 토대만 · ia 시험은 구현 조각이 먼저 쓴다(W24) · VD-T073-6 · 15의 절차와 합격선(W25).
+  - 컨트롤러가 「검토에서 다시 본다」고 한 셋: 미래 `iat` → inactive(60 s)는 유지(W15) · 신선도 키는 채택하되 `EX 300`(W16) · `nbf` 상한의 기준 시계는 경로별로 — 관리 명령만 DB 시계, 웹훅은 본문 `nbf`를 `⌊created⌋ + 1`과 견줌, `/sessions/revoke`는 비교 없음(W14).
+  - `tests/run-all.ps1` 전체 실행 지시를 설계에서 지움(W32 — tofu plan 슬롯이 운영자 프로필을 쓴다 · 이 문서 「T067」 절의 같은 규칙).
+  - 재검토의 medium 셋: 복구 시간 상한을 「다음 tick + 워커가 먼저 받은 작업들의 마감 + 재접속」으로 적고 승인 문면의 「≤ 30 s」와 달라진 것을 편차 29로 올림(Z1) · 대조 경로의 미래 이벤트 방어에 시험과 변이(Z3) · 구현 전에 이미 초록인 부정 사례에 양성 대조를 두는 규칙(Z7).
+  - 재검토에서 방향을 바꾼 둘: 웹훅 본문 `nbf`가 상한을 넘으면 거부(400)하지 않고 `⌊created⌋ + 1`로 낮춰 기록 + 경고(Z8 — 진짜 로그아웃을 보조 필드 때문에 버리지 않는다) · 관리 명령의 부분 실패 종료 코드 2 → 3(Z9 — argparse 사용법 오류와 겹침). 조각 ③-b는 ③-b1(revoke · 기록 · 쓰기) · ③-b2(웹훅 · 관리 명령)로 갈랐고(Z20), 두 경로를 다 보는 ia 묶음 여섯은 사례 단위로 갈라 revoke 사례를 ③-b1이 먼저 쓴다(마감 확인).
+- **설계 커밋의 계약 · 규칙 보정**(「T073 보정 2026-11-12」 표식 · 규칙 파일은 `(T073)`): contracts/identity-admin-api.md 13항목(C1–C11 · C37 · C38 — 새 절 「관리 명령」 포함) · contracts/denylist.md 9(C12–C15 · C39–C42 · C48) · contracts/bff-api.md 4(C36 · C43–C45) · data-model.md 8(C21–C27 · C49) · contracts/pod-template.md 6(C16–C20 · C46) · contracts/gitops-repo.md 1(C32) · quickstart.md 1(C33) · 규칙 `.claude/rules/django-pod.md`와 kr 미러 4(C28–C30 · C47). 조각 ⓪ 소속(템플릿 파일 · 생성 커밋에서 반영) = C34 · C35.
+- **컨트롤러가 정한 값**: SP-1 고정 테넌트 UUID = `01a1cec4-ecef-77fe-839d-5af5a01a211f`(UUID v7 · data-model.md §1 `id` 행이 정본 — T081 그룹 이름 · T083 시드 인자 · T085 단언이 이 값을 읽는다 · 코드에는 넣지 않는다 · 비밀이 아닌 식별자다).
+- **사용자 결정**
+  - 확정(2026-11-12): UD-5 폐기 최종성 = 「로그 파생 + 수명 30일」 · UD-2 하위 일 1회 대조 = 「이벤트 대조 구현」. (UD-6 django-ninja 1.7.0 유지는 컨트롤러 확정.)
+  - 대기: UD-1 Authentik 판(T080 착수 때) · UD-2 본체 서비스 계정 권한(T081 전) · UD-3 platform-admin 소속 주체(T083 전) · UD-4 「Authentik 세션 삭제」 경로의 정의(T081 전) · UD-7 기본 로그아웃 범위(T089 전) · UD-8 SSO 재진입(T089 전). T073 코드는 어느 답이든 같다.
+- **report.md 편차 후보**: 설계 §1 표 29행(세션 절대 수명 30일 · 관리 명령 · 일 1회 대조의 자료원 · m2m 직접 호출 403 · 복구 시간 상한 등).
+- **범위 밖으로 남긴 것**: contracts/pod-template.md §런타임 계약 표의 두 행(「DB 연결」 · 「인증」)은 칸 안의 이스케이프 안 된 `|` 때문에 GFM에서 칸이 셋으로 갈린다(HEAD `3626d16`부터 있던 꼴 — 이번 diff가 만든 것이 아니다). 다음에 그 파일을 고치는 과제에서 `\|`로 바로잡는다.
+- **다음**: 조각 ⓪(템플릿 문서 정정 C34 · C35 → 하네스 전체 → 루트 워크스페이스 · 잠금 → 순정 생성 · 생성 커밋) → 조각 ① 토대 → ② → ③-a → ③-b1 → ③-b2 → ④ → ⑤-a → ⑤-b → ⑥ → (3-way 재생성 리허설) → ⑦(조각마다 ia 시험 먼저 · 리뷰 2렌즈). 빌더 모델은 기존 규칙대로 `opus` 고정을 유지한다(사용자가 바꾸라고 하면 바꾼다).
