@@ -121,6 +121,21 @@ Write-Host ($o.TrimEnd())
 if ($c -eq 0 -and $o -match '\ASKIP events-compat tests -- ') { Write-Host 'SKIP ci-events-compat -- allowed (bash, git or node not found; see SKIP line above)' }
 else { Check 'ci-events-compat' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see events-compat harness output above" }
 
+# 1b6. ci-publish-pod (T074) — tests/scripts/publish-pod.tests.ps1: .github/workflows/publish-pod.yml 정적 검사(pp-1–pp-28) + scripts/ci/publish-pod-
+#       assert-image.sh · publish-pod-bump.sh 실행 하네스(px-1–px-38 — 가짜 gh · docker · sleep · head · git 심 + bare git 원격 픽스처 · 네트워크 불필요).
+#       정적 계층은 도구와 무관하게 늘 판정한다 — 파일 전체 SKIP 갈래가 없다(1b5와 다르다). 판정은 1b5와 같은 양성 증거 규율: exit 0 이면서 요약 줄
+#       'N passed, 0 failed'가 있어야 PASS(빈 출력 · 크래시 = FAIL). 사본 시험(PUBLISH_POD_WORKFLOW · PUBLISH_POD_ASSERT_SCRIPT ·
+#       PUBLISH_POD_BUMP_SCRIPT)과 선택 실행(PUBLISH_POD_TESTS_ONLY)이면 요약 줄 끝에 접미가 붙어 이 판정을 통과하지 못한다. 실행 사례가
+#       도구(bash · git · yq v4.53.6) 부재로 'SKIP px-n'이 되면 하네스가 'N skipped' 줄을 찍는다 — 판정 줄과 별도로 NOTE 한 줄을 찍어 정적
+#       계층만의 PASS가 실행 계층의 부재를 가리지 않게 한다
+#       (설계 design/t074-design.md D14 · §10 ①).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/publish-pod.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'ci-publish-pod' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see publish-pod harness output above"
+$m = [regex]::Match($o, '(?m)^(\d+) skipped\b')
+if ($m.Success -and [int]$m.Groups[1].Value -gt 0) { Write-Host "NOTE ci-publish-pod -- $($m.Groups[1].Value) execution cases skipped (see SKIP lines above)" }
+
 # 1c. specs index freshness — 이 검사는 낡은 인덱스를 발견하면 specs/README.md를 갱신하는 부작용이 있다(FAIL이면 diff를 검토하고 커밋한다)
 $o = pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/update-specs-index.ps1 2>&1 | Out-String
 Check 'specs-index-fresh' ($LASTEXITCODE -eq 0 -and $o -match '\(unchanged\)') ("exit=$LASTEXITCODE; $($o.Trim()) -- if stale: README was regenerated now, review and commit specs/README.md; if error: fix the spec header and rerun")

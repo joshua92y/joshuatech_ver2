@@ -882,6 +882,147 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
 
 (T059 이후 기록은 이하에 추가)
 
+### T074 — publish-pod · VD-5 · GHCR 공개 (2026-11-16 ~)
+
+> **진행 중(2026-11-16 ~).** 코드(워크플로 `publish-pod.yml` · 스크립트 둘 · 하네스)는 기능 브랜치에 있고, 통합 · 실측(설계 조각 ⑦)은 사용자 동석 세션이다. 세션이 끝나면 이 머리를 「완료」로 바꾸고 아래 「기록 칸」을 채운다(C12). 사용자 결정 **UD-1 = 단계 통합(T074 한정 · 2026-11-16)** — 머지 커밋은 U1b 뒤 기록 칸에 적는다.
+
+- **설계 · 계약**: `specs/003-platform-foundation/design/t074-design.md`(결정 D1–D19 · §5 조각 ⑦ 블록 표 · §6 VD) · `design/build-notes.md` 「T074」. 계약 `contracts/gitops-repo.md` §이미지·승격 「dev bump」 · `contracts/pod-template.md` 이미지 행(표식 「T074 보정 2026-11-16」).
+- **코드(모노레포)**: `.github/workflows/publish-pod.yml`(job 셋 — `build-check`(PR · 빌드와 단언만) · `publish`(main · 단언 → push → registry 단언 → attest → 자기 검증) · `bump`(Environment `production` · App 토큰)) · `scripts/ci/publish-pod-assert-image.sh`(이미지 단언) · `scripts/ci/publish-pod-bump.sh`(낡은 실행 가드 → 제자리 hex 교체 → PR → auto-merge → 15분 기다림 · 머지 결과 대조 → 실패 · 취소 때 자기 PR · 브랜치 정리) · 하네스 `tests/scripts/publish-pod.tests.ps1`(정적 pp-* · 실행 px-* — `tests/run-all.ps1` 1b6 `ci-publish-pod`). 단계 · 까닭 코드의 정본은 두 스크립트의 머리 주석이다.
+- **지금까지의 실측**:
+  - **VD-T074-6(Environment `production` 보호 규칙의 거부 쪽 · 음성 탐침)**: 2026-11-16 **PASS** — 실행 `43837898464`(main이 아닌 ref의 `environment: production` job이 거부됨).
+  - **seed PR(gitops #59 — dev overlay의 첫 `images` 항목 · 사람 PR)**: 검사 초록. 머지는 운영자(squash · U1b보다 먼저).
+- **누가 무엇을**: O 블록 = 관찰(컨트롤러 · 에이전트가 GET · 읽기 query · 익명 요청만). J 블록 = 판단(사용자와 함께). U 블록 = 변경(사용자 UI 또는 **운영자** 명령 — 에이전트는 실행하지 않는다). 머지를 결정하는 GitHub 동작(머지 · auto-merge 걸기 · 실행 승인 · 배포 승인)은 운영자 전용이다(`.claude/rules/infra.md` 「Credentials」). 한 블록에 관찰과 변경을 섞지 않는다. **세션 약속**: 측정하는 동안 gitops에 다른 머지를 하지 않는다(strict 정책 — main이 움직이면 bump PR이 BEHIND가 되어 시간 초과로 정리된다).
+
+#### 전제(통합 전 — 모두 끝나야 O1로 간다)
+
+1. **U0(사용자 · UI)** — App 설치 범위를 gitops 하나로(D19): GitHub Settings → Applications → Installed GitHub Apps → `joshuatech-gitapp-1` → Configure → Repository access → Only select repositories: `platform-gitops` → Save.
+2. **U1a(운영자 · UI)** — 모노레포 ruleset `main`에 required check `identity-admin`(GitHub Actions)을 더한다: 모노레포 Settings → Rules → Rulesets → `main` → Require status checks to pass → Add checks → `identity-admin` → Save changes. 되읽기(읽기 — 에이전트 가능):
+
+   ```powershell
+   $R = 'repos/joshua92y/joshuatech_ver2'
+   gh api "$R/rulesets" --jq '.[] | [.id, .name, .enforcement] | @tsv'
+   gh api "$R/rulesets/<main의 id>" --jq '.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks[] | [.context, .integration_id] | @tsv'
+   ```
+   기대: `identity-admin` 줄이 있고 integration id가 15368이다.
+3. **seed PR #59 머지(운영자)** — validate 초록과 렌더 코멘트 「렌더 변경 없음」을 확인한 뒤 `gh pr merge 59 -R joshua92y/platform-gitops --squash --match-head-commit <확인한 head 커밋>`.
+4. **PR #1(모노레포) CI 전부 초록 · build-check 초록** — VD-T074-1(arm64 러너 적재 빌드 + 이미지 단언 `local` · 캐시 없음 소요 시간 기록).
+
+#### 통합 · 실측 세션 블록
+
+- **O1 — 시작 전 점검(읽기 · go/no-go)**:
+
+  ```powershell
+  $M = 'joshua92y/joshuatech_ver2'; $G = 'joshua92y/platform-gitops'
+  gh pr checks 1 -R $M                                    # 전부 pass(build-check 포함)
+  gh api -H 'Accept: application/vnd.github.raw' "repos/$G/contents/apps/identity-admin/overlays/dev/kustomization.yaml?ref=main"
+                                                          # images에 newName ghcr.io/joshua92y/identity-admin + digest 줄 하나(seed)
+  gh pr list -R $G --state open                           # 비어 있다(열린 gitops PR 0)
+  gh api "repos/$M/environments/production/deployment-branch-policies" --jq '.branch_policies[] | [.name, .type] | @tsv'   # main 하나
+  gh api "repos/$M/environments/production/secrets" --jq '.secrets[].name'   # JOSHUATECH_CI_APP_PRIVATE_KEY(이름만 — 값은 API에 없다)
+  gh api "repos/$M/actions/variables" --jq '.variables[].name'                # JOSHUATECH_CI_APP_CLIENT_ID(이름만 본다)
+  ```
+  사용자 UI 확인 둘: GHCR에 `identity-admin` 패키지가 없다(github.com/joshua92y?tab=packages — 연결 없이 먼저 생긴 같은 이름이 있으면 워크플로 토큰이 push하지 못한다) · App 설치 = `platform-gitops` 하나(U0 화면). 하나라도 어긋나면 no-go.
+- **U1b(사용자 · UI)** — PR #1 Ready for review → **Create a merge commit**(메시지에 「T074 단계 통합(UD-1)」) · 「Delete branch」를 누르지 않는다. 운영자 명령으로 할 때: `gh pr ready 1 -R joshua92y/joshuatech_ver2` → `gh pr merge 1 -R joshua92y/joshuatech_ver2 --merge --match-head-commit <O1에서 본 head 커밋> --body 'T074 단계 통합(UD-1)'`. squash · rebase는 쓰지 않는다(기능 브랜치의 연속성이 깨진다 — D17).
+- **O2 — 실행 관찰(읽기 · 기다림이 끝날 때까지 아무것도 바꾸지 않는다)**:
+
+  ```powershell
+  $M = 'joshua92y/joshuatech_ver2'; $G = 'joshua92y/platform-gitops'
+  $sha = gh api "repos/$M/commits/main" --jq '.sha'
+  gh run list -R $M --workflow publish-pod.yml --commit $sha --json databaseId,event,status,conclusion,createdAt
+                                                          # 없으면 VD-T074-3 「부르지 않음」 기록 → U-d
+  $run = '<실행 ID>'                                      # 위 목록의 databaseId
+  gh run view $run -R $M --json jobs --jq '.jobs[] | [.databaseId, .name, .status, .conclusion] | @tsv'
+  $job = '<job ID>'                                       # 위 목록의 publish · bump job
+  gh run view $run -R $M --log --job $job                 # 판정 줄: '결과:' · '::error::publish-pod-… [<까닭 코드>]'
+  ```
+  - publish(VD-T074-2): 적재 빌드 · 단언 `local` · push 빌드 · 단언 `registry`(단일 매니페스트 · digest pull) · attest · 자기 검증이 모두 초록인지. 패키지 첫 가시성과 연결 저장소는 사용자가 패키지 화면(github.com/users/joshua92y/packages/container/package/identity-admin)에서 본다(에이전트 토큰에는 `read:packages`가 없다). 요약 줄(`- **이미지 단언(registry)** · 시작 … · exit 0` 등)은 실행 화면의 Summary 탭에서 읽는다.
+  - bump(VD-5 — 설계 D11 a–g의 증거를 표로 모은다):
+
+    ```powershell
+    # 앞 블록의 $M · $G · $sha를 이어 쓴다. 자리 값은 앞 줄의 출력에서 차례로 채운다
+    $n = '<bump PR 번호>'; $prHead = '<PR head 커밋>'; $vrun = '<validate 실행 ID>'; $gm = '<gitops 머지 커밋>'; $rs = '<gitops ruleset main의 id>'
+    gh api "repos/$M/deployments?environment=production&per_page=3" --jq '.[] | [.id, .ref, .sha, .created_at] | @tsv'      # a
+    gh api "repos/$G/pulls?state=all&head=joshua92y:bump/dev-identity-admin-$($sha.Substring(0, 7))" --jq '.[] | [.number, .state, .user.login, .user.id] | @tsv'   # b
+    gh api "repos/$G/pulls/$n" --jq '[.user.login, .state, .merged, .merged_at, .merged_by.login, .merge_commit_sha, .head.sha] | @tsv'   # b · e
+    gh api "repos/$G/actions/runs?head_sha=$prHead" --jq '.workflow_runs[] | [.id, .name, .event, .status, .conclusion, .run_attempt, .actor.login, .triggering_actor.login] | @tsv'   # c · f
+    gh api "repos/$G/actions/runs/$vrun/jobs" --jq '.jobs[] | [.name, .status, .conclusion] | @tsv'   # c(validate · classify · gate · prod-approval)
+    $q = 'query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){timelineItems(itemTypes:[AUTO_SQUASH_ENABLED_EVENT,AUTO_MERGE_ENABLED_EVENT],first:5){nodes{__typename ... on AutoSquashEnabledEvent{actor{login} createdAt} ... on AutoMergeEnabledEvent{actor{login} createdAt}}}}}}'
+    gh api graphql -f query=$q -f o=joshua92y -f r=platform-gitops -F n=$n   # d(읽기 query)
+    gh api "repos/$G/actions/runs?head_sha=$gm&event=push" --jq '.workflow_runs[] | [.id, .name, .status, .conclusion] | @tsv'   # e(main push validate)
+    git ls-remote https://github.com/joshua92y/platform-gitops 'refs/heads/bump/*'   # e(브랜치 자동 삭제 — 빈 출력)
+    gh api "repos/$G/rulesets/$rs" --jq '.rules[] | select(.type == "pull_request") | .parameters'   # g
+    ```
+    bump 요약(Summary 탭)의 줄: `auto-merge(첫 조회) — enabled_by … · merge_method …`(d 보조) · `**머지 확인** — PR #n · merged_at … · merged_by … · 머지 때 head: … · 경과 N초 · 머지 커밋 …(gitops main에 있다 — compare …) · 대조 통과`(e). f의 「봇 판정」은 validate job 로그의 검사 6 줄에서 본다.
+- **J1 — 판정(사용자와)**: 설계 D11 표로 **A**(a–g 전부 사람 행동 없이) / **B-merge** / **B-run**을 정한다. a가 실패하면 판정하지 않고 설치 결함(시크릿 이름 · 형식 · 브랜치 정책 · 설치 범위)을 고친 뒤 다시 잰다. 막힌 갈래가 있으면 아래 U로 간다.
+- **U-a(b가 막혔을 때만 · 운영자)** — gitops PR 생성 정책을 `all`로(gr:259): `gh api -X PATCH repos/joshua92y/platform-gitops -f pull_request_creation_policy=all`(또는 UI). 되읽기(읽기): `gh api repos/joshua92y/platform-gitops --jq '.pull_request_creation_policy'` → `all`. 그다음 운영자가 **가장 새** publish-pod 실행에서 「Re-run failed jobs」(`gh run rerun <실행 ID> --failed -R joshua92y/joshuatech_ver2`) → O2. bump가 실패할 때 브랜치를 지웠으므로 겹치지 않는다. 그래도 막히면 B다. 바꾼 사실은 기록 칸과 C11에 남긴다.
+- **U-b(c가 `action_required`일 때 · 운영자)** — 기다림 창(15분) 안에서 대기 실행을 승인하면 d–e를 마저 잴 수 있다(판정은 B-run 그대로). 먼저 읽기로 찾는다: `gh api "repos/joshua92y/platform-gitops/actions/runs?status=action_required" --jq '.workflow_runs[] | [.id, .head_branch, .head_sha] | @tsv'`(브랜치 · 커밋이 bump PR의 것인지 본다). 승인(운영자): `gh api -X POST repos/joshua92y/platform-gitops/actions/runs/<실행 ID>/approve`. 승인하지 않으면 시간 초과 → bump가 정리한다.
+- **U-c(두 check 성공 뒤 5분이 지나도 머지되지 않을 때 · 운영자)** — 창 안에서 머지: `gh pr merge <번호> -R joshua92y/platform-gitops --squash --match-head-commit <bump 요약의 커밋>` → B-merge. bump의 기다림이 머지를 보고 대조한다.
+- **U-d(그 커밋에 publish-pod 실행이 없을 때만 · 운영자)** — `gh workflow run publish-pod.yml --ref main -R joshua92y/joshuatech_ver2` → O2. 실행이 있는 커밋에는 쓰지 않는다(같은 커밋 재발행 — 태그 `sha-<sha>`가 새 digest로 옮겨 갈 뿐 이득이 없다).
+- **U3(VD-T074-2가 private일 때만 · 사용자 · UI)** — 패키지 화면 → Package settings → Change visibility → Public · 「Inherit access from source repository」 · 연결 저장소가 `joshua92y/joshuatech_ver2`인지 본다. 생성 즉시 public이면 이 블록은 「확인」으로 기록한다.
+- **O3 — 익명 pull(읽기 · VD-T074-4)**:
+
+  ```powershell
+  $img = 'joshua92y/identity-admin'
+  $t = Invoke-RestMethod -SkipHttpErrorCheck -StatusCodeVariable sc "https://ghcr.io/token?scope=repository:${img}:pull"
+  "token: $sc"                                            # 200(토큰 값은 찍지 않는다)
+  $r = Invoke-WebRequest -Method Head -SkipHttpErrorCheck -Uri "https://ghcr.io/v2/$img/manifests/sha256:<64자리 hex>" -Headers @{ Authorization = "Bearer $($t.token)"; Accept = 'application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' }
+  "manifest: $($r.StatusCode)"                            # 200
+  ```
+- **U4 → O4(선택 · VD-T074-5)** — 운영자: `gh workflow run promote.yml -R joshua92y/platform-gitops -f pod=identity-admin`. 읽기: `gh run list -R joshua92y/platform-gitops --workflow promote.yml --limit 1 --json databaseId,status,conclusion` → `gh run view <실행 ID> -R joshua92y/platform-gitops --log-failed`로 ③ attestation 검증 결과(러너 권한 V6)와 ④ 「prod 항목 없음」 실패를 읽고, `git ls-remote https://github.com/joshua92y/platform-gitops 'refs/heads/promote/*'`(빈 출력) · `gh pr list -R joshua92y/platform-gitops --state open`(승격 PR 없음)으로 브랜치 · PR 0을 본다. 검증이 실패하면 원인을 적고 T115로 넘긴다.
+
+#### 실패 갈래 · 재시도
+
+- **Re-run은 가장 새 실행에 — 가드가 낡은 실행을 건너뛴다.** 다시 돌리기 전에 그 실행이 main의 가장 새 publish-pod 실행인지 본다(읽기): `gh run list -R joshua92y/joshuatech_ver2 --workflow publish-pod.yml --branch main --limit 3 --json databaseId,headSha,conclusion,createdAt`. 옛 실행을 다시 돌려도 bump 스크립트가 원천 커밋 뒤의 main 커밋이 발행 경로(`paths` 네 줄)를 바꾼 것을 보면 notice와 요약 `[stale]` 줄을 남기고 bump 없이 exit 0으로 끝난다(dev를 옛 digest로 되돌리지 않는다). **`[stale]`인데 요약의 마지막 main 커밋에 publish-pod 실행이 없으면 U-d(dispatch)** — 그 커밋에 실행이 있다고 가정하지 않는다(`[skip ci]` · 3,000파일 넘는 push · 워크플로 비활성이면 없다). 확인(읽기): `gh run list -R joshua92y/joshuatech_ver2 --workflow publish-pod.yml --commit <그 커밋 전체 sha>`. 받아들인 대가: 가드는 원천 커밋과 main 사이의 순 변경만 보므로 「바꿨다가 되돌린」 쌍(순 diff 0)은 낡음으로 세지 않는다. 「Re-run failed jobs」는 실패한 bump만 다시 돌고 publish의 출력(digest)을 재사용한다.
+- **dispatch는 놓쳤을 때만**: U-d의 조건(그 main 커밋에 publish-pod 실행이 하나도 없다)일 때만 쓴다.
+- **정리 결과 읽기(요약 줄)**: `**실패** [<코드>] — …` 다음의 `**정리** — PR #n 닫기: … · auto-merge 해제: … · 브랜치 … 삭제: … · 확인: 원격에 없음`이 정상 정리다. 확인이 「남아 있음」 · 「확인하지 못했다」면 운영자가 그 PR을 닫고 브랜치를 지운다(`gh pr close <번호> -R joshua92y/platform-gitops --delete-branch` — PR이 없으면 gitops 저장소 Branches 화면에서 삭제). `**정리 중단**` = 닫으려던 사이에 머지됐다 — 뒤따르는 `**머지 확인** — [<코드>] 판정 뒤 …` 줄이 대조 결과다(통과면 job은 성공 · 앞의 `::error::` 주석은 남는다). `**취소 중 머지 확인**` = 취소 중 머지된 것을 보았다(정리 중 다시 읽어 머지를 봤거나 머지를 본 뒤 대조 도중 취소됐다 — 대조를 마치지 못했다) — 아래 「머지 결과 불일치」의 읽기 단계로 머지 커밋을 확인한다. **실행을 취소했으면**(운영자 취소 · job 시간 초과): bump 스텝의 run 줄이 `exec`라 bump 스크립트가 러너의 취소 신호를 직접 받는다(SIGINT → 7.5초 → SIGTERM → 2.5초 → SIGKILL — 러너는 스텝 셸의 PID에만 신호를 보낸다 · actions/runner `src/Runner.Sdk/ProcessInvoker.cs` 2026-11-16 확인). 받으면 그 뒤의 신호는 무시하고 정리한다(정리 창 = SIGINT 뒤 10초) — 요약에 `**실패** [cancel]`과 `**정리**` 줄이 남는다. 올리기 창(브랜치 push 중)에 받았으면 원격 끝이 이 실행의 커밋일 때만 지운다. **요약에 정리 줄이 없으면**(SIGKILL — 창 안에 끝내지 못했다) 남은 bump PR · 브랜치를 운영자가 GET으로 본다(아래 「상시 점검 명령」의 열린 bump PR 목록 · `git ls-remote https://github.com/joshua92y/platform-gitops 'refs/heads/bump/*'`). 남은 PR은 auto-merge로 머지될 수 있고(그 digest는 단언 · attest를 마친 값) 더 새 bump가 먼저 머지되면 같은 줄 충돌로 남는다 — 운영자가 닫는다.
+- **첫 실행이 워크플로 · 스크립트 결함으로 실패하면**: 기능 브랜치에서 고친 뒤 UD-1 범위 안에서 재통합한다(새 PR · merge commit — D17). `paths`에 워크플로와 스크립트가 들어 있으므로 그 머지 push가 publish-pod를 다시 부른다.
+- **까닭 코드(bump — `::error::publish-pod-bump [<코드>]`)**:
+
+  | 코드 | 뜻 | 정리 | 다음 |
+  |---|---|---|---|
+  | `ref` · `input` · `tool` | main 실행이 아니다 · 입력 꼴(POD · IMAGE · DIGEST · 토큰 · 러너 값) · yq · gh · git | 없음(브랜치 전) | 워크플로 배선 · yq 설치 스텝을 고쳐 재통합 |
+  | `tree` · `entry` | gitops 체크아웃 상태(최상위 · origin/main 끝 · 깨끗함 · dev 파일이 일반 파일) · dev overlay의 `images` 항목 0 · 둘 이상 · 형식 밖 | 없음 | 항목 0이면 seed PR이 들어갔는지(첫 항목은 사람 PR) |
+  | `stale-check` | 낡은 실행인지 판정할 수 없다(compare behind · diverged · 바뀐 파일 300개 · 응답의 files가 목록이 아님 · 조회 오류) | 없음 | 가장 새 실행인지 · 모노레포 main 이력이 다시 쓰였는지 본다 |
+  | `line` · `replace` · `commit` | digest 줄이 봇 lint 꼴이 아니다(줄 끝 주석 등) · 한 줄 교체 확인 실패 · 커밋 확인 실패 | 없음(push 전) | dev 파일의 digest 줄을 사람 PR로 고친 뒤 Re-run |
+  | `identity` | 토큰의 App이 봇 목록의 App이 아니다 · 봇 계정 login · id · type 불일치 | 없음(커밋 전) | Environment 시크릿 · 변수가 다른 App의 것인지 · `BOT_SLUG` · `BOT_ID` |
+  | `branch-exists` | 같은 원천 커밋의 bump 브랜치가 원격에 이미 있다 | **하지 않는다**(남의 것일 수 있다) | 운영자가 그 브랜치 · PR을 확인하고 지운 뒤 Re-run |
+  | `branch` · `push` | 원격 확인 · 브랜치 올리기 실패 | 원격이 받았으면 정리 | 요약의 「정리」 줄 · 일시 오류면 Re-run |
+  | `pr-create` · `pr-url` | PR 생성 실패 · 출력이 PR 주소가 아니다 | 정리(브랜치) | VD-5 b 갈래 — U-a 검토 · `pr-url`이면 PR이 생겼는지 운영자가 확인 |
+  | `pr-tip` · `head-moved` | PR 브랜치에 다른 커밋이 올라왔다 | 정리 | PR을 다시 열지 않는다 · 대기 실행을 승인하지 않는다 · 누가 올렸는지 본다 |
+  | `auto-merge` · `auto-off` | auto-merge를 걸지 못했다 · 열린 PR에서 꺼졌다 | 정리 | 저장소 auto-merge 허용 설정 · 누가 껐는지 → B-merge 판단 |
+  | `api` | PR 조회 실패 · 응답 꼴 | 정리 | 일시 오류면 Re-run |
+  | `base` · `closed` | PR base가 main이 아니다 · 머지 없이 닫혔다 | 정리 | 누가 바꿨는지 · 닫았는지 |
+  | `timeout` | 15분 안에 머지되지 않았다(요약에 마지막 `mergeable_state`) | 정리 | O2 c로 check 상태를 보고 B-run(U-b) · B-merge(U-c) 판단 → Re-run |
+  | `merge-check` | 머지 결과 불일치(부모 둘 · 다른 파일 · 다른 digest · 머지 커밋이 gitops main에 없다) | **하지 않는다**(이미 머지) | 아래 「머지 결과 불일치」 |
+  | `cancel` | 실행이 취소됐다(exit 130 — run 줄 `exec`라 러너의 신호를 직접 받는다) | 머지 전이면 정리 · 올리기 창이면 원격 끝이 자기 커밋일 때만(정리 중 신호 무시 · 창 10초) | 「취소 중 머지 확인」이면 머지 커밋 확인 · 정리 줄이 없으면(SIGKILL) 남은 bump PR · 브랜치를 GET으로 본다(위 「정리 결과 읽기」) |
+  | `[stale]`(오류 아님) | 낡은 실행 — 요약에 마지막 main 커밋 sha7 | 없음 · exit 0 | 가장 새 실행을 본다 · 그 마지막 main 커밋에 publish-pod 실행이 없으면 U-d(dispatch) |
+
+- **까닭 코드(이미지 단언 — `::error::publish-pod-assert-image [<코드>]`)**: `usage` · `tool`(입력 · 도구) · `mediatype`(index · list 또는 읽기 실패 — provenance · sbom이 꺼져 있는지) · `pull` · `inspect` · `export` · `platform` · `user` · `label`(build-arg `APP_GIT_SHA` 누락 — 기본값 0000000 — 또는 다른 라벨이 덮음) · `env` · `tree`(최상위 허용 목록). `local`에서 실패하면 push가 없고, `registry`에서 실패하면 이미 push됐지만 attest · bump가 없다(그 digest는 쓰이지 않고 다음 발행에서 태그가 옮겨 간다) — 기능 브랜치에서 고쳐 재통합한다.
+- **B-merge 운영(D12)**: bump PR마다 사람이 머지한다. 워크플로는 다음 통합에서 「⑥ · ⑦을 빼고 PR을 열고 링크를 요약하면 성공」으로 바꾼다(설계 ⑦b · 하네스 갱신). 그 전까지는 운영자가 기다림 창(15분) 안에서 U-c로 머지한다 — 놓치면 bump가 정리하고 가장 새 실행을 Re-run한다.
+- **B-run 운영(D12)**: bump PR마다 운영자가 validate 실행을 승인한다(U-b — 운영자 전용). auto-merge는 그대로 둘 수 있다 — 창 안에서 승인하면 자동 머지된다(놓치면 정리 → Re-run). T115 문면 「VD-5가 B면 같은 PR을 사람이 머지」는 B-merge에 맞고, B-run이면 「실행 승인 뒤 자동 머지」로 적는다(C11).
+- **머지 결과 불일치(`merge-check`) — revert**: 이미 머지된 뒤라 bump는 정리하지 않는다.
+  1. 읽기: `gh api repos/joshua92y/platform-gitops/commits/<머지 커밋> --jq '[.parents[].sha, (.files[] | [.filename, .status, .additions, .deletions] | @tsv)]'`로 부모 수와 바뀐 파일을 보고, `gh api -H 'Accept: application/vnd.github.raw' "repos/joshua92y/platform-gitops/contents/apps/identity-admin/overlays/dev/kustomization.yaml?ref=main"`로 main의 dev digest를 발행 digest(요약 · bump PR 본문)와 대조한다. 머지 커밋이 gitops main에 없다는 판정이면 main의 dev는 바뀌지 않았다 — 그 머지가 들어간 브랜치만 운영자가 정리한다.
+  2. 변경(운영자): 머지된 PR 화면의 **Revert** → 생긴 revert PR의 validate · `prod-approval` 초록 확인 → 운영자가 squash로 머지한다.
+  3. 원인(누가 bump 브랜치나 PR을 건드렸는지)을 기록한 뒤 가장 새 publish-pod 실행을 Re-run한다(새 bump PR).
+
+#### 기록 칸(세션 뒤 채운다 — C12)
+
+| 항목 | 값 |
+|---|---|
+| 통합 머지 커밋(UD-1 · U1b 시각 KST) | |
+| publish-pod 실행 ID · 시작/끝 · 결론(VD-T074-3 — paths 필터가 불렀는가) | |
+| 발행 digest · 패키지 첫 가시성 · 연결 저장소(VD-T074-2) | |
+| bump PR 번호 · 생성 · 머지 시각 · 경과 초(요약) | |
+| validate 실행 ID · `run_attempt` · `action_required` 여부(c) | |
+| auto-merge actor(d) · merged_by(e) · 브랜치 자동 삭제(e) | |
+| 발신자 `actor` · `triggering_actor` · 검사 6 판정(f) · 규칙 g 관찰 | |
+| gitops 머지 커밋 · main push validate 결론 | |
+| **VD-5 판정**(A / B-merge / B-run) · 원인 · 쓴 U 블록 | |
+| GHCR 공개(확인 · 전환 시각 — U3) · 익명 pull(VD-T074-4) | |
+| (선택) promote ③ 검증(VD-T074-5) | |
+
+- **상시 점검 명령(읽기만 · 에이전트 가능)**: `pwsh -NoProfile -File tests/scripts/publish-pod.tests.ps1`(정적 + 실행 — 로컬은 Git Bash · yq v4.53.6 필요 · 없으면 그 사례만 SKIP) · `gh run list -R joshua92y/joshuatech_ver2 --workflow publish-pod.yml --limit 5` · `gh pr list -R joshua92y/platform-gitops --state open --json number,headRefName,author --jq '.[] | select(.headRefName | startswith("bump/")) | [.number, .headRefName, .author.login] | @tsv'`(pod마다 열린 봇 PR은 많아야 하나).
+
 ## §4 Vault init·시크릿 시드
 
 **T044 실행 요약(2026-09-17 — 상세·시각·사고 기록은 §3 T044 절, 절차 정본은 `docs/runbooks/vault-unseal.md`)**: Vault 초기화 11:09:13 KST(재초기화 1회 포함 — 1차 init 산출물 유실 사고는 §3) · 감사 장치 `file/`(stdout) 11:11 KST · `infra/vault` apply 15(kv v2 `kv` · auth `kubernetes` · 정책 6 · role 6) · **US6 플레이스홀더 8경로** 투입 **11:19:26 KST**: `kv/dev/authentik/identity-admin` · `kv/prod/authentik/identity-admin`(client_id·client_secret·jwks_url·issuer·api_token) · `kv/dev/authentik/webhooks/identity-admin` · `kv/prod/authentik/webhooks/identity-admin`(secret) · `kv/dev/openfga/store_id` · `kv/prod/openfga/store_id`(store_id) · `kv/dev/openfga/preshared` · `kv/prod/openfga/preshared`(key) — 값은 전부 단일 sentinel **`PLACEHOLDER-T044-SENTINEL`**(credential 아님, 설계 D8′; `kv/{env}/authentik/web-bff`·`kv/{env}/access/web-bff`는 Workers 전용이라 제외). **불변식**: sentinel 잔존 0 = consumer 활성화 전제(게이트 1 = 런북 §4 블록 `vault kv get` × 8 → `PLACEHOLDER-` 0행, 실행은 T075·T081; 게이트 2 = django-pod 설정 검증기 fail-closed + T077 단언) · `kv/{env}/openfga/preshared`는 US6에서 `kv/platform/openfga/preshared`와 같은 값으로 교체하고 회전은 둘을 함께. **root 토큰 revoke 보류**(D4): T045 시드도 root로 하되 revoke하지 않는다 — revoke = T084 OIDC `admin` 실증 + `vault-break-glass` quorum 드릴 **뒤**(§0 토큰 표 ⑥ "부트스트랩 직후 revoke"는 이 결정으로 정정 대상, ADR 0011 예정). 실값 시드(T045)는 이하에 추가.

@@ -1,0 +1,327 @@
+# publish-pod — pod 이미지 발행 + gitops dev digest bump(T074 · FR-037 · 계약 gitops-repo.md §이미지·승격 「dev bump」 · pod-template.md 이미지 행)
+# 설계 정본: specs/003-platform-foundation/design/t074-design.md D1–D8 · D14 · D16(아래는 요지). 하네스: tests/scripts/publish-pod.tests.ps1
+#   (정적 pp-* + 두 스크립트 실행 px-* — tests/run-all.ps1 1b6). pod는 identity-admin 하나다(일반화 — matrix · 변경 pod 판정 — 는 SP-2).
+#
+# job 셋
+# - job build-check(pull_request만): 체크아웃 → setup-buildx → metadata → 적재(load) 빌드 → 이미지 단언(local). push · login · attest · 키가
+#   없다(ADR 0002 원칙 5의 「PR 검증」). 통합 전에 arm64 러너에서 빌드 경로를 실증한다(VD-T074-1). required check로 만들지 않는다 — paths
+#   필터 워크플로라 해당하지 않는 PR에서는 check가 보고되지 않아 머지가 멈춘다(T116).
+# - job publish(main push · main의 workflow_dispatch만): 적재 빌드 → 이미지 단언(local) → push 빌드(같은 builder · 적재 빌드의 캐시 적중) →
+#   이미지 단언(registry — 단일 매니페스트 확인 → digest pull → 같은 단언) → attestation(SLSA provenance · public-good Sigstore · 레지스트리에
+#   push · storage record 없음 — 개인 계정 저장소) → 자기 검증(gh attestation verify --repo · --signer-workflow · --source-ref refs/heads/main ·
+#   --deny-self-hosted-runners — promote ③의 목표 플래그 · T115) → 출력 digest. 단언이 실패하면 attest · bump를 하지 않는다.
+# - job bump(publish 뒤 · Environment production — 이 파일의 유일한 environment): 모노레포 sparse 체크아웃(scripts/ci) → yq 설치(버전 +
+#   sha256) → GitHub App 토큰(platform-gitops 설치 · contents · pull-requests write — 키를 쓰는 유일한 스텝) → gitops 체크아웃 →
+#   scripts/ci/publish-pod-bump.sh(낡은 실행 가드 → 제자리 hex 교체 → PR → auto-merge(squash) → ⑦ 머지까지 기다림 · 머지 결과 대조 → 실패 ·
+#   취소면 자기 PR · 브랜치 정리 — run 줄이 exec라 러너의 취소 신호를 스크립트가 직접 받는다). auto-merge를 거는 순간의 head를 고정한다(`--match-head-commit`) — 그 뒤의 이동은 ⑦ 조회와 머지 결과 대조가 잡는다.
+#   토큰이 생긴 뒤에 도는 것은 gitops 체크아웃과 bump 스크립트뿐이고, job이 끝나면 post 단계가 토큰을 폐기한다. bump 스크립트의
+#   MONOREPO_TOKEN(github.token · contents read)은 낡은 실행 가드의 모노레포 compare 조회 한 번에만 쓴다.
+#
+# VD-5(검증 후 결정 — 설계 D11 · D12): 통합 뒤 첫 main 실행의 bump PR이 사람 행동 없이(PR 생성 · 검사 실행 승인 · 머지) 자동 머지되면 옵션 A,
+#   아니면 원인에 따라 B-merge(사람이 머지 — bump 스크립트의 ⑥ · ⑦을 빼고 「PR을 열고 링크를 요약」하면 성공으로 바꾼다) · B-run(운영자가 실행
+#   승인). 결과 한 줄은 tasks.md T074 줄과 report.md에 남긴다.
+#
+# 편차(과제 문면 tasks:191과 다른 것 — report.md 후보)
+#   - kustomize edit set image를 쓰지 않는다: newName 줄을 지우고 파일 전체를 재서식한다(2026-11-16 탐침) — 계약대로 digest 줄의 hex만 바꾼다.
+#   - 캐시 없음(cache-from · cache-to 없음): main 범위 gha 캐시는 main에서 도는 다른 워크플로가 쓸 수 있고 서명이 없다. registry 캐시도 패키지
+#     쓰기 주체 전체가 쓴다(컨트롤러 결정 CD-22 — 뒤집기 쉽다).
+#   - pull_request의 build-check(빌드 · 단언만): 기능 브랜치에서 빌드 경로를 먼저 실증한다(main 첫 실행이 실패하면 고칠 때마다 재통합이다).
+#   - workflow_dispatch(입력 없음)는 「그 main 커밋에 publish-pod 실행이 하나도 없을 때(paths 필터가 놓쳤을 때)」만 쓴다.
+#   - Re-run은 가장 새 실행에 — 가드가 낡은 실행을 건너뛴다: bump 스크립트는 원천 커밋 뒤의 main 커밋이 발행 경로(아래 paths 네 줄)를
+#     바꿨으면 notice와 함께 bump 없이 끝난다(옛 실행을 다시 돌려 dev를 옛 digest로 되돌리는 경로를 막는다). 그 커밋에 publish-pod 실행이
+#     있다고 가정하지 않는다 — [skip ci] · 3,000파일 넘는 push · 워크플로 비활성이면 없고, 그때는 운영자가 dispatch한다(런북 §3 T074 U-d).
+#     실패한 가장 새 실행의 「Re-run failed jobs」는 bump만 다시 돌고 publish 출력을 재사용한다(bump는 실패 · 취소 때 자기 PR · 브랜치를
+#     정리한다). bump 스텝의 run 줄이 exec라 이 스크립트가 러너의 취소 신호를 직접 받는다(SIGINT → 7.5초 → SIGTERM → 2.5초 → SIGKILL ·
+#     정리 중 신호는 무시 — 정리 창 10초 · SIGKILL이면 정리 요약 줄이 없다 — actions/runner src/Runner.Sdk/ProcessInvoker.cs 2026-11-16
+#     확인: 신호는 스텝 셸의 PID에만 간다). 정리 요약 줄이 없으면 남은 bump PR · 브랜치를 운영자가 GET으로 본다(런북 §3 T074).
+#     같은 커밋을 다시 발행하면 태그 sha-<sha>가 새 digest로 옮겨 간다(배포는 digest 고정이라 무해하다 — 빌드는 재현되지 않는다).
+#
+# 불변식(규칙 django-pod.md · 계약 pod-template.md 이미지 행 — 하네스가 지킨다)
+#   - revision 라벨은 APP_GIT_SHA build-arg(Dockerfile LABEL)에서만 온다. metadata-action의 labels · annotations를 빌드에 넘기지 않는다(labels 금지)
+#     — --label이 Dockerfile LABEL을 덮어 build-arg 누락(기본값 0000000)을 가린다. build-arg는 APP_VERSION = sha-<github.sha>(= GHCR 태그 ·
+#     /health의 version) · APP_GIT_SHA = github.sha 두 줄뿐이다.
+#   - push 전 단언: 적재 빌드를 먼저 단언하고 통과해야 push한다. push한 digest도 다시 단언한 뒤에만 attest · bump를 한다.
+#   - build-push 입력은 허용 목록뿐이다(context · file · platforms · provenance false · sbom false · build-args · tags · push + 적재 빌드의 load) —
+#     build-contexts · secrets · secret-envs · secret-files · allow · network · outputs · builder · ssh · attests · cache-* · labels · annotations처럼
+#     신뢰 경계를 바꾸는 입력을 두지 않는다. provenance · sbom을 끄지 않으면 결과가 인덱스 digest가 된다(단언은 단일 매니페스트를 요구한다).
+#   - setup-buildx 입력은 driver-opts(BuildKit 데몬 이미지를 판 + 인덱스 digest로 고정 — 기본은 이동 태그 · 발행 14일 이상 지난 안정판
+#     v0.34.1)와 buildkitd-flags뿐이다. v0.34.1은 GHSA-w26x-xg27-7qjc(게시 범위 표기 오류 — 수정 fsutil a72de9d는 v0.34.2에만 있다) ·
+#     GHSA-2fqp-xg6f-v7gj 둘 다 해당하지만 도달 경로가 없어 받아들인다 — 갱신은 v0.34.2(14일 = 2026-11-17 12:56Z)부터 T116.
+#     buildkitd-flags를 비우면 setup-buildx v4.4.1이 security.insecure · network.host를 허용하는 데몬 플래그를 넣는다(src/context.ts:11 · 62-66) — 효과 없는 값
+#     --debug=false(buildkitd는 --debug가 true일 때만 로그 수준을 바꾼다 — BuildKit v0.34.1 cmd/buildkitd/main.go applyMainFlags)를 명시해 그
+#     기본값을 막는다. buildx(0.38.2 builder/builder.go parseBuildkitdFlags)는 docker-container 드라이버의 플래그에 허용 항목이 하나도 없으면
+#     network.host 허용 하나를 스스로 더한다 — 빌드가 그것을 쓰려면 build-push의 allow 입력이 있어야 하므로(허용 목록 밖) 막힌다.
+#   - run: 본문에 표현식(${{ }})을 넣지 않는다 — 값은 env:로만 넘긴다. 로직은 두 스크립트(scripts/ci/publish-pod-*.sh)에 있고 이 파일은
+#     배선이다(run 스텝은 yq 설치 · 자기 검증 한 줄 · 스크립트 호출 넷뿐 — bump 호출만 exec · 이미지 단언 호출은 외부 부작용이 없어 bash).
+#   - 모든 액션은 전체 커밋 SHA로 핀한다(주석의 vX.Y.Z는 사람용 · 같은 액션은 같은 SHA · checkout은 ci.yml과 같다). 발행 14일이 안 된 판은
+#     직전 판을 쓴다(2026-11-16 기준 login v4.8.0(11-05 발행) → v4.7.0). 갱신은 Renovate(pinGitHubActionDigests) — 14일 규칙의 Renovate 쪽과
+#     BuildKit digest 갱신 수단은 T116이다.
+#
+# 권한 · 자격: 최상위 permissions {} — job마다 준다. build-check = contents read. publish = contents read · packages write(GHCR push ·
+#   attestation push) · id-token write(Sigstore 서명) · attestations write. bump = contents read(모노레포 sparse 체크아웃)뿐 — gitops 쓰기는
+#   App 토큰이다. App 자격은 Environment production(배포 브랜치 main만)의 시크릿 JOSHUATECH_CI_APP_PRIVATE_KEY와 저장소 변수
+#   JOSHUATECH_CI_APP_CLIENT_ID다. bump job의 BOT_SLUG · BOT_ID는 gitops tests/validate.sh의 봇 기본값(VALIDATE_BOT_AUTHORS ·
+#   VALIDATE_BOT_IDS)과 같아야 한다(하네스 px-23). DOCKER_BUILD_RECORD_UPLOAD false — build-push가 빌드 기록을 아티팩트로 올리지 않는다.
+#
+# 들여쓰기 규약(하네스가 줄 단위로 읽는 전제): 최상위 키 0칸 · job 2칸 · job 키 4칸 · 스텝 '- ' 6칸 · on · jobs 안의 주석은 4칸 이상(그보다
+#   얕은 주석 줄은 하네스가 FAIL시킨다 — 줄 단위 블록 경계를 흐린다). 스텝 사이의 주석은 앞 스텝에 붙는다 — 두 setup-buildx 스텝은 블록이
+#   같아야 하므로 그 뒤에 주석을 두지 않는다. 문법도 좁혀 쓴다: 키는 따옴표 없는 [A-Za-z0-9_-]+ 뒤에 바로 콜론 · 흐름 꼴({ } · [ ]) · 앵커 ·
+#   별칭 · 태그 · 여러 줄 평문 값을 쓰지 않는다(예외는 최상위 permissions: {} 한 줄) — 하네스의 줄 단위 판독과 GitHub의 YAML 판독이
+#   갈라지는 입력을 막는다.
+name: publish-pod
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/identity-admin/**"
+      - "packages/django-common/**"
+      - ".github/workflows/publish-pod.yml"
+      - "scripts/ci/publish-pod-*.sh"
+  pull_request:
+    paths:
+      - "apps/identity-admin/**"
+      - "packages/django-common/**"
+      - ".github/workflows/publish-pod.yml"
+      - "scripts/ci/publish-pod-*.sh"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  # PR은 옛 실행을 취소하고, main은 직렬로 돌며 서로 취소하지 않는다(기다리는 실행은 하나까지 — promote.yml · gr:257과 같은 원칙)
+  group: publish-pod-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  POD: identity-admin
+  IMAGE: ghcr.io/joshua92y/identity-admin
+  DOCKER_BUILD_RECORD_UPLOAD: "false"
+
+jobs:
+  build-check:
+    # PR 빌드 검사(머리 주석 「job build-check」) — 빌드와 단언만 한다. push · login · attest · 키가 없다.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 뒤 스텝은 push · fetch를 하지 않는다 — .git/config에 토큰을 남기지 않는다
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.1@sha256:99368f3e46177c6405b9740e4461d91cee004128daeecca78d4ceac50ec1da5c
+          buildkitd-flags: "--debug=false"
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          tags: type=sha,format=long
+          flavor: latest=false
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/identity-admin/Dockerfile
+          platforms: linux/arm64
+          provenance: false
+          sbom: false
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
+            APP_GIT_SHA=${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          push: false
+          load: true
+      - name: 이미지 단언(local) — scripts/ci/publish-pod-assert-image.sh
+        env:
+          IMAGE_REF: ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
+          EXPECT_SHA: ${{ github.sha }}
+          ASSERT_MODE: local
+        run: bash scripts/ci/publish-pod-assert-image.sh
+
+  publish:
+    # 발행(머리 주석 「job publish」) — main push · main의 dispatch만. 단언(local) 뒤에만 push하고, push한 digest의 단언(registry) 뒤에만
+    # attest한다. 출력은 digest 하나다.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 뒤 스텝은 push · fetch를 하지 않는다 — .git/config에 토큰을 남기지 않는다
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.1@sha256:99368f3e46177c6405b9740e4461d91cee004128daeecca78d4ceac50ec1da5c
+          buildkitd-flags: "--debug=false"
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          tags: type=sha,format=long
+          flavor: latest=false
+      - id: load
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/identity-admin/Dockerfile
+          platforms: linux/arm64
+          provenance: false
+          sbom: false
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
+            APP_GIT_SHA=${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          push: false
+          load: true
+      - name: 이미지 단언(local — push 전) — scripts/ci/publish-pod-assert-image.sh
+        env:
+          IMAGE_REF: ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
+          EXPECT_SHA: ${{ github.sha }}
+          ASSERT_MODE: local
+        run: bash scripts/ci/publish-pod-assert-image.sh
+      # push 빌드 — 같은 builder라 적재 빌드의 캐시가 적중한다(결과가 다르면 다음 스텝의 registry 단언이 잡는다 — 이미 push된 뒤이지만 attest ·
+      # bump는 없다)
+      - id: push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/identity-admin/Dockerfile
+          platforms: linux/arm64
+          provenance: false
+          sbom: false
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
+            APP_GIT_SHA=${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          push: true
+      - name: 이미지 단언(registry — 단일 매니페스트 · digest pull) — scripts/ci/publish-pod-assert-image.sh
+        env:
+          IMAGE_REF: ${{ env.IMAGE }}@${{ steps.push.outputs.digest }}
+          EXPECT_SHA: ${{ github.sha }}
+          ASSERT_MODE: registry
+        run: bash scripts/ci/publish-pod-assert-image.sh
+      # SLSA provenance(predicate 입력이 없으면 provenance 모드) — 공개 저장소라 public-good Sigstore로 서명한다(이미지 이름 · digest · 워크플로 ·
+      # 커밋이 공개 투명성 로그에 영구히 남는다). storage record는 조직 저장소 전용이라 끈다.
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+          create-storage-record: false
+      # 자기 검증(설계 D7): 「attest는 성공했는데 검증할 수 없다」를 승격 때가 아니라 발행 때 잡는다. 네 플래그는 promote ③의 목표 플래그다(T115)
+      - name: attestation 자기 검증
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: gh attestation verify "oci://$IMAGE@$DIGEST" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish-pod.yml" --source-ref refs/heads/main --deny-self-hosted-runners
+
+  bump:
+    # gitops dev digest bump(머리 주석 「job bump」) — Environment production(배포 브랜치 main만)의 App 키를 쓰는 유일한 job이다.
+    # 로직 · 실패 정리 · 출력 위생은 scripts/ci/publish-pod-bump.sh 머리 주석이 정본이다.
+    needs: publish
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    environment: production
+    env:
+      # 봇 목록의 App(gitops tests/validate.sh VALIDATE_BOT_AUTHORS · VALIDATE_BOT_IDS 기본값과 같아야 한다 — 하네스 px-23)
+      BOT_SLUG: joshuatech-gitapp-1
+      BOT_ID: "323873425"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # bump 스크립트(scripts/ci)만 받는다
+          sparse-checkout: scripts/ci
+          persist-credentials: false
+      - name: yq 설치(platform-gitops promote.yml 스텝 2와 같은 버전 · sha256)
+        env:
+          # linux arm64 공식 릴리스 자산 yq_linux_arm64의 sha256 — platform-gitops promote.yml · validate.yml과 같은 값이다. 버전을 바꾸면
+          # sha256도 함께 바꾼다(둘 중 하나만 바꾸면 이 스텝이 실패한다)
+          YQ_VERSION: v4.53.6
+          YQ_SHA256: 88a1016bc1d657375a35864e4f44b6f333df8ff97b559f51bba0adcb2169df09
+        run: |
+          set -euo pipefail
+          step='yq 설치'
+          t0=$(date -u +%s)
+          on_exit() {
+            local rc=$? t1
+            t1=$(date -u +%s)
+            printf -- '- **%s** · 시작 %s · 종료 %s · %d초 · exit %d\n' "$step" \
+              "$(date -u -d "@$t0" +%FT%TZ)" "$(date -u -d "@$t1" +%FT%TZ)" "$((t1 - t0))" "$rc" >> "$GITHUB_STEP_SUMMARY" || true
+            exit "$rc"
+          }
+          trap on_exit EXIT
+          bin="$RUNNER_TEMP/bin"
+          dl="$RUNNER_TEMP/dl"
+          mkdir -p "$bin" "$dl"
+          if [[ ! $YQ_SHA256 =~ ^[0-9a-f]{64}$ ]]; then
+            printf '::error::YQ_SHA256 값의 형식이 틀렸다\n'
+            exit 1
+          fi
+          # 리다이렉트(릴리스 자산은 objects.githubusercontent.com으로 302)까지 https만 · 시간 한도 · sha256 대조 뒤에만 설치한다
+          curl -fsSL --proto '=https' --proto-redir '=https' --retry 3 --connect-timeout 10 --max-time 120 \
+            -o "$dl/yq" "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_arm64"
+          printf '%s  %s\n' "$YQ_SHA256" "$dl/yq" | sha256sum -c -
+          install -m 0755 "$dl/yq" "$bin/yq"
+          # 버전 확인 — 설치한 바이너리가 mikefarah yq의 기대 버전이 아니면 실패
+          yq_out=$("$bin/yq" --version || true)
+          if [[ $yq_out != *mikefarah* || ${yq_out##* } != "$YQ_VERSION" ]]; then
+            printf '::error::yq 버전 불일치: 실제 %q · 기대 %s\n' "$yq_out" "$YQ_VERSION"
+            exit 1
+          fi
+          # 다음 스텝부터 PATH 맨 앞에 온다(bump 스크립트가 command -v yq = $RUNNER_TEMP/bin/yq를 대조한다)
+          printf '%s\n' "$bin" >> "$GITHUB_PATH"
+      - id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.JOSHUATECH_CI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.JOSHUATECH_CI_APP_PRIVATE_KEY }}
+          repositories: platform-gitops
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: joshua92y/platform-gitops
+          ref: main
+          token: ${{ steps.app.outputs.token }}
+          # bump 스크립트의 git push(브랜치 올리기 · 실패 정리의 삭제) · git ls-remote · git fetch가 App 토큰을 쓴다(체크아웃이 git 설정에
+          # 남긴다). 그래도 되는 까닭(platform-gitops promote.yml:42와 같다): 이 job은 gitops의 코드를 실행하지 않는다 — yq · grep · sed ·
+          # git으로 읽고 고치기만 한다
+          persist-credentials: true
+          path: gitops
+      - name: dev bump PR(제자리 hex 교체 · auto-merge · 머지 결과 대조) — scripts/ci/publish-pod-bump.sh
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          MONOREPO_TOKEN: ${{ github.token }}
+          DIGEST: ${{ needs.publish.outputs.digest }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+          GITOPS_DIR: gitops
+        run: exec bash scripts/ci/publish-pod-bump.sh

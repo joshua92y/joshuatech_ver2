@@ -304,6 +304,26 @@ env: `GH_TOKEN`(App) · `DIGEST`(`needs.publish.outputs.digest`) · `APP_SLUG`(`
 - **쓰지 않는 것**: `kustomize`(설치도 호출도). 들여쓰기 · 키 순서 · `newName`에 의존하지 않으므로 T075가 overlay를 어떤 꼴로 쓰든 상관없다.
 - **gitops checkout**: `repository: joshua92y/platform-gitops` · `ref: main` · `token: ${{ steps.app.outputs.token }}` · `persist-credentials: true` · `path: gitops`. promote:42와 같은 근거다 — 이 job은 gitops의 코드를 실행하지 않고 yq · grep · sed · git만 쓴다.
 - `<sha7>` · `<short-digest>`의 정의는 계약에 적었다(C1).
+- **수정 라운드 1 보정(2026-11-16 · 리뷰 RA · RB → 컨트롤러 결정 B4 · B5)**
+  - **①′ 낡은 실행 가드**(① 뒤 · ② 전): 모노레포 REST `compare/<GITHUB_SHA>...main`을 워크플로 토큰으로 읽는다(BS env `MONOREPO_TOKEN: ${{ github.token }}` — 이 조회 한 번에만 쓴다). `identical`이면 계속한다. `ahead`여도 바뀐 파일(`filename` · `previous_filename`)이 paths 네 줄(D2)에 걸리지 않으면 계속한다. 걸리면 낡은 실행이다 — notice와 요약 `[stale]`(마지막 main 커밋 sha7)만 남기고 exit 0으로 끝낸다(브랜치 · PR 없음). `behind` · `diverged` · 바뀐 파일 300개 이상(응답 상한) · 조회 오류 · 응답 꼴 오류는 실패(`stale-check`)다. 경로 판정은 GitHub 필터와 같다(`*`는 `/`를 넘지 않는다). 같은 digest면 ①이 가드보다 먼저 끝낸다.
+  - **⑦ base**: 조회마다 `base.ref == main`이어야 한다(아니면 `base` — 정리 · 실패).
+  - **대조 더하기**: 머지 커밋의 부모가 하나(squash)여야 하고, App 토큰 REST `compare/<머지 커밋>...main`이 `identical` · `ahead`여야 한다(gitops main에 들어갔다). 요약에는 머지 때 head가 이 실행의 커밋인지 남긴다.
+  - **④ push 실패**: `git push`가 실패로 끝나도 `git ls-remote`로 본 원격 끝이 이 실행의 커밋이면 정리를 거쳐 실패한다. 아니면 정리하지 않는다(남의 브랜치일 수 있다).
+  - **정리 · 닫기 실패**: `gh pr close`가 실패하면 PR을 다시 읽는다. 이미 머지됐으면 정리를 멈추고 머지 결과 대조로 간다 — 통과하면 exit 0(종료 코드 0 = 머지 확인)이고, 요약에는 `**정리 중단**`과 `**머지 확인** — [<코드>] 판정 뒤 …`가 남는다. 머지되지 않았으면 `--disable-auto`로 간다.
+  - **취소**: run 줄은 `exec bash scripts/ci/publish-pod-bump.sh`다. 러너는 취소 · job 시간 초과 때 스텝 프로세스의 PID에만 SIGINT → 7.5초 → SIGTERM → 2.5초 → SIGKILL을 보낸다(actions/runner `src/Runner.Sdk/ProcessInvoker.cs` — 2026-11-16 컨트롤러 확인: `kill(_proc.Id, …)` · `NixKillProcessTree`는 `_proc.Kill()`뿐). `bash <스크립트>`였다면 신호가 부모 셸에만 가서 스크립트가 고아로 남는다 — 그러면 post 단계가 App 토큰을 폐기한 뒤라 정리도 실패한다.
+    - 스크립트는 INT · TERM trap으로, ④ 뒤 · 머지 전이면 정리하고 exit 130(`cancel`)으로 끝난다.
+    - 정리 중의 신호는 무시한다. 그래서 정리 창은 SIGINT부터 10초이고, 실패 갈래의 정리 도중에 취소가 와도 정리를 마친다.
+    - push 도중의 신호는 원격 끝이 자기 커밋일 때만 정리한다.
+    - 정리 중 머지를 보면 대조하지 않고 메모만 남긴다(취소 중이다 — 운영자가 확인한다).
+    - SIGKILL까지 가면 요약에 정리 줄이 없다 — 런북 §3 T074의 운영자 GET으로 남은 PR · 브랜치를 본다.
+  - **까닭 코드 추가**: `stale-check` · `base` · `cancel`. 정본 목록은 BS 머리 주석이다.
+- **수정 라운드 2 보정(2026-11-16 · 재검토 A RN-2–4 · B L1–L8 → 컨트롤러 결정 B6)**
+  - ①′: compare 응답의 `files`가 목록이 아니면(`(.files | tag)` ≠ `!!seq` — 없음 · null · map) `stale-check`. identical도 빈 목록이 온다(2026-11-16 컨트롤러 GET — 두 저장소).
+  - 두 compare의 머리 = `refs/heads/main`(모노레포 `<원천 커밋>...refs/heads/main` · gitops `<머지 커밋>...refs/heads/main`).
+  - 모노레포 토큰: ⓪ 존재 확인 직후 `declare +x mono="$MONOREPO_TOKEN"` · `unset MONOREPO_TOKEN` → compare 한 줄만 `GH_TOKEN="$mono"` → 바로 `unset mono`. 다른 자식의 env에 남지 않는다.
+  - 원격 브랜치 있음 · 없음(④ branch-exists · 정리 확인): `remote_state` — ref 이름이 정확히 `refs/heads/<b>`인 줄만 센다(present · absent · error). `git ls-remote --exit-code`는 쓰지 않는다(패턴이 꼬리 일치라 `refs/heads/x/refs/heads/<b>`도 맞는다).
+  - 취소: stop-commands 구간 안에서 신호를 받으면 그 구간부터 닫는다(`SHOW_TOK`). 머지를 본 뒤(대조 중) 받으면 정리하지 않고 요약에 「취소 중 머지 확인」을 남긴다.
+  - 문장: 「그 커밋의 실행이 bump한다」를 사실대로 고쳤다 — 실행이 없을 수 있다(런북: `[stale]`인데 그 커밋에 실행이 없으면 U-d).
 
 ### D9 gitops seed PR(사람 · 자리 값 digest) 〔편차 6〕
 
@@ -413,7 +433,7 @@ images:
 - **사본 env**: `PUBLISH_POD_WORKFLOW` · `PUBLISH_POD_ASSERT_SCRIPT` · `PUBLISH_POD_BUMP_SCRIPT`를 주면 요약 줄 끝에 ` (override: …)`가 붙어 run-all 판정을 통과하지 못한다. `PUBLISH_POD_YQ`는 도구 위치라 접미가 없다.
 - **요약**: `N passed, M failed`. 실패가 있으면 그 바로 앞에 `failed: <id>, …` 한 줄을 둔다.
 
-**정적 단언 pp-1–pp-25**
+**정적 단언 pp-1–pp-28**(pp-26–pp-28과 맵 단언의 정확 비교는 수정 라운드 1에서 더했다 — 리뷰어가 변이 사본으로 정적 계층의 거짓 통과를 실측했다. 맵 단언은 모두 「판독하지 못한 줄 0 · 더 깊은 줄 0」까지 본다. job 키 집합(pp-8 · 9 · 10) · 최상위 env(pp-4) · job env(bump만 {BOT_SLUG, BOT_ID} — pp-21)도 정확히 맞춘다)
 
 | id | 단언 |
 |---|---|
@@ -422,28 +442,31 @@ images:
 | pp-3 | `permissions: {}` · concurrency group · cancel 식이 글자 그대로 |
 | pp-4 | env `POD` · `IMAGE` · `DOCKER_BUILD_RECORD_UPLOAD` · `IMAGE == ghcr.io/joshua92y/$POD` == IA/deploy/base의 모든 `image:` 값 |
 | pp-5 | jobs = {build-check, publish, bump} · job 수준 `name:` 0 · 모두 `ubuntu-24.04-arm` · timeout 30 · 30 · 20 이하 |
-| pp-6 | 모든 `uses:`가 40hex + `# vX.Y.Z` · 액션 집합 ⊆ 7종 · 메이저가 문면과 같다 · 같은 액션은 같은 SHA · checkout SHA == CI |
+| pp-6 | 모든 `uses:`가 `<owner>/<repo>@<40hex> # vX.Y.Z`이고 리뷰한 핀 표(일곱 액션 — 판 · SHA 글자 그대로 · checkout은 ci.yml과 같다)와 같다 |
 | pp-7 | run 본문 `${{` 0 · `toJSON(` 0 · `secrets.` 정확히 1(bump `private-key`) · `vars.` 정확히 1(`client-id`) |
 | pp-8 | build-check: if 식 · 권한 = `contents: read`만 · 스텝 = checkout → setup-buildx → metadata → 빌드(load) → AS(`local`) · login · attest · app-token · environment 0 |
 | pp-9 | publish: if 식 · 권한 네 줄 정확 · environment 0 · 스텝 순서(D6) · `outputs.digest` == push 빌드 스텝의 `outputs.digest` |
 | pp-10 | bump: `needs: publish` · 같은 if · `environment: production`(파일 전체에서 유일) · 권한 = `contents: read`만 · 스텝 순서 = 모노레포 checkout → yq → 토큰 → gitops checkout → BS |
 | pp-11 | 모노레포 checkout 셋: `persist-credentials: false` · ref · repository · token 없음 · bump의 것은 `sparse-checkout: scripts/ci`뿐 |
-| pp-12 | setup-buildx 둘: 블록이 같다 · with 키 = 정확히 {driver-opts, buildkitd-flags} · `image=moby/buildkit:<판>@sha256:<64>` · `buildkitd-flags`가 비지 않고 `insecure` · `entitlement`를 담지 않는다 |
+| pp-12 | setup-buildx 둘: 블록이 같다 · with 키 = 정확히 {driver-opts, buildkitd-flags} · `image=moby/buildkit:<판>@sha256:<64>` · `buildkitd-flags` = `--debug=false` 글자 그대로(수정 라운드 1 — 거부 목록 비교를 정확 비교로) |
 | pp-13 | metadata 둘: images = env.IMAGE · tags = `type=sha,format=long` 한 줄 · `flavor: latest=false` |
 | pp-14 | build-push 셋: with 키 = 정확히 8개 + `load`(적재 빌드에만) · 값(context · file · platforms · provenance false · sbom false · build-args 정확히 두 줄 · tags) · 적재 = `push: false` + `load: true` · push = `push: true` |
 | pp-15 | AS 호출 셋: run 본문 = `bash scripts/ci/publish-pod-assert-image.sh` 한 줄 · env = 정확히 {IMAGE_REF, EXPECT_SHA, ASSERT_MODE} · 모드가 자리(local · local · registry)와 맞다 |
-| pp-16 | attest 입력 넷 정확 · verify 줄에 `--repo` · `--signer-workflow` · `--source-ref refs/heads/main` · `--deny-self-hosted-runners` |
+| pp-16 | attest 입력 넷 정확 · verify run 본문 = D7 줄과 글자 그대로 같다(`--repo` · `--signer-workflow` · `--source-ref refs/heads/main` · `--deny-self-hosted-runners` — 수정 라운드 1에서 부분 문자열 비교를 정확 비교로) |
 | pp-17 | App 토큰: bump에만 · `client-id` · `private-key` 이름 · `repositories: platform-gitops` · `permission-*` = 정확히 contents · pull-requests write · `skip-token-revoke` · `owner` 없음 |
-| pp-18 | `steps.app.outputs.token`은 gitops checkout `token:`과 BS env에만 |
+| pp-18 | App 토큰 참조(점 · 괄호 꼴 모두 — `steps.app` · `steps['app']`)는 정확히 셋: App 스텝 출력을 쓰는 gitops checkout `token:` · BS env `GH_TOKEN` · `APP_SLUG`의 자리뿐(수정 라운드 2) |
 | pp-19 | gitops checkout: repository · `ref: main` · `persist-credentials: true` + 근거 주석 · `path: gitops` |
-| pp-20 | yq: `YQ_VERSION: v4.53.6` + 64hex 짝 · fetch · `sha256sum -c` · 버전 대조 · `$RUNNER_TEMP/bin` |
-| pp-21 | BS 호출: run 본문 = `bash scripts/ci/publish-pod-bump.sh` 한 줄 · env 키 집합 정확 · `BOT_SLUG` == `joshuatech-gitapp-1` · `BOT_ID` == `323873425`(H 상수 — vsh:232-233에서 옮김) |
+| pp-20 | yq: `YQ_VERSION: v4.53.6` + 64hex 짝 · run 본문 전체 = H 상수(들여쓰기 정규화 뒤 글자 그대로 — fetch · `sha256sum -c` · 버전 대조 · `$RUNNER_TEMP/bin` · 수정 라운드 1에서 부분 문자열 비교를 정확 비교로) |
+| pp-21 | BS 호출: run 본문 = `exec bash scripts/ci/publish-pod-bump.sh` 한 줄(수정 라운드 1b — D8 「취소」) · env 키 집합 정확 · `BOT_SLUG` == `joshuatech-gitapp-1` · `BOT_ID` == `323873425`(H 상수 — vsh:232-233에서 옮김) |
 | pp-22 | AS 원문: `set -euo pipefail` · jq 0 · `--format` 템플릿 · 허용 목록 다섯 이름 · `::stop-commands::` + 무작위 토큰 + 재개 줄 |
-| pp-23 | BS 원문: `set -euo pipefail` · `kustomize` 0 · `git add -- "$dev"` 꼴뿐(`-A` · `.` 0) · push 꼴 하나(force · `+` · main 0) · `--auto --squash --match-head-commit` · REST `pulls/` 조회 · `statusCheckRollup` · `gh pr view` · `graphql` · `check-runs` 0 · 상한 15분 이하 · 정리(`gh pr close` · `--disable-auto` · `push origin --delete` · `ls-remote`) · stop-commands |
+| pp-23 | BS 원문: `set -euo pipefail` · `kustomize` 0 · `git add -- "$dev"` 꼴뿐(`-A` · `.` 0) · push 꼴 하나(force · `+` · main 0) · `--auto --squash --match-head-commit` · REST `pulls/` 조회 · `statusCheckRollup` · `gh pr view` · `graphql` · `check-runs` 0 · 상한 15분 이하 · 정리(`gh pr close` · `--disable-auto` · `push origin --delete` · `ls-remote`) · stop-commands · `MONOREPO_TOKEN`은 존재 확인 · 옮기기 · `unset` 세 줄에만 · `$mono`는 ①′ compare 한 줄에만(다른 `GH_TOKEN=` 대입 0) · compare 머리 `...refs/heads/main`(`...main"` 꼴 금지) · `ls-remote --exit-code` 금지 · `trap on_signal INT TERM` · on_signal이 열린 stop-commands 구간을 닫는 줄(수정 라운드 1 · 2) |
 | pp-24 | PP 머리 주석: job 셋 항목 · VD-5 · 편차(kustomize 미사용 · 캐시 없음 · PR build-check · dispatch 한정) · 불변식(revision은 `APP_GIT_SHA`에서만 · labels 금지 · push 전 단언) · 들여쓰기 규약 |
 | pp-25 | 로직 자리: PP의 run 스텝은 yq 설치 · 자기 검증 한 줄 · 스크립트 호출 넷(AS 셋 · BS 하나)뿐이다(run 스텝 수 정확) |
+| pp-26 | 문법: 블록 스칼라 머리는 정확히 `|`만(`>` · `>-` · `>+` · `|-` · `|+` · 들여쓰기 지시자 FAIL — 수정 라운드 2 · 스크립트 호출 · 자기 검증은 한 줄 run만). 블록 스칼라 밖의 코드 줄은 따옴표 없는 `[A-Za-z0-9_-]+:` 키 줄(값이 흐름 · 앵커 · 별칭 · 태그 · 주석 · 지시자로 시작하지 않는다)과 한 줄 스칼라 목록 항목뿐이다(예외 최상위 `permissions: {}`). 값 있는 줄보다 깊은 이음 줄 · 한 줄에서 닫히지 않은 따옴표 · 블록 밖 탭 · 파일 어디든 제어 · 서식 문자와 NEL · LS · PS 0 |
+| pp-27 | 경계: 머리 주석 뒤의 0칸 줄은 최상위 키 여섯뿐이다(0칸 주석 0). `on:` · `jobs:` 아래에서 4칸보다 얕은 줄은 트리거 셋 · job 셋의 머리(각각 한 번)뿐이다(얕은 주석 0) |
+| pp-28 | 스텝 키 집합 정확: uses 스텝 = {uses, with} 또는 {id, uses, with} · run 스텝 = {name, env, run} · 스텝 `name:` 값에 `${{` 없음(수정 라운드 2) |
 
-**실행 사례 px-1–px-23**
+**실행 사례 px-1–px-38**(px-24–px-37은 수정 라운드 1 · 1b · px-38과 px-26 · px-29의 추가 사례는 라운드 2)
 
 | id | 대상 | 사례 → 기대 |
 |---|---|---|
@@ -470,6 +493,23 @@ images:
 | px-21 | BS | gh 출력(머지 상태 · 주소)에 명령 글자 → stop-commands 구간 밖에 나오지 않는다〔CD-21〕 |
 | px-22 | BS 전 실행 | 가짜 gh 기록에 `pr view` · `api graphql` · `check-runs` · `statuses` 호출 0〔CD-1〕 |
 | px-23 | PP 대조 | PP의 `BOT_SLUG` · `BOT_ID`가 형제 클론 `../platform-gitops/tests/validate.sh`의 `VALIDATE_BOT_AUTHORS` · `VALIDATE_BOT_IDS` 기본값에 든다 — 클론이 없으면 SKIP〔CD-17〕 |
+| px-24 | BS ①′ | ahead + 발행 경로 변경(rename의 `previous_filename` 포함) → exit 0 · notice · 요약 `[stale]` + 마지막 main 커밋 sha7 · gh 호출은 compare 하나 |
+| px-25 | BS ①′ | ahead + 발행 경로 밖 변경뿐 → 계속해 머지 확인까지 |
+| px-26 | BS ①′ | behind · diverged · 바뀐 파일 300 · 조회 오류 · `files` 없음 · null · map → 각각 `stale-check` 실패(오류 글자는 stop-commands 구간 안에만) |
+| px-27 | BS 토큰 | 모노레포 compare는 `MONOREPO_TOKEN`으로, 나머지 gh 호출은 App 토큰으로 간다(가짜 gh는 값이 아니라 표지만 기록) · 두 토큰 값은 출력 · 요약 · PR 본문 · 호출 기록 · 커밋(클론 · 원격 `--all`)에 0번 |
+| px-28 | BS ④ | push 실패 + 원격이 받음 → 정리(삭제 push 1 · 원격에 없음) · push 실패 + 원격이 안 받음 → 정리 없음(삭제 push 0) |
+| px-29 | BS 취소 | (o) ⑦ 기다림 중 SIGTERM → 정리 · exit 130 · 요약 시간 줄 `exit 130` / (i) 실패 갈래 정리 도중 신호 → 정리를 마치고 원래 실패(exit 1) / (ii)(iii) push 도중 신호 → 원격 끝이 자기 커밋이면 정리 · 남의 커밋이면 삭제 0(둘 다 exit 130) / (iv) 대조 도중 신호 → 정리 없음 · 요약 「취소 중 머지 확인」 / (v) ⑦ 기다림 중 SIGINT → 정리 · exit 130 / (vi) stop-commands 구간 출력 도중 신호 → 구간을 닫고 `[cancel]`이 구간 밖 · 정리 |
+| px-30 | BS 정리 | 닫기 실패 → 다시 읽어 머지됨 → 정리 중단 · 대조 통과 → exit 0 · 요약 `**정리 중단**` · `**머지 확인** — [<코드>] 판정 뒤 …` |
+| px-31 | BS ⑦ · 대조 | base가 main이 아님 → `base` · 머지 커밋이 gitops main에 없음(compare diverged) → `merge-check`(정리 없음) |
+| px-32 | AS | `/src/apps` 아래에 `<pod>` 밖의 디렉터리 → `tree` |
+| px-33 | AS | docker inspect · imagetools · pull · create 실패 → 각각 `inspect` · `mediatype` · `pull` · `export`(오류 글자는 구간 안에만 · stderr 비어 있음) |
+| px-34 | AS | `ASSERT_MODE` 값 밖 · `EXPECT_SHA` 꼴 · registry 모드의 태그 참조 → 각각 `usage` · docker 호출 0 |
+| px-35 | BS ③ | users 응답의 login만 다름 → `identity` · 커밋 · push 전에 멈춘다 |
+| px-36 | BS 대조 | 부모가 둘인 머지 커밋 → `merge-check`(정리 없음) |
+| px-37 | BS ①′ | `scripts/ci/publish-pod-x/y.sh`만 바뀐 ahead → 낡음 아님(계속) · `scripts/ci/publish-pod-bump.sh` → 낡음 |
+| px-38 | BS ④ · 정리 | 원격에 꼬리만 같은 ref(`refs/heads/x/refs/heads/<b>`)가 있어도 branch-exists가 아니다(머지까지) · 정리 확인이 그 ref를 「남아 있음」으로 보지 않는다 |
+
+**선택 실행**: env `PUBLISH_POD_TESTS_ONLY`(빌더가 더함)를 주면 요약 줄 끝에 ` (filtered: …)`가 붙어 run-all 1b6이 FAIL로 닫는다. 집계 단언(px-7 · 21 · 22 · 27)의 실행 수 하한은 전체 실행 때만 본다.
 
 **run-all 슬롯 1b6**: 1b5 뒤에 `# 1b6. ci-publish-pod (T074)`를 둔다. 판정은 exit 0 + `^\d+ passed, 0 failed$`(1b5의 양성 증거 규율)이고, 파일 전체 SKIP 갈래는 없다. 하네스 출력에 `N skipped` 줄이 있으면(N > 0) 슬롯이 판정 줄과 별도로 `NOTE ci-publish-pod -- N execution cases skipped (see SKIP lines above)` 한 줄을 찍는다 — 정적 계층만의 PASS가 실행 계층의 부재를 가리지 않게 한다(1b5가 파일 전체 SKIP으로 막는 것을 여기서는 이 줄로 드러낸다 · §10 ① 컨트롤러 답).
 
@@ -496,7 +536,7 @@ images:
 ### D16 직렬화 · 실패한 bump PR 〔CD-2〕
 
 - main 실행은 동시성 그룹으로 직렬로 돌고, bump는 자기 PR의 머지 결과(⑦)까지 기다린다. 실패한 실행은 자기 PR과 브랜치를 정리하고 끝난다. 그래서 pod마다 열린 봇 PR은 언제나 많아야 하나이고 낡은 PR이 남지 않는다(초안의 「운영자가 닫고 지운다」 런북 규칙을 대신한다).
-- 재시도는 「Re-run failed jobs」다(D2). 같은 줄을 바꾼 두 PR은 서로 충돌한다(추론 — 동시에 둘이 열리지 않으므로 드물다).
+- 재시도는 **가장 새** 실행의 「Re-run failed jobs」다(D2). 낡은 실행을 다시 돌리면 D8 ①′ 가드가 bump를 건너뛴다 — 옛 digest로 되돌리지 않는다(수정 라운드 1). 같은 줄을 바꾼 두 PR은 서로 충돌한다(추론 — 동시에 둘이 열리지 않으므로 드물다).
 - strict 정책에서 gitops main이 검사 중에 움직이면 BEHIND가 된다. `allow_update_branch`가 false이고 merge queue가 없으므로 ⑦ 시간 초과 → 정리 → Re-run이다.
 
 ### D17 단계 통합의 실행 세부(UD-1 = A) 〔CD-6 · CD-13〕
@@ -647,7 +687,7 @@ images:
 | 받는 쪽 | 항목 |
 |---|---|
 | T075 | dev overlay의 `images` 항목(`name` · `newName` · digest 줄)을 지우거나 옮기지 않는다 · **Application은 자리 값이 실제 digest로 바뀐 뒤에 만든다** · prod의 첫 항목은 사람 PR이 실제 digest로 넣는다(promote ④ 전제) · `source.path` 소문자 · gitops 문서 정정〔CD-11〕: G/tests/README.md:66(「T074에서 생긴다」 → T075) · :220(빠진 `promote/**` · 「T074·T115에서 실측」 → T115) · G/README.md:36(「첫 dev bump(T074)와 승격 실연(T115)」 → T115) |
-| T115(필수) | ① 봇 경로 출처 검증〔CD-16〕: gitops validate 봇 경로의 신뢰 스텝(PR 코드 실행 전 — 스텝 2 자리)에 `gh attestation verify oci://ghcr.io/joshua92y/<pod>@<new> --repo joshua92y/joshuatech_ver2 --signer-workflow joshua92y/joshuatech_ver2/.github/workflows/publish-pod.yml --source-ref refs/heads/main --deny-self-hosted-runners`(Public 뒤) 또는 클러스터 admission — 계약 문장으로 ② promote ③을 같은 네 플래그로(C13)〔CD-19〕 ③ App 토큰 탐침(금지 push · main push · 승인 API) — 수단은 운영자의 App 임시 개인 키 → 로컬 토큰 → 탐침 → 키 삭제〔CD-14〕 ④ V6을 못 쟀으면 V6 ⑤ SC-010 ⑥ VD-5가 B면 원인별 문면(D12) |
+| T115(필수) | ① 봇 경로 출처 검증〔CD-16〕: gitops validate 봇 경로의 신뢰 스텝(PR 코드 실행 전 — 스텝 2 자리)에 `gh attestation verify oci://ghcr.io/joshua92y/<pod>@<new> --repo joshua92y/joshuatech_ver2 --signer-workflow joshua92y/joshuatech_ver2/.github/workflows/publish-pod.yml --source-ref refs/heads/main --deny-self-hosted-runners`(Public 뒤) 또는 클러스터 admission — 계약 문장으로 ② promote ③을 같은 네 플래그로(C13)〔CD-19〕 ③ App 토큰 탐침(금지 push · main push · 승인 API) — 수단은 운영자의 App 임시 개인 키 → 로컬 토큰 → 탐침 → 키 삭제〔CD-14〕 ④ V6을 못 쟀으면 V6 ⑤ SC-010 ⑥ VD-5가 B면 원인별 문면(D12) ⑦ dev bump 실연은 main에 새 변경이 들어가야 publish-pod가 돈다 — UD-1이 「T074 한정」이므로 그 통합 전에 같은 결정을 다시 여쭌다(§8) |
 | T116 | 모노레포 ruleset(PR 규칙 · `.github/workflows/` CODEOWNERS — 이제 App 키를 읽는 워크플로가 생겼다 · ci.yml:68-70 인계와 같은 무게) · GHCR 패키지 「Manage Actions access」 점검(연결 저장소 하나 · 역할 최소)과 `.github/workflows/` 변경 리뷰〔CD-4〕 · 두 저장소 `sha_pinning_required: true`(합성 액션 내부 핀 먼저 확인) · Renovate github-actions `minimumReleaseAge: "14 days"`〔CD-20〕 · BuildKit digest 갱신 수단(Renovate regex) · App 키 전용 Environment 분리 검토 · paths 필터 워크플로를 required로 넣지 않는다 |
 | T117 · /finish | report 편차 1–13 · VD-5 결과 한 줄 · 단계 통합 기록 |
 | T118 | 헌법 개정 제안 — 단계 통합을 정식 절차로(`/speckit-constitution` · CLAUDE.md:48 · finish-gate)〔CD-6〕 · CLAUDE.md Known Issues 후보: 「main 전용 발행 ↔ finish 뒤 통합」 · `kustomize edit set image`가 `newName`을 지운다 |
@@ -661,7 +701,7 @@ images:
 
 ### 현재 상태(2026-11-16)
 
-- **대기는 UD-1 하나다**(조각 ⑥ 전에 여쭙는다)〔CD-23〕.
+- **대기는 UD-1 하나였고, 2026-11-16 「단계 통합 · T074 한정」으로 정해졌다**(아래 UD-1 절)〔CD-23〕.
   - 초안의 UD-2(GHCR 전환 시점)는 VD-T074-2 결과에 따른 조건부 기본값이 되었다(D10).
   - 초안의 UD-3(빌드 캐시)은 컨트롤러 결정(캐시 없음 — D5)이 되었다.
 - 계약이 미리 정한 것(새 결정 아님): `collaborators_only`가 막히면 `all`로 바꾼다(gr:259 — 운영자).
@@ -669,7 +709,9 @@ images:
 - **알림**: 공개 저장소의 attest는 첫 실행부터 이미지 이름 · digest · 워크플로 · 커밋을 공개 투명성 로그(public-good Sigstore)에 영구히 남긴다. 되돌릴 수 없지만, 저장소가 공개라 새로 드러나는 내용은 없다〔CD-4〕.
 - **운영자 · 사용자 단계(차례대로)**〔CD-23〕: U0(App 범위 — 사용자) · U1a(required check — 운영자) · seed 머지(운영자) · U1b(통합 머지 — 사용자) · (필요할 때) U-a · U-b · U-c · U-d · U3(Public — 사용자) · VD-T074-6 push 확인(사용자).
 
-### UD-1 머지 전 VD-5를 어떻게 재는가(대기 — 조각 ⑥ 전)
+### UD-1 머지 전 VD-5를 어떻게 재는가(결정 2026-11-16)
+
+**사용자 결정(2026-11-16 · AskUserQuestion): 「단계 통합 · T074 한정」(아래 표의 A-T074 한정).** 이 예외는 T074 세션의 통합과 그 안의 고침 재통합에만 쓴다. T074 뒤에 main 발행이 다시 필요한 지점 — US5 Worker deploy(T092–T095)만이 아니라 T115 dev bump 실연(main에 새 변경이 들어가야 publish-pod가 돈다) · identity-admin 수정을 dev에 반영해야 하는 과제 — 마다 같은 결정을 다시 여쭌다. 질문할 때 보인 미리보기의 「T075 · T076 · US4 · T115는 문서대로 진행」은 이 점을 빠뜨린 문장이었다(사용자에게 정정해 알렸다 — bn 「T074」).
 
 | 안 | 무엇 | VD-5 시점 | 규칙 · 문서 충돌 | 보안 | 대가 · 남은 과제 영향 |
 |---|---|---|---|---|---|
@@ -707,13 +749,15 @@ images:
 - **⑦의 느린 실패**: required check가 실패해도 auto-merge가 걸린 채 PR이 열려 있으므로, 시간 초과(15분)까지 기다린 뒤 정리한다. 판정에 check를 쓰지 않는 대가다(CD-1).
 - **머지 결과 불일치**: 이미 머지된 뒤에 드러난다. 되돌리기는 운영자 revert PR이다(런북 · T098 알림).
 - **gh 동작 차이**: `--auto`가 「바로 머지 가능」 상태에서 즉시 머지로 바뀌는 분기가 있다. 생성 직후라 일어나지 않을 것으로 본다(추론). 일어나도 사람 행동은 0이고 ⑦이 머지를 본다.
+- **낡은 실행 가드의 대가(수정 라운드 1 · 재검토 B L4 — 받아들임)**: ① 발행 경로를 바꾼 더 새 main 커밋에 실행이 없으면(`[skip ci]` · 3,000파일 넘는 push · 워크플로 비활성) 낡은 실행은 건너뛰고 아무도 bump하지 않는다 — dev가 멈출 뿐 되돌리지 않는다(런북: `[stale]`인데 그 커밋에 실행이 없으면 U-d). ② 「변경 뒤 되돌림」 쌍(순 diff 0)은 낡음으로 세지 않는다 — 옛 실행이 같은 소스의 다른 빌드 digest를 올릴 수 있으나 Dockerfile digest 고정 · `uv sync --locked`라 사실상 등가다. ③ GitHub paths 필터가 rename의 옛 이름을 보는지 확인하지 못했다(가드는 `previous_filename`도 센다) — 틀려도 bump를 거를 뿐이다.
+- **취소의 정리 창**: 러너는 첫 신호부터 10초 뒤 SIGKILL한다. gh · git 호출 하나가 그보다 오래 멈추면 정리 줄 없이 끝난다(bash는 전경 명령이 끝난 뒤 trap을 돌린다) — 런북의 운영자 GET이 받는다.
 
 ### 확인하지 못한 것
 
 - App이 연 PR에 대한 넷(`collaborators_only` 아래 생성 · 실행 승인 없음 · ruleset만 있는 저장소의 auto-merge · unattributed 무관) → VD-5.
 - `gh pr create` · `gh pr merge --auto` · `gh pr close`가 App 권한(contents · pull-requests)만으로 GraphQL 조회 · 변이를 마치는지. `pr merge`의 조회 필드에는 `statusCheckRollup`이 없지만(§2.5 확인) 라이브는 VD-5 b · d다.
 - VD-T074-2로: GHCR 첫 가시성 · 자동 연결 · `--signer-workflow` 값 꼴과 `--source-ref`가 gh 2.103.3에서 받아들여지는지 · push 빌드가 적재 빌드와 같은 config를 내는지(관찰).
-- `docker buildx imagetools inspect`의 기본 mediaType(OCI인지 Docker v2인지) — 단언은 둘 다 받는다. 「Re-run failed jobs」가 publish 출력을 재사용하는지(문서 · 추론) — 쓰게 되면 기록한다.
+- `docker buildx imagetools inspect`의 기본 mediaType(OCI인지 Docker v2인지) — 단언은 둘 다 받는다. (수정 라운드 1 리뷰 A — 소스로 좁힘) BuildKit v0.34.1은 attestation 없이도 OCI 타입을 쓴다(compat 기본값 — `exporter/containerimage/export.go:576-581` · `solver/llbsolver/solver.go:261-264`)고 buildx는 compat 값을 넘기지 않으므로 OCI일 것이다 — 런북 O3의 HEAD는 두 타입을 다 Accept에 넣는다(GHCR은 digest 조회에도 Accept를 강제한다 — 공개 이미지 실측: OCI 매니페스트를 Docker v2 Accept로 HEAD하면 404). 「Re-run failed jobs」가 publish 출력을 재사용하는지(문서 · 추론) — 쓰게 되면 기록한다.
 - 조각 ② · ③으로: BuildKit 판 · digest · `buildkitd-flags` 값 · login v4.8.0(발행 11일 — 14일 원칙) · actionlint 1.7.12가 새 입력(`client-id` · `create-storage-record`)을 거짓 오류로 보는지 · 이 PC에서 shellcheck와 zizmor를 돌릴 수 있는지(`uvx` 경로).
 - O1 · U0 UI로: GHCR에 같은 이름의 연결 없는 옛 패키지가 있는지(토큰에 `read:packages` 없음) · App 설치 범위의 현재 값(App GET 404).
 - 같은 줄을 바꾼 두 bump PR이 정말 충돌로 멈추는지(D16 추론).
