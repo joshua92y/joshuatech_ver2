@@ -5099,3 +5099,27 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
 - **대기 사용자 결정**(T073 안에서 정하지 않는다 — 각 과제 앞에서 표로 여쭌다): 설계 §8의 UD-1(T080) · UD-2 · UD-4(T081) · UD-3(T083) · UD-7 · UD-8(T089) / 빌드에서 생긴 UD-9(Dragonfly pod 사용자 ACL `+@all` 좁히기 — T075 전 · 근거 조각 ② VD-T073-16) · UD-10(Traefik 액세스 로그에 실리는 `/session/check` 쿼리의 원문 `sub` · `sid` — T098 전 · 근거 조각 ③-a) · UD-11(웹훅 본문 `nbf`가 `created`보다 300 s 넘게 과거일 때의 처리 — T081 전 · 근거 조각 ③-b2).
 - **push 전 · 뒤**(조각 ⑥ 「push 전 절차」 B75): push는 로컬에서 T066 76 전부 초록을 본 뒤에만, 사용자 확인을 받고 한다. 첫 CI 실행이 T066 api-8 · 12 · 13 · 21 · 24 · 44에서 빨강이면 `+ where` 줄을 이 문서 · PR · 대화 · 학습 로그에 옮기지 않고 운영자가 그 실행의 로그를 지운다. 첫 실행에서 VD-T073-CI(job `identity-admin` — arm64 러너의 시간 예산 · fork beat의 ia-40 · TCP 중계 · 닫힌 포트 예외 꼴 · ia-22 시간 사례)를 본다. 운영자 단계: main ruleset에 `identity-admin` required check.
 - **report.md 후속 후보**(조각별 절에서 모음): 워크플로 최상위 키 집합 고정 단언 · T066 단언 여섯(R0-2)의 정리(조각 ⑥) · 그 밖은 조각별 절의 「report.md 후속 후보」 · 「한계」를 본다.
+
+### T073 VD-T073-CI 결과(push 뒤 첫 CI · 2026-11-16)
+
+- **push**: 사용자 확인(「지금 push」) 뒤 로컬 3커밋(설계 `06146b9` · 생성 `6bfdcd2` · 구현 `bb9faef8cd08e08a631eec9aaba062d412d3ef6a`)을 origin `003-platform-foundation`(draft PR #1)에 올렸다(강제 push 없음).
+- **CI 실행 `43816403742`**(pull_request · head `bb9faef`): job 7개 모두 success — `identity-admin`(ubuntu-24.04-arm) 06:23:24 → 06:27:19 UTC(3분 55초 · 시험 단계 3분 45초 · `521 passed in 220.30s (0:03:40)` — 요약 줄에 failed · skipped 없음) · test · gitleaks · lint · events-test · kubeconform · events-compat.
+- **판정: VD-T073-CI PASS** — job 예산 30분 안(로컬 Windows 닫기 351 s보다 빠르다) · Linux arm64에서 fork beat(ia-40) · TCP 중계 · 닫힌 포트 예외 꼴 · ia-22 시간 사례가 모두 초록이다(521 안). B75의 빨강 갈래(T066 api-8 · 12 · 13 · 21 · 24 · 44)는 쓰이지 않았다 — 지울 로그 없음.
+- **남은 운영자 단계**: main ruleset의 required status checks에 `identity-admin`을 더한다(운영자 — 확인은 그 뒤 첫 PR 실행에서).
+
+## T074 (2026-11-16 설계 확정 — US6 구현 · `.github/workflows/publish-pod.yml` + VD-5(dev bump 자동 머지) 실측 · 세션 모델 Opus 5.5)
+
+### T074 설계(조사 · 초안 · 비판 · 확정 · 2026-11-16)
+
+- **경과**: 워크플로 `wf_05d83ed9-329` — 읽기 전용 조사 넷(R1 명세 · 계약 · 순서 / R2 모노레포 CI · 이미지 / R3 gitops · GitHub 설정(GET만) / R4 외부 사실) → 초안(793줄 · D1–D18) → 비판 두 렌즈(A 계약 · 완전성: high 1 · medium 6 · low 7 / B 보안 · 공급망: high 1 · medium 4 · low 4 — 둘 다 approve_with_fixes). 컨트롤러가 23건을 결정(CD-1–CD-23 · 기각 0)하고, 확정본과 〈설계 커밋〉 보정은 위임 에이전트 하나가 썼다. 컨트롤러가 diff를 검토하고 §10 「컨트롤러 확인 필요」 넷에 답했다(설계 §10 끝). 결정 기록은 무시되는 작업 폴더 `.superpowers/t074/decisions-controller.md`, 조사 · 초안 · 비판 원본은 `.superpowers/t074/`에 있다.
+- **설계의 큰 결정**(정본 `design/t074-design.md`)
+  - 발행은 main 전용 그대로다(FR-037 · ADR 0002 · Environment 정책을 넓히지 않는다). PR에서는 빌드와 단언만 하는 `build-check`가 돈다(VD-T074-1).
+  - 로직은 `scripts/ci/publish-pod-assert-image.sh` · `scripts/ci/publish-pod-bump.sh`로 옮기고, `tests/scripts/publish-pod.tests.ps1`(정적 25 + 실행 23)이 지킨다(모노레포 선례 events-compat · run-all 1b6).
+  - publish는 적재 빌드 → 단언 → push 빌드 → 단일 매니페스트 · pull · 같은 단언 → attest → 자기 검증 순이다. 정상 경로에서 잘못 만든 이미지는 push되지 않는다.
+  - bump는 `kustomize edit set image`가 아니라 promote ④ 꼴의 제자리 hex 교체다(탐침: `newName`이 지워지고 재서식된다). 봇 신원 · 원격 브랜치 끝 · `--match-head-commit` · REST만 쓰는 15분 기다림 · 머지 결과 대조 · 실패 갈래의 자기 PR · 브랜치 정리를 둔다.
+  - gitops seed PR(사람 · 자리 값 digest)이 첫 항목을 넣고, publish-pod 첫 실행의 봇 PR이 그것을 바꾼다 — 그 PR이 VD-5의 「첫 dev bump PR」이다.
+  - App 설치 범위를 `platform-gitops` 하나로 줄인다(D19 · 운영자 U0 · 통합 전 go 조건).
+  - VD: VD-5(a–g · A / B-merge / B-run) · VD-T074-1–6(PR build-check · 통합 publish와 GHCR 첫 가시성 · 자동 연결 · paths 필터 관찰 · 익명 pull · promote V6(선택) · Environment 음성 탐침).
+- **〈설계 커밋〉 보정**(표식 「T074 보정 2026-11-16」 · 규칙 파일은 `(T074)`): gr C1 · C2 · C3 · C4 · C13 · pt C5 · django-pod.md(+미러) C6 · specs.md(+미러) C7 · bootstrap.md C14. 규칙 슬롯 시험 `tests/agents/agent-layer.tests.ps1` → `72 passed, 0 failed`(위임 에이전트 실행) · specs.md 쌍은 run-all 인라인 검사 6 · 9를 손으로 재현(canonical 머리 · 미러에 없는 제목 0).
+- **대기 사용자 결정**: UD-1 하나(머지 전 VD-5를 어떻게 재는가 — 권장 A-기능 전체 · 조각 ⑥ 전에 여쭙는다). 조각 ①–⑤는 UD-1과 무관하게 진행한다.
+- **운영자 단계(모아 둠)**: T073의 `identity-admin` required check(= U1a) · U0(App 설치 범위) · seed 머지 · U1b(통합 머지 — UD-1 뒤) · VD-T074-6 push 확인.

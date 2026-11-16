@@ -18,6 +18,7 @@ paths:
 ## Template and structure
 
 - pod는 `copier copy --trust --defaults --data pod_name=<pod> templates/django-pod apps/<pod>`로 생성한다(`--trust`는 템플릿의 `_tasks: uv lock` 때문에 필요하다). 저장소 루트에서 하네스 copier(`uv run --project templates/django-pod --locked python -m copier …`)와 상대 템플릿 경로로 돌려 `.copier-answers.yml`에 로컬 절대 경로가 남지 않게 하고, 대상 디렉터리가 이미 있으면 `--overwrite`를 더한다(T073). 기본 생성 pod(sample-pod)는 수정 없이 자기 테스트를 통과해야 한다; 고유 로직을 더하는 pod(identity-admin)는 템플릿 소유 파일을 확장 지점에서만 고치고 고친 자리마다 표식을 달며 그 목록을 README에 둔다(T073). 모든 pod는 `packages/django-common`에 의존한다(공통 코드를 pod로 복사하지 않는다).
+- 이미지의 `org.opencontainers.image.revision` 라벨은 `APP_GIT_SHA` 빌드 인자에서만 온다(Dockerfile의 `LABEL` — `APP_GIT_SHA` · `APP_VERSION`은 `ENV`로도 둔다). 발행 파이프라인은 metadata-action의 `labels` · `annotations`를 빌드에 넘기지 않는다: `--label`이 Dockerfile `LABEL`을 덮어 빌드 인자 누락을 가리기 때문이다. 배포 빌드 값과 이미지 단언은 `contracts/pod-template.md`(§런타임 계약 이미지 행)에 있다(T074).
 - 모노레포 안 템플릿 경로는 git 저장소 루트가 아니라서 copier가 작업 트리를 읽고 `_commit`을 남기지 않는다; `copier update`는 SP-1에서 지원하지 않는다 — 다시 생성하고 diff로 옮긴다: 저장소 루트에서 `uv run --project templates/django-pod --locked python -m copier recopy --trust --defaults --overwrite apps/<pod>`를 돌리고(기록된 답을 다시 쓰고, 손으로 고친 템플릿 소유 파일은 되돌아가며, 템플릿이 만들지 않는 pod 소유 파일은 남는다) `git diff`에서 표식 달린 수정을 되살린다. `_tasks: uv lock`이 실패하면 copier는 자기가 만든 대상 디렉터리만 지운다 — 이미 있던 디렉터리는 반쯤 생성된 채 남는다(T073).
 - 템플릿 변경은 생성 결과를 그린 상태로 유지해야 한다; 템플릿 변경을 커밋하기 전에 생성된 pod의 테스트 스위트를 실행한다.
 
