@@ -118,10 +118,23 @@ REQUIRED_SETTINGS = (
     "ENV",
     "APP_VERSION",
     "APP_GIT_SHA",
+    # identity-admin(T073) — pod 계약의 필수 넷(contracts/identity-admin-api.md §identity-admin 전용 설정 · 설계 D6 · D26) — 「뒤
+    # 둘」(존재만)이 참으로 남게 ACCESS_AUD_ADMIN 앞에 둔다
+    "AUTHENTIK_API_TOKEN",
+    "AUTHENTIK_WEBHOOK_SECRET",
+    "OPENFGA_STORE_ID",
+    "OPENFGA_PRESHARED_KEY",
     "ACCESS_AUD_ADMIN",
     "ADMIN_HOST",
 )
-SECRET_SETTINGS = ("SECRET_KEY", "KAFKA_PASSWORD")  # 빈 값도 기동 실패(conf.SECRET_SETTINGS)
+SECRET_SETTINGS = (  # 빈 값도 기동 실패(conf.SECRET_SETTINGS)
+    "SECRET_KEY",
+    "KAFKA_PASSWORD",
+    # identity-admin(T073) — pod 계약의 비밀 셋(설계 D6 · D26)
+    "AUTHENTIK_API_TOKEN",
+    "AUTHENTIK_WEBHOOK_SECRET",
+    "OPENFGA_PRESHARED_KEY",
+)
 # 검증된 설정을 대신하는 env(T072 ② r2 H10 · B-2) — Celery는 broker · result URL을 app.conf보다 이 env에서 먼저 읽고(DRAGONFLY_URL
 # 검증 · 공개 도메인 거부 · 마스킹 목록을 비켜 간다), gunicorn은 GUNICORN_CMD_ARGS로 --config 파일 값을 덮는다 → 기동 실패.
 OVERRIDING_ENV = (
@@ -256,7 +269,9 @@ def _assert_django_errors(client: Client, headers: dict[str, str]) -> None:
 
 @pytest.fixture
 def df_admin(dragonfly: DragonflyInfo) -> Iterator[redis.Redis]:
-    """거부 목록 쓰기 클라이언트(admin — pod 사용자는 revoked:*를 읽기만 한다)."""
+    # identity-admin(T073) — pod 사용자 규칙이 쓰기(~revoked:*)라 아래 문장을 바꿨다(설계 D24)
+    """거부 목록 쓰기 클라이언트(admin — 시험 준비 · 관측용. identity-admin의 pod 사용자는 `revoked:*`에 쓴다 —
+    contracts/denylist.md §ACL)."""
     client = redis.Redis.from_url(dragonfly.admin_url)
     try:
         yield client

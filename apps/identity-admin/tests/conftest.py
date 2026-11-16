@@ -3,7 +3,8 @@
 autouse 픽스처는 없다 — 시험이 필요한 것만 요청한다. 비밀(비밀번호 · 자격 URL)은 세션마다 secrets.token_urlsafe로 만들고 출력하지
 않는다(tests._secret.Secret — repr 가림 · 데이터클래스 repr 제외).
 
-- 시험 실행 위생(T072 ② r2 H9 · H12): 도우미 모듈(tests._boot · _problem · _outbox_fakes · _jwt · _kafka)을 단언 재작성에 등록한다
+- 시험 실행 위생(T072 ② r2 H9 · H12): 도우미 모듈(tests._boot · _problem · _outbox_fakes · _jwt · _kafka · identity-admin(T073)의
+  _ia_support · _ia_fakes)을 단언 재작성에 등록한다
   (import 앞 — -O에서도 단언이 남는다) · pytest_configure 가드가 python -O · PYTHONOPTIMIZE · short가 아닌 --tb · -l · no가 아닌
   --show-capture · --full-trace · tests.settings가 아닌 설정 모듈로 돈 실행을 시험 전에 UsageError로 멈춘다(조건 이름만).
 
@@ -17,7 +18,8 @@ autouse 픽스처는 없다 — 시험이 필요한 것만 요청한다. 비밀(
 - `kafka`(세션): KRaft 단일 노드 Kafka(cp-kafka 8.0.0 · PLAINTEXT · 자격 없음)의 bootstrap `host:port`. `kafka_settings`(세션)는 그
   주소를 Django 설정 KAFKA_BOOTSTRAP_SERVERS에 채운다(실 Kafka로 릴레이하는 시험만 요청한다).
 - `dragonfly`(세션): Dragonfly v1.40.1(digest 핀) + 기동 뒤 `ACL SETUSER`(운영 aclfile과 같은 규칙 문자열) — admin(전 키) ·
-  `identity-admin`(resetchannels %R~revoked:* ~identity-admin:* +@all — 운영 pod 사용자) · default off. 속성 host · port · admin_url ·
+  `identity-admin`(resetchannels ~revoked:* ~identity-admin:* +@all — 운영 identity-admin 사용자 · 거부 목록 쓰기 ·
+  identity-admin(T073) contracts/denylist.md §ACL identity-admin 행) · default off. 속성 host · port · admin_url ·
   pod_url(Secret). `dragonfly_clean`(함수)은 admin으로 FLUSHALL.
 - `jwks_server`(세션): 127.0.0.1 임시 포트의 로컬 키 서버 — Authentik JWKS(tests._jwt.JWKS_PATH)와 Cloudflare Access certs
   (/cdn-cgi/access/certs)를 서빙하고 경로별 GET 수(hits)를 센다. 속성 base_url · jwks_url · certs_url · authentik_key · access_key.
@@ -55,7 +57,8 @@ from psycopg import sql
 # 도우미 모듈의 plain assert도 pytest 단언 재작성에 맡긴다(T072 ② r2 H12 · B-4) — 시험 모듈(test_*.py)이 아니라 재작성되지 않으면
 # python -O · PYTHONOPTIMIZE가 기동 거부 · 위생 · 문제 응답 단언을 지워 시험이 공허하게 통과한다(재작성한 단언은 명시 raise라 -O에도
 # 남는다). 도우미가 import되기 전(아래 tests._jwt import 앞)에 불러야 한다.
-pytest.register_assert_rewrite("tests._boot", "tests._problem", "tests._outbox_fakes", "tests._jwt", "tests._kafka")
+pytest.register_assert_rewrite("tests._boot", "tests._problem", "tests._outbox_fakes", "tests._jwt", "tests._kafka", "tests._ia_support", "tests._ia_fakes")  # identity-admin(T073)
+pytest_plugins = ("tests._ia_support",)  # identity-admin(T073)
 
 # Windows Docker Desktop은 게시 포트를 IPv4(0.0.0.0)에만 열고 `localhost`는 ::1이 먼저 풀린다 — psycopg · librdkafka · redis-py가
 # ::1에서 멈춘다. testcontainers.core.config가 import 시점에 이 env를 읽으므로 그 import보다 앞에 둔다(운영자가 env를 직접 주면 그
@@ -300,13 +303,15 @@ DRAGONFLY_PORT = 6379
 # 앞에 붙인다.
 DRAGONFLY_USERS: dict[str, tuple[str, ...]] = {
     "admin": ("~*", "+@all"),
-    POD_NAME: ("resetchannels", "%R~revoked:*", f"~{POD_NAME}:*", "+@all"),
+    # identity-admin(T073) — 거부 목록 쓰기(`~revoked:*` — 템플릿 기본 `%R~`가 아니다 · contracts/denylist.md §ACL · 설계 D24)
+    POD_NAME: ("resetchannels", "~revoked:*", f"~{POD_NAME}:*", "+@all"),
 }
 
 
 @dataclass(frozen=True)
 class DragonflyInfo:
-    """Dragonfly 접속 정보 — admin = 전 키(시험 준비 · 관측 · FLUSHALL) · pod = 운영 pod 사용자 규칙(거부 목록 읽기 전용 · 자기 접두).
+    """Dragonfly 접속 정보 — admin = 전 키(시험 준비 · 관측 · FLUSHALL) · pod = 운영 identity-admin 사용자 규칙(거부 목록 읽기 ·
+    쓰기 · 자기 접두 — identity-admin(T073)).
     자격 URL은 repr에서 빼고 값도 Secret이다."""
 
     host: str

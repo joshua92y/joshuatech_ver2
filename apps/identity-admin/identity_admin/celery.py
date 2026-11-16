@@ -4,8 +4,9 @@
 
 - 브로커 URL은 import 시점이 아니라 PodConfig.ready()의 runtime 분기가 configure_broker(settings.DRAGONFLY_URL)로 둔다 —
   migrate 프로필은 이 모듈을 import하지 않는다. 새 자격 URL 설정 이름을 만들지 않는다(마스킹 목록 그대로).
-- Dragonfly pod 사용자는 채널 권한이 없다(resetchannels %R~revoked:* ~identity-admin:* +@all) → 원격 제어 · gossip · mingle ·
-  heartbeat(팬아웃 pub/sub)를 끈다. 모든 키는 identity-admin: 접두(global_keyprefix).
+- Dragonfly pod 사용자는 채널 권한이 없다(resetchannels ~revoked:* ~identity-admin:* +@all — identity-admin(T073) 설계 D24 ·
+  contracts/denylist.md §ACL) → 원격 제어 · gossip · mingle · heartbeat(팬아웃 pub/sub)를 끈다. 모든 키는 identity-admin:
+  접두(global_keyprefix).
 - transport socket_timeout 5 · socket_connect_timeout 2 — BRPOP 1 s 대기보다 크다(0.2 s는 거부 목록 클라이언트 전용).
 - 결과 백엔드 없음 · task_always_eager 끔 · 루트 로거를 건드리지 않는다(setup_logging 수신기 + worker_hijack_root_logger False —
   로깅은 configure_logging이 소유한다). 배너 같은 원문 stdout 줄은 Django 밖이라 예외다(수집은 T098).
@@ -16,6 +17,7 @@
 from __future__ import annotations
 
 import os
+from datetime import timedelta  # identity-admin(T073) — beat 항목 reconcile-denylist의 30 s(설계 D15 · D3 ④)
 from typing import Any
 
 from celery import Celery
@@ -42,6 +44,22 @@ CELERY_CONFIG: dict[str, Any] = {
     "timezone": "UTC",
     "beat_schedule": {
         "purge-dead-outbox": {"task": PURGE_TASK, "schedule": crontab(minute=17, hour=3)},
+        # identity-admin(T073) — 설계 D15 · D3 ④: 30 s 무조건 재적용(밀린 tick은 쌓지 않고 버린다 — expires 30) · 폐기 로그
+        # purge 03:27 UTC · Authentik logout 이벤트 대조 03:37 UTC(작업은 identity_admin/jobs.py — tasks.py가 싣는다)
+        "reconcile-denylist": {
+            "task": "identity_admin.tasks.reconcile_denylist",
+            "schedule": timedelta(seconds=30),
+            "options": {"expires": 30},
+        },
+        "purge-session-revocation-log": {
+            "task": "identity_admin.tasks.purge_session_revocation_log",
+            "schedule": crontab(minute=27, hour=3),
+        },
+        "reconcile-authentik-sessions": {
+            "task": "identity_admin.tasks.reconcile_authentik_sessions",
+            "schedule": crontab(minute=37, hour=3),
+        },
+        # identity-admin(T073) 끝
     },
 }
 

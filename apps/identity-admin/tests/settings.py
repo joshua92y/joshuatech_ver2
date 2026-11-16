@@ -3,7 +3,9 @@
 다른 설정 모듈을 거부한다).
 
 ① import 첫머리에서 pod 설정 env를 시험 자리값으로 **덮어쓴다** — 필수값은 자리값, 선택값 · 거부 대상은 지운다(POD_SETTINGS_ENV ·
-  POD_SETTINGS_ENV_REMOVED). 개발자 셸의 실제 env(포트 포워드한 dev 클러스터 · 실 Sentry DSN 등)가 시험과 기동 하위 프로세스를
+  POD_SETTINGS_ENV_REMOVED). identity-admin의 API URL 둘(AUTHENTIK_API_URL · OPENFGA_API_URL)은 선택 설정이지만 닫힌 루프백
+  포트로 덮는다 — 시험과 그 자식이 운영 svc DNS 이름을 조회하지 않게(identity-admin T073).
+  개발자 셸의 실제 env(포트 포워드한 dev 클러스터 · 실 Sentry DSN 등)가 시험과 기동 하위 프로세스를
   실서비스에 닿게 하지 않는다. 자리값은 모양이 유효한 닫힌 포트(127.0.0.1에 bind했다 닫은 포트 — CLOSED_PORT) URL이고, 비밀은
   import마다 secrets.token_urlsafe로 만든다(PLACEHOLDER- 없음 — 게이트 2). ENV=test(PLAINTEXT Kafka · sslmode=require · 루프백
   http 팀 도메인)는 클러스터 밖 전용이다.
@@ -53,6 +55,16 @@ _required_values = {
     "ENV": "test",
     "APP_VERSION": "0.0.0+test",
     "APP_GIT_SHA": "0000000",
+    # identity-admin(T073) — 필수 넷(설계 D6): 비밀 셋은 import마다 새 난수(43자 — 웹훅 비밀 32자 규칙을 넘는다) · store id는
+    # 숫자 없는 자리값(gitleaks)
+    "AUTHENTIK_API_TOKEN": secrets.token_urlsafe(32),
+    "AUTHENTIK_WEBHOOK_SECRET": secrets.token_urlsafe(32),
+    "OPENFGA_STORE_ID": "test-openfga-store",
+    "OPENFGA_PRESHARED_KEY": secrets.token_urlsafe(32),
+    # identity-admin(T073) — 선택 설정이지만 시험 프로세스와 그 자식이 운영 svc DNS 이름(기본값)을 조회하지 않게 닫힌 포트로
+    # 덮는다(api-48은 자식에서 세 이름을 직접 지워 기본값을 본다)
+    "AUTHENTIK_API_URL": f"http://{_loopback}",
+    "OPENFGA_API_URL": f"http://{_loopback}",
 }
 # 덮어쓴 필수 키 · 지운 키(선택 설정 · 프로필 · 런타임 거부 대상 · 개발자 셸의 OTLP 내보내기 대상 · 검증된 설정을 대신하는 env —
 # Celery 브로커 · 결과 URL · GUNICORN_CMD_ARGS: 기동 단언이 거부한다 · T072 ② r2 H10) — 기동 시험이 자식 env를 만들 때 쓴다(Django
@@ -74,6 +86,9 @@ POD_SETTINGS_ENV_REMOVED = (
     "CELERY_BROKER_WRITE_URL",
     "CELERY_RESULT_BACKEND",
     "GUNICORN_CMD_ARGS",
+    # identity-admin(T073) — 선택 설정(설계 D6 〔T20〕): 개발자 셸 값이 기본값 시험(api-48)을 흔들지 못하게 지운다(API URL 둘은
+    # 위 _required_values가 닫힌 포트로 덮는다)
+    "AUTHENTIK_WRITES_ENABLED",
 )
 for _name in POD_SETTINGS_ENV_REMOVED:
     os.environ.pop(_name, None)

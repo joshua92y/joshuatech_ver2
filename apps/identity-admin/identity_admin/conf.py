@@ -78,18 +78,46 @@ PROFILES = (RUNTIME, MIGRATE)
 KAFKA_CA_FILE = "/etc/kafka/ca.crt"
 PG_CA_FILE = "/etc/pg/ca.crt"
 # 비밀 설정 — 빈 값도 기동 실패(빈 키 · 토큰은 누구나 만든다). pod 계약이 이름을 더한다(identity-admin = T073).
-SECRET_SETTINGS: tuple[str, ...] = ("SECRET_KEY", "KAFKA_PASSWORD")
+SECRET_SETTINGS: tuple[str, ...] = (
+    "SECRET_KEY",
+    "KAFKA_PASSWORD",
+    # identity-admin(T073) — 비밀 3(contracts/identity-admin-api.md §identity-admin 전용 설정 · 설계 D6)
+    "AUTHENTIK_API_TOKEN",
+    "AUTHENTIK_WEBHOOK_SECRET",
+    "OPENFGA_PRESHARED_KEY",
+)
 # pod가 직접 부르는 클러스터 안 서비스 — 호스트가 공개 도메인이면 기동 실패(FR-046). AUTHENTIK_ISSUER는 문자열 비교만 하는 공개
 # URL이라 넣지 않는다. 넓히는 자리(T073: AUTHENTIK_API_URL · OPENFGA_API_URL): 모델 필드와 함께 더하면 http(s) URL로 검사된다
 # (DATABASE_URL · DRAGONFLY_URL · KAFKA_BOOTSTRAP만 따로 파싱한다 — _in_cluster_problems).
-IN_CLUSTER_URL_SETTINGS: tuple[str, ...] = ("DATABASE_URL", "DRAGONFLY_URL", "KAFKA_BOOTSTRAP", "AUTHENTIK_JWKS_URL")
+IN_CLUSTER_URL_SETTINGS: tuple[str, ...] = (
+    "DATABASE_URL",
+    "DRAGONFLY_URL",
+    "KAFKA_BOOTSTRAP",
+    "AUTHENTIK_JWKS_URL",
+    "AUTHENTIK_API_URL",  # identity-admin(T073) — 관리 API 기준 URL(설계 D6)
+    "OPENFGA_API_URL",  # identity-admin(T073) — OpenFGA 기준 URL(설계 D6)
+)
 OTLP_ENDPOINT_ENVS = ("OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
 PUBLIC_DOMAIN = "joshuatech.dev"
 # 게이트 2 — base ConfigMap의 자리값(PLACEHOLDER-SET-IN-OVERLAY)이 overlay에서 빠지면 기동 실패. 면제 가능한 이름은 코드
 # 상수로만 정한다(템플릿은 빈 집합).
 PLACEHOLDER_MARK = "PLACEHOLDER-"
 PLACEHOLDER_EXEMPT_ENV = "JT_PLACEHOLDER_EXEMPT"
-PLACEHOLDER_EXEMPTABLE: frozenset[str] = frozenset()
+# identity-admin(T073) — 나가는 쪽 자격 셋(닫힌 상한 · 설계 D6 · D18): US6 동안 Vault 값이 T044 sentinel일 수 있는 이름만
+# 면제할 수 있다. 들어오는 쪽 검증 값(AUTHENTIK_WEBHOOK_SECRET · AUTHENTIK_JWKS_URL · AUTHENTIK_ISSUER)은 넣지 않는다(data-model
+# §8). 면제된 자리값 자격으로는 외부를 부르지 않는다(호출 자리가 PLACEHOLDER_MARK를 본다 — D18).
+PLACEHOLDER_EXEMPTABLE: frozenset[str] = frozenset({"AUTHENTIK_API_TOKEN", "OPENFGA_STORE_ID", "OPENFGA_PRESHARED_KEY"})
+# identity-admin(T073) — 교차 규칙 셋(설계 D6 · _runtime_problems): 웹훅은 HMAC 하나로 지키므로 비밀 길이 하한을 두고, 비밀
+# 셋은 공백 없는 출력 가능 ASCII만(끝 줄바꿈 토큰은 http.client가 헤더 값을 예외 문구에 싣고 · 웹훅 비밀은 모든 웹훅을 401로
+# 만든다), 나가는 쪽 서비스 기준 URL은 http(s) · netloc = 호스트[:포트] · 쿼리 · 조각 없음 · 경로는 빈 값이나 `/`뿐이다(뒤에
+# /api/v3/… · /stores/…를 붙인다).
+WEBHOOK_SECRET_MIN_LENGTH = 32
+ASCII_SECRET_SETTINGS = (  # identity-admin(T073)
+    "AUTHENTIK_API_TOKEN",
+    "AUTHENTIK_WEBHOOK_SECRET",
+    "OPENFGA_PRESHARED_KEY",
+)
+SERVICE_BASE_URL_SETTINGS = ("AUTHENTIK_API_URL", "OPENFGA_API_URL")
 # Django security.W009 기준
 SECRET_KEY_MIN_LENGTH = 50
 SECRET_KEY_MIN_UNIQUE = 5
@@ -152,6 +180,16 @@ class RuntimeEnv(BaseSettings):
     POD_NAMESPACE: str = ""
     DATABASE_OWNER_URL: OptionalSecret = ""
     JT_PLACEHOLDER_EXEMPT: str = ""
+    # identity-admin(T073) — 전용 설정 7(contracts/identity-admin-api.md §identity-admin 전용 설정 · 설계 D6). URL 둘은 svc DNS
+    # 기본값(ConfigMap 선택) · 쓰기 플래그는 fail-safe 거짓(ConfigMap은 늘 명시 문자열 — 빈 값은 bool이 아니라 기동 실패) ·
+    # OPENFGA_STORE_ID의 꼴은 경로에 넣는 호출 시점에만 본다(D20).
+    AUTHENTIK_API_URL: NonEmpty = "http://authentik-server.identity.svc:9000"
+    AUTHENTIK_API_TOKEN: NonEmptySecret
+    AUTHENTIK_WEBHOOK_SECRET: NonEmptySecret
+    AUTHENTIK_WRITES_ENABLED: bool = False
+    OPENFGA_API_URL: NonEmpty = "http://openfga.identity.svc:8080"
+    OPENFGA_STORE_ID: NonEmpty
+    OPENFGA_PRESHARED_KEY: NonEmptySecret
 
     @field_validator("ALLOWED_HOSTS", mode="before")
     @classmethod
@@ -365,8 +403,28 @@ def _runtime_problems(env: RuntimeEnv, process_env: Mapping[str, str]) -> tuple[
         problems.append("FORCE_SCRIPT_NAME")
     if env.POD_NAMESPACE:
         problems.extend(_cluster_problems(env, database))
+    # identity-admin(T073) — 교차 규칙 셋(설계 D6): 웹훅 HMAC 비밀 32자 이상 · 비밀 셋은 공백 없는 출력 가능 ASCII · 서비스 기준
+    # URL 꼴(이름만 싣는다 — 값 · 길이 · 글자 종류는 싣지 않는다 · 같은 이름은 _refuse가 한 번만 싣는다).
+    if len(env.AUTHENTIK_WEBHOOK_SECRET) < WEBHOOK_SECRET_MIN_LENGTH:
+        problems.append("AUTHENTIK_WEBHOOK_SECRET")
+    problems.extend(name for name in ASCII_SECRET_SETTINGS if not _printable(getattr(env, name)))
+    problems.extend(name for name in SERVICE_BASE_URL_SETTINGS if not _service_base_url_ok(getattr(env, name)))
     problems.extend(_placeholder_problems(env.model_dump(), env.JT_PLACEHOLDER_EXEMPT))
     return problems, database
+
+
+def _service_base_url_ok(value: str) -> bool:  # identity-admin(T073) — 설계 D6 교차 규칙(서비스 기준 URL 꼴)
+    """http(s) · netloc 전체가 `호스트[:포트]`(호스트 = ASCII 글자 · 숫자 · `.` · `-` 한 글자 이상 · 포트는 있으면 ASCII 숫자
+    1–65535) · 쿼리 · 조각 없음(빈 `?` · `#`도) · 경로는 빈 값이나 `/`뿐인가. 사용자 정보 · 퍼센트 인코딩 · 역슬래시 · `;` · 빈
+    포트 · 포트 0 · IPv6 리터럴은 거부다 — urllib.request는 호스트를 unquote해 붙이므로(`auth%2ejoshuatech%2edev` → 공개 호스트)
+    문자열로 보는 공개 도메인 게이트를 비켜 가지 못하게 한다(FR-046)."""
+    parts = _split(value)
+    if parts is None or parts.scheme.lower() not in ("http", "https"):
+        return False
+    netloc = re.fullmatch(r"[A-Za-z0-9.-]+(?::([0-9]{1,5}))?", parts.netloc)
+    if netloc is None or (netloc.group(1) is not None and not 1 <= int(netloc.group(1)) <= 65535):
+        return False
+    return "?" not in value and "#" not in value and parts.path in ("", "/")
 
 
 def _in_cluster_problems(

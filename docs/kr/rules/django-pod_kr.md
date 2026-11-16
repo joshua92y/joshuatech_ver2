@@ -44,6 +44,7 @@ paths:
 
 - pydantic-settings → Django settings; 필수 값 누락은 기동 시 `ImproperlyConfigured`를 던진다. 시크릿은 env(ESO `<pod>-env`)에서만 온다; 비밀이 아닌 값(`ACCESS_AUD_*`, `ACCESS_EXPECTED_CN`, `AUTH_ACTOR_SUB`, `ADMIN_HOST`, `ALLOWED_HOSTS`, `IDENTITY_M2M_URL`)은 ConfigMap에서 온다. 메일은 `MAILERS`로만(`EMAIL_*` 금지).
 - `DATABASE_OWNER_URL`은 migrate Job의 env(`<pod>-migrate`)에만 존재한다; 런타임 env에는 절대 나타나지 않는다.
+- identity-admin의 비밀 셋(`AUTHENTIK_API_TOKEN`, `AUTHENTIK_WEBHOOK_SECRET`, `OPENFGA_PRESHARED_KEY`)은 비어 있지 않아야 하고 공백 없는 출력 가능 ASCII(`!`–`~`)여야 한다: 끝 줄바꿈이 든 bearer 토큰은 HTTP 클라이언트의 오류 문구에 실리고(`http.client`가 헤더 값을 인용한다), 끝 줄바꿈이 든 웹훅 비밀은 모든 웹훅을 조용히 401로 만든다. 서비스 기준 URL 둘(`AUTHENTIK_API_URL`, `OPENFGA_API_URL`)은 `http(s)://호스트[:포트][/]` 꼴이고 호스트는 ASCII 글자 · 숫자 · `.` · `-`, 포트는 1–65535다 — 사용자 정보 · 쿼리 · 조각 · 퍼센트 인코딩 · IPv6 리터럴은 받지 않는다(urllib가 퍼센트 인코딩된 호스트를 풀어 접속하므로, 그런 값은 문자열 단계의 공개 도메인 검사를 지나고도 공개 호스트에 닿는다)(T073).
 
 ## Errors
 

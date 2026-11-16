@@ -27,8 +27,15 @@
 #   하네스 pytest 줄 정확히 하나씩 · persist-credentials · timeout 60 · 하네스 env · 단계 기록 artifact — N8) · r-1은 대상 수를 고정하지
 #   않는다(N9 — T073이 apps/identity-admin/deploy/base를 더한다).
 #   마감 라운드 Z1(마지막 리뷰 A-1): static-16은 하네스 POD_PYTEST_ENV(templates/django-pod/tests/_proc.py — 그 튜플에서 읽는다)의 이름이
-#   ci.yml 어디에도 env 키로 없고 워크플로 최상위 · job test의 주석 밖 줄에 나오지 않음을 · static-17은 단계 기록 업로드 스텝의
-#   스텝 수준 if:가 정확히 always()임을 본다(static-15의 run 줄 정확 일치를 env 경로 · 실패 업로드가 비켜 가지 않게).
+#   ci.yml 어디에도 env 키로 없고 워크플로 최상위 · pytest를 도는 job(test — T073부터 identity-admin도)의 주석 밖 줄에 나오지 않음을 ·
+#   static-17은 단계 기록 업로드 스텝의 스텝 수준 if:가 정확히 always()임을 본다(static-15의 run 줄 정확 일치를 env 경로 · 실패 업로드가
+#   비켜 가지 않게).
+# T073(design/t073-design.md D27): static-14는 setup-uv 스텝을 네 job(lint · test · kubeconform · identity-admin)에서 견주고, static-18은
+#   pod 스위트 job identity-admin(arm64 러너 · timeout ≤ 30 · checkout persist-credentials: false · pytest 줄 정확히 하나 · 업로드 없음 ·
+#   env: 없음)을, static-18b는 그 job의 꼴(job 키 runs-on · timeout-minutes · steps뿐 · 스텝 셋 · run 본문 한 줄 하나 · run 스텝 키
+#   name · run뿐 · if: 0 · 블록이 다음 job 머리나 파일 끝에서 끝남 — fix-6 K2)을 본다. pytest를 비켜 가는 env 경로는 나눠 막는다 — env 키는
+#   static-16 ① · static-18, run 본문과 $GITHUB_ENV 쓰기는 static-16 ②(job test · identity-admin — fix-6 K1). job test의 배선(static-15)은
+#   그대로다.
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -481,11 +488,12 @@ try {
         ) "pin differences: [$($pinDiff -join ' | ')]; install bodies: kubeconform $($installBody.Count), test $($testInstall.Count)"
 
         $uvSteps = [ordered]@{}
-        foreach ($n in @('lint', 'test', 'kubeconform')) { $uvSteps[$n] = Get-SetupUvSteps (Get-JobBlock $ciLines $n) }
+        # T073 D27: 네 job — pod 스위트 job identity-admin도 같은 블록이다(바이트까지)
+        foreach ($n in @('lint', 'test', 'kubeconform', 'identity-admin')) { $uvSteps[$n] = Get-SetupUvSteps (Get-JobBlock $ciLines $n) }
         $uvRef = if ($uvSteps['test'].Count -eq 1) { $uvSteps['test'][0] } else { '' }
         $uvBad = @(foreach ($n in $uvSteps.Keys) { if ($uvSteps[$n].Count -ne 1 -or -not (Test-Same ($uvSteps[$n][0] -replace '^\s*-\s+', '') ($uvRef -replace '^\s*-\s+', ''))) { "$n($($uvSteps[$n].Count))" } })
         $uvChecksums = @([regex]::Matches($uvRef, '(?m)^\s+checksum:\s*"([0-9a-f]{64})"\s*$') | ForEach-Object { $_.Groups[1].Value })
-        Assert 'static-14: jobs lint, test and kubeconform each have one setup-uv step and the three are identical from the uses: line to the checksum: line (same 40-hex pin, same comments, same uv version 0.13.7, same sha256 checksum of the uv release archive — setup-uv does not verify a version missing from its built-in table without it — T072 D22 · final round N11)' (
+        Assert 'static-14: jobs lint, test, kubeconform and identity-admin each have one setup-uv step and the four are identical from the uses: line to the checksum: line (same 40-hex pin, same comments, same uv version 0.13.7, same sha256 checksum of the uv release archive — setup-uv does not verify a version missing from its built-in table without it — T072 D22 · final round N11 · T073 D27)' (
             $uvRef.Length -gt 0 -and $uvRef -match 'version:\s*"0\.13\.7"' -and $uvChecksums.Count -eq 1 -and $uvBad.Count -eq 0
         ) "setup-uv steps differing from job test: [$($uvBad -join ', ')]; checksum lines (64 lowercase hex) in job test: $($uvChecksums.Count)"
 
@@ -517,8 +525,9 @@ try {
         # 튜플에서 읽는다: CI의 pytest 둘(django-common · 하네스)에도 같은 뜻이고, 하네스가 이름을 더하면 여기도 넓어진다. 튜플을 읽지 못하거나
         # (문자열 리터럴 밖의 것이 있다) 핵심 셋(PYTEST_ADDOPTS · PYTEST_PLUGINS · PYTHONOPTIMIZE)이 빠지면 FAIL이다(빈 집합으로 공허해지지 않게).
         # static-16 판정 ①(결정 Z1): ci.yml 어디에도 줄 머리 env 키 꼴(^\s+<이름>: — 따옴표 키 포함 · 다른 job 포함) 0. 판정 ②(더 넓게): 워크플로
-        # 최상위(jobs: 밖)와 job test의 주석 밖 줄 어디에도 그 이름(낱말 경계 · 대소문자 구분) 0 — 같은 job의 pytest에 닿는 다른 길(run 본문의
-        # export · 인라인 대입 · $GITHUB_ENV 쓰기 · 흐름 꼴 env: {…})도 막는다. 다른 job의 run 본문은 job test에 닿지 않아 보지 않는다.
+        # 최상위(jobs: 밖)와 pytest를 도는 job 둘 — test · identity-admin(T073 fix-6 K1) — 의 주석 밖 줄 어디에도 그 이름(낱말 경계 · 대소문자
+        # 구분) 0 — 같은 job의 pytest에 닿는 다른 길(run 본문의 export · 인라인 대입 · $GITHUB_ENV 쓰기 · 흐름 꼴 env: {…})도 막는다. 다른 job의
+        # run 본문은 그 둘의 pytest에 닿지 않아 보지 않는다(job마다 러너가 따로다 — $GITHUB_ENV 쓰기도 같은 job의 뒤 스텝에만 닿는다).
         # 줄 단위 드리프트 검사다(sch-23과 같은 범위 — YAML 별칭 · 이스케이프 같은 일부러 꼰 꼴은 코드 소유자 리뷰 몫).
         $procText = if (Test-Path -LiteralPath $procPath -PathType Leaf) { [IO.File]::ReadAllText($procPath) } else { '' }
         $podEnvMatch = [regex]::Match($procText, '(?m)^POD_PYTEST_ENV: dict\[str, str \| None\] = dict\.fromkeys\(\s*\(([^()]*)\)\s*\)')
@@ -536,14 +545,15 @@ try {
             $keyHits = @(for ($i = 0; $i -lt $ciLines.Count; $i++) { if ($ciLines[$i] -cmatch $keyRx) { "$($i + 1): $($ciLines[$i].Trim())" } })
             $topIdx = Get-TopLevelLineIndexes $ciLines
             $testIdx = Get-JobLineIndexes $ciLines 'test'
-            $mentionHits = @(foreach ($i in (@($topIdx) + @($testIdx))) {
+            $iaIdx = Get-JobLineIndexes $ciLines 'identity-admin'
+            $mentionHits = @(foreach ($i in (@($topIdx) + @($testIdx) + @($iaIdx))) {
                 $l = $ciLines[$i]
                 if (-not $l.TrimStart().StartsWith('#') -and $l -cmatch $wordRx) { "$($i + 1): $($l.Trim())" }
             })
         }
-        Assert 'static-16: no env variable named in the harness POD_PYTEST_ENV (templates/django-pod/tests/_proc.py, read from that tuple; PYTEST_ADDOPTS, PYTEST_PLUGINS and PYTHONOPTIMIZE required) is an env key anywhere in ci.yml (workflow, job or step env:, other jobs included) or appears on a non-comment line of the workflow top level or job test (export, inline assignment, $GITHUB_ENV write, flow-style env) — pytest prepends PYTEST_ADDOPTS to its command line, so static-15''s exact run lines alone do not pin the options (T072 closing round Z1)' (
+        Assert 'static-16: no env variable named in the harness POD_PYTEST_ENV (templates/django-pod/tests/_proc.py, read from that tuple; PYTEST_ADDOPTS, PYTEST_PLUGINS and PYTHONOPTIMIZE required) is an env key anywhere in ci.yml (workflow, job or step env:, other jobs included) or appears on a non-comment line of the workflow top level or of the two jobs that run pytest, test and identity-admin (export, inline assignment, $GITHUB_ENV write, flow-style env) — pytest prepends PYTEST_ADDOPTS to its command line, so the exact run lines of static-15 and static-18 alone do not pin the options (T072 closing round Z1 · T073 fix-6 K1)' (
             $podEnvOk -and $keyHits.Count -eq 0 -and $mentionHits.Count -eq 0
-        ) "POD_PYTEST_ENV read: [$($podEnv -join ', ')] (tuple found: $($podEnvMatch.Success); other text: [$podEnvResidue]; core missing: [$($missingCore -join ', ')]); env keys: [$($keyHits -join ' | ')]; top-level/test mentions: [$($mentionHits -join ' | ')]"
+        ) "POD_PYTEST_ENV read: [$($podEnv -join ', ')] (tuple found: $($podEnvMatch.Success); other text: [$podEnvResidue]; core missing: [$($missingCore -join ', ')]); env keys: [$($keyHits -join ' | ')]; top-level/test/identity-admin mentions: [$($mentionHits -join ' | ')]"
 
         # static-17(결정 Z1 ②): 단계 기록 업로드는 하네스가 실패한 실행에서 올라가야 한다(그 경우가 올릴 이유가 있는 유일한 경우 — D22 · B-3).
         # job test의 upload-artifact 스텝 하나에 스텝 수준 if:가 정확히 하나이고 값이 글자 그대로 always()다(${{ always() }} · success() ||
@@ -556,6 +566,74 @@ try {
         Assert 'static-17: job test has exactly one upload-artifact step and that step has exactly one step-level if: whose value is exactly always() — the stage log is uploaded when the harness fails, the one case it is for (T072 closing round Z1 · D22)' (
             $testSteps.Count -gt 0 -and $uploadSteps.Count -eq 1 -and $ifOk
         ) "steps in job test: $($testSteps.Count); upload-artifact steps: $($uploadSteps.Count); step-level if values: [$($ifValues -join ' | ')]"
+
+        # ---------- T073(design/t073-design.md D27): job identity-admin — pod 스위트(apps/identity-admin) ----------
+        # job test의 60분 예산은 다 배정됐다(static-15) — pod 스위트는 병렬 job 하나다. pytest 줄은 글자 그대로 하나(옵션 추가 없음 —
+        # 실패 출력은 pod ini의 addopts가 정한다) · job env: 0(job · 스텝 어디에도 env: 키 없음 — env 키 쪽은 static-16 ①의 이름 목록보다
+        # 넓게 막는다. pytest를 비켜 가는 env 경로 가운데 run 본문과 $GITHUB_ENV 쓰기는 static-16 ②가 본다 — fix-6 K1) · timeout-minutes는
+        # job 수준 한 줄 · 1–30 · 업로드 스텝 없음(시험 출력 · 로그 원문을 올리지 않는다) · setup-uv 블록은 static-14 · job의 꼴은 static-18b가
+        # 본다.
+        $iaJob = Get-JobBlock $ciLines 'identity-admin'
+        $iaText = $iaJob -join "`n"
+        $iaRunLines = @(((Get-RunBodies $iaJob) -join "`n") -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_.Length -gt 0 })
+        $iaPytest = @($iaRunLines | Where-Object { $_ -match '\bpytest\b' })
+        $iaTimeouts = @($iaJob | ForEach-Object { [regex]::Match($_, '^    timeout-minutes:\s*(\S+)\s*$') } | Where-Object { $_.Success } | ForEach-Object { $_.Groups[1].Value })
+        $iaTimeoutOk = $iaTimeouts.Count -eq 1 -and $iaTimeouts[0] -match '^[0-9]{1,3}$' -and [int]$iaTimeouts[0] -ge 1 -and [int]$iaTimeouts[0] -le 30
+        $iaCheckouts = @($iaJob | Where-Object { $_ -match '^\s*(-\s+)?uses:\s*actions/checkout@[0-9a-f]{40}' })
+        $iaUploads = @($iaJob | Where-Object { $_ -match '^\s*(-\s+)?uses:\s*actions/upload-artifact@' })
+        $iaEnv = @($iaJob | Where-Object { $_ -match '^\s+(-\s+)?env\s*:' })
+        Assert 'static-18: job identity-admin (the pod suite — T073 D27) runs on ubuntu-24.04-arm with one job-level timeout-minutes of at most 30, has one actions/checkout step with persist-credentials: false, runs exactly one pytest line, exactly "uv run --directory apps/identity-admin --locked pytest -q" (no added options), and has no upload-artifact step, no env: at job or step level, no continue-on-error and no secrets.* (its setup-uv step is static-14)' (
+            $iaJob.Count -gt 0 -and $iaText -match '(?m)^    runs-on: ubuntu-24\.04-arm\s*$' -and $iaTimeoutOk -and
+            $iaCheckouts.Count -eq 1 -and $iaText -match '(?m)^\s+persist-credentials: false\s*$' -and
+            $iaPytest.Count -eq 1 -and (Test-Same ([string]$iaPytest[0]) 'uv run --directory apps/identity-admin --locked pytest -q') -and
+            $iaUploads.Count -eq 0 -and $iaEnv.Count -eq 0 -and -not (Test-Has $iaText 'continue-on-error') -and -not (Test-Has $iaText 'secrets.')
+        ) "job lines: $($iaJob.Count); job-level timeout-minutes: [$($iaTimeouts -join ' | ')]; checkout steps: $($iaCheckouts.Count); pytest lines: [$($iaPytest -join ' / ')]; upload steps: $($iaUploads.Count); env lines: $($iaEnv.Count)"
+
+        # static-18b(T073 fix-6 K2 · 리뷰 6B-2): job identity-admin의 꼴을 고정한다 — static-18의 「0이어야 한다」 단언과 static-16 ②가 보는
+        # 줄이 job의 실제 범위이고, pytest 스텝을 건너뛰거나(if:) 다른 셸로 돌리거나(shell:) 권한 · 조건 · 둘째 실행을 더하는 편집이 지나가지
+        # 않게 한다(지금 꼴 = YAML로 본 job 키 runs-on · timeout-minutes · steps에 스텝 셋 checkout · setup-uv · run).
+        # ① 스텝 정확히 셋(Get-Steps) · run 본문 정확히 하나이고 한 줄 꼴(블록 스칼라 | · > 아님 — Get-RunBodies 본문에 줄바꿈 없음)
+        # ② job 블록의 4칸 줄(주석 밖)이 키 줄 셋 runs-on · timeout-minutes · steps뿐이다(집합 비교 · 하나씩 — permissions · if · env ·
+        #    defaults · container · services · strategy · needs · continue-on-error와 키 꼴이 아닌 4칸 줄 0)
+        # ③ 스텝 수준 run: 키를 가진 스텝(Get-StepKeyValues)이 정확히 하나이고, 그 스텝의 키 줄(머리 '- <키>:' · 머리 '-' 열 + 2칸의 '<키>:')이
+        #    name · run뿐이며 키 줄 밖의 줄(더 깊은 줄 · 평문 이어짐 줄)이 없다(if · shell · working-directory · env · continue-on-error 0)
+        # ④ job 블록 안 어디에도 if: 키 0(job · 스텝 · 그 아래 — 따옴표 키 포함)
+        # ⑤ job 블록을 끝낸 줄이 다음 job의 머리(^  <이름>:)이거나 파일 끝이다 — 0–2칸 들여쓴 주석 한 줄이 Get-JobBlock을 일찍 끊으면
+        #    (^ {0,2}\S) 그 뒤 줄(업로드 · env · $GITHUB_ENV 쓰기)이 static-18 · static-16 ②를 비켜 간다. 다음 job의 앞 주석은 그 job 안(4칸)에 둔다.
+        # 공용 도우미는 그대로 쓴다(동작을 바꾸지 않는다). 실패 문구에는 이름 · 수만 싣는다(줄 내용을 싣지 않는다).
+        $iaSteps = Get-Steps $iaJob
+        $iaRunBodies = Get-RunBodies $iaJob
+        $iaRunOneLine = $iaRunBodies.Count -eq 1 -and -not ([string]$iaRunBodies[0]).Contains("`n")
+        $iaJobKeys = [Collections.Generic.List[string]]::new(); $iaJobOther = 0
+        foreach ($l in $iaJob) {
+            if ($l -notmatch '^    [^\s#]') { continue }
+            $m = [regex]::Match($l, '^    ["'']?([A-Za-z0-9_-]+)["'']?\s*:')
+            if ($m.Success) { $iaJobKeys.Add($m.Groups[1].Value) } else { $iaJobOther++ }
+        }
+        $iaJobKeysSorted = $iaJobKeys.ToArray(); [Array]::Sort($iaJobKeysSorted, [StringComparer]::Ordinal)
+        $iaJobKeysOk = $iaJobOther -eq 0 -and (Test-Same ($iaJobKeysSorted -join ',') 'runs-on,steps,timeout-minutes')
+        $iaRunSteps = @($iaSteps | Where-Object { (Get-StepKeyValues $_ 'run').Count -gt 0 })
+        $iaRunStepKeys = [Collections.Generic.List[string]]::new(); $iaRunStepOther = 0
+        if ($iaRunSteps.Count -eq 1) {
+            $st = $iaRunSteps[0]
+            $stepKeyRx = '^(?: {' + $st.indent + '}-\s+| {' + ($st.indent + 2) + '})["'']?([A-Za-z0-9_-]+)["'']?\s*:'
+            foreach ($l in $st.lines) {
+                $t = $l.TrimStart()
+                if ($t.Length -eq 0 -or $t.StartsWith('#')) { continue }
+                $m = [regex]::Match($l, $stepKeyRx)
+                if ($m.Success) { $iaRunStepKeys.Add($m.Groups[1].Value) } else { $iaRunStepOther++ }
+            }
+        }
+        $iaRunStepExtra = @($iaRunStepKeys | Where-Object { -not ((Test-Same $_ 'name') -or (Test-Same $_ 'run')) })
+        $iaRunStepOk = $iaRunSteps.Count -eq 1 -and $iaRunStepExtra.Count -eq 0 -and $iaRunStepOther -eq 0
+        $iaIfLines = @($iaJob | Where-Object { $_ -match '^\s+(-\s+)?["'']?if["'']?\s*:' })
+        $iaLineIdx = Get-JobLineIndexes $ciLines 'identity-admin'
+        $iaEndAt = if ($iaLineIdx.Count -gt 0) { $iaLineIdx[-1] + 1 } else { -1 }
+        $iaEndKind = if ($iaEndAt -lt 0) { 'no job lines' } elseif ($iaEndAt -ge $ciLines.Count) { 'end of file' } elseif ($ciLines[$iaEndAt] -match '^  [A-Za-z0-9_-]+:\s*$') { 'next job head' } else { "other line $($iaEndAt + 1)" }
+        $iaEndOk = (Test-Same $iaEndKind 'end of file') -or (Test-Same $iaEndKind 'next job head')
+        Assert 'static-18b: job identity-admin keeps the shape of T073 D27: job keys exactly runs-on, timeout-minutes and steps (no permissions, if, env, defaults, container, services, strategy, needs, continue-on-error or other 4-space line), exactly three steps (checkout, setup-uv, run), exactly one run body and it is one line (no block scalar), exactly one step with a step-level run: whose step-level keys are within name and run and that has no other line (no if, shell, working-directory, env or continue-on-error, no continuation line), no if: key anywhere in the job, and the job block ends at the next job head or at the end of the file (a comment indented 0-2 spaces would end it early and hide the lines after it from static-18 and static-16) (T073 fix-6 K2)' (
+            $iaJob.Count -gt 0 -and $iaSteps.Count -eq 3 -and $iaRunOneLine -and $iaJobKeysOk -and $iaRunStepOk -and $iaIfLines.Count -eq 0 -and $iaEndOk
+        ) "steps: $($iaSteps.Count); run bodies: $($iaRunBodies.Count) (one line: $iaRunOneLine); job keys: [$($iaJobKeys -join ', ')], other 4-space lines: $iaJobOther; steps with run: $($iaRunSteps.Count); run step keys: [$($iaRunStepKeys -join ', ')], other lines: $iaRunStepOther; if: lines: $($iaIfLines.Count); block ended by: $iaEndKind"
 
         $bytes = if (Test-Path -LiteralPath $scriptPath -PathType Leaf) { [IO.File]::ReadAllBytes($scriptPath) } else { $null }
         $hasBom = $null -ne $bytes -and $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from identity_admin import jobs as _jobs  # noqa: F401  # identity-admin(T073) — autodiscover는 tasks만 싣는다(설계 D15 · D3 ⑤)
 from identity_admin.celery import PURGE_TASK, app
 
 

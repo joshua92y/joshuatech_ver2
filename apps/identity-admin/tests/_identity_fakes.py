@@ -21,7 +21,8 @@
 
 서버는 127.0.0.1 임시 포트의 ThreadingHTTPServer(데몬 요청 스레드)를 데몬 스레드 하나로 돌린다 · close()가 shutdown() ·
 server_close() · 스레드 join으로 닫는다. 상태와 요청 기록은 잠금 아래 둔다(요청 스레드와 시험 스레드가 같이 읽는다).
-Django를 import하지 않는다(표준 라이브러리 + tests._secret만 — tests/test_identity_fakes.py는 `-p no:django`로 돈다).
+Django를 import하지 않는다(표준 라이브러리 + tests._secret만 — tests/test_identity_fakes.py는 Django 설정 · DB에 기대지 않고
+생성 pod의 일반 실행으로 돈다).
 """
 
 from __future__ import annotations

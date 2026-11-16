@@ -17,6 +17,10 @@ data:
   ALLOWED_HOSTS: identity-admin.jt-dev.svc
   AUTH_ACTOR_SUB: ""
   AUTHENTIK_AUDIENCE: identity-admin
+  # identity-admin(T073) — Authentik 쓰기 플래그(설계 D23 · D6): 늘 따옴표 있는 명시 문자열 "true" · "false"만(빈 값 · 앞뒤 공백은
+  # 기동 실패 · base = dev = "false" — prod overlay가 "true"로 바꾼다). 서비스 기준 URL 둘(AUTHENTIK_API_URL · OPENFGA_API_URL)은 두지
+  # 않는다(기본값 = svc DNS — 포트가 바뀌면 overlay가 키를 더한다).
+  AUTHENTIK_WRITES_ENABLED: "false"
   ENV: dev
   FORCE_SCRIPT_NAME: ""
   KAFKA_BOOTSTRAP: jt-kafka-kafka-bootstrap.data.svc:9093

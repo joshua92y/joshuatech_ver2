@@ -95,9 +95,17 @@ OUTBOX_SOURCE = _conf.POD_NAME
 OUTBOX_MAX_ATTEMPTS = 10
 
 # 인증 · 테넌트 면제 경로(정확 일치) — 웹훅 · Access 전용 경로를 받는 pod가 더한다(TENANT 목록에도 함께).
-AUTH_EXEMPT_PATHS = ("/healthz", "/ready", "/health")
-TENANT_CONTEXT_EXEMPT_PATHS = ("/healthz", "/ready", "/health")
-AUTH_ACCESS_ONLY_PATHS: tuple[str, ...] = ()
+# identity-admin(T073) — 경로 집합 셋(설계 D7 · contracts/identity-admin-api.md §인증 계층 구현 규약): 웹훅은 HMAC이 대신하는
+# 면제 경로 · /session/check는 Access 전용 경로 · 둘 다 Bearer가 없어 테넌트 컨텍스트도 없다(startup._paths가 ⊆를 강제한다).
+AUTH_EXEMPT_PATHS = ("/healthz", "/ready", "/health", "/webhooks/authentik")  # identity-admin(T073)
+TENANT_CONTEXT_EXEMPT_PATHS = (  # identity-admin(T073)
+    "/healthz",
+    "/ready",
+    "/health",
+    "/webhooks/authentik",
+    "/session/check",
+)
+AUTH_ACCESS_ONLY_PATHS: tuple[str, ...] = ("/session/check",)  # identity-admin(T073)
 
 if _loaded.runtime is not None:
     _runtime = _loaded.runtime
@@ -119,6 +127,14 @@ if _loaded.runtime is not None:
     ACCESS_EXPECTED_CN = _runtime.ACCESS_EXPECTED_CN
     AUTH_ACTOR_SUB = _runtime.AUTH_ACTOR_SUB
     DRAGONFLY_URL = _runtime.DRAGONFLY_URL
+    # identity-admin(T073) — 전용 설정 7(설계 D6 · 코드는 호출 시점에 django.conf.settings로 읽는다)
+    AUTHENTIK_API_URL = _runtime.AUTHENTIK_API_URL
+    AUTHENTIK_API_TOKEN = _runtime.AUTHENTIK_API_TOKEN
+    AUTHENTIK_WEBHOOK_SECRET = _runtime.AUTHENTIK_WEBHOOK_SECRET
+    AUTHENTIK_WRITES_ENABLED = _runtime.AUTHENTIK_WRITES_ENABLED
+    OPENFGA_API_URL = _runtime.OPENFGA_API_URL
+    OPENFGA_STORE_ID = _runtime.OPENFGA_STORE_ID
+    OPENFGA_PRESHARED_KEY = _runtime.OPENFGA_PRESHARED_KEY
     # Kafka(django_common.kafka.client_config가 검증한다 — 타임아웃 · 멱등 프로듀서 값은 라이브러리 소유)
     KAFKA_BOOTSTRAP_SERVERS = _runtime.KAFKA_BOOTSTRAP
     KAFKA_CLIENT_CONFIG: dict[str, Any] = (

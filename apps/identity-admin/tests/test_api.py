@@ -6,14 +6,16 @@
   kafka_producer} · 전체 ≤ 3 s · 의존 검사 병렬(항목 상한 DB 2 s · Dragonfly 0.2 s · Kafka 1 s — 순차 합 3.2 s)(api-1..3 ·
   api-52).
 - /session/check(§엔드포인트 · §인증 계층 구현 규약): Access 전용 경로(Bearer를 검증하지 않는다) · DB 접근 없음 · active =
-  `revoked:sub:{sub}` 값 > iat가 아니고 sid가 있으면 `revoked:sid:{sid}`도 없음(같은 값이면 active) · nbf는 sub 키가 있을
-  때만 · 질의 검증 실패 400 validation_error · Dragonfly 실패 503 denylist_unavailable(0.2 s)(api-4..9).
+  `revoked:sub:{sub}` 값 > iat가 아니고 sid가 있으면 `revoked:sid:{sid}`도 없음(같은 값이면 active — 세션 하한 · 절대 수명 ·
+  미래 `iat` 조건은 T073 보정이고 tests/test_identity_contract.py가 본다) · nbf는 sub 키가 있을 때만 · 질의 검증 실패 400
+  validation_error · Dragonfly 실패 503 denylist_unavailable(0.2 s)(api-4..9).
 - /sessions/revoke(§엔드포인트 · data-model §3 · contracts/denylist.md §쓰기 규약 · contracts/events.md §발행 API): 202
   {id, nbf, expires_at} · 한 행 = 한 키(all_devices true → sid NULL 행 + revoked:sub = nbf(본문 sid는 쓰지 않는다) ·
   false → sid 행 + revoked:sid = 1 · sid 원천 = 본문 → 본인 호출의 토큰(관리자 호출은 본문만) · 둘 다 없으면 400) · nbf =
-  처리 시각 epoch 초 내림 + 1 · expires_at = nbf + 330 s · 로그 + outbox 같은 트랜잭션 → 커밋 후 SET EX 330 · 관리자 =
-  groups 목록 원소가 정확히 platform-admin(아니면 403 forbidden) · 관리자 대상 테넌트 = TenantMembership(없으면 400) · 요청
-  처리 중 Authentik을 부르지 않는다(위임 실패도 202) · 지표 session_revocations_total{reason}(api-10..19 · api-51).
+  처리 시각 epoch 초 내림 + 1 · expires_at = nbf + 330 s · 로그 + outbox 같은 트랜잭션 → 커밋 후 SET(TTL = min(330, 남은 초)
+  · 사용자 단위는 세션 하한 키도 — T073 보정) · 관리자 = groups 목록 원소가 정확히 platform-admin(아니면 403 forbidden) ·
+  관리자 대상 테넌트 = TenantMembership(없으면 400) · 요청 처리 중 Authentik을 부르지 않는다(위임 실패도 202) · 지표
+  session_revocations_total{reason}(api-10..19 · api-51).
 - /webhooks/authentik(§웹훅 서명 규약): HMAC(정규형) · created ±5분 · 실패 401 webhook_signature_invalid · 항상 사용자
   단위(본문 sid 미사용) · tenant_id = 본문 sub의 TenantMembership(없으면 400) · event_pk 멱등(DB unique — 캐시를 비워도
   재전송 200 no-op · 행·이벤트·키·지표 변화 0) · 그 밖의 action 200 no-op · 업무 필드 검증 400(action 없음/문자열 아님 ·
@@ -23,7 +25,8 @@
   없으면 404 not_found(api-27..29).
 - 주기 작업(§주기 작업 · contracts/denylist.md §쓰기 규약): expires_at > now() 행 전부 조건 없이 다시 SET(센티널 없음 ·
   덮어쓰기 · 남은 TTL = expires_at − now() 내림 · 한 행 = 한 키) · beat 30 s · beat_init에서 같은 프로세스 동기 1회 · 로그
-  purge(expires_at + 30 d) · outbox dead purge(dead_at + 30 d) · 경계 = DB now()(api-30..35).
+  purge(expires_at + 30 d) · outbox dead purge(dead_at + 30 d) · 경계 = DB now()(api-30..35) · 같은 재적용이 세션 하한 키와
+  신선도 키도 쓴다 — T073 보정 · tests/test_identity_jobs.py가 본다.
 - seed_tenant(data-model §1 파생 쓰기 규칙): 멱등(행 수·id 불변 · 파생 중복 없음 · 같은 상태면 Authentik 쓰기 0) · DB →
   파생 · 파생 실패 CommandError · 그룹 `?name=` · 사용자 `?uuid=` 조회(쓰기 플래그와 무관하게 늘 한다 — 없으면
   CommandError · 그룹은 만들지 않는다 · 미끼 그룹·사용자 불변) · attributes 병합 PATCH · AUTHENTIK_WRITES_ENABLED · FGA
@@ -52,12 +55,13 @@ T072 가정(템플릿이 만드는 생성물 시험 인프라 — build-notes �
 ④ `tests/__init__.py`(기동 하위 프로세스도 pod 루트에서 `tests._identity_fakes`를 import한다) · pyproject `addopts
   --tb=short` · `filterwarnings` 자기 모듈 한정.
 ⑤ win32 `TESTCONTAINERS_HOST_OVERRIDE=127.0.0.1`(testcontainers import 전).
-⑥ 시험 프로세스 `os.environ`에 pod 설정이 요구하는 env 키 전부(래퍼의 `os.environ.setdefault` — 하위 프로세스 기동 시험이
-  복사한다) · Celery 브로커 자리값은 닫힌 포트(api-19의 위임 실패 경로) · 기동(`django.setup()` + urlconf import)은 외부
-  의존(DB · Dragonfly · Kafka · 이름 조회)에 닿지 않는다(기동 시험은 닫힌 포트 자리값 env로 하위 프로세스를 띄운다) ·
-  기동 시험은 이름에 PASSWORD · SECRET · TOKEN · KEY가 든 env 값과 URL 비밀번호를 URL-safe 난수(64자)로 바꿔 넣는다 —
-  설정은 비밀 값의 형식·길이를 검사하지 않는다(비어 있지 않음만) · 기동 실패 출력(메시지 · 트레이스백 소스 줄)에
-  `input_value=` 글자가 없다 — 설정 이름만 싣고 `from None`으로 끊는다 · 설정 모델 `hide_input_in_errors=True`.
+⑥ 시험 프로세스 `os.environ`에 pod 설정이 요구하는 env 키 전부(래퍼가 import 첫머리에서 `os.environ`을 시험 자리값으로
+  덮어쓴다 — 하위 프로세스 기동 시험이 복사한다) · Celery 브로커 자리값은 닫힌 포트(api-19의 위임 실패 경로) · 기동
+  (`django.setup()` + urlconf import)은 외부 의존(DB · Dragonfly · Kafka · 이름 조회)에 닿지 않는다(기동 시험은 닫힌 포트
+  자리값 env로 하위 프로세스를 띄운다) · 기동 시험은 이름에 PASSWORD · SECRET · TOKEN · KEY가 든 env 값과 URL 비밀번호를
+  URL-safe 난수(64자)로 바꿔 넣는다 — 비밀 값의 길이를 보는 설정은 SECRET_KEY(Django W009 기준)와 `AUTHENTIK_WEBHOOK_SECRET`
+  (32자 이상)이고 64자 난수는 늘 통과한다 · 기동 실패 출력(메시지 · 트레이스백 소스 줄)에 `input_value=` 글자가 없다 — 설정
+  이름만 싣고 `from None`으로 끊는다 · 설정 모델 `hide_input_in_errors=True`.
 ⑦ Celery `task_always_eager` 끔(요청 경로가 Authentik을 동기로 부르는지 api-19가 본다 — api-19가 먼저 확인한다).
 ⑧ 생성물은 `test_api.py` · `_identity_fakes.py` · `test_identity_fakes.py` 이름을 쓰지 않는다.
 ⑨ 생성물 urlconf의 `handler400`(호스트 거부 → 400 `invalid_host`) · `handler404`(→ 404 `not_found`)가 RFC 9457을 낸다
@@ -100,12 +104,12 @@ T073 가정(identity-admin 이름 — build-notes 「T066」 D3):
   null) · `nbf` · `reason`).
 ⑫ `on_commit` 위임 실패(브로커 불통 등)가 응답을 500으로 만들지 않는다(robust).
 
-빨간 상태: 저장소 안에서는 실행되지 않는다 — apps/identity-admin에 pod 환경(의존 · conftest · tests/__init__ · 설정 래퍼)이
-없다(T072 · T073 뒤 실행 · T065 결정 — 생성 pod는 독립 uv 프로젝트). T072 시제품 미니 저장소(scratch)에서는 pytest-django가
-tests.settings를 import할 때 `from identity_admin.settings import *`가 ModuleNotFoundError다 — "구현 없음"이 원인이다
-(pytest-django가 이 ModuleNotFoundError를 `ImportError: No module named 'identity_admin'`로 다시 던진다).
-`-p no:django --collect-only`는 수집에 성공한다: 모듈 수준 import는 Django 설정 · django_common 구현 · identity_admin에 기대지
-않는다(구현 import — django_common.outbox · identity_admin.celery · celery 신호 — 는 테스트 안에서 지연 import).
+실행: 생성 pod(apps/identity-admin — T073 생성 커밋 뒤 · 독립 uv 프로젝트)에서 일반 실행이다 — `uv run --directory
+apps/identity-admin --locked pytest -q`(pyproject addopts 그대로 · pytest-django가 켜진 채 — `-p no:django`는 종료 4다
+(addopts의 `--ds`가 모르는 옵션이 된다) · `-o addopts`로 addopts를 덮지 않는다(덮은 실행은 conftest 가드가 막는다)).
+모듈 수준 import는 Django 설정 · django_common 구현 · identity_admin
+구현에 기대지 않는다(구현 import — django_common.outbox · identity_admin.celery · celery 신호 — 는 테스트 안에서 지연 import) —
+구현이 없는 동안의 빨강은 수집 오류가 아니라 테스트별 "구현 없음"이다.
 
 인프라: 템플릿에서 받는 것은 DB 설정 · `dragonfly`(admin URL) · `jwks_server` · 헬퍼 3모듈(T072 가정 ① ② ③)뿐이다. T066 소유는
 이 파일의 `ia_dragonfly`(운영 identity-admin 규칙 `~revoked:* ~identity-admin:* +@all`의 ACL 사용자) · `webhook_secret` ·
@@ -131,7 +135,8 @@ pydantic ValidationError의 input_value는 긴 표현을 앞뒤만 남기고 잘
 - 운영 Authentik revoke 호출의 세부(엔드포인트 · 5 s × 3 지수 백오프 · 최대 5분) — T085(api-19는 "요청 처리 중 호출 없음"만).
 - `reconcile_authentik_sessions` 본체 — 주기 등록만 본다(api-33).
 - /health Kafka ok 상태 — 시험 브로커가 없다(fail만 · ok는 django-common T063 obs-17).
-- 실제 30 s 경과 — beat 주기 30 s(api-33) + 작업 결과(api-30..32)로 대신한다(실시간 SIGKILL ≤ 30 s는 T085).
+- 실제 30 s 경과 — beat 주기 30 s(api-33) + 작업 결과(api-30..32)로 대신한다(실시간 SIGKILL 뒤 복구 시간은 T085 — 상한은
+  contracts/denylist.md §쓰기 규약 유실 창(T073 보정)).
 - m2m 호스트의 /webhooks/authentik · /healthz · /ready 404 — Ingress 층위라 앱 pytest로 검증할 수 없다(T076 E2E).
 - admin 사람 경로(GitHub IdP Access JWT · forward-auth — O1 · VD-T066-5) — api-42 · 53은 M2M 자격으로 장착 여부 · 경로
   접두만 본다.
@@ -310,7 +315,7 @@ DECOY_ADMIN_UUID = "33333333-3333-4333-8333-333333333333"
 DB = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
 _SENSITIVE_ENV_MARKERS = ("PASSWORD", "SECRET", "TOKEN", "KEY", "URL", "DSN")  # 실패 메시지 가림 대상 이름
 _SECRET_NAME_MARKERS = ("PASSWORD", "SECRET", "TOKEN", "KEY")  # 기동 하위 프로세스에 새 난수로 넣는 env 이름(K19)
-# 64자 — Django SECRET_KEY 권장 50자 이상 · 설정은 비밀 형식·길이를 검사하지 않는다는 T072 가정 ⑥.
+# 64자 — 길이를 보는 비밀 설정(SECRET_KEY W009 50자 · AUTHENTIK_WEBHOOK_SECRET 32자)을 늘 넘는다(T072 가정 ⑥ · T073 보정).
 FRESH_SECRET_BYTES = 48
 # 새 난수로 바꾸지 않는 env 이름: GIT_CONFIG_*(KEY · VALUE · COUNT 묶음 — KEY만 난수가 되면 자식이 부르는 git이 설정 파싱에
 # 실패하고 그 값을 stderr에 찍어 위생 단언이 정상 구현에 거짓 양성을 낸다) · 경로형(SSLKEYLOGFILE처럼 이름에 KEY가 든 경로).

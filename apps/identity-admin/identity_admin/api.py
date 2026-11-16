@@ -19,6 +19,8 @@ from django_common.problem import problem_response
 from ninja import NinjaAPI
 from ninja.errors import HttpError, ValidationError
 
+from identity_admin.identity_api import identity_router  # identity-admin(T073) — 손 수정 ③(설계 D3 · D8)
+
 TITLE = "Session revocation, tenant membership and Authentik webhook intake"
 OPENAPI_URL = "/api/openapi.json"
 # Ninja HttpError 상태 → 오류 슬러그(contracts/identity-admin-api.md §오류 슬러그). pod가 새 상태를 쓰면 여기에 더한다.
@@ -47,4 +49,5 @@ def install_error_handlers(api: NinjaAPI) -> None:
 # 루트 하나 — 헬스 면제는 경로 정확 일치라 API를 나눌 필요가 없다. health_router는 이 API에만 단다(라우터는 API 하나에만 붙는다).
 api = NinjaAPI(title=TITLE, version="1", openapi_url=OPENAPI_URL, docs_url=None)
 api.add_router("", health_router)
+api.add_router("", identity_router)  # identity-admin(T073) — 손 수정 ③(업무 엔드포인트 · 설계 D3 · D8)
 install_error_handlers(api)

@@ -22,8 +22,9 @@ django-pod.md §Outbox and events).
   패스 전 poll(0) · 행 발행 / 실제 relay 프로세스(manage.py outbox_relay — 하위 프로세스 · 실 Kafka)의 지표 레지스트리에 outbox
   지표는 있고 web 지표 http_requests_total은 없다(D11).
 - Celery(D14): 앱 구성(원격 제어 끔 · 키 접두 · 결과 백엔드 없음 · eager 끔 · 브로커 = 기동 시 DRAGONFLY_URL · beat = purge 하나 일
-  1회 03:17 UTC) · 작업 apply()가 purge를 돈다 · 실제 워커(하위 프로세스 · D14 명령 · 시험 DB app role · 시험 Dragonfly pod 사용자 =
-  운영 규칙 resetchannels %R~revoked:* ~<pod>:* +@all): send_task → dead_at 31일 전 행만 지워진다 · 작업 성공 줄 · beat 기동 ·
+  1회 03:17 UTC + identity-admin(T073) 셋 — 재적용 30 s · 로그 purge 03:27 · 대조 03:37) · 작업 apply()가 purge를 돈다 · 실제
+  워커(하위 프로세스 · D14 명령 · 시험 DB app role · 시험 Dragonfly pod 사용자 = 운영 규칙 resetchannels ~revoked:* ~<pod>:* +@all
+  — identity-admin(T073) 설계 D24): send_task → dead_at 31일 전 행만 지워진다 · 작업 성공 줄 · beat 기동 ·
   로그에 NOPERM 0 · 자격 0 · 멈춤 신호 뒤 상한 안에 끝나고 남은 프로세스 0.
 """
 
@@ -681,7 +682,8 @@ def _tails(logs: dict[str, str], env: dict[str, str], planted: tuple[str, ...]) 
 def test_celery_app_configuration() -> None:
     """Celery 앱(D14): 원격 제어 끔 · 루트 로거를 건드리지 않음 · eager 끔 · 결과 무시 · 기동 때 브로커 재시도 · 결과 백엔드 없음 ·
     UTC · 전송 옵션 = 키 접두 <pod>: · socket_timeout 5 · socket_connect_timeout 2 · 브로커 URL = 기동 시 DRAGONFLY_URL(ready의
-    runtime 분기 configure_broker) · beat 일정 = purge 하나 · crontab 03:17 매일 · 작업 등록."""
+    runtime 분기 configure_broker) · beat 일정 = purge 하나 · crontab 03:17 매일 · 작업 등록(identity-admin(T073) — beat 항목은
+    purge + 셋: reconcile-denylist 30 s · purge-session-revocation-log 03:27 · reconcile-authentik-sessions 03:37 매일)."""
     from celery.schedules import crontab
 
     from identity_admin.celery import KEY_PREFIX, PURGE_TASK, app
@@ -702,7 +704,13 @@ def test_celery_app_configuration() -> None:
     assert conf.timezone == "UTC"
     same_broker = conf.broker_url == os.environ["DRAGONFLY_URL"]
     assert same_broker, "브로커 URL이 기동 시 DRAGONFLY_URL이 아니다(ready의 runtime 분기 configure_broker)"
-    assert list(conf.beat_schedule) == ["purge-dead-outbox"]
+    # identity-admin(T073) — 손 수정 ⑧(설계 D3 (가) · D26): beat 항목 = 템플릿 purge + identity-admin 셋(D15)
+    assert list(conf.beat_schedule) == [
+        "purge-dead-outbox",
+        "reconcile-denylist",
+        "purge-session-revocation-log",
+        "reconcile-authentik-sessions",
+    ]
     entry = conf.beat_schedule["purge-dead-outbox"]
     assert entry["task"] == PURGE_TASK
     schedule = entry["schedule"]
@@ -710,6 +718,21 @@ def test_celery_app_configuration() -> None:
     assert (schedule.minute, schedule.hour) == ({17}, {3})
     every_day = (schedule.day_of_week, schedule.day_of_month, schedule.month_of_year)
     assert every_day == (set(range(7)), set(range(1, 32)), set(range(1, 13)))
+    # identity-admin(T073) — 새 세 항목의 주기(D15): 재적용 정확히 30 s · 로그 purge 03:27 · 대조 03:37 매일(UTC)
+    reconcile = conf.beat_schedule["reconcile-denylist"]
+    reconcile_entry = (reconcile["task"], reconcile["schedule"])
+    assert reconcile_entry == ("identity_admin.tasks.reconcile_denylist", timedelta(seconds=30))
+    for name, task, minute in (
+        ("purge-session-revocation-log", "identity_admin.tasks.purge_session_revocation_log", 27),
+        ("reconcile-authentik-sessions", "identity_admin.tasks.reconcile_authentik_sessions", 37),
+    ):
+        daily = conf.beat_schedule[name]
+        assert daily["task"] == task
+        assert isinstance(daily["schedule"], crontab)
+        assert (daily["schedule"].minute, daily["schedule"].hour) == ({minute}, {3})
+        days = (daily["schedule"].day_of_week, daily["schedule"].day_of_month, daily["schedule"].month_of_year)
+        assert days == (set(range(7)), set(range(1, 32)), set(range(1, 13)))
+    # identity-admin(T073) 끝
     app.loader.import_default_modules()
     assert PURGE_TASK in app.tasks
 

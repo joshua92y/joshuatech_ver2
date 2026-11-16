@@ -7,8 +7,8 @@ r2(fake-22..25): 블랙홀 포트(연결은 되고 응답은 없다) · 그룹 �
 본문 Content-Type 415(OpenFGA는 받아 준다) / r3(fake-26): DNS 가드의 gethostbyname 계열(gethostbyname ·
 gethostbyname_ex · gethostbyaddr)도 차단·기록·복원 · fake-18이 예외 경로에서 넷 모두 복원을 본다(r4).
 
-Django 없이 돈다(`-p no:django` — 표준 라이브러리 urllib만 · 프록시 없는 opener). 서버는 테스트마다 새로 띄우고 닫는다
-(tests/test_api.py의 세션 서버와 별개).
+Django 설정 · DB · Dragonfly에 기대지 않는다(표준 라이브러리 urllib만 · 프록시 없는 opener — 생성 pod의 일반 실행으로 돈다 ·
+`-p no:django`는 종료 4다 — addopts의 `--ds`가 모르는 옵션이 된다). 서버는 테스트마다 새로 띄우고 닫는다(tests/test_api.py의 세션 서버와 별개).
 """
 
 from __future__ import annotations
