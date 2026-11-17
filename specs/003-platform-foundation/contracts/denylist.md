@@ -45,9 +45,9 @@ ACL 파일은 Secret으로 마운트하며 값의 원천은 Vault `kv/{env}/drag
 | 사용자 | ACL | 용도 |
 |---|---|---|
 | `admin` | `+@all` (전 키) | 운영자·런북 전용. pod에 배포하지 않는다 |
-| `identity-admin` | `~revoked:* ~identity-admin:* +@all` | 거부 목록 쓰기 + 자기 Celery 큐·캐시 |
-| `<pod>`(템플릿 기본) | `%R~revoked:* ~<pod>:* +@all` | 거부 목록 **읽기 전용**(`%R~`) + 자기 접두(`<pod>:*`) 전권 |
-| `sample-pod`(검사용) | `%R~revoked:* ~sample-pod:* +@all` | T051이 템플릿 규칙을 실제로 검증할 때 쓰는 고정 사용자. **dev 전용 — prod aclfile(`kv/prod/dragonfly/acl`)에는 넣지 않는다**(T057) |
+| `identity-admin` | `~revoked:* ~identity-admin:* +@all -@admin -@dangerous -client`(T075 보정 2026-11-17 — UD-9) | 거부 목록 쓰기 + 자기 Celery 큐·캐시 |
+| `<pod>`(템플릿 기본) | `%R~revoked:* ~<pod>:* +@all -@admin -@dangerous -client`(T075 보정 2026-11-17 — UD-9) | 거부 목록 **읽기 전용**(`%R~`) + 자기 접두(`<pod>:*`) 전권 |
+| `sample-pod`(검사용) | `%R~revoked:* ~sample-pod:* +@all -@admin -@dangerous -client`(T075 보정 2026-11-17 — UD-9) | T051이 템플릿 규칙을 실제로 검증할 때 쓰는 고정 사용자. **dev 전용 — prod aclfile(`kv/prod/dragonfly/acl`)에는 넣지 않는다**(T057) |
 
 - **키 패턴과 명령 카테고리는 짝지어지지 않는다.** `~revoked:* +@read ~<pod>:* +@all` 같은 표기는 "`revoked:*`에는 읽기만"을 뜻하지 않는다(패턴 목록과 명령 목록이 독립적으로 합쳐져 `DEL revoked:*`가 허용된다). 읽기 전용은 반드시 **읽기 전용 키 패턴 `%R~`** 로 표현한다.
 - 그래서 `<pod>` 사용자는 `GET revoked:sub:x` 성공, `DEL revoked:sub:x`·`SET revoked:sub:x` → NOPERM, `SET identity-admin:x` → NOPERM이다.
@@ -55,6 +55,11 @@ ACL 파일은 Secret으로 마운트하며 값의 원천은 Vault `kv/{env}/drag
 - 키 접두 규약: pod가 만드는 모든 키는 `<pod>:` 접두를 가진다(Celery `broker_transport_options.global_keyprefix = "<pod>:"`, Django 캐시 `KEY_PREFIX = "<pod>"`). `revoked:*`는 identity-admin만 쓴다.
 - `DRAGONFLY_URL = redis://<user>:<password>@dragonfly-<env>.data.svc:6379/0` — 사용자 이름 = pod 이름.
 - 생성물 compose(`compose/dragonfly-dev.acl`)와 시험 conftest(`DRAGONFLY_USERS`)의 `identity-admin` 사용자도 위 표의 `identity-admin` 행 규칙이다(템플릿 기본 `%R~revoked:*`가 아니다 — 로컬 compose와 pod 사용자로 도는 시험에서 거부 목록 쓰기가 NOPERM이 되지 않게). 세션 하한 키와 신선도 키는 자기 접두(`identity-admin:`)라 ACL 변경이 없고, Celery 키와는 하위 이름 `session-floor:` · `denylist:`로 가른다(T073 보정 2026-11-12).
+- **pod 사용자 꼬리 `-@admin -@dangerous -client`**(T075 보정 2026-11-17 — 사용자 결정 UD-9 B2 · Dragonfly v1.40.1 실측 2026-11-17):
+  - ① `-@admin -@dangerous`가 막는 것: `ACL SETUSER`(자기 패턴 넓히기 · `%R~` 자가 해제 · 사용자 생성) · `CONFIG` · `FLUSHALL` · `FLUSHDB` · `MONITOR` · `SORT … GET` · `RM` · `KEYS` · `INFO` · `ACL LIST` · `REPLICAOF` · `SLAVEOF` · `SAVE` · `SHUTDOWN`. `-client`는 `CLIENT KILL` · `CLIENT PAUSE`를 막는다 — Dragonfly의 `CLIENT`는 CONNECTION|SLOW 한 명령이고 하위 명령 토큰이 없다. redis-py 8.1이 연결 때 보내는 `CLIENT SETINFO` · `CLIENT MAINT_NOTIFICATIONS`의 NOPERM은 라이브러리가 삼킨다.
+  - ② 남는 것(받아들인 위험): 키 이름 열람(`SCAN` · `DBSIZE`) · Lua(안의 명령은 ACL을 다시 검사한다) · `SCRIPT FLUSH` · `FUNCTION FLUSH` · 자기 패턴 안의 쓰기 · 삭제 · 메모리 고갈(T097). 삭제 중 30 s 재적용이 복구하는 것은 identity-admin의 `revoked:*` · 세션 하한 키뿐이고, 그 밖 자기 접두 키(캐시 · Celery 큐) 삭제는 복구되지 않는다(이전 문구 「삭제(30 s 재적용이 복구한다)」 — 검증 K2-13). `-scan -dbsize`는 미실측이라 두지 않는다(T116).
+  - ③ aclfile에 쓰면 무인증 기동이 되는 토큰 꼴: `cmd|sub`(예 `-client|kill`) · `reset` · Redis 카테고리 이름(`@hyperloglog` — Dragonfly는 `@hyperlog`). 실행 중 `ACL LOAD`가 실패하면 옛 규칙이 남지만, 같은 파일로 기동하면 인증 없이 뜬다. 그래서 규칙 변경은 admin `ACL LOAD`를 먼저 하고 재시작하지 않는다.
+  - ④ 운영자는 `MONITOR`를 쓰지 않는다(Dragonfly는 `HELLO … AUTH`의 비밀번호를 평문으로 보인다).
 
 ### VD-4 (검증 후 결정) — aclfile이 키 패턴을 로드하는가
 
@@ -63,6 +68,7 @@ ACL 파일은 Secret으로 마운트하며 값의 원천은 Vault `kv/{env}/drag
 - **옵션 B**: 로드 오류가 나면 `--aclfile`을 빼고 entrypoint에서 `ACL SETUSER`를 실행하는 래퍼로 바꾼다(같은 규칙, 값의 원천은 동일한 Vault 경로).
 - **실측(사용자 동석)**: T057 배포 직후 `ACL LIST` 확인 + `<pod>` 사용자로 `DEL revoked:sub:x` → NOPERM. 결과를 `report.md`에 기록한다.
 - 어느 쪽이 되든 **T051의 단언은 같다**(위 §ACL 표의 동작). 계약이 바뀌는 것은 "규칙을 어떻게 적재하는가"뿐이다.
+- (T075 보정 2026-11-17 — UD-9) UD-9 뒤 VD-4 근거는 행동 단언이다: data-assert `reader-get`(sample-pod `GET revoked:sub:assert-probe` → `probe` = `%R~` 키 패턴 적재) · `reader-set-denied`(→ `NOPERM sample-pod `). identity-admin은 `ACL LIST`를 쓸 수 없다(@admin · @dangerous). 그래서 `acl-list`의 뜻은 「identity-admin `ACL LIST` → `NOPERM identity-admin `」이다 — id는 그대로이고, B2 꼬리가 빠지면 FAIL하는 회귀 탐지기다.
 
 ## Vault 경로
 
@@ -86,7 +92,7 @@ ACL 파일은 Secret으로 마운트하며 값의 원천은 Vault `kv/{env}/drag
 
 ## 검증 (tests-first)
 
-- **T051**(`tests/platform/kafka.tests.ps1`, Dragonfly 절): `identity-admin` 사용자로 `SET revoked:sub:x` 성공; `sample-pod` 사용자로 `GET revoked:sub:x` 성공 · `DEL revoked:sub:x` → NOPERM · `SET identity-admin:x` → NOPERM; `ACL LIST` 출력에 `%R~revoked:*` 존재(VD-4).
+- **T051**(`tests/platform/kafka.tests.ps1`, Dragonfly 절): `identity-admin` 사용자로 `SET revoked:sub:x` 성공; `sample-pod` 사용자로 `GET revoked:sub:x` 성공 · `DEL revoked:sub:x` → NOPERM · `SET identity-admin:x` → NOPERM; identity-admin `ACL LIST` → NOPERM(`acl-list` — 회귀 탐지기) · VD-4 = `reader-get` · `reader-set-denied`(T075 보정 2026-11-17 — UD-9 · 이전 문구 「`ACL LIST` 출력에 `%R~revoked:*` 존재(VD-4)」).
 - **T062**(`packages/django-common/tests/test_auth.py`): 거부 목록 조회 실패 → 비헬스 경로 503 fail-closed, 헬스 경로 면제, `revoked:sub` nbf > iat 401, `revoked:sid` 401.
 - **T066**(`apps/identity-admin/tests/test_api.py`): 캐시를 비운 뒤(센티널 없음) **무조건 재적용** 한 번이 `expires_at > now()` 행을 전부 되살리는지 — SIGKILL 재시작 시나리오(시험은 beat 주기 30 s와 작업 결과로 본다 · 복구 시간의 상한은 §쓰기 규약 「유실 창」 · T073 보정 2026-11-12 — 이전 문구 「30 s 안에 무조건 재적용」); `expires_at + 30 d` purge; `SET`이 멱등이라 재적용을 여러 번 돌려도 TTL이 늘지 않음.
 - **T073**(`apps/identity-admin/tests/test_identity_*.py`): 사용자 단위 폐기 3경로 → 세션 하한 값 · TTL · `sid` 폐기는 하한 없음 · `/session/check` 판정 표(하한만 · 같음 · ASCII 숫자 1–19자 아님 503 · 나이 경계 · 미래 `iat`) · 재적용의 하한 복원(창 경계 · `sub`별 최댓값 · TTL 비증가) · purge 대상 ⇔ 하한 대상 아님 · 신선도 키 · 교환 토큰 꼴(`sid` 없음)의 Bearer는 `revoked:sid`에 걸리지 않음(한계 고정).

@@ -5222,3 +5222,40 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
   - 기록 공백: bump 요약(Summary 탭)의 두 줄은 API로 못 읽는다(같은 사실은 REST · GraphQL · 로그로 확인) · 자기 검증 스텝의 출력 줄 없음(exit 0만 — 증거를 남기려면 T115에서 출력 꼴 검토) · 패키지 화면의 「Latest」 = attestation 태그 `sha256-<digest>`(그 `docker pull` 예시는 이미지가 아니다 — 배포는 digest 고정이라 무해).
 - **tick**: tasks:191 [X] + 결과 한 줄(C10 · D13 꼴). 계약 C11(gr VD-5 · ① PR 생성 실측 · 발신자 값) · 런북 C12(머리 「완료」 · 기록 칸) · 학습 로그 `content/tmp/003-t074/2026-11-17.md`. **report.md 한 줄 대기**(T117 초안 · /finish — 「VD-5 옵션 A 확정(2026-11-17 · bump PR #60 · 사람 행동 0)」).
 - **다음**: T075(gitops에 identity-admin Application · dev 배포 — 첫 이미지 digest는 위 값). 대기 사용자 결정: UD-9(T075 전 — Dragonfly `+@all`) · UD-10(T098) · UD-11(T081) 등은 build-notes 각 절 · 설계 §8. 이 브랜치의 다음 CI용 초안 PR은 사용자 확인 뒤 연다(PR #1은 머지됨 — 재통합은 새 PR · D17).
+
+## T075 (2026-11-17 설계 — US6 · platform-gitops `apps/identity-admin`(base · overlays · Argo Application) + dev · prod 배포 · 세션 모델 Opus 5.5)
+
+### T075 설계(조사 · 초안 · 비판 · 사용자 결정 · 확정 · 2026-11-17)
+
+- **조사 · 초안 · 비판** `wf_b2a8b7db-736`(에이전트 8 · 4,202,842 토큰 · 6,781 s): 조사 다섯(R1 명세 · 계약 · 순서 / R2 deploy/base · env / R3 gitops 실물 / R4 외부 사실 / R5 UD-9 로컬 실측) → 초안 835줄 → 비판 A(계약 · 실행 가능성 — medium 6 · low 9) · B(k8s 보안 — high 3 · medium 7 · low 4). 둘 다 approve_with_fixes. 원본 `.superpowers/t075/{research,reviews}/` · `design-draft.md`.
+- **UD-9 근거(R5 — 운영과 같은 Dragonfly v1.40.1 이미지 · 운영 aclfile 꼴 · 앱 · Celery 실제 워커 · 기존 시험)**
+  - (a) 지금 `+@all`: pod 자격 하나로 자기 키 패턴 넓히기 · 사용자 생성 · CONFIG SET · FLUSHALL · **MONITOR(다른 사용자 · admin의 `HELLO … AUTH` 비밀번호가 평문)** · `SORT … GET`(남의 값) · `RM 0 MATCH`(남의 키 삭제) · CLIENT KILL/PAUSE · sample-pod `%R~` 자가 해제 · REPLICAOF(DRYRUN 허용)가 된다.
+  - (b) `-@admin -@dangerous`만으로는 CLIENT KILL · PAUSE(쓰기 307 ms 정지)가 남는다 — Dragonfly의 `CLIENT`는 하위 명령 구분 없는 `CONNECTION|SLOW` 한 명령이다(Dragonfly 문서는 CLIENT KILL을 `@admin @dangerous`로 적는다 — 문서 ≠ 실측).
+  - (b2) = (b) + `-client`: 위 전부 NOPERM · 앱 경로 · Celery(실제 워커 · beat · 따뜻한 종료 복원) · 시험(4파일 127 + 포함 관계로 C의 521) 통과. 남는 것 = SCAN · DBSIZE(키 이름) · Lua(안 명령은 ACL 재검사) · 자기 패턴 안 쓰기 · 삭제.
+  - (c) 허용 목록 19 명령 + `@transaction`: 가장 좁지만 `+brpop` 하나만 빼도 Celery 워커가 `auth:NoPermissionError`로 죽는다(음성 대조).
+  - aclfile 토큰 오류(`cmd|sub` · `reset` · Redis 카테고리 이름 `@hyperloglog`): 실행 중 `ACL LOAD`면 옛 규칙 유지(안전) · **기동이면 무인증(+PONG)**.
+  - 앱 · Celery가 쓰는 채널 명령 0(gitops dragonfly README §6 :354 인계를 닫는 근거).
+- **사용자 결정(2026-11-17)**: UD-9 = **B2**(`+@all -@admin -@dangerous -client` · dev 첫 배포 전 · 템플릿 · sample-pod도 · data-assert `acl-list` = NOPERM 기대 · 새 렌더 블록 = 재렌더 정본) · UD-12 = **로컬 실 브로커** · UD-13 = **T075 뒤 · US4 전 정비 단계**(Argo CD v3.5.7 · K3s v1.36.6 → Traefik 3.7.15 · Traefik ≥ 3.7.18은 T084 전제) · UD-14 = **승인 관문 넓힘**(classify need += `apps/*/base/**` · `clusters/oci-k3s/apps/*-prod.yaml` · `clusters/oci-k3s/projects/prod.yaml` — 같은 날 보완으로 `clusters/oci-k3s/projects/**` · `bootstrap/argocd/**`).
+- **컨트롤러 결정**: CD-1–30(비판 29건) · VR-1–16(검증 K1 · K2) · R-1–6(집중 확인) — `.superpowers/t075/decisions-controller.md` B2 · B4 · B6. 굵은 것: dev/prod AppProject를 namespaceResourceWhitelist로 바꾼다(CD-16) · 앱 Application의 project · destination · syncPolicy · 파일 이름을 검사로 고정(CD-2 · VR-4) · hook 허용 목록 = {PreSync}(CD-17 · GHSA-fmxq) · ES 원격 키 · template를 pod 표로 고정(VR-11 · R-6) · kustomization 경로 가둠(VR-5 · R-1) · 7.1 argocd 갈래 좁힘 + AppProject 렌더 검사(R-2) · owner Secret 상주는 받아들인 위험 + 실측(CD-20) · `/session/check` 양성 탐침(CD-4).
+- **원문으로 다시 확인한 사실**: data ns `allow-egress-external-443` = `podSelector: {}`(gitops policies-external.yaml:148-156) · T057 `op1-seed-dragonfly.ps1:137`이 `+@all`을 글자로 고정 · 런북 bs:1624–1667이 그 블록을 가리킨다 · D7 범위 = 사용자 결정(gr:246-249) · `/session/check` = Access 전용 경로(ia:27 · :56) · Traefik 액세스 로그 = 상태 400–599만(traefik-config.yaml:188-189 — UD-10 표본은 400 요청).
+- **외부 사실(GitHub GET 2026-11-17)**: Argo CD v3.5.4(10-06)가 critical 4(GHSA-fmxq · m3vr · fw5c · 9v9p) + high 2(j6cw · 4439) 수정 · 3.5.x 최신 v3.5.7(11-02) · Traefik v3.7.18(11-10 · cp28 · p956 · x5pf 등) · v3.7.19(11-13) · K3s v1.36.6+k3s1(11-03)의 번들 Traefik = v3.7.15 · SUC Plan 채널은 14일 원칙을 지키지 않는다.
+
+### T075 UD-12 결과(로컬 실 브로커 · relay Kafka ACL · T069 M6 · 2026-11-17)
+
+- **워크플로** `wf_32816872-6d6`(측정 08:47–09:24Z + 독립 반증 09:42–10:11Z · 에이전트 2 · 963,867 토큰 · 6,412 s). 보고 `.superpowers/t075/ud12/{measure,refute}.md`.
+- **환경**: `apache/kafka:4.3.1@sha256:77e3df90…`(commitId 26b251a4 = 태그 4.3.1) · KRaft · metadata 4.3-IV0 · SASL_SSL SCRAM-SHA-512 · StandardAuthorizer DefaultDeny(Strimzi 1.2.0 simple과 같음 — 소스 대조) · ACL은 gitops KafkaUser `dev-identity-admin`에서 변형 · relay = HEAD `4a40835`를 실제 `apps/identity-admin/Dockerfile`로 빌드(amd64 · confluent-kafka 2.16.1 · librdkafka 2.16.0) · PG 18.6 TLS verify-full · 행은 `publish_owned` 앱 경로.
+- **결과 = M1 가정 성립 · relay 수정 불필요 · UD-1 재질문 조건 없음**
+  - Write 전무 → 갈래 **(i) 치명**: 브로커 INIT_PRODUCER_ID errorCode 31 → stderr `%0|…|FATAL|identity-admin#producer-N| … Cluster authorization failed: Failed to acquire idempotence PID …` + `outbox_relay.producer_fatal KafkaException kafka_error=CLUSTER_AUTHORIZATION_FAILED published=0 failed=0 dead=0` · GETPID 재시도 0줄.
+  - 생성 → 치명 L 0.517–0.554 s · 유휴 재생성 간격 **2.007 · 3.007 · 6.015 · 12.009 s** → 24 · 48 · 96 · 192 · 384 · 556 · 600 s(반증 재현 2.014 · 3.013 · 6.002 · 12.013 s · 유지 대기 1 · 2 · 4 · 8 … 256 s).
+  - 행 있음: `producer_fatal ProducerFatalError … failed=N` · last_error `_PURGE_QUEUE` · attempts > 10이어도 DLQ로 가지 않음(dead_at NULL).
+  - 회복 (a) 행을 둔 채 Write 복구 → `pass published=3`까지 291.9 s(반증 294.9 s = 마지막 치명 패스 + 300.07 s) · (b) 상한에서 고친 뒤 행 → 592.0 s(공식 = 남은 유지 대기 + 치명 백오프 · 반증은 한 단계 앞 변형으로 예측 ±0.05 s 일치).
+  - 일부 토픽만 Write 없음 → 행마다 `TOPIC_AUTHORIZATION_FAILED`(비치명) · DLQ Write가 있으면 10번째 패스에 dead=1 · DLQ도 막히면 failed=1 · dead_at NULL(DLQ 시도는 브로커 거부 기록으로 확인).
+- **새 사실 · 정정**
+  - **M1이 깨지는 경계**: relay ↔ 브로커 왕복 지연이 꾸준히 약 31–35 ms 넘게 늘면 L ≥ 1.0 s가 되어 간격이 약 2.5 s로 고정된다(지연 주입 실측 — +20 ms면 L 0.8 s = SP-2 검토 기준). 클러스터 안 왕복은 1 ms 미만이라 결론은 유지 · 일시 지연은 그 주기만 사다리를 되돌린다.
+  - L 구조 = T_boot + 0.500 s(PID 타이머 재시작) + T_b1 + 2 RTT. 그래서 유휴 첫 간격은 **2.0 s**다 — 위 T069 절 :1939 · :1996과 독스트링 `outbox_relay.py:30`의 「약 1.5 · 3 · 6 · 12 s」는 2.0 · 3 · 6 · 12 s로 읽는다(독스트링은 T075 조각 ③에서 고친다 — 이미지 내용 · 동작 무관).
+  - InitProducerId 거부는 브로커 authorizer 로그에 남지 않는다(0줄) — 진단 근거는 클라이언트 stderr FATAL 줄 · 필요하면 `kafka.request.logger=DEBUG`(25분에 약 690 KB — 상시 부적합).
+  - Write를 고친 뒤에도 `producer_fatal` 한 줄이 더 나올 수 있다(고치기 전에 만든 프로듀서가 유지 대기를 마칠 때 · `published=0`) — 「아직 고장」이 아니다.
+  - 부분 ACL에서는 패스마다 stderr NOTICE `%5|…|PARTCNT|… partition count changed from 3 to 0`.
+  - Write가 어느 토픽이든 하나만 있으면 InitProducerId가 허용된다(KIP-679 — 없는 리터럴 토픽이어도). 운영에서 결론이 뒤집히는 조건 = `allow.everyone.if.no.acl.found=true` 또는 어느 토픽이든 Write(`User:*` 포함) — 지금 gitops에는 없다.
+  - 행이 있을 때 L이 0.05–0.13 s로 짧아지는 갈래 = produce 시점(부트스트랩 Metadata 뒤)에 따른 경합(유인은 `CONN_MAX_AGE` 60 s 뒤 DB 재연결 — 정황) · 유휴 경로가 아니라 M1과 무관.
+- **인계**: T114(incident-response의 Kafka ACL 두 갈래 — 줄 꼴 · authorizer 0줄 · 고친 뒤 한 줄 · 진단 로거) · T071(stderr 줄 꼴 PARTCNT) · T097(노드 간 배치 · 브로커 이전 때 RTT 경계 약 30 ms).

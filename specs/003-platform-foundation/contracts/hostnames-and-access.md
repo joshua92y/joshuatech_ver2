@@ -6,6 +6,7 @@
 
 - pod API(M2M, Service Auth 전용): `<alias>-m2m-<env>.joshuatech.dev` — env ∈ `prod`·`dev`. alias는 pod 이름의 짧은 형태로 아래 표에 고정한다. m2m Ingress는 경로 허용 목록 `/api`·`/health`·`/session`·`/sessions`·`/tenants`만 노출한다. **`/webhooks`·`/healthz`·`/ready`·`/admin/`은 공개 호스트에 없다**(웹훅은 svc DNS 전용, 프로브는 kubelet 전용) → 404.
 - 관리자 UI: 단일 호스트 `admin.joshuatech.dev` + pod별 경로 접두 `/<pod>/…`(env `FORCE_SCRIPT_NAME=/<pod>` — `ADMIN_HOST` 요청에만 script prefix로 적용하고 Django 전역 설정으로 두지 않는다(contracts/pod-template.md `has_admin` 행 · T066 r1 보정 2026-11-03), `ADMIN_HOST=admin.joshuatech.dev`일 때만 admin urlconf 장착, Traefik Ingress `PathPrefix` + `stripPrefix`). 예: `admin.joshuatech.dev/identity-admin/admin/`.
+  - (T075 보정 2026-11-17) admin Ingress = prod overlay의 Ingress `<pod>-admin`이다. host `admin.joshuatech.dev` · 경로는 Prefix `/<pod>/admin` · `/<pod>/static` 둘만이다(`/<pod>` 하나면 admin 호스트로 `/webhooks/authentik` · `/healthz` · `/ready` · `/api`가 열린다). `ingressClassName: traefik` · 어노테이션 `traefik.ingress.kubernetes.io/router.entrypoints: websecure` · `router.tls: "true"` · `router.middlewares: jt-prod-<pod>-strip@kubernetescrd`. `spec.tls` · `router.tls.options` · `router.priority`는 두지 않는다. stripPrefix Middleware = 같은 ns(jt-prod)의 traefik.io/v1alpha1 `<pod>-strip`(`spec.stripPrefix.prefixes: [/<pod>]`) — 다른 ns면 Traefik CRD provider의 `allowCrossNamespace`(기본 false)가 필요하다. forward-auth는 T084가 더한다. validate 14.3이 이 모양을 본다(contracts/gitops-repo.md §validate.yml 3).
 
 | pod | alias | prod 호스트 | dev 호스트 |
 |---|---|---|---|

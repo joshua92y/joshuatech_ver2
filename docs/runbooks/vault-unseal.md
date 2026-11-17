@@ -306,9 +306,15 @@ tofu -chdir=D:/code/joshuatech_ver2/infra/vault plan          # 기대: No chang
 | `kv/dev/openfga/preshared` | `key` |
 | `kv/prod/openfga/preshared` | `key` |
 
-- **불변식: sentinel 잔존 0 = consumer 활성화 전제.** `kv/{env}/openfga/preshared`는 US6에서 `kv/platform/openfga/preshared`와 같은 값으로 교체하고 회전은 둘을 함께 한다.
-- 실값 투입 형식: 키당 1회 호출 또는 JSON stdin(`… | vault kv put <path> -`) — `key=-` 다중 사용 금지(stdin은 한 키만 받는다 → 나머지가 빈 값). 실값을 명령줄 리터럴로 적지 않는다.
+- **불변식: 면제 셋 밖 sentinel 0 = consumer 활성화 전제**(T075 보정 2026-11-17 — 이전 문구 「sentinel 잔존 0」). 면제 셋 = `api_token` · `openfga/store_id` · `openfga/preshared`다(게이트 2 면제 + overlay ConfigMap `JT_PLACEHOLDER_EXEMPT`). `client_id` · `client_secret`은 pod에 매핑하지 않아 판정 밖이다. `kv/{env}/openfga/preshared`를 `kv/platform/openfga/preshared`와 같은 값으로 바꾸는 것은 T082다(US6에서 바꾸지 않는다 — 이전 문구 「US6에서 … 교체」). 회전은 둘을 함께 한다.
+- 실값 투입 형식(T075 보정 2026-11-17 — 이전 문구 「키당 1회 호출 또는 JSON stdin」): 비밀은 JSON stdin으로만 넣는다(`… | vault kv put "-cas=<n>" <path> -`). `key=-` 다중 사용 금지(stdin은 한 키만 받는다 → 나머지가 빈 값). 실값을 명령줄 리터럴로 적지 않는다. 비밀이 아닌 계약 값(`jwks_url` · `issuer`)만 `vault kv patch "-cas=<n>" <path> issuer=<값> jwks_url=<값>`을 허용한다. 일부 키만 바꿀 때는 `kv patch`를 쓴다(`kv put`은 경로를 통째로 바꾼다).
 - **게이트 1(운영자 — 실값 주입 뒤·consumer 활성화 전, 실행은 T075·T081)**: 토큰 = T084 뒤 OIDC admin, 그 전 root(e2e-reader 정책은 `kv/data/platform/authentik/e2e` 1줄이라 8경로를 읽을 수 없다).
+  - (T075 보정 2026-11-17) **게이트 1은 키 단위다.** 정본 블록 = T075 O-3(`specs/003-platform-foundation/design/t075-blocks/` — T075 조각 ④에서 생긴다). PASS 조건:
+    - `jwks_url` · `issuer`가 계약 값과 글자까지 같다.
+    - 웹훅 `secret`이 sentinel이 아니고 정확히 43자 `^[A-Za-z0-9_-]{43}$`이며 끝 줄바꿈이 없고, dev 해시 ≠ prod 해시다.
+    - sentinel은 면제 셋과 `client_id` · `client_secret`뿐이고, 그 밖의 `PLACEHOLDER-`는 0이다.
+    - 출력은 `gate=PASS n/n` 한 줄이다(값 · 해시 0).
+  - 아래 경로 단위 블록(`read=8/8 hits=0`)은 T044 판정 기록으로 남긴다. T075 뒤에는 면제 셋이 sentinel이라 hits 0이 될 수 없다 — 판정에 쓰지 않는다.
 ```powershell
 $paths = @(
   'kv/dev/authentik/identity-admin',           'kv/prod/authentik/identity-admin',
@@ -326,8 +332,8 @@ foreach ($p in $paths) {
 Remove-Variable j
 "read=$read/8 hits=$hits"    # PASS = read 8/8 **그리고** hits 0 (fail-closed: 하나라도 못 읽으면 FAIL). hits ≥ 1이면 그 경로의 consumer를 켜지 않는다
 ```
-- 게이트 2(consumer 자체, 무토큰 — T072·T075·T077 인계): django-pod 템플릿 pydantic-settings 검증기가 `PLACEHOLDER-`로 시작하는 값에서 기동 실패(fail-closed) + T077 tester 단언 `PLACEHOLDER-` 0. 범위(T070 r6 — data-model §8): 웹훅 `secret` · `jwks_url` · `issuer`는 범위 안이다 — US6 기동 전에 실값 · 계약 값으로 덮어쓴다(웹훅 비밀은 들어오는 쪽 검증 키라 플레이스홀더를 두지 않는다). US4에서야 실값이 생기는 나가는 쪽 자격(`client_id` · `client_secret` · `api_token` · `kv/{env}/openfga/*` — `preshared`는 위 US6 교체 규칙)을 US6 동안 sentinel로 둘지 — 둔다면 게이트 2 범위에서 빼고 게이트 1을 키 단위로 그 consumer 활성화(T081 · T082) 앞에 둔다 — 는 T075가 T072와 함께 정한다.
-- 검증: role 6 = `vault list auth/kubernetes/role` · 정책 6(+내장) = `vault policy list` · 정례 plan `No changes` · 게이트 1 = `read=8/8 hits=0`.
+- 게이트 2(consumer 자체, 무토큰 — T072·T075·T077 인계): django-pod 템플릿 pydantic-settings 검증기가 `PLACEHOLDER-`로 시작하는 값에서 기동 실패(fail-closed) + T077 tester 단언 「면제 셋 밖 `PLACEHOLDER-` 0」(T075 보정 2026-11-17 — 이전 문구 「`PLACEHOLDER-` 0」). 범위(T070 r6 — data-model §8): 웹훅 `secret` · `jwks_url` · `issuer`는 범위 안이다 — US6 기동 전에 실값 · 계약 값으로 덮어쓴다(웹훅 비밀은 들어오는 쪽 검증 키라 플레이스홀더를 두지 않는다). US4에서야 실값이 생기는 나가는 쪽 자격(`client_id` · `client_secret` · `api_token` · `kv/{env}/openfga/*` — `preshared`의 platform 값 교체는 T082)은 US6 동안 sentinel로 둔다(T075 보정 2026-11-17 — 정했다 · 이전 문구 「sentinel로 둘지 … 는 T075가 T072와 함께 정한다」 · 「`preshared`는 위 US6 교체 규칙」): 면제 셋(`api_token` · `openfga/store_id` · `openfga/preshared`)은 overlay ConfigMap `JT_PLACEHOLDER_EXEMPT`로 게이트 2에서 빼고, 게이트 1은 키 단위로(위 · T075 O-3) 그 consumer 활성화(T081 · T082 · T083) 앞에 둔다. `client_id` · `client_secret`은 pod에 매핑하지 않아 판정 밖이다.
+- 검증: role 6 = `vault list auth/kubernetes/role` · 정책 6(+내장) = `vault policy list` · 정례 plan `No changes` · 게이트 1 = `gate=PASS n/n`(T075 보정 2026-11-17 — 키 단위 · 이전 `read=8/8 hits=0`은 T044 기록).
 - 되돌리기: 잘못된 role/정책은 코드 수정 → 재apply(0 destroy 원칙). kv 마운트 삭제 금지. 플레이스홀더 경로 되돌리기 = `vault kv metadata delete kv/<path>`.
 
 ### T045 실값 시드(2026-09-21 — 요약 · 실행 기록 정본은 `bootstrap.md` §3 T045 절과 §4)

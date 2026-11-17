@@ -71,10 +71,10 @@ kubectl -n jt-dev logs job/data-assert               # ① 실접속(dev 방향�
                                                      # ④ REVOKE CONNECT … FROM PUBLIC 적용 확인(공유 DB authentik·openfga는 cnpg-databases PostSync SQL Job이 적용), pg_stat_ssl에 verify-full 연결
 kubectl -n jt-dev logs job/kafka-assert              # produce → consume 왕복 ≤ 5초, 다른 KafkaUser로는 토픽 접근 거부
 kubectl -n jt-dev logs job/authz-assert              # fga check allowed=true / 다른 테넌트 object는 false
-kubectl -n jt-dev logs job/data-assert | grep -A5 'ACL LIST'   # VD-4: `%R~revoked:*`가 보이면 옵션 A(aclfile 유지)
+kubectl -n jt-dev logs job/data-assert | grep -E 'acl-list|reader-get|reader-set-denied'   # acl-list = identity-admin ACL LIST → NOPERM(UD-9 회귀 탐지기) · VD-4 근거 = reader-get(probe) · reader-set-denied(NOPERM) · T075 보정 2026-11-17
 kubectl -n jt-dev logs job/data-assert | grep 'NOPERM'          # `<pod>` 사용자로 DEL revoked:sub:x → NOPERM (결과와 무관하게 이 단언은 동일)
 ```
-**VD-4(Dragonfly aclfile)**: 기본 가정은 "`--aclfile`이 `%R~revoked:*`를 그대로 로드한다"(v1.40.1 소스 기준). `ACL LIST`에 패턴이 보이면 옵션 A로 확정하고, 로드 오류가 나면 옵션 B(entrypoint `ACL SETUSER` 래퍼)로 전환한다 — **T057 배포 직후 사용자와 함께 판정**하고 결과를 report에 적는다.
+**VD-4(Dragonfly aclfile)**: 기본 가정은 "`--aclfile`이 `%R~revoked:*`를 그대로 로드한다"(v1.40.1 소스 기준). `ACL LIST`에 패턴이 보이면 옵션 A로 확정하고, 로드 오류가 나면 옵션 B(entrypoint `ACL SETUSER` 래퍼)로 전환한다 — **T057 배포 직후 사용자와 함께 판정**하고 결과를 report에 적는다. (T075 보정 2026-11-17) UD-9 뒤 판정 근거는 행동 단언 reader-get · reader-set-denied다.
 
 ## US4 — 신원·인가
 
@@ -122,6 +122,19 @@ cd ../.. && docker buildx build --platform linux/arm64 -f apps/sample-pod/Docker
 uv run --directory apps/identity-admin --locked pytest -q                                                           # all passed(testcontainers PG·Dragonfly · Docker 필요)
 ```
 기대 테스트: `test_tenant_rls`(A 등급 0행 2건 + owner bypass 전체 + B 등급 전역 테이블), `test_outbox`(발행·삭제·실패 attempts), `test_auth_middleware`(5 케이스 + Dragonfly 실패 503), `test_health`(`/healthz`·`/ready`·`/health`), `test_logging`, `test_openapi_snapshot`.
+
+**배포 확인(T075 — dev · prod · T075 보정 2026-11-17)**: 아래는 dev다. prod는 호스트 `identity-m2m-prod` · ns `jt-prod`만 다르다.
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://identity-m2m-dev.joshuatech.dev/health   # ① 무헤더 → Access 응답 코드(T075 실측값)
+# ② tester-m2m 자격은 env에서 stdin 헤더(-H @-)로만 넘긴다 — argv · 화면 · 파일에 0(printf는 셸 내장이다)
+#    응답 헤더는 통째로 내지 않는다(-D · -i · -v 금지 — Access가 실을 수 있는 Set-Cookie CF_Authorization은 24h 자격이다 · T075 보정 2026-11-17)
+printf 'CF-Access-Client-Id: %s\nCF-Access-Client-Secret: %s\n' "$TESTER_M2M_ID" "$TESTER_M2M_SECRET" \
+  | curl -s -H @- -w '\nhttp=%{http_code} x-request-id=%header{x-request-id}\n' https://identity-m2m-dev.joshuatech.dev/health
+#   → 본문 JSON(status ok · checks 셋(db · dragonfly · kafka_producer) 모두 ok · git_sha = 배포 이미지 revision — 비밀 아님) + 끝 줄 http=200 · x-request-id 값이 비지 않음(%header는 curl 7.84 이상)
+# ③ ES 2개가 만든 Secret의 키 이름만(관리자 kubeconfig — agent-view는 Secret을 읽지 못한다 · 값 0)
+kubectl --kubeconfig <관리자 kubeconfig> -n jt-dev get secret identity-admin-env -o go-template='{{range $k, $v := .data}}{{$k}}{{"\n"}}{{end}}'       # 11줄
+kubectl --kubeconfig <관리자 kubeconfig> -n jt-dev get secret identity-admin-migrate -o go-template='{{range $k, $v := .data}}{{$k}}{{"\n"}}{{end}}'   # 1줄(DATABASE_OWNER_URL)
+```
 
 ## US7 — 관측·RAM
 
