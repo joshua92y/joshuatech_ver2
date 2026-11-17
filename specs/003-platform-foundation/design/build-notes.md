@@ -5191,3 +5191,13 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
   - **컨트롤러 검증**(해시 대조 뒤): H `66 passed, 0 failed` · rc 0 · 198 s · SKIP 0 · actionlint 0 · zizmor offline 「No findings」(5 suppressed) · gitleaks 0. 컨트롤러 GET: 두 저장소 모두 compare identical의 `files` = 빈 배열 · ahead = 배열(F8이 정상 경로를 막지 않는다).
   - 계약 gr:83 아래 「수정 라운드 2 보정」 두 줄(판정 세부 · 받아들인 대가) · 설계 D8 「수정 라운드 2 보정」 · D14(pp-18 · 23 · 26 · 28 · px-26 · 29 · 38) · §9 위험 두 줄(가드의 대가 · 취소의 정리 창).
   - **집중 확인(리뷰 B · A의 RN-2–4 포함) — approve**: L1–L8 · SIGINT 권고 · RN-2 · RN-3 · RN-4 모두 해결(파일:줄 · 단언 · 탐침 증거). 리뷰 B 변이 39개를 지금 정적 계층으로 다시 돌려 39개 전부 FAIL(지난번 PASS 8개 포함) · 실제 워크플로 정적 `28 passed, 0 failed`(블록 머리 `|` 규칙이 정상 꼴을 거짓 FAIL시키지 않음) · px-26 · 27 · 29 · 38 선택 실행 `4 passed, 0 failed`(fork 오류 0) · mono 탐침(같은 이름 `mono`가 env에 export돼 있어도 자식 env에 0개 · compare 한 줄에만 전달). 회귀 점검(remote_state 파싱 · `declare +x` · unset 순서 · SHOW_TOK 경계 · on_signal 갈래 순서 — ⑦에서 merged를 읽은 직후의 신호는 닫기 실패 → 재조회 → 머지 확인으로 빠져 머지된 PR의 브랜치를 지우지 않음) 이상 없음. 남은 것은 라이브(실제 러너의 취소 신호 · compare 응답 꼴 · 모노레포 토큰의 compare 권한 — VD-T074-1 · 통합 세션).
+- **구현 커밋** `85b3c81e4f0e7ef985e38109953f7bba2ee536eb`(10파일 +3,686 · 파일 이름으로 스테이징 · tasks 체크 없음).
+
+### T074 push · VD-T074-1 결과(2026-11-17)
+
+- **push**: 사용자 「지금 push (권장)」(2026-11-17) → `bb9faef..85b3c81`(설계 `308342e` + 구현 `85b3c81`) · 초안 PR #1.
+- **VD-T074-1 PASS**(publish-pod `pull_request` 실행 · job build-check · arm64 러너): job 46 s(02:56:50–02:57:36Z). 그중 적재 빌드 21 s(캐시 없음 — `uv sync --locked --no-install-project --no-dev --no-editable` 4.3 s · docker 형식 내보내기 10.3 s) · 이미지 단언(local) 5 s → 「결과: 통과 — local 모드 이미지 단언(exit 0)」.
+  - 단언 관찰: `linux/arm64` · `10001:10001` · revision 라벨 = `EXPECT_SHA` = PR merge 커밋(`pull_request`의 `github.sha` — metadata-action `type=sha`와 같은 값) · Env `APP_GIT_SHA` · `APP_VERSION` 각각 하나 · `/src = {apps}` · `/src/apps = {identity-admin}` · pod 디렉터리 = {.venv, identity_admin, manage.py, pyproject.toml, uv.lock}.
+  - publish · bump job은 skipped(main 조건). 실행 아티팩트 0(`DOCKER_BUILD_RECORD_UPLOAD: false` — 빌드 기록은 러너 임시 디렉터리로 내보내고 요약만 쓴다).
+- **ci 실행**(같은 커밋): 7 job 모두 success — 가장 긴 것은 identity-admin 4분 · test 5분. PR #1 체크 = pass 9 · skipping 3(publish · bump · GitGuardian).
+- **관찰(조치 없음)**: build-push의 「Metadata」 로그 그룹에 buildx 메타데이터의 provenance(`buildx.build.provenance.invocation.environment.github_event_payload`)가 찍혀 GitHub 이벤트 본문 전체가 공개 로그에 남는다(이번은 PR 본문 · 사용자 공개 필드). main의 publish job에서는 push 이벤트 본문(커밋 작성자 · 커미터 · pusher 이메일)이 남는다. 그 이메일은 이미 공개 저장소의 main 커밋 메타데이터에 있으므로 새로 드러나는 개인 정보는 없다(2026-11-17 확인). 로그 잡음을 줄이는 수단(buildx 메타데이터 provenance 끄기 — 환경 변수 이름 · 동작은 확인하지 않음)은 T116 후보. BuildKit 컨테이너 로그의 「using host network as the default」는 docker-container 드라이버의 기본 동작이다(RUN의 의존성 내려받기에 네트워크가 필요하다).
