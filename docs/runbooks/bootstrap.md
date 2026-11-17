@@ -882,15 +882,17 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
 
 (T059 이후 기록은 이하에 추가)
 
-### T074 — publish-pod · VD-5 · GHCR 공개 (2026-11-16 ~)
+### T074 — publish-pod · VD-5 · GHCR 공개 (2026-11-16 ~ 11-17)
 
-> **진행 중(2026-11-16 ~).** 코드(워크플로 `publish-pod.yml` · 스크립트 둘 · 하네스)는 기능 브랜치에 있고, 통합 · 실측(설계 조각 ⑦)은 사용자 동석 세션이다. 세션이 끝나면 이 머리를 「완료」로 바꾸고 아래 「기록 칸」을 채운다(C12). 사용자 결정 **UD-1 = 단계 통합(T074 한정 · 2026-11-16)** — 머지 커밋은 U1b 뒤 기록 칸에 적는다.
+> **완료(2026-11-17).** 통합(PR #1 merge commit `9fd9f2c`) → 첫 main 실행 → **VD-5 옵션 A 확정**(사람 행동 0) — 값은 아래 「기록 칸」. 사용자 결정 **UD-1 = 단계 통합(T074 한정 · 2026-11-16)**: 이후 main 발행이 필요한 지점(US5 Worker 배포 · T115 dev bump 실연 · identity-admin 변경의 dev 반영)은 그때마다 사용자에게 다시 묻는다. 아래 블록은 같은 절차를 다시 돌 때(재통합 · 다른 pod)의 정본으로 남긴다.
 
 - **설계 · 계약**: `specs/003-platform-foundation/design/t074-design.md`(결정 D1–D19 · §5 조각 ⑦ 블록 표 · §6 VD) · `design/build-notes.md` 「T074」. 계약 `contracts/gitops-repo.md` §이미지·승격 「dev bump」 · `contracts/pod-template.md` 이미지 행(표식 「T074 보정 2026-11-16」).
 - **코드(모노레포)**: `.github/workflows/publish-pod.yml`(job 셋 — `build-check`(PR · 빌드와 단언만) · `publish`(main · 단언 → push → registry 단언 → attest → 자기 검증) · `bump`(Environment `production` · App 토큰)) · `scripts/ci/publish-pod-assert-image.sh`(이미지 단언) · `scripts/ci/publish-pod-bump.sh`(낡은 실행 가드 → 제자리 hex 교체 → PR → auto-merge → 15분 기다림 · 머지 결과 대조 → 실패 · 취소 때 자기 PR · 브랜치 정리) · 하네스 `tests/scripts/publish-pod.tests.ps1`(정적 pp-* · 실행 px-* — `tests/run-all.ps1` 1b6 `ci-publish-pod`). 단계 · 까닭 코드의 정본은 두 스크립트의 머리 주석이다.
 - **지금까지의 실측**:
   - **VD-T074-6(Environment `production` 보호 규칙의 거부 쪽 · 음성 탐침)**: 2026-11-16 **PASS** — 실행 `43837898464`(main이 아닌 ref의 `environment: production` job이 거부됨).
-  - **seed PR(gitops #59 — dev overlay의 첫 `images` 항목 · 사람 PR)**: 검사 초록. 머지는 운영자(squash · U1b보다 먼저).
+  - **seed PR(gitops #59 — dev overlay의 첫 `images` 항목 · 사람 PR)**: 검사 초록 → 운영자 squash 머지 2026-11-17 12:09:49 KST(gitops main `2f6f396` · main push validate 성공).
+  - **VD-T074-1(PR build-check — arm64 · 캐시 없는 적재 빌드 + 이미지 단언)**: 2026-11-17 **PASS** — job 46초(빌드 21초 · 단언 5초).
+  - **통합 · VD-5**: 2026-11-17 **옵션 A** — 아래 「기록 칸」.
 - **누가 무엇을**: O 블록 = 관찰(컨트롤러 · 에이전트가 GET · 읽기 query · 익명 요청만). J 블록 = 판단(사용자와 함께). U 블록 = 변경(사용자 UI 또는 **운영자** 명령 — 에이전트는 실행하지 않는다). 머지를 결정하는 GitHub 동작(머지 · auto-merge 걸기 · 실행 승인 · 배포 승인)은 운영자 전용이다(`.claude/rules/infra.md` 「Credentials」). 한 블록에 관찰과 변경을 섞지 않는다. **세션 약속**: 측정하는 동안 gitops에 다른 머지를 하지 않는다(strict 정책 — main이 움직이면 bump PR이 BEHIND가 되어 시간 초과로 정리된다).
 
 #### 전제(통합 전 — 모두 끝나야 O1로 간다)
@@ -1009,17 +1011,24 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
 
 | 항목 | 값 |
 |---|---|
-| 통합 머지 커밋(UD-1 · U1b 시각 KST) | |
-| publish-pod 실행 ID · 시작/끝 · 결론(VD-T074-3 — paths 필터가 불렀는가) | |
-| 발행 digest · 패키지 첫 가시성 · 연결 저장소(VD-T074-2) | |
-| bump PR 번호 · 생성 · 머지 시각 · 경과 초(요약) | |
-| validate 실행 ID · `run_attempt` · `action_required` 여부(c) | |
-| auto-merge actor(d) · merged_by(e) · 브랜치 자동 삭제(e) | |
-| 발신자 `actor` · `triggering_actor` · 검사 6 판정(f) · 규칙 g 관찰 | |
-| gitops 머지 커밋 · main push validate 결론 | |
-| **VD-5 판정**(A / B-merge / B-run) · 원인 · 쓴 U 블록 | |
-| GHCR 공개(확인 · 전환 시각 — U3) · 익명 pull(VD-T074-4) | |
-| (선택) promote ③ 검증(VD-T074-5) | |
+| 통합 머지 커밋(UD-1 · U1b 시각 KST) | `9fd9f2c`(PR #1 merge commit · 부모 `93c7469` · `85b3c81` · 본문 「T074 단계 통합(UD-1)」) · 2026-11-17 12:30:17 KST. 사용자의 1회 예외 결정으로 컨트롤러가 실행했다(`gh pr merge --merge --match-head-commit` — infra.md 「Credentials」의 운영자 전용 규칙은 그대로다) |
+| publish-pod 실행 ID · 시작/끝 · 결론(VD-T074-3 — paths 필터가 불렀는가) | `44010688210` · push · 12:30:26–12:33:41 KST(195초) · success — paths 필터가 불렀다(U-d 안 씀). publish 67초 · bump 116초 |
+| 발행 digest · 패키지 첫 가시성 · 연결 저장소(VD-T074-2) | `sha256:faf55a5752533dffb3b5e93e3b8d8857890d4a0690945de70c526de50be057dd`(태그 `sha-9fd9f2c…` · 단일 OCI 매니페스트 · linux/arm64 · 적재 빌드와 push 빌드의 digest 같음) · 생성 즉시 **Public**(사용자 UI) · 연결 저장소 `joshua92y/joshuatech_ver2` |
+| bump PR 번호 · 생성 · 머지 시각 · 경과 초(요약) | gitops #60 · 생성 12:31:57 · 머지 12:33:30 KST · 생성 → 머지 93초(auto-merge를 건 뒤 90초 · 마지막 required check 성공 뒤 10초) |
+| validate 실행 ID · `run_attempt` · `action_required` 여부(c) | `44010878946` · attempt 1 · action_required 없음(생성 = 시작 12:32:01) · `validate` · `prod-approval` success(classify 판정 skip · gate skipped) |
+| auto-merge actor(d) · merged_by(e) · 브랜치 자동 삭제(e) | `joshuatech-gitapp-1`(AutoSquashEnabledEvent 12:32:00) · `joshuatech-gitapp-1[bot]` · 자동 삭제됨(12:33:31 · `ls-remote` 빈 출력) |
+| 발신자 `actor` · `triggering_actor` · 검사 6 판정(f) · 규칙 g 관찰 | 봇 · 봇(이벤트 `sender`도 봇) · 검사 6 PASS(봇 PR — dev digest 한 줄 제자리 교체) · ruleset main: squash만 · `require_extra_approval_for_unattributed_changes: true` · 승인 0 · strict · bypass 없음 — auto-merge를 막지 않았다 |
+| gitops 머지 커밋 · main push validate 결론 | `f920df6`(squash · 부모 `2f6f396` · dev kustomization +1/−1) · `44011058907` success(398초 · PASS 39 · FAIL 0 · WARN 4 — 이번 변경과 무관한 기존 경고) |
+| **VD-5 판정**(A / B-merge / B-run) · 원인 · 쓴 U 블록 | **A**(2026-11-17 사용자 확정 · 증거 수집 · 사람 행동 반증 · 무결성 반증 세 렌즈 일치) · 사람 행동 0 · U 블록 안 씀(U-a · U-b · U-c · U-d · U3) |
+| GHCR 공개(확인 · 전환 시각 — U3) · 익명 pull(VD-T074-4) | 확인(생성 즉시 Public) · 익명 토큰 200 · 매니페스트 HEAD 200(12:41:36 KST) |
+| (선택) promote ③ 검증(VD-T074-5) | 하지 않음 → T115 |
+
+- **관찰(판정과 무관 — 인계는 build-notes 「T074 결과」)**:
+  - 패키지 화면의 「Latest」는 attestation 태그 `sha256-<digest>`(attest `push-to-registry`)이고, 화면의 `docker pull` 예시가 그 태그를 쓴다 — 이미지가 아니다. 배포는 digest 고정이라 무해하다.
+  - bump 요약(Summary 탭)의 두 줄(「auto-merge(첫 조회)」 · 「**머지 확인**」)은 API로 읽을 수 없다 — 같은 사실은 REST · GraphQL과 로그의 「결과: 통과」로 확인했다.
+  - 자기 검증 스텝(`gh attestation verify`)은 로그에 출력 줄을 남기지 않는다(exit 0만).
+  - build-push의 「Metadata」 로그 그룹에 GitHub 이벤트 본문이 찍힌다(이미 공개된 값).
+  - 배포 · 배포 상태 · 실행의 actor가 운영자 계정으로 보이는 것은 U1b(통합 머지)의 귀속이다 — 승인 기록은 0이다.
 
 - **상시 점검 명령(읽기만 · 에이전트 가능)**: `pwsh -NoProfile -File tests/scripts/publish-pod.tests.ps1`(정적 + 실행 — 로컬은 Git Bash · yq v4.53.6 필요 · 없으면 그 사례만 SKIP) · `gh run list -R joshua92y/joshuatech_ver2 --workflow publish-pod.yml --limit 5` · `gh pr list -R joshua92y/platform-gitops --state open --json number,headRefName,author --jq '.[] | select(.headRefName | startswith("bump/")) | [.number, .headRefName, .author.login] | @tsv'`(pod마다 열린 봇 PR은 많아야 하나).
 
