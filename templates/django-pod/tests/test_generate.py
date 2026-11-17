@@ -1,4 +1,5 @@
-"""T065 · T072 생성물 검사 gen-1..38 — copier 생성 → uv sync --locked → 생성물 pytest → arm64 빌드 → kustomize · kubeconform ·
+"""T065 · T072 생성물 검사 gen-1..38(+ T075 gen-39 — 렌더 compose aclfile의 허용 토큰과 생성 conftest DRAGONFLY_USERS 규칙의 일치 · UD-9
+B2 · 수정 라운드 1 RB-7 · 파일 전체 세 줄 · 수정 라운드 2 RB2-1) — copier 생성 → uv sync --locked → 생성물 pytest → arm64 빌드 → kustomize · kubeconform ·
 렌더 단언(T065 gen-1..18)에 T072 추가분(gen-19..38 — design/t072-design.md D21): 렌더 검사 7종 · T072 생성 트리 · pytest 위생 ·
 outbox_purge 표식 · copier validator · 변형 두 벌(no-celery · no-admin — 트리 · kubeconform · 렌더 · Python) · 이미지 구성 ·
 탐침 · 기동 스모크 넷 · compose config(③ r2 M5 — 내용 판정 · 마지막 라운드 N5 — 모든 프로필) · copier 예약 이름(gen-37 — ③ r2 M11 ·
@@ -103,12 +104,17 @@ from tests._render import (
     run_checks,
 )
 from tests._tree import (
+    ACLFILE,
     ANSWERS_FILE,
     COMPOSE_FILE,
     COMPOSE_PROFILE_PROBE_TEXT,
     DOCKERIGNORE_FILE,
+    POD_CONFTEST,
     POD_TEST_FILES,
     WRAPPER_SETTINGS,
+    check_aclfile_exact,
+    check_aclfile_matches_conftest,
+    check_aclfile_tokens,
     check_base_kustomization,
     check_compose_config,
     check_compose_profile_probe,
@@ -745,3 +751,24 @@ def test_gen_37_reserved_pod_names_cover_template(generated: Path, synced: ProcR
     tree_names = template_top_level_names() | generated_top_level_names(generated)
     problems += check_reserved_pod_names(reserved, labels, tree_names)
     expect_no_violations("copier.yml 예약 이름(앱 라벨 · 생성 트리 최상위 이름)", problems, describe(probe, "앱 라벨 탐침"))
+
+
+# ---------- T075 Dragonfly aclfile(gen-39 — UD-9 B2 · 수정 라운드 1 RB-7) ----------
+
+
+def test_gen_39_dragonfly_aclfile_matches_conftest(generated: Path) -> None:
+    """렌더한 compose/dragonfly-dev.acl(로컬 compose의 aclfile)이 contracts/denylist.md §ACL 꼴을 지킨다(T075 UD-9): 허용 토큰만(USER 줄 ·
+    ON · OFF · nopass · 키 패턴 ~ · %R~ · 채널 &* · +@all · -@admin · -@dangerous · default 줄의 +auth · +hello · 빼기 -client — `|` · reset ·
+    그 밖의 카테고리 · 명령 · 비밀번호 토큰 · 주석 · CRLF는 위반: 틀린 토큰 하나면 Dragonfly가 인증 없이 기동한다)이고, pod 줄
+    `USER sample-pod ON nopass <규칙>`이 정확히 하나이며 그 규칙 토큰이 생성 tests/conftest.py DRAGONFLY_USERS[POD_NAME](AST)에서
+    resetchannels를 뺀 것과 같고 B2 꼬리 +@all -@admin -@dangerous -client로 끝난다 — 시험 사용자와 로컬 compose 사용자가 같은 권한이다.
+    수정 라운드 2 RB2-1: 파일 전체가 정확히 세 줄 `USER default OFF +auth +hello` · `USER admin ON nopass ~* &* +@all` · 그 pod 줄(이 순서 ·
+    LF · 끝 LF 하나 · 다른 USER 줄 0 — default 줄을 지우거나 켜거나 슈퍼유저 줄을 더하면 인증 없이 모든 명령이 열린다)."""
+    read_generated(generated, ACLFILE)  # 없으면 그 문장으로 실패
+    # 줄 끝 그대로 읽는다 — read_text는 CRLF · CR을 LF로 바꿔 CR 위반과 끝 줄바꿈 판정을 가린다
+    acl = (generated / ACLFILE).read_bytes().decode("utf-8")
+    conftest_text = read_generated(generated, POD_CONFTEST)
+    expect_no_violations(
+        f"{ACLFILE} ↔ {POD_CONFTEST} DRAGONFLY_USERS(생성물)",
+        check_aclfile_tokens(acl) + check_aclfile_matches_conftest(acl, conftest_text, POD_NAME) + check_aclfile_exact(acl, conftest_text, POD_NAME),
+    )

@@ -18,9 +18,9 @@ autouse 픽스처는 없다 — 시험이 필요한 것만 요청한다. 비밀(
 - `kafka`(세션): KRaft 단일 노드 Kafka(cp-kafka 8.0.0 · PLAINTEXT · 자격 없음)의 bootstrap `host:port`. `kafka_settings`(세션)는 그
   주소를 Django 설정 KAFKA_BOOTSTRAP_SERVERS에 채운다(실 Kafka로 릴레이하는 시험만 요청한다).
 - `dragonfly`(세션): Dragonfly v1.40.1(digest 핀) + 기동 뒤 `ACL SETUSER`(운영 aclfile과 같은 규칙 문자열) — admin(전 키) ·
-  `identity-admin`(resetchannels ~revoked:* ~identity-admin:* +@all — 운영 identity-admin 사용자 · 거부 목록 쓰기 ·
-  identity-admin(T073) contracts/denylist.md §ACL identity-admin 행) · default off. 속성 host · port · admin_url ·
-  pod_url(Secret). `dragonfly_clean`(함수)은 admin으로 FLUSHALL.
+  `identity-admin`(resetchannels ~revoked:* ~identity-admin:* +@all -@admin -@dangerous -client — 운영 identity-admin 사용자 ·
+  거부 목록 쓰기 · 꼬리는 T075 UD-9 · identity-admin(T073) contracts/denylist.md §ACL identity-admin 행) · default off. 속성 host ·
+  port · admin_url · pod_url(Secret). `dragonfly_clean`(함수)은 admin으로 FLUSHALL.
 - `jwks_server`(세션): 127.0.0.1 임시 포트의 로컬 키 서버 — Authentik JWKS(tests._jwt.JWKS_PATH)와 Cloudflare Access certs
   (/cdn-cgi/access/certs)를 서빙하고 경로별 GET 수(hits)를 센다. 속성 base_url · jwks_url · certs_url · authentik_key · access_key.
 - `auth_settings`(세션 · 요청할 때만): Django 설정 AUTHENTIK_JWKS_URL · ACCESS_TEAM_DOMAIN을 로컬 키 서버로, DRAGONFLY_URL을
@@ -304,7 +304,7 @@ DRAGONFLY_PORT = 6379
 DRAGONFLY_USERS: dict[str, tuple[str, ...]] = {
     "admin": ("~*", "+@all"),
     # identity-admin(T073) — 거부 목록 쓰기(`~revoked:*` — 템플릿 기본 `%R~`가 아니다 · contracts/denylist.md §ACL · 설계 D24)
-    POD_NAME: ("resetchannels", "~revoked:*", f"~{POD_NAME}:*", "+@all"),
+    POD_NAME: ("resetchannels", "~revoked:*", f"~{POD_NAME}:*", "+@all", "-@admin", "-@dangerous", "-client"),
 }
 
 

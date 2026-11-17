@@ -312,12 +312,13 @@ DRAGONFLY_COMMAND = "--proactor_threads=2 --maxmemory=512mb"
 DRAGONFLY_PORT = 6379
 # 런타임 ACL SETUSER 규칙 — contracts/denylist.md §ACL 표 그대로다(운영은 aclfile 적재 · VD-4 옵션 A · 시험은 같은
 # 규칙을 기동 뒤에 건다). `<pod>` 자리는 test-pod다. noperm-pod는 `revoked:*` 패턴이 없어 거부 목록 조회가 NOPERM이다
-# (auth-19의 실패 모드). 사용자마다 `on >비밀번호`를 앞에 붙인다.
+# (auth-19의 실패 모드). pod 사용자 셋의 꼬리 `-@admin -@dangerous -client`는 T075 UD-9(B2)이고 admin은 그대로다.
+# 사용자마다 `on >비밀번호`를 앞에 붙인다.
 DRAGONFLY_USERS: dict[str, tuple[str, ...]] = {
     "admin": ("~*", "+@all"),
-    "identity-admin": ("~revoked:*", "~identity-admin:*", "+@all"),
-    "test-pod": ("%R~revoked:*", "~test-pod:*", "+@all"),
-    "noperm-pod": ("~noperm-pod:*", "+@all"),
+    "identity-admin": ("~revoked:*", "~identity-admin:*", "+@all", "-@admin", "-@dangerous", "-client"),
+    "test-pod": ("%R~revoked:*", "~test-pod:*", "+@all", "-@admin", "-@dangerous", "-client"),
+    "noperm-pod": ("~noperm-pod:*", "+@all", "-@admin", "-@dangerous", "-client"),
 }
 
 

@@ -71,7 +71,7 @@ kubectl -n jt-dev logs job/data-assert               # ① 실접속(dev 방향�
                                                      # ④ REVOKE CONNECT … FROM PUBLIC 적용 확인(공유 DB authentik·openfga는 cnpg-databases PostSync SQL Job이 적용), pg_stat_ssl에 verify-full 연결
 kubectl -n jt-dev logs job/kafka-assert              # produce → consume 왕복 ≤ 5초, 다른 KafkaUser로는 토픽 접근 거부
 kubectl -n jt-dev logs job/authz-assert              # fga check allowed=true / 다른 테넌트 object는 false
-kubectl -n jt-dev logs job/data-assert | grep -E 'acl-list|reader-get|reader-set-denied'   # acl-list = identity-admin ACL LIST → NOPERM(UD-9 회귀 탐지기) · VD-4 근거 = reader-get(probe) · reader-set-denied(NOPERM) · T075 보정 2026-11-17
+kubectl -n jt-dev logs job/data-assert | grep -E 'acl-list|reader-get|reader-set-denied'   # acl-list = identity-admin ACL LIST → NOPERM(UD-9 회귀 탐지기 — dev identity-admin 줄의 -@admin · -@dangerous가 모두 빠진 꼴만 잡는다) · VD-4 근거 = reader-get(probe) · reader-set-denied(NOPERM) · T075 보정 2026-11-17
 kubectl -n jt-dev logs job/data-assert | grep 'NOPERM'          # `<pod>` 사용자로 DEL revoked:sub:x → NOPERM (결과와 무관하게 이 단언은 동일)
 ```
 **VD-4(Dragonfly aclfile)**: 기본 가정은 "`--aclfile`이 `%R~revoked:*`를 그대로 로드한다"(v1.40.1 소스 기준). `ACL LIST`에 패턴이 보이면 옵션 A로 확정하고, 로드 오류가 나면 옵션 B(entrypoint `ACL SETUSER` 래퍼)로 전환한다 — **T057 배포 직후 사용자와 함께 판정**하고 결과를 report에 적는다. (T075 보정 2026-11-17) UD-9 뒤 판정 근거는 행동 단언 reader-get · reader-set-denied다.

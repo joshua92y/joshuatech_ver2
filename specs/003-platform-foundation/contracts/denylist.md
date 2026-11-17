@@ -68,7 +68,7 @@ ACL 파일은 Secret으로 마운트하며 값의 원천은 Vault `kv/{env}/drag
 - **옵션 B**: 로드 오류가 나면 `--aclfile`을 빼고 entrypoint에서 `ACL SETUSER`를 실행하는 래퍼로 바꾼다(같은 규칙, 값의 원천은 동일한 Vault 경로).
 - **실측(사용자 동석)**: T057 배포 직후 `ACL LIST` 확인 + `<pod>` 사용자로 `DEL revoked:sub:x` → NOPERM. 결과를 `report.md`에 기록한다.
 - 어느 쪽이 되든 **T051의 단언은 같다**(위 §ACL 표의 동작). 계약이 바뀌는 것은 "규칙을 어떻게 적재하는가"뿐이다.
-- (T075 보정 2026-11-17 — UD-9) UD-9 뒤 VD-4 근거는 행동 단언이다: data-assert `reader-get`(sample-pod `GET revoked:sub:assert-probe` → `probe` = `%R~` 키 패턴 적재) · `reader-set-denied`(→ `NOPERM sample-pod `). identity-admin은 `ACL LIST`를 쓸 수 없다(@admin · @dangerous). 그래서 `acl-list`의 뜻은 「identity-admin `ACL LIST` → `NOPERM identity-admin `」이다 — id는 그대로이고, B2 꼬리가 빠지면 FAIL하는 회귀 탐지기다.
+- (T075 보정 2026-11-17 — UD-9) UD-9 뒤 VD-4 근거는 행동 단언이다: data-assert `reader-get`(sample-pod `GET revoked:sub:assert-probe` → `probe` = `%R~` 키 패턴 적재) · `reader-set-denied`(→ `NOPERM sample-pod `). identity-admin은 `ACL LIST`를 쓸 수 없다(@admin · @dangerous). 그래서 `acl-list`의 뜻은 「identity-admin `ACL LIST` → `NOPERM identity-admin `」이다 — id는 그대로이고, 회귀 탐지기다. 다만 잡는 것은 dev identity-admin 줄에서 `-@admin` · `-@dangerous`가 모두 빠진 경우(옛 판 재실행 꼴)뿐이다 — `-client` 단독 누락 · 다른 pod 줄 · prod는 렌더 때 W-6 토큰 대조와 적용 때 O-6 사후 DRYRUN이 본다(T075 보정 2026-11-17 — GP-A 리뷰 GA-1).
 
 ## Vault 경로
 
