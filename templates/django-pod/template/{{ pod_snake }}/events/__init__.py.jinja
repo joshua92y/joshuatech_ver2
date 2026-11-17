@@ -1,0 +1,41 @@
+"""{{ pod_name }} 소유 이벤트(T072 D13 · copier owns_events) — 발행 도우미와 스키마 참조.
+
+- OWNED_EVENTS: 이 pod가 발행하는 entity.event 목록. 논리 토픽 = <OUTBOX_SOURCE>.<entity>.<event>(env 접두 없음 — 릴레이가
+  dev.를 붙인다 · contracts/events.md §토픽 규약). 목록에 더하는 일은 스키마 · KafkaTopic · KafkaUser ACL과 한 묶음이다(README.md).
+- 스키마 참조: packages/events/schemas/{{ pod_name }}.<entity>.<event>.json — 이 pod는 스키마 파일을 읽지 않는다(이미지 · 생성물에
+  packages/events가 없다 — 봉투 꼴은 django_common.outbox가 만든다 · data 스키마 검증은 packages/events 시험이 맡는다).
+- 발행은 publish_owned(event, subject, data, *, tenant_id=None) → django_common.outbox.publish(transaction.atomic() 안 · 테넌트
+  컨텍스트도 tenant_id 인자도 없으면 OutboxUsageError — 웹훅 · 관리자 경로는 tenant_id를 넘긴다).
+"""
+
+from __future__ import annotations
+
+import uuid
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from django_common.outbox import OutboxEvent
+
+OWNED_EVENTS: tuple[str, ...] = (
+{%- for event in owns_events %}
+    {{ event | tojson }},
+{%- endfor %}
+)
+
+
+def topic(event: str) -> str:
+    """소유 이벤트의 논리 토픽 — OWNED_EVENTS 밖이면 ValueError(다른 pod의 토픽 · 목록에 없는 이벤트를 발행하지 않는다)."""
+    if event not in OWNED_EVENTS:
+        raise ValueError("소유 이벤트가 아니다(OWNED_EVENTS 밖) — copier owns_events · 스키마 · KafkaTopic을 먼저 더한다")
+    from django.conf import settings
+
+    return f"{settings.OUTBOX_SOURCE}.{event}"
+
+
+def publish_owned(
+    event: str, subject: str, data: dict[str, Any], *, tenant_id: uuid.UUID | str | None = None
+) -> OutboxEvent:
+    """소유 이벤트 하나를 outbox에 쓴다(django_common.outbox.publish — 호출자 트랜잭션 · 네트워크 0)."""
+    from django_common.outbox import publish
+
+    return publish(topic(event), subject, data, tenant_id=tenant_id)

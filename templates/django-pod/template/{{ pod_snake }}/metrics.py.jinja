@@ -1,0 +1,32 @@
+"""{{ pod_name }} web 지표(T072 D11) — prometheus_client 기본 REGISTRY · gunicorn 워커 하나(gthread 4)라 단일 프로세스 레지스트리다.
+
+multiprocess 모드와 PROMETHEUS_MULTIPROC_DIR를 쓰지 않는다(relay env에 있으면 relay가 기동 전에 끝난다 — 계약 「메트릭」 행).
+web 9100은 gunicorn_conf.post_worker_init이 연다.
+
+지표는 import가 아니라 http_requests_total()의 첫 호출에 등록한다 — 부르는 곳은 HttpMetricsMiddleware 인스턴스(web 처리기의
+미들웨어 적재)뿐이다. relay · celery 프로세스도 Django 시스템 검사에서 이 모듈을 import한다(admin check_dependencies가 MIDDLEWARE
+클래스를 import_string으로 연다 — 시험 test_outbox가 실측했다). 그 프로세스들은 미들웨어를 만들지 않으므로 레지스트리(relay
+9464)에 web 지표가 생기지 않는다.
+"""
+
+from __future__ import annotations
+
+import threading
+
+from prometheus_client import Counter
+
+_lock = threading.Lock()
+_requests_total: Counter | None = None
+
+
+def http_requests_total() -> Counter:
+    """http_requests_total{route,status} Counter — 첫 호출에 기본 REGISTRY에 등록한다(프로세스에 하나 · 스레드 안전)."""
+    global _requests_total
+    with _lock:
+        if _requests_total is None:
+            _requests_total = Counter(
+                "http_requests_total",
+                "HTTP requests by resolved route pattern and status code",
+                ("route", "status"),
+            )
+        return _requests_total

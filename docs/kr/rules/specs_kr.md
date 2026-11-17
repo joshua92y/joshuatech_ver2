@@ -13,7 +13,8 @@ paths:
   - `reviews/YYYY-MM-DD-approval.md` — 경계마다 한 섹션, `## 종합 의견`, `## 사용자 결정`.
   - `reviews/YYYY-MM-DD-finish.md` — 2번째 줄에 `Status: Approved | Issues`, 경계마다 한 섹션, `## Issues`.
   - `report.md` — `# Report NNN-slug` / `## Summary` / `## Changes Made` / `## Validation` / `## Next`.
+  - `design/` — 설계·리뷰 워크플로에서 나온 task 단위 설계 문서와 빌드 노트를 보존한다(`tNNN-design.md`, `build-notes.md`). 내부 작업 자료다: 게시하지 않고, task가 닫힌 뒤에는 고치지 않는다. 게시 가능한 증류본은 `content/tmp/`에 둔다(`.claude/rules/content.md` 참조).
 - `specs/README.md`는 각 `spec.md` 헤더로부터 재생성되는 색인 표(번호, 기능, Status, 우선순위, 링크)다. 헤더를 바꾼 다음 재생성한다; 표만 편집하지 않는다.
-- 승인 후 `spec.md`, `plan.md`, `tasks.md`는 구현자에게 읽기 전용 입력이다. 허용되는 편집: `tasks.md`의 체크박스(`[X]`)와 `/speckit-converge`가 추가하는 단계.
+- 승인 후 `spec.md`, `plan.md`, `tasks.md`는 구현자에게 읽기 전용 입력이다. 허용되는 편집: `tasks.md`의 체크박스(`[X]`), `/speckit-converge`가 추가하는 단계, 그리고 spec의 VD 절차로 검증 후 결정(VD) 항목을 재는 task라면 그 체크박스를 켜는 같은 편집에서 task 줄 끝에 덧붙이는 결과 한 줄(T057 선례 · T074).
 - 서브에이전트에 작업을 위임할 때는 해당 작업 줄과 관련된 spec/plan 섹션만 전달한다 — 기능 디렉터리 전체를 전달하지 않는다.
 - 산문은 한국어로; 식별자, 슬러그, 파일명은 영어/ASCII로.

@@ -1,0 +1,797 @@
+"""{{ pod_name }} outbox 시험(T072 D17 · D13 · D14 · D15 · D11 — 계약 §기본 테스트 2 · contracts/events.md · 규칙
+django-pod.md §Outbox and events).
+
+발행 관문 · 릴레이 규칙 자체(크기 · JSON 꼴 · 동시성 · 치명 오류)는 django-common 계약 시험(T061 · T069)이 본다 — 여기서는 이 pod의
+배선(설정 이름 · 접두 · app role · 명령 · 작업 · 워커)이 계약 동작을 내는지 본다. DB 별칭: default = app role(런타임 — publish ·
+릴레이 · purge) · owner = owner role(시각 조작 · 검증 읽기).
+
+- 설정: OUTBOX_SOURCE = pod 이름 · OUTBOX_TOPIC_PREFIX "dev."(ENV=test) · OUTBOX_MAX_ATTEMPTS 10 · ENV=test의
+  KAFKA_CLIENT_CONFIG는 PLAINTEXT 하나 / dev 모양 기동(하위 프로세스)의 KAFKA_CLIENT_CONFIG = SASL_SSL · SCRAM-SHA-512 ·
+  dev-<pod> · ssl.ca.location = conf.KAFKA_CA_FILE(/etc/kafka/ca.crt) · 접두 "dev." / 그 ssl.ca.location = deploy/base/deployment.yaml
+  (pyyaml)의 web · relay Kafka CA 마운트(secret jt-kafka-cluster-ca-cert 볼륨 · subPath 없음) 경로 + /ca.crt · 그 접두 = base
+  configmap.yaml의 ENV(dev) + "."(T072 D17 · X2 — 설정과 배포 매니페스트의 결속).
+- 발행 관문: atomic 밖 → OutboxUsageError · 컨텍스트도 tenant_id 인자도 없음(새 세션 · 컨텍스트가 지나간 세션) → OutboxUsageError ·
+  컨텍스트 없는 경로의 tenant_id 인자 · 요청 컨텍스트 · 둘이 어긋남 · slug → 행 partition_key = 봉투 tenantid. publish_owned는
+  OWNED_EVENTS 안의 이벤트만(밖이면 ValueError) — 논리 토픽 = <OUTBOX_SOURCE>.<entity>.<event>.
+- 릴레이(app role · 실 Kafka): 테넌트 A(컨텍스트) · B(인자) 행 → relay_once() → Kafka 2건 · owner 연결 쿼리 0 · 행 삭제 · 메시지마다
+  value = 저장된 봉투 · key = tenantid · 헤더 ce_type · ce_source · ce_id · content-type · 봉투 꼴(「스키마 통과」 대신 — 생성물 ·
+  이미지에 packages/events가 없다: 필수 키 9 정확히 · const 2 · 라이브러리 ENVELOPE_PATTERNS · time = UTC ms Z · data 왕복).
+- 실패 · DLQ · dead · purge(대역 프로듀서): 실패 DR → attempts 1 · last_error · dead_at 없음 / 10회째 → dev.<pod>.dlq(원본 봉투 +
+  error 헤더) + dead_at / dead 행은 다시 집지 않는다 / call_command("outbox_purge") → `outbox_purge: N`(dead_at + 30 d가 지난 행만).
+- 명령: call_command("outbox_relay", iterations=1, poll_interval=0, metrics_port=0) + build_producer 패치(poll이 있는 대역) →
+  패스 전 poll(0) · 행 발행 / 실제 relay 프로세스(manage.py outbox_relay — 하위 프로세스 · 실 Kafka)의 지표 레지스트리에 outbox
+  지표는 있고 web 지표 http_requests_total은 없다(D11).
+{%- if has_celery %}
+- Celery(D14): 앱 구성(원격 제어 끔 · 키 접두 · 결과 백엔드 없음 · eager 끔 · 브로커 = 기동 시 DRAGONFLY_URL · beat = purge 하나 일
+  1회 03:17 UTC) · 작업 apply()가 purge를 돈다 · 실제 워커(하위 프로세스 · D14 명령 · 시험 DB app role · 시험 Dragonfly pod 사용자 =
+  운영 규칙 resetchannels %R~revoked:* ~<pod>:* +@all): send_task → dead_at 31일 전 행만 지워진다 · 작업 성공 줄 · beat 기동 ·
+  로그에 NOPERM 0 · 자격 0 · 멈춤 신호 뒤 상한 안에 끝나고 남은 프로세스 0.
+{%- endif %}
+"""
+
+from __future__ import annotations
+
+import io
+import json
+import os
+import re
+{%- if has_celery %}
+import signal
+{%- endif %}
+import subprocess
+import sys
+{%- if has_celery %}
+import time
+{%- endif %}
+import uuid
+{%- if has_celery %}
+from collections.abc import Callable
+{%- endif %}
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import TYPE_CHECKING, NoReturn
+
+import pytest
+import yaml
+from django.conf import settings
+from django.core.management import call_command
+from django.db import connections, transaction
+from django.test.utils import CaptureQueriesContext
+from django_common.outbox import OutboxEvent, OutboxUsageError, RelayResult, publish, relay_once
+from django_common.outbox.publisher import ENVELOPE_PATTERNS
+from django_common.tenancy import set_tenant_context
+
+from tests._boot import (
+    assert_absent,
+    boot,
+    boot_facts,
+    dev_shape_env,
+    redact,
+{%- if has_celery %}
+    url_password,
+{%- endif %}
+)
+from tests._kafka import drain, headers_dict, subscribed
+from tests._outbox_fakes import (
+    CONTENT_TYPE,
+    DATA,
+    DLQ_TOPIC,
+    KAFKA_TOPIC,
+    MAX_ATTEMPTS,
+    SOURCE,
+    SUBJECT,
+    TENANT_A,
+    TENANT_B,
+    TOPIC,
+    FakeProducer,
+    fail_topics,
+    owner_execute,
+    owner_rows,
+    owner_scalar,
+    seed,
+)
+
+if TYPE_CHECKING:
+    from tests.conftest import {% if has_celery %}DragonflyInfo, {% endif %}PgInfo
+
+DB = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
+
+POD_ROOT = Path(__file__).resolve().parents[1]
+POD_NAME = "{{ pod_name }}"
+POD_SNAKE = "{{ pod_snake }}"
+POD_SETTINGS = "{{ pod_snake }}.settings"
+SUBJECT_B = "test:outbox-b"
+INJECTED_ERROR = "injected delivery failure"
+ENVELOPE_KEYS = frozenset(
+    {"specversion", "id", "source", "type", "time", "subject", "tenantid", "datacontenttype", "data"}
+)
+ENVELOPE_CONSTS = {"specversion": "1.0", "datacontenttype": "application/json"}
+TIME_SHAPE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z")
+PURGE_LINE = re.compile(r"outbox_purge: ([0-9]+)")
+RECEIVE_TIMEOUT_S = 30
+RELAY_TIMEOUT_S = 120
+RELAY_MARK = "JT-RELAY "
+# deploy/base(T072 D20) — web Deployment(web · relay 컨테이너)의 Kafka CA 마운트 · base ConfigMap(dev 값)
+DEPLOYMENT_FILE = POD_ROOT / "deploy" / "base" / "deployment.yaml"
+CONFIGMAP_FILE = POD_ROOT / "deploy" / "base" / "configmap.yaml"
+KAFKA_CA_SECRET = "jt-kafka-cluster-ca-cert"
+KAFKA_CA_KEY = "ca.crt"
+KAFKA_CA_CONTAINERS = ("web", "relay")
+# 이 프로세스 env에서 자식에게 넘기지 않는 이름(결과가 개발자 셸에 기대지 않게 · relay env에 multiprocess 디렉터리 금지 · 검증된
+# 설정을 대신하는 env — 시험 래퍼도 지우고 자식의 기동 단언은 거부한다: T072 ② r2 H10 · B-2)
+_DROPPED_ENV = frozenset(
+    {
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "SSLKEYLOGFILE",
+        "PROMETHEUS_MULTIPROC_DIR",
+        "CELERY_BROKER_URL",
+        "CELERY_BROKER_READ_URL",
+        "CELERY_BROKER_WRITE_URL",
+        "CELERY_RESULT_BACKEND",
+        "GUNICORN_CMD_ARGS",
+    }
+)
+
+
+# --- 도우미 --------------------------------------------------------------------------------------------------------------
+
+
+def _fail_without_trace(what: str, exc: BaseException) -> NoReturn:
+    """예외를 원 트레이스백 · 메시지 없이 실패로 바꾼다(형식 이름만 — 호출자는 except 블록 밖에서 부른다)."""
+    kind = f"{type(exc).__module__}.{type(exc).__name__}"
+    pytest.fail(f"{what}: 예외로 끝났다({kind}) — 원 트레이스백 · 메시지는 비밀 노출을 막으려고 싣지 않는다", pytrace=False)
+
+
+def _assert_envelope_shape(envelope: object, *, row_id: str, tenant: uuid.UUID, subject: str) -> None:
+    """봉투 꼴(「스키마 통과」 대신 — 계약 §기본 테스트 2): 필수 키 9 정확히 · const 2 · 라이브러리 ENVELOPE_PATTERNS(id · source ·
+    type · subject · tenantid — _envelope.json의 pattern과 같은지는 django-common 시험이 지킨다) · time = UTC 밀리초 Z · 값이 행 ·
+    발행 인자와 같다 · data 왕복(jsonb 텍스트 → JSON)."""
+    assert isinstance(envelope, dict)
+    assert set(envelope) == ENVELOPE_KEYS
+    for key, value in ENVELOPE_CONSTS.items():
+        assert envelope[key] == value, key
+    for key, pattern in ENVELOPE_PATTERNS.items():
+        value = envelope[key]
+        assert isinstance(value, str) and pattern.search(value) is not None, key
+    assert TIME_SHAPE.fullmatch(envelope["time"]) is not None
+    assert datetime.fromisoformat(envelope["time"]).utcoffset() == timedelta(0)
+    observed = (envelope["id"], envelope["source"], envelope["type"], envelope["subject"], envelope["tenantid"])
+    assert observed == (row_id, settings.OUTBOX_SOURCE, TOPIC, subject, str(tenant))
+    assert envelope["data"] == DATA
+
+
+def _mark_dead(row_id: str, days: int) -> None:
+    """owner로 행을 dead로 만든다 — attempts = MAX_ATTEMPTS · dead_at = DB now() − days일."""
+    owner_execute(
+        "UPDATE outbox SET attempts = %s, dead_at = now() - make_interval(days => %s) WHERE id = %s",
+        [MAX_ATTEMPTS, days, row_id],
+    )
+
+
+def _drive_to_dead() -> tuple[OutboxEvent, FakeProducer, list[RelayResult]]:
+    """1행을 메인 토픽 실패 대역으로 MAX_ATTEMPTS번 릴레이해 dead로 만든다."""
+    (event,) = seed(1, TENANT_A)
+    fake = FakeProducer(decide=fail_topics(KAFKA_TOPIC, reason=INJECTED_ERROR))
+    results = [relay_once(producer=fake) for _ in range(MAX_ATTEMPTS)]
+    return event, fake, results
+
+
+def _purge_count(output: str) -> int:
+    """outbox_purge 명령 stdout(한 줄 `outbox_purge: N`)의 N."""
+    lines = [line for line in output.splitlines() if line.strip()]
+    assert len(lines) == 1, f"outbox_purge 출력 줄 수 {len(lines)}"
+    match = PURGE_LINE.fullmatch(lines[0].strip())
+    assert match is not None, "outbox_purge 출력이 계약 꼴(outbox_purge: N)이 아니다"
+    return int(match.group(1))
+
+
+def _child_env(overrides: dict[str, str]) -> dict[str, str]:
+    """하위 프로세스 env — 이 프로세스의 os.environ(시험 래퍼가 덮어쓴 설정 env) − OTEL_* · 프록시 · SSLKEYLOGFILE ·
+    PROMETHEUS_MULTIPROC_DIR · 검증된 설정을 대신하는 env(Celery 브로커 · 결과 URL · GUNICORN_CMD_ARGS) + pod 설정 모듈 +
+    overrides(실제 의존에 닿아야 하는 값만 명시한다)."""
+    env = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.upper().startswith("OTEL_") and name.upper() not in _DROPPED_ENV
+    }
+    env.update(DJANGO_SETTINGS_MODULE=POD_SETTINGS, PYTHONIOENCODING="utf-8")
+    env.update(overrides)
+    return env
+
+
+@dataclass(frozen=True)
+class ChildRun:
+    """하위 프로세스 결과 — 출력 · env · 심은 맨 비밀번호는 repr에서 뺀다(단언 실패 출력에 실리지 않게). planted = env 값 통째가
+    아니라 그 안의 맨 비밀번호(시험 DB app role · Dragonfly pod 사용자) — 출력 꼬리에 비밀번호만 실린 줄도 가린다(T072 ② r2 H13 ·
+    B-5 · tests._boot.BootResult와 같은 꼴)."""
+
+    returncode: int
+    stdout: str = field(repr=False)
+    stderr: str = field(repr=False)
+    env: dict[str, str] = field(repr=False)
+    planted: tuple[str, ...] = field(repr=False, default=())
+
+    def summary(self) -> str:
+        """종료 코드 + stderr 줄 수 + 마지막 줄(env 비밀 값 · 심은 맨 비밀번호 가림 · 300자)."""
+        lines = [line for line in self.stderr.splitlines() if line.strip()]
+        last = redact(lines[-1], self.env, self.planted)[:300] if lines else ""
+        return f"종료 코드 {self.returncode} · stderr {len(lines)}줄 · 마지막 줄: {last}"
+
+
+# --- 설정 ---------------------------------------------------------------------------------------------------------------
+
+
+def test_outbox_and_kafka_settings_for_tests() -> None:
+    """시험 설정(ENV=test): OUTBOX_SOURCE = pod 이름 · 접두 "dev." · 최대 시도 10 · KAFKA_CLIENT_CONFIG = PLAINTEXT 하나(시험 브로커 ·
+    클러스터 밖 전용 — 자격 키 없음) · DLQ = dev.<pod>.dlq."""
+    assert (settings.OUTBOX_SOURCE, SOURCE) == (POD_NAME, POD_NAME)
+    assert settings.OUTBOX_TOPIC_PREFIX == "dev."
+    assert settings.OUTBOX_MAX_ATTEMPTS == MAX_ATTEMPTS == 10
+    assert settings.KAFKA_CLIENT_CONFIG == {"security.protocol": "PLAINTEXT"}
+    assert DLQ_TOPIC == f"{settings.OUTBOX_TOPIC_PREFIX}{settings.OUTBOX_SOURCE}.dlq"
+
+
+def test_dev_shape_kafka_client_config() -> None:
+    """dev 모양 기동(하위 프로세스 · 클러스터 교차 규칙 통과 · 이름 조회 0): KAFKA_CLIENT_CONFIG 키 = security.protocol ·
+    sasl.mechanism · sasl.username · sasl.password · ssl.ca.location(그 밖의 키 0 — 고정값은 라이브러리가 더한다) · SASL_SSL ·
+    SCRAM-SHA-512 · 사용자 dev-<pod> · CA = conf.KAFKA_CA_FILE · 접두 "dev." · 출력에 Kafka 비밀번호 없음(위생)."""
+    from {{ pod_snake }} import conf
+
+    facts = boot_facts(boot(dev_shape_env()), network_zero=True)
+    assert facts["kafka_keys"] == sorted(
+        {"security.protocol", "sasl.mechanism", "sasl.username", "sasl.password", "ssl.ca.location"}
+    )
+    observed = (facts["kafka_security_protocol"], facts["kafka_sasl_mechanism"], facts["kafka_sasl_username"])
+    assert observed == ("SASL_SSL", "SCRAM-SHA-512", f"dev-{POD_NAME}")
+    assert facts["kafka_ca_location"] == conf.KAFKA_CA_FILE == "/etc/kafka/ca.crt"
+    assert (facts["outbox_topic_prefix"], facts["outbox_source"]) == ("dev.", POD_NAME)
+
+
+def _single_document(path: Path) -> dict:
+    """deploy/base 파일 하나(pyyaml) — 매핑 문서 정확히 하나."""
+    documents = [doc for doc in yaml.safe_load_all(path.read_text(encoding="utf-8")) if doc is not None]
+    assert len(documents) == 1 and isinstance(documents[0], dict), f"{path.name}: 매핑 문서 {len(documents)}개(기대 1)"
+    return documents[0]
+
+
+def _kafka_ca_mount_files() -> dict[str, list[str]]:
+    """deploy/base/deployment.yaml의 컨테이너(web · relay)별 Kafka CA 파일 경로 — secret jt-kafka-cluster-ca-cert 볼륨을 subPath 없이
+    마운트한 mountPath + /ca.crt(Secret 키 ca.crt가 그 디렉터리의 파일이 된다)."""
+    spec = _single_document(DEPLOYMENT_FILE)["spec"]["template"]["spec"]
+    volumes = {
+        volume["name"]
+        for volume in spec.get("volumes", [])
+        if (volume.get("secret") or {}).get("secretName") == KAFKA_CA_SECRET
+    }
+    found: dict[str, list[str]] = {name: [] for name in KAFKA_CA_CONTAINERS}
+    for container in spec.get("containers", []):
+        if container.get("name") not in found:
+            continue
+        for mount in container.get("volumeMounts", []):
+            if mount.get("name") in volumes and not mount.get("subPath"):
+                found[container["name"]].append(str(mount["mountPath"]).rstrip("/") + "/" + KAFKA_CA_KEY)
+    return found
+
+
+def test_dev_shape_kafka_ca_and_prefix_match_deploy_base() -> None:
+    """설정과 배포 매니페스트의 결속(T072 D17 · X2): dev 모양 기동(하위 프로세스)의 KAFKA_CLIENT_CONFIG["ssl.ca.location"] =
+    deploy/base/deployment.yaml의 web · relay 컨테이너가 각각 한 번 마운트한 Kafka CA 경로(mountPath + /ca.crt) · 그 OUTBOX_TOPIC_PREFIX =
+    base configmap.yaml의 ENV(dev) + "." = "dev."(base는 dev 값 — prod overlay가 바꾼다)."""
+    facts = boot_facts(boot(dev_shape_env()), network_zero=True)
+    expected = {name: [facts["kafka_ca_location"]] for name in KAFKA_CA_CONTAINERS}
+    assert _kafka_ca_mount_files() == expected
+    base_env = _single_document(CONFIGMAP_FILE)["data"]["ENV"]
+    assert (base_env, facts["outbox_topic_prefix"]) == ("dev", "dev.")
+
+
+# --- 발행 관문 ------------------------------------------------------------------------------------------------------------
+
+
+@DB
+def test_publish_outside_atomic_raises() -> None:
+    """transaction.atomic() 밖(autocommit)에서는 tenant_id를 넘겨도 OutboxUsageError · 행 0."""
+    assert not connections["default"].in_atomic_block
+    with pytest.raises(OutboxUsageError):
+        publish(TOPIC, SUBJECT, dict(DATA), tenant_id=TENANT_A)
+    assert OutboxEvent.objects.using("owner").count() == 0
+
+
+@DB
+def test_publish_without_context_or_tenant_raises() -> None:
+    """atomic 안이어도 테넌트 컨텍스트도 tenant_id 인자도 없으면 OutboxUsageError · 행 0 — 새 세션(GUC NULL)과 앞 트랜잭션이
+    컨텍스트를 두었다 끝난 세션(GUC '') 둘 다."""
+    connections["default"].close()
+    with pytest.raises(OutboxUsageError), transaction.atomic():
+        publish(TOPIC, SUBJECT, dict(DATA))
+    with transaction.atomic():
+        set_tenant_context(TENANT_A)
+    with pytest.raises(OutboxUsageError), transaction.atomic():
+        publish(TOPIC, SUBJECT, dict(DATA))
+    assert OutboxEvent.objects.using("owner").count() == 0
+
+
+@DB
+def test_publish_tenant_from_argument_or_request_context() -> None:
+    """컨텍스트 없는 경로 + tenant_id=B → partition_key · 봉투 tenantid = B · 요청 컨텍스트 A(인자 없음) → A · 컨텍스트 A와 인자 B가
+    어긋나면 OutboxUsageError · slug tenant_id → OutboxUsageError(행은 앞의 둘뿐)."""
+    with transaction.atomic():
+        by_argument = publish(TOPIC, SUBJECT, dict(DATA), tenant_id=TENANT_B)
+    with transaction.atomic():
+        set_tenant_context(TENANT_A)
+        by_context = publish(TOPIC, SUBJECT, dict(DATA))
+    with pytest.raises(OutboxUsageError), transaction.atomic():
+        set_tenant_context(TENANT_A)
+        publish(TOPIC, SUBJECT, dict(DATA), tenant_id=TENANT_B)
+    with pytest.raises(OutboxUsageError), transaction.atomic():
+        publish(TOPIC, SUBJECT, dict(DATA), tenant_id="joshuatech")
+    rows = owner_rows()
+    assert set(rows) == {by_argument.pk, by_context.pk}
+    for event, tenant in ((by_argument, TENANT_B), (by_context, TENANT_A)):
+        row = rows[event.pk]
+        assert (row.partition_key, row.payload["tenantid"], row.topic) == (str(tenant), str(tenant), TOPIC)
+
+
+@DB
+def test_publish_owned_accepts_owned_events_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """publish_owned(events/): OWNED_EVENTS 밖의 이벤트 → ValueError(행 0 — 다른 pod의 토픽 · 목록에 없는 이벤트를 발행하지 않는다) ·
+    목록 안 → 논리 토픽 <OUTBOX_SOURCE>.<entity>.<event>(env 접두 없음)의 행 하나."""
+    from {{ pod_snake }} import events
+
+    owned = "outbox-test.recorded"
+    monkeypatch.setattr(events, "OWNED_EVENTS", (*events.OWNED_EVENTS, owned))
+    with pytest.raises(ValueError), transaction.atomic():
+        events.publish_owned("outbox-test.unowned", SUBJECT, dict(DATA), tenant_id=TENANT_A)
+    assert OutboxEvent.objects.using("owner").count() == 0
+    with transaction.atomic():
+        event = events.publish_owned(owned, SUBJECT, dict(DATA), tenant_id=TENANT_A)
+    assert events.topic(owned) == TOPIC == f"{settings.OUTBOX_SOURCE}.{owned}"
+    row = owner_rows()[event.pk]
+    assert (row.topic, row.partition_key) == (TOPIC, str(TENANT_A))
+
+
+# --- 릴레이(실 Kafka) -----------------------------------------------------------------------------------------------------
+
+
+@DB
+@pytest.mark.usefixtures("kafka_settings")
+def test_relay_delivers_both_tenants_to_kafka(kafka: str) -> None:
+    """테넌트 A(요청 컨텍스트) · B(tenant_id 인자) 행 → relay_once()(app role · 컨텍스트 없음 · owner 연결 쿼리 0) → 실 Kafka 2건 ·
+    RelayResult(2, 0, 0) · 행 삭제 · 메시지마다 value = 저장된 봉투 · key = 그 행의 tenantid · 헤더 ce_type = 논리 토픽 · ce_source ·
+    ce_id = 행 id · content-type · 봉투 꼴."""
+    with transaction.atomic():
+        set_tenant_context(TENANT_A)
+        event_a = publish(TOPIC, SUBJECT, dict(DATA))
+    with transaction.atomic():
+        event_b = publish(TOPIC, SUBJECT_B, dict(DATA), tenant_id=TENANT_B)
+    expected = {event_a.pk: (TENANT_A, SUBJECT), event_b.pk: (TENANT_B, SUBJECT_B)}
+    stored = {row_id: row.payload for row_id, row in owner_rows().items()}
+    assert set(stored) == set(expected)
+    with subscribed(kafka, KAFKA_TOPIC) as consumer:
+        with CaptureQueriesContext(connections["owner"]) as owner_queries:
+            result = relay_once()
+        messages = drain(consumer, 2, timeout_s=RECEIVE_TIMEOUT_S)
+    assert result == RelayResult(published=2, failed=0, dead=0)
+    assert len(owner_queries) == 0  # owner role(BYPASSRLS)은 런타임 릴레이가 쓰지 않는다
+    assert len(messages) == 2
+    seen: set[str] = set()
+    for message in messages:
+        headers = headers_dict(message)
+        row_id = headers.get("ce_id")
+        assert row_id in expected
+        tenant, subject = expected[row_id]
+        envelope = json.loads(message.value())
+        assert envelope == stored[row_id]
+        _assert_envelope_shape(envelope, row_id=row_id, tenant=tenant, subject=subject)
+        assert message.key() == str(tenant).encode()
+        assert (headers.get("ce_type"), headers.get("ce_source")) == (TOPIC, settings.OUTBOX_SOURCE)
+        assert headers.get("content-type") == CONTENT_TYPE
+        seen.add(row_id)
+    assert seen == set(expected)
+    assert OutboxEvent.objects.using("owner").count() == 0
+
+
+# --- 실패 · DLQ · dead · purge ------------------------------------------------------------------------------------------
+
+
+@DB
+def test_producer_failure_keeps_row_and_counts_attempt() -> None:
+    """프로듀서 실패 DR(대역) → RelayResult(0, 1, 0) · 행 유지 · attempts 1 · last_error에 오류 문자열 · dead_at 없음 · 보낸 곳 =
+    env 접두가 붙은 Kafka 토픽 · key = tenantid."""
+    (event,) = seed(1, TENANT_A)
+    fake = FakeProducer(decide=fail_topics(KAFKA_TOPIC, reason=INJECTED_ERROR))
+    assert relay_once(producer=fake) == RelayResult(published=0, failed=1, dead=0)
+    row = owner_rows()[event.pk]
+    assert row.attempts == 1
+    assert row.last_error is not None and INJECTED_ERROR in row.last_error
+    assert row.dead_at is None
+    assert [(sent.topic, sent.key) for sent in fake.sent] == [(KAFKA_TOPIC, str(TENANT_A).encode())]
+
+
+@DB
+def test_dead_letter_after_max_attempts() -> None:
+    """메인 토픽이 계속 실패하면 10번째 패스에서 dead: dev.<pod>.dlq로 원본 봉투 1건(+ error 헤더 = 마지막 오류 · ce_* 헤더) ·
+    dead_at 기록 · attempts 10 · 행 유지."""
+    event, fake, results = _drive_to_dead()
+    assert results[:-1] == [RelayResult(published=0, failed=1, dead=0)] * (MAX_ATTEMPTS - 1)
+    assert (results[-1].published, results[-1].dead) == (0, 1)
+    row = owner_rows()[event.pk]
+    assert row.attempts == MAX_ATTEMPTS
+    assert row.dead_at is not None
+    sent = fake.sent
+    assert [call.topic for call in sent] == [KAFKA_TOPIC] * MAX_ATTEMPTS + [DLQ_TOPIC]
+    dlq = sent[-1]
+    assert dlq.envelope() == row.payload
+    headers = dlq.header_map()
+    assert INJECTED_ERROR in (headers.get("error") or "")
+    assert (headers.get("ce_id"), headers.get("ce_type"), headers.get("ce_source")) == (row.pk, TOPIC, POD_NAME)
+
+
+@DB
+def test_dead_rows_are_not_repicked_and_purge_after_30_days() -> None:
+    """dead 행(10회 실패) · 29일 전 dead 행 · pending 행 → 성공 대역 릴레이는 pending만 보낸다(RelayResult(1, 0, 0) · dead 행 produce
+    0) → call_command("outbox_purge") `outbox_purge: 0`(dead_at이 30일 안) → dead 행을 31일 전으로 옮기면 `outbox_purge: 1` · 남는
+    행은 29일 전 dead 행뿐(pending은 릴레이가 지웠다 · purge는 dead_at IS NULL을 건드리지 않는다)."""
+    dead, _, _ = _drive_to_dead()
+    recent, pending = seed(2, TENANT_B)
+    _mark_dead(recent.pk, 29)
+    fresh = FakeProducer()
+    assert relay_once(producer=fresh) == RelayResult(published=1, failed=0, dead=0)
+    assert [call.row_id() for call in fresh.sent] == [pending.pk]
+    out = io.StringIO()
+    call_command("outbox_purge", stdout=out)
+    assert _purge_count(out.getvalue()) == 0
+    _mark_dead(dead.pk, 31)
+    out = io.StringIO()
+    call_command("outbox_purge", stdout=out)
+    assert _purge_count(out.getvalue()) == 1
+    assert set(owner_rows()) == {recent.pk}
+
+
+# --- 명령 outbox_relay --------------------------------------------------------------------------------------------------
+
+
+@DB
+def test_outbox_relay_command_publishes_with_patched_producer(monkeypatch: pytest.MonkeyPatch) -> None:
+    """call_command("outbox_relay", iterations=1, poll_interval=0, metrics_port=0)(pod가 재노출한 명령) + build_producer
+    패치(poll이 있는 대역): 패스 전 poll(0) · 행 1을 env 접두 토픽에 보내고 지운다."""
+    from django_common.outbox import relay
+
+    (event,) = seed(1, TENANT_A)
+    fake = FakeProducer()
+    monkeypatch.setattr(relay, "build_producer", lambda: fake)
+    call_command("outbox_relay", iterations=1, poll_interval=0, metrics_port=0)
+    assert 0 in fake.poll_calls
+    assert [(call.topic, call.row_id()) for call in fake.sent] == [(KAFKA_TOPIC, event.pk)]
+    assert OutboxEvent.objects.using("owner").count() == 0
+
+
+# 실제 relay 프로세스(manage.py outbox_relay)를 한 패스 돌리고, 끝난 뒤 그 프로세스의 지표 레지스트리(9464가 내보내는 기본 REGISTRY)를
+# 싣는다 — 포트는 열지 않는다(--metrics-port 0 · 같은 REGISTRY).
+_RELAY_BODY = """
+import json
+import runpy
+import sys
+
+sys.argv = ["manage.py", "outbox_relay", "--iterations", "1", "--metrics-port", "0", "--poll-interval", "0"]
+try:
+    runpy.run_path("manage.py", run_name="__main__")
+finally:
+    from prometheus_client import REGISTRY
+
+    facts = {"metrics": sorted({metric.name for metric in REGISTRY.collect()})}
+    print(MARK + json.dumps(facts), flush=True)
+"""
+RELAY_SCRIPT = f"MARK = {RELAY_MARK!r}\n" + _RELAY_BODY
+
+
+@DB
+def test_relay_process_registry_has_outbox_metrics_only(pg: PgInfo, kafka: str) -> None:
+    """실제 relay 프로세스(하위 프로세스 · pod 설정 · 시험 DB app role · 실 Kafka) 한 패스: 종료 0 · 행 1 발행(로그
+    outbox_relay.pass published=1) · 행 삭제 · 레지스트리에 outbox_pending · outbox_oldest_pending_seconds · outbox_dead는 있고 web
+    지표 http_requests_total은 없다(D11 — web 지표는 web 프로세스 레지스트리만)."""
+    (event,) = seed(1, TENANT_A)
+    password = str(pg.app_password)
+    env = _child_env({"DATABASE_URL": str(pg.url("app")), "KAFKA_BOOTSTRAP": kafka, "ENV": "test"})
+    completed: subprocess.CompletedProcess[str] | None
+    try:
+        completed = subprocess.run(  # noqa: S603 — 인자 고정 · shell 없음 · 이 프로세스의 인터프리터
+            [sys.executable, "-c", RELAY_SCRIPT],
+            cwd=POD_ROOT,
+            env=env,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=RELAY_TIMEOUT_S,
+            check=False,
+            shell=False,
+        )
+    except subprocess.TimeoutExpired:
+        completed = None  # 실패는 except 밖에서 낸다(명령 줄 · 부분 출력이 연쇄 예외로 실리지 않게)
+    if completed is None:
+        pytest.fail(f"relay 프로세스가 {RELAY_TIMEOUT_S} s 안에 끝나지 않았다", pytrace=False)
+    run = ChildRun(completed.returncode, completed.stdout, completed.stderr, env, (password,))
+    # 비밀번호 부재를 먼저 본다 — 뒤 단언의 실패 메시지(출력 꼬리)가 그 값을 싣기 전에(H13)
+    assert_absent("relay 출력", run.stdout + run.stderr, password)
+    assert run.returncode == 0, run.summary()
+    marked = [line for line in run.stdout.splitlines() if line.startswith(RELAY_MARK)]
+    assert len(marked) == 1, f"레지스트리 줄 수 {len(marked)} · {run.summary()}"
+    metrics = set(json.loads(marked[0][len(RELAY_MARK) :])["metrics"])
+    assert {"outbox_pending", "outbox_oldest_pending_seconds", "outbox_dead"} <= metrics
+    assert "http_requests" not in metrics, "relay 레지스트리에 web 지표 http_requests_total이 있다"
+    passes = [
+        record
+        for line in run.stdout.splitlines()
+        if line.startswith("{")
+        for record in [json.loads(line)]
+        if str(record.get("event", "")).startswith("outbox_relay.pass")
+    ]
+    assert [record["event"] for record in passes] == ["outbox_relay.pass published=1 failed=0 dead=0"]
+    assert owner_scalar("SELECT count(*) FROM outbox WHERE id = %s", [event.pk]) == 0
+{%- if has_celery %}
+
+
+# --- Celery(D14) ------------------------------------------------------------------------------------------------------
+
+WINDOWS = sys.platform == "win32"
+WORKER_FLAGS = ("--without-gossip", "--without-mingle", "--without-heartbeat", "--loglevel", "INFO")
+WORKER_DEADLINE_S = 120  # 워커 기동 · 작업 수신 · purge 관찰 상한(Windows 실측 약 4 s)
+BEAT_DEADLINE_S = 60  # beat 스케줄 파일 관찰 상한
+STOP_LIMIT_S = 30  # 멈춤 신호 뒤 스스로 끝나는 상한(warm shutdown)
+KILL_WAIT_S = 15
+GROUP_GRACE_S = 5.0  # (POSIX) 워커가 끝난 뒤 프로세스 그룹이 비기를 기다리는 시간
+# Dragonfly ACL 거부의 두 표기 — 서버 응답(NOPERM)과 redis-py 예외 이름(원격 제어를 켜면 워커가 auth:NoPermissionError로 죽는다 · 실측)
+NOPERM_MARKERS = ("NOPERM", "NoPermissionError")
+
+
+@dataclass(frozen=True)
+class CeleryProcess:
+    name: str
+    popen: subprocess.Popen[bytes] = field(repr=False)
+    log: Path
+
+
+@dataclass(frozen=True)
+class Stopped:
+    """멈춤 결과 — graceful = 멈춤 신호 뒤 STOP_LIMIT_S 안에 스스로 끝났다 · leftover = (POSIX) 같은 프로세스 그룹에 남은 프로세스가
+    있었다(kill로 정리했다)."""
+
+    name: str
+    graceful: bool
+    returncode: int | None
+    leftover: bool
+
+
+def _celery_commands(schedule: Path) -> list[tuple[str, list[str]]]:
+    """D14 명령(배포 celery 컨테이너와 같은 인자 — 실행 파일만 이 venv의 `python -m celery`로 같은 CLI를 부른다):
+    `celery --app <pod_snake> worker --pool solo --beat --schedule <파일> --without-gossip --without-mingle
+    --without-heartbeat --loglevel INFO`. Windows에서는 Celery CLI가 -B/--beat를 거부한다(celery/bin/worker.py CeleryBeat —
+    내장 beat는 별도 프로세스 fork에 기댄다) → 같은 워커 인자에서 --beat · --schedule만 빼고 같은 스케줄 파일의 `celery beat`를
+    따로 띄운다(Celery가 Windows에 권하는 배치). CI · 컨테이너(Linux)는 D14 명령 그대로다."""
+    base = [sys.executable, "-m", "celery", "--app", POD_SNAKE]
+    if not WINDOWS:
+        return [("worker", [*base, "worker", "--pool", "solo", "--beat", "--schedule", str(schedule), *WORKER_FLAGS])]
+    return [
+        ("worker", [*base, "worker", "--pool", "solo", *WORKER_FLAGS]),
+        ("beat", [*base, "beat", "--schedule", str(schedule), "--loglevel", "INFO"]),
+    ]
+
+
+def _start(name: str, argv: list[str], env: dict[str, str], log: Path) -> CeleryProcess:
+    """argv를 띄운다 — stdout · stderr는 로그 파일(파이프가 차서 멈추지 않게) · POSIX는 새 세션(프로세스 그룹 = 그 pid — 내장 beat
+    자식까지 그룹으로 정리한다)."""
+    with log.open("wb") as sink:
+        popen = subprocess.Popen(  # noqa: S603 — 인자 고정 · shell 없음 · 이 프로세스의 인터프리터
+            argv, cwd=POD_ROOT, env=env, stdout=sink, stderr=subprocess.STDOUT, start_new_session=not WINDOWS
+        )
+    return CeleryProcess(name, popen, log)
+
+
+def _kill(popen: subprocess.Popen[bytes]) -> None:
+    if WINDOWS:
+        popen.kill()
+        return
+    try:
+        os.killpg(popen.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+def _group_left(pgid: int) -> bool:
+    """(POSIX) 프로세스 그룹 pgid가 GROUP_GRACE_S 안에 비면 False · 남아 있으면 SIGKILL로 정리하고 True."""
+    deadline = time.monotonic() + GROUP_GRACE_S
+    while time.monotonic() < deadline:
+        try:
+            os.killpg(pgid, 0)
+        except ProcessLookupError:
+            return False
+        time.sleep(0.1)
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def _stop(process: CeleryProcess) -> Stopped:
+    """멈춤 신호: POSIX = SIGTERM(Celery warm shutdown — 배포 종료와 같다) · Windows = TerminateProcess(프로세스 밖에서 보내는
+    SIGTERM이 없다). STOP_LIMIT_S 안에 끝나지 않으면 kill(POSIX는 그룹째)하고 기다린다 — 시험은 늘 유한하게 끝난다."""
+    popen = process.popen
+    if popen.poll() is None:
+        if WINDOWS:
+            popen.terminate()
+        else:
+            popen.send_signal(signal.SIGTERM)
+    graceful = True
+    try:
+        popen.wait(STOP_LIMIT_S)
+    except subprocess.TimeoutExpired:
+        graceful = False
+        _kill(popen)
+        try:
+            popen.wait(KILL_WAIT_S)
+        except subprocess.TimeoutExpired:
+            pass
+    leftover = False if WINDOWS else _group_left(popen.pid)
+    return Stopped(process.name, graceful, popen.poll(), leftover)
+
+
+def _wait_for(done: Callable[[], bool], timeout_s: float, *, alive: Callable[[], bool]) -> bool:
+    """done()이 참이 되거나 timeout_s가 지나거나 alive()가 거짓(프로세스가 먼저 끝났다)이 될 때까지 0.25 s마다 본다."""
+    deadline = time.monotonic() + timeout_s
+    while True:
+        if done():
+            return True
+        if time.monotonic() >= deadline or not alive():
+            return done()
+        time.sleep(0.25)
+
+
+def _send_purge(dragonfly: DragonflyInfo) -> None:
+    """이 프로세스의 Celery 앱으로 purge 작업을 보낸다 — 시험 Dragonfly pod 사용자 연결(앱 broker_url은 기동 시 닫힌 포트 자리값이다 ·
+    전송 옵션 = 앱 설정 · 키 접두 <pod>:)."""
+    from {{ pod_snake }}.celery import PURGE_TASK, app
+
+    failure: BaseException | None = None
+    try:
+        with app.connection_for_write(url=str(dragonfly.pod_url)) as connection:
+            app.send_task(PURGE_TASK, connection=connection)
+    except Exception as exc:  # noqa: BLE001 — 원 트레이스백 없이 실패로 바꾼다(접속 문자열)
+        failure = exc
+    if failure is not None:
+        _fail_without_trace("send_task", failure)
+
+
+def _json_events(text: str) -> list[str]:
+    """로그의 JSON 객체 줄 event 값(Celery 배너 같은 원문 줄은 건너뛴다)."""
+    events: list[str] = []
+    for line in text.splitlines():
+        if not line.startswith("{"):
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(record, dict):
+            events.append(str(record.get("event", "")))
+    return events
+
+
+def _tails(logs: dict[str, str], env: dict[str, str], planted: tuple[str, ...]) -> str:
+    """실패 메시지용 로그 꼬리(프로세스마다 마지막 8줄 · env 비밀 값 · 심은 맨 비밀번호 가림 — H13)."""
+    parts = []
+    for name, text in logs.items():
+        tail = "\n".join(text.splitlines()[-8:])
+        parts.append(f"--- {name} ---\n{redact(tail, env, planted)}")
+    return "\n".join(parts)
+
+
+def test_celery_app_configuration() -> None:
+    """Celery 앱(D14): 원격 제어 끔 · 루트 로거를 건드리지 않음 · eager 끔 · 결과 무시 · 기동 때 브로커 재시도 · 결과 백엔드 없음 ·
+    UTC · 전송 옵션 = 키 접두 <pod>: · socket_timeout 5 · socket_connect_timeout 2 · 브로커 URL = 기동 시 DRAGONFLY_URL(ready의
+    runtime 분기 configure_broker) · beat 일정 = purge 하나 · crontab 03:17 매일 · 작업 등록."""
+    from celery.schedules import crontab
+
+    from {{ pod_snake }}.celery import KEY_PREFIX, PURGE_TASK, app
+
+    conf = app.conf
+    assert KEY_PREFIX == f"{POD_NAME}:"
+    transport = {"global_keyprefix": KEY_PREFIX, "socket_timeout": 5, "socket_connect_timeout": 2}
+    assert conf.broker_transport_options == transport
+    flags = (
+        conf.worker_enable_remote_control,
+        conf.worker_hijack_root_logger,
+        conf.task_always_eager,
+        conf.task_ignore_result,
+        conf.broker_connection_retry_on_startup,
+    )
+    assert flags == (False, False, False, True, True)
+    assert conf.result_backend is None
+    assert conf.timezone == "UTC"
+    same_broker = conf.broker_url == os.environ["DRAGONFLY_URL"]
+    assert same_broker, "브로커 URL이 기동 시 DRAGONFLY_URL이 아니다(ready의 runtime 분기 configure_broker)"
+    assert list(conf.beat_schedule) == ["purge-dead-outbox"]
+    entry = conf.beat_schedule["purge-dead-outbox"]
+    assert entry["task"] == PURGE_TASK
+    schedule = entry["schedule"]
+    assert isinstance(schedule, crontab)
+    assert (schedule.minute, schedule.hour) == ({17}, {3})
+    every_day = (schedule.day_of_week, schedule.day_of_month, schedule.month_of_year)
+    assert every_day == (set(range(7)), set(range(1, 32)), set(range(1, 13)))
+    app.loader.import_default_modules()
+    assert PURGE_TASK in app.tasks
+
+
+@DB
+def test_celery_purge_task_apply_runs_purge() -> None:
+    """작업 purge_dead_outbox.apply()(같은 프로세스 실행) → purge_dead 결과 1(31일 전 dead 행) · 29일 전 dead 행은 남는다."""
+    from {{ pod_snake }}.tasks import purge_dead_outbox
+
+    old, recent = seed(2, TENANT_A)
+    _mark_dead(old.pk, 31)
+    _mark_dead(recent.pk, 29)
+    assert purge_dead_outbox.apply().get() == 1
+    assert set(owner_rows()) == {recent.pk}
+
+
+@DB
+@pytest.mark.usefixtures("dragonfly_clean")
+def test_celery_real_worker_purges_dead_rows(pg: PgInfo, dragonfly: DragonflyInfo, tmp_path: Path) -> None:
+    """실제 Celery 워커(하위 프로세스 · D14 명령 · Windows는 워커 + beat 두 프로세스 — _celery_commands): env = pod 설정 · ENV=test ·
+    시험 DB app role · 시험 Dragonfly pod 사용자(운영 규칙 — 채널 권한 없음). send_task(purge) → dead_at 31일 전 행이 지워지고 29일 전
+    dead 행 · pending 행은 남는다 · 워커 로그에 그 작업의 성공 줄(결과 1) · beat 기동(스케줄 파일 · beat: Starting 줄) · 모든 로그에
+    NOPERM 0 · DB · Dragonfly 비밀번호 0 · 멈추기 전까지 프로세스가 살아 있었다 · 멈춤 신호 뒤 상한 안에 스스로 끝났고(POSIX는 종료
+    코드 0 · 프로세스 그룹에 남은 프로세스 0) 시험은 늘 유한하게 끝난다."""
+    from {{ pod_snake }}.celery import PURGE_TASK
+
+    old, recent, pending = seed(3, TENANT_A)
+    _mark_dead(old.pk, 31)
+    _mark_dead(recent.pk, 29)
+    passwords = (str(pg.app_password), url_password(dragonfly.pod_url) or "")
+    env = _child_env({"DATABASE_URL": str(pg.url("app")), "DRAGONFLY_URL": str(dragonfly.pod_url), "ENV": "test"})
+    schedule = tmp_path / "celerybeat-schedule"
+    processes: list[CeleryProcess] = []
+    stopped: list[Stopped] = []
+    try:
+        for name, argv in _celery_commands(schedule):
+            processes.append(_start(name, argv, env, tmp_path / f"{name}.log"))
+
+        def all_alive() -> bool:
+            return all(process.popen.poll() is None for process in processes)
+
+        _send_purge(dragonfly)
+        purged = _wait_for(
+            lambda: owner_scalar("SELECT count(*) FROM outbox WHERE id = %s", [old.pk]) == 0,
+            WORKER_DEADLINE_S,
+            alive=all_alive,
+        )
+        beat_file = _wait_for(lambda: any(tmp_path.glob("celerybeat-schedule*")), BEAT_DEADLINE_S, alive=all_alive)
+        alive_before_stop = [process.name for process in processes if process.popen.poll() is None]
+    finally:
+        stopped = [_stop(process) for process in processes]
+    logs = {process.name: process.log.read_text(encoding="utf-8", errors="replace") for process in processes}
+    # 비밀번호 부재를 먼저 본다 — 뒤 단언의 실패 메시지(로그 꼬리)가 그 값을 싣기 전에(H13 · 꼬리도 맨 비밀번호를 가린다)
+    for name, text in logs.items():
+        assert_absent(f"{name} 로그", text, *passwords)
+    assert purged, f"워커가 {WORKER_DEADLINE_S} s 안에 purge하지 않았다\n{_tails(logs, env, passwords)}"
+    assert set(owner_rows()) == {recent.pk, pending.pk}
+    events = [event for text in logs.values() for event in _json_events(text)]
+    task_events = [event for event in events if event.startswith(f"Task {PURGE_TASK}[")]
+    succeeded = [event for event in task_events if " succeeded in " in event]
+    assert any(event.endswith(": 1") for event in succeeded), f"작업 성공 줄(결과 1) 없음\n{_tails(logs, env, passwords)}"
+    others = [event for event in task_events if " succeeded in " not in event and not event.endswith("] received")]
+    assert others == [], f"작업 실패 줄이 있다\n{_tails(logs, env, passwords)}"
+    assert beat_file, f"beat 스케줄 파일이 생기지 않았다\n{_tails(logs, env, passwords)}"
+    assert "beat: Starting..." in events
+    noperm = any(marker in text for text in logs.values() for marker in NOPERM_MARKERS)
+    assert not noperm, f"Celery 로그에 NOPERM(채널 권한 없는 pod 사용자로 pub/sub을 썼다)\n{_tails(logs, env, passwords)}"
+    assert alive_before_stop == [process.name for process in processes]
+    assert [(item.name, item.graceful) for item in stopped] == [(process.name, True) for process in processes]
+    if not WINDOWS:
+        assert [(item.name, item.returncode, item.leftover) for item in stopped] == [
+            (process.name, 0, False) for process in processes
+        ]
+{%- endif %}

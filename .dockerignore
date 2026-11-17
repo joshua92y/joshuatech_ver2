@@ -1,0 +1,6 @@
+# 저장소 루트 빌드 컨텍스트의 기본 거르기(T072 ③ r2 M10) — 전부 뺀다.
+# pod 이미지는 저장소 루트를 컨텍스트로 -f apps/<pod>/Dockerfile로 빌드하고, BuildKit은 그 Dockerfile 옆의
+# <Dockerfile 이름>.dockerignore(apps/<pod>/Dockerfile.dockerignore — pod 안까지 허용 목록)를 이 파일보다 먼저 쓴다. 이 파일을 쓰는
+# 것은 그 이름이 어긋난 빌드(Dockerfile을 다른 이름으로 복사한 -f)나 Dockerfile별 ignore를 모르는 빌더뿐이다 — 그때 컨텍스트가 비어
+# COPY에서 실패한다(닫힌 쪽: 저장소 전체 · 로컬 .env · 키가 컨텍스트로 가지 않는다).
+*

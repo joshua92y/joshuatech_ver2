@@ -1,0 +1,19 @@
+"""시험 전용 admin probe urlconf(T072 D17) — 시험이 settings.ADMIN_URLCONF = "tests.probe_admin_urls"로 쓴다(AdminHostMiddleware가
+요청마다 읽는다 · ADMIN_HOST 요청만).
+
+admin urlconf({{ pod_snake }}.urls_admin)의 패턴 전부 + tests.probe_urls와 같은 예외 뷰(/probe/…) — 처리기 넷은 admin urlconf의
+값을 그대로 복사한다(admin urlconf에도 RFC 9457 처리기가 있다는 증명).
+"""
+
+from __future__ import annotations
+
+from tests.probe_urls import PROBE_PATTERNS
+
+from {{ pod_snake }} import urls_admin as pod_admin_urls
+
+urlpatterns = [*pod_admin_urls.urlpatterns, *PROBE_PATTERNS]
+
+handler400 = pod_admin_urls.handler400
+handler403 = pod_admin_urls.handler403
+handler404 = pod_admin_urls.handler404
+handler500 = pod_admin_urls.handler500

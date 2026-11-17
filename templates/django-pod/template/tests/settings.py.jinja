@@ -1,0 +1,119 @@
+"""시험 설정 래퍼(T072 D5 · D16 · X24) — pytest-django는 conftest보다 먼저 이 모듈을 적재한다(pyproject addopts --ds=tests.settings
+· ini DJANGO_SETTINGS_MODULE — pytest-django는 옵션 > env > ini라 --ds가 셸 env DJANGO_SETTINGS_MODULE보다 앞선다 · conftest 가드가
+다른 설정 모듈을 거부한다).
+
+① import 첫머리에서 pod 설정 env를 시험 자리값으로 **덮어쓴다** — 필수값은 자리값, 선택값 · 거부 대상은 지운다(POD_SETTINGS_ENV ·
+  POD_SETTINGS_ENV_REMOVED). 개발자 셸의 실제 env(포트 포워드한 dev 클러스터 · 실 Sentry DSN 등)가 시험과 기동 하위 프로세스를
+  실서비스에 닿게 하지 않는다. 자리값은 모양이 유효한 닫힌 포트(127.0.0.1에 bind했다 닫은 포트 — CLOSED_PORT) URL이고, 비밀은
+  import마다 secrets.token_urlsafe로 만든다(PLACEHOLDER- 없음 — 게이트 2). ENV=test(PLAINTEXT Kafka · sslmode=require · 루프백
+  http 팀 도메인)는 클러스터 밖 전용이다.
+② 그다음 pod 설정({{ pod_snake }}.settings)을 그대로 적재한다 — 기동(django.setup() + urlconf import)은 외부 의존에 닿지 않는다.
+③ 시험 전용: 앱 tests.rlsapp(A 등급 표 RlsWidget) · django_migration_linter와 시험 DB(DATABASES — conftest가 testcontainers 접속
+  정보로 채운다 · default = app role · TLS · TEST.MIRROR owner · 풀 없음 · owner = owner role).
+
+기동 하위 프로세스(시험이 띄우는 자식)는 이 프로세스의 env(①의 키 전부)를 물려받는다 — 자식은 래퍼가 아니라
+DJANGO_SETTINGS_MODULE={{ pod_snake }}.settings로 뜬다. 실제 의존(시험 DB · Dragonfly)에 닿아야 하는 자식(실제 Celery 워커 등)은
+그 값을 명시 env로 넘긴다.
+"""
+
+import os
+import secrets
+import socket
+
+
+def _closed_port() -> int:
+    """127.0.0.1에 bind했다 바로 닫은 포트 — 듣는 소켓이 없어 연결이 곧바로 거부된다."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
+
+
+CLOSED_PORT = _closed_port()
+_pod = "{{ pod_name }}"
+_snake = "{{ pod_snake }}"
+_loopback = f"127.0.0.1:{CLOSED_PORT}"
+
+# 필수 설정 env(conf.RuntimeEnv)의 시험 자리값 — 비밀은 import마다 새 난수다.
+_required_values = {
+    "SECRET_KEY": secrets.token_urlsafe(48),
+    "DATABASE_URL": f"postgresql://{_snake}_app:{secrets.token_urlsafe(24)}@{_loopback}/{_snake}?sslmode=require",
+    "DRAGONFLY_URL": f"redis://{_pod}:{secrets.token_urlsafe(24)}@{_loopback}/0",
+    "KAFKA_BOOTSTRAP": _loopback,
+    "KAFKA_USERNAME": _pod,
+    "KAFKA_PASSWORD": secrets.token_urlsafe(24),
+    "AUTHENTIK_ISSUER": f"https://auth.joshuatech.dev/application/o/{_pod}/",
+    "AUTHENTIK_JWKS_URL": f"http://{_loopback}/application/o/{_pod}/jwks/",
+    "AUTHENTIK_AUDIENCE": _pod,
+    "ACCESS_TEAM_DOMAIN": f"http://{_loopback}",
+    "ACCESS_AUD_M2M": "test-access-audience",
+    "ACCESS_AUD_ADMIN": "",
+    "ACCESS_EXPECTED_CN": "test-expected-common-name",
+    "ALLOWED_HOSTS": f"{_pod}.test.svc",
+    "ADMIN_HOST": "",
+    "ENV": "test",
+    "APP_VERSION": "0.0.0+test",
+    "APP_GIT_SHA": "0000000",
+}
+# 덮어쓴 필수 키 · 지운 키(선택 설정 · 프로필 · 런타임 거부 대상 · 개발자 셸의 OTLP 내보내기 대상 · 검증된 설정을 대신하는 env —
+# Celery 브로커 · 결과 URL · GUNICORN_CMD_ARGS: 기동 단언이 거부한다 · T072 ② r2 H10) — 기동 시험이 자식 env를 만들 때 쓴다(Django
+# 설정으로도 보인다).
+POD_SETTINGS_ENV = tuple(_required_values)
+POD_SETTINGS_ENV_REMOVED = (
+    "AUTH_ACTOR_SUB",
+    "SENTRY_DSN",
+{%- if has_admin %}
+    "FORCE_SCRIPT_NAME",
+{%- endif %}
+    "POD_IP",
+    "POD_NAMESPACE",
+    "JT_PLACEHOLDER_EXEMPT",
+    "JT_SETTINGS_PROFILE",
+    "DATABASE_OWNER_URL",
+    "OTEL_EXPORTER_OTLP_ENDPOINT",
+    "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+    "CELERY_BROKER_URL",
+    "CELERY_BROKER_READ_URL",
+    "CELERY_BROKER_WRITE_URL",
+    "CELERY_RESULT_BACKEND",
+    "GUNICORN_CMD_ARGS",
+)
+for _name in POD_SETTINGS_ENV_REMOVED:
+    os.environ.pop(_name, None)
+os.environ.update(_required_values)
+
+from {{ pod_snake }}.settings import *  # noqa: E402, F403
+
+INSTALLED_APPS = [*INSTALLED_APPS, "tests.rlsapp", "django_migration_linter"]  # noqa: F405
+# django-migration-linter(test_migrations — lintmigrations): 캐시 파일을 쓰지 않는다 · 판정 대상 = pod 패키지의 앱 라벨 전부(pod 앱
+# {{ pod_snake }} · core — 앱을 더하면 넓힌다 · pod 앱에 마이그레이션이 생겨도 린트된다 · T072 ② r2 H8).
+MIGRATION_LINTER_OPTIONS = {"no_cache": True, "include_apps": ["{{ pod_snake }}", "core"]}
+
+
+def _test_database(user: str, **options: object) -> dict[str, object]:
+    """시험 DB 별칭 — 접속 정보는 conftest(django_db_modify_db_settings)가 testcontainers 값(HOST · PORT · NAME · USER · PASSWORD)으로
+    채운다. 그 전의 값은 닫힌 포트다 — pytest 밖에서 이 설정으로 돈 관리 명령(makemigrations의 이력 검사 등)은 어디에도 닿지 않고
+    OperationalError로 끝난다.
+
+    connect_timeout 5(시험 전용 — psycopg 기본은 주소당 130 s라 접속 불가가 멈춤이 된다) · CONN_MAX_AGE 0 · 연결 풀 없음(별칭의 첫
+    설정을 고정하는 풀은 settings_dict를 바꿔 DB 다운을 흉내 내는 시험과 맞지 않는다)."""
+    return {
+        "ENGINE": "django.db.backends.postgresql",
+        "HOST": "127.0.0.1",
+        "PORT": str(CLOSED_PORT),
+        "NAME": _snake,
+        "USER": user,
+        "PASSWORD": "",
+        "OPTIONS": {"sslmode": "require", "connect_timeout": 5, **options},
+        "CONN_MAX_AGE": 0,
+    }
+
+
+DATABASES = {
+    # 런타임 별칭 = app role(NOBYPASSRLS · 기본 권한 없음 — 0001_app_role_grants가 준다). TEST.MIRROR owner: 두 별칭은 같은 물리
+    # DB다 — TransactionTestCase는 mirror가 아닌 별칭만 flush(TRUNCATE)하고, app role에는 TRUNCATE 권한이 없다. DB 마크는
+    # databases=["default", "owner"]로 둘 다 연다.
+    "default": {**_test_database(f"{_snake}_app"), "TEST": {"MIRROR": "owner"}},
+    # 마이그레이션 · 시드 · DDL 전용 = owner role(BYPASSRLS). lock_timeout 30s: 멈춘 스레드가 쥔 잠금 때문에 teardown flush가 무한
+    # 대기하지 않게.
+    "owner": _test_database(f"{_snake}_owner", options="-c lock_timeout=30s"),
+}

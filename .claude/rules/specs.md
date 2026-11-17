@@ -12,7 +12,8 @@ paths:
   - `reviews/YYYY-MM-DD-approval.md` — one section per boundary, `## 종합 의견`, `## 사용자 결정`.
   - `reviews/YYYY-MM-DD-finish.md` — `Status: Approved | Issues` on line 2, one section per boundary, `## Issues`.
   - `report.md` — `# Report NNN-slug` / `## Summary` / `## Changes Made` / `## Validation` / `## Next`.
+  - `design/` — task-level design documents and build notes preserved from the design/review workflows (`tNNN-design.md`, `build-notes.md`). Internal working material: never published, not edited after the task closes; the publishable distillation lives in `content/tmp/` (see `.claude/rules/content.md`).
 - `specs/README.md` is an index table (number, feature, Status, priority, links) regenerated from each `spec.md` header. Change the header, then regenerate; never edit only the table.
-- After approval, `spec.md`, `plan.md`, and `tasks.md` are read-only inputs for implementers. Allowed edits: `tasks.md` checkboxes (`[X]`) and phases appended by `/speckit-converge`.
+- After approval, `spec.md`, `plan.md`, and `tasks.md` are read-only inputs for implementers. Allowed edits: `tasks.md` checkboxes (`[X]`), phases appended by `/speckit-converge`, and — for a task that measures a verify-then-decide (VD) item under the spec's VD procedure — the one-line result appended to that task's line in the same edit that ticks its checkbox (T057 precedent; T074).
 - When dispatching subagents, pass only the task line(s) and the relevant spec/plan sections — never the whole feature directory.
 - Prose in Korean; identifiers, slugs, and file names in English/ASCII.

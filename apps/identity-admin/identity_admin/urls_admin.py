@@ -1,0 +1,15 @@
+"""identity-admin admin urlconf(T072 D9 · D10) — ADMIN_HOST 요청만 여기로 온다(AdminHostMiddleware · settings.ADMIN_URLCONF).
+
+사람 admin 경로(GitHub IdP Access · Bearer 없음)는 T084다 — 그때까지 /admin/*은 JwtAuthMiddleware를 통과한 M2M 자격일 때만
+열리고 사람은 401 · 403이다(닫힌 쪽). 처리기 넷은 루트 urlconf와 같다(Django는 요청의 urlconf에서 처리기를 찾는다).
+"""
+
+from django.contrib import admin
+from django.urls import path
+
+urlpatterns = [path("admin/", admin.site.urls)]
+
+handler400 = "identity_admin.errors.bad_request"
+handler403 = "identity_admin.errors.permission_denied"
+handler404 = "identity_admin.errors.page_not_found"
+handler500 = "identity_admin.errors.server_error"

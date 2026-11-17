@@ -1,0 +1,394 @@
+{
+  "components": {
+    "schemas": {
+      "CheckOut": {
+        "description": "`/session/check` 응답 — nbf(revoked:sub 값)는 그 키가 있을 때만 싣는다(active여도 싣는다).",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "nbf": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nbf"
+          }
+        },
+        "required": [
+          "active"
+        ],
+        "title": "CheckOut",
+        "type": "object"
+      },
+      "CheckQuery": {
+        "description": "`/session/check` 질의 — sub(필수) · iat(필수 정수 epoch 초 — BFF 세션 시작 시각) · sid(선택 · `sid=`는 400).",
+        "properties": {
+          "iat": {
+            "title": "Iat",
+            "type": "integer"
+          },
+          "sid": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[!-~]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sid"
+          },
+          "sub": {
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[!-~]+$",
+            "title": "Sub",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sub",
+          "iat"
+        ],
+        "title": "CheckQuery",
+        "type": "object"
+      },
+      "RevokeIn": {
+        "description": "`/sessions/revoke` 본문 — sub · sid(선택 · 출력 가능 ASCII 1-255자) · all_devices(필수 boolean) · reason(필수).",
+        "properties": {
+          "all_devices": {
+            "title": "All Devices",
+            "type": "boolean"
+          },
+          "reason": {
+            "enum": [
+              "logout",
+              "logout_all",
+              "admin"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "sid": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[!-~]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sid"
+          },
+          "sub": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[!-~]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sub"
+          }
+        },
+        "required": [
+          "all_devices",
+          "reason"
+        ],
+        "title": "RevokeIn",
+        "type": "object"
+      },
+      "RevokeOut": {
+        "description": "`/sessions/revoke` · `/webhooks/authentik` 202 응답 — id(로그 행) · nbf(epoch 초) · expires_at(UTC = nbf + 330 s).",
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "nbf": {
+            "title": "Nbf",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "nbf",
+          "expires_at"
+        ],
+        "title": "RevokeOut",
+        "type": "object"
+      },
+      "TenantMeOut": {
+        "description": "`/tenants/me` 응답.",
+        "properties": {
+          "role": {
+            "enum": [
+              "owner",
+              "member"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "tenant": {
+            "$ref": "#/components/schemas/TenantOut"
+          }
+        },
+        "required": [
+          "tenant",
+          "role"
+        ],
+        "title": "TenantMeOut",
+        "type": "object"
+      },
+      "TenantOut": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "suspended"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "display_name",
+          "status"
+        ],
+        "title": "TenantOut",
+        "type": "object"
+      },
+      "WebhookNoopOut": {
+        "description": "웹훅 200 응답 — 빈 객체(폐기 대상이 아닌 action · 재전송).",
+        "properties": {},
+        "title": "WebhookNoopOut",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/health": {
+      "get": {
+        "description": "상세 — DB · Dragonfly · Kafka 병렬(항목마다 자기 칸) · 항상 200(ok | degraded).",
+        "operationId": "django_common_health_health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/healthz": {
+      "get": {
+        "description": "liveness — 프로세스만(I/O 0).",
+        "operationId": "django_common_health_healthz",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Healthz"
+      }
+    },
+    "/ready": {
+      "get": {
+        "description": "readiness — default 별칭 DB 검사 하나(/ready 칸) · 200 {\"status\": \"ok\"} 또는 503 not_ready(detail 없음).",
+        "operationId": "django_common_health_ready",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "summary": "Ready"
+      }
+    },
+    "/session/check": {
+      "get": {
+        "description": "세션 활성 판정(BFF · Access 전용) — 거부 목록 · 세션 하한 · 절대 수명 · 미래 iat.",
+        "operationId": "identity_admin_identity_api_session_check",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sub",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[!-~]+$",
+              "title": "Sub",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "iat",
+            "required": true,
+            "schema": {
+              "title": "Iat",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sid",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "pattern": "^[!-~]+$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Session Check"
+      }
+    },
+    "/sessions/revoke": {
+      "post": {
+        "description": "세션 폐기(본인 · platform-admin) — 202는 기록 커밋(거부 목록 쓰기 · Authentik 세션 삭제 위임은 커밋 뒤).",
+        "operationId": "identity_admin_identity_api_sessions_revoke",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokeOut"
+                }
+              }
+            },
+            "description": "Accepted"
+          }
+        },
+        "summary": "Sessions Revoke"
+      }
+    },
+    "/tenants/me": {
+      "get": {
+        "description": "토큰 주체의 테넌트(B 등급 표 둘 · sub와 tenant_id로 명시 필터) — 없거나 고아 멤버십이면 404 not_found.",
+        "operationId": "identity_admin_identity_api_tenants_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantMeOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Tenants Me"
+      }
+    },
+    "/webhooks/authentik": {
+      "post": {
+        "description": "Authentik 로그아웃 웹훅(HMAC 서명 · 시각 창 · pk 멱등) — 사용자 단위 폐기로 기록한다(202 · 재전송과 무시는 200).",
+        "operationId": "identity_admin_identity_api_authentik_webhook",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookNoopOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokeOut"
+                }
+              }
+            },
+            "description": "Accepted"
+          }
+        },
+        "summary": "Authentik Webhook"
+      }
+    }
+  },
+  "servers": []
+}

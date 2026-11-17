@@ -1,0 +1,78 @@
+# {{ pod_name }} dead outbox purge(has_celery=false — Celery beat 대신) — 일 1회 03:17 UTC manage.py outbox_purge(dead_at + 30 d가 지난 행).
+# envFrom은 런타임 컨테이너와 같다(ConfigMap + {{ pod_name }}-env · {{ pod_name }}-migrate 없음) · 겹침 금지(Forbid).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ pod_name }}-outbox-purge
+  labels:
+    app.kubernetes.io/name: {{ pod_name }}
+    app.kubernetes.io/component: outbox-purge
+spec:
+  schedule: "17 3 * * *"
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ pod_name }}
+        app.kubernetes.io/component: outbox-purge
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 900
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: {{ pod_name }}
+            app.kubernetes.io/component: outbox-purge
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: outbox-purge
+              image: ghcr.io/joshua92y/{{ pod_name }}
+              command:
+                - python
+                - manage.py
+                - outbox_purge
+              envFrom:
+                - configMapRef:
+                    name: {{ pod_name }}-config
+                - secretRef:
+                    name: {{ pod_name }}-env
+              env:
+                - name: POD_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+              resources:
+                requests:
+                  memory: 256Mi
+                limits:
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                readOnlyRootFilesystem: true
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: pg-ca
+                  mountPath: /etc/pg
+                  readOnly: true
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: pg-ca
+              secret:
+                secretName: pg-main-ca

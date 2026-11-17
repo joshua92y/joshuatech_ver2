@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://joshuatech.dev/events/identity-admin.user.registered/v1",
+  "x-version": "1.0.0",
+  "title": "identity-admin.user.registered",
+  "description": "identity-admin이 사용자를 처음 등록했다(subject user:<sub> · 발행 SP-2). 소비 예정: portfolio-core · engagement 투영, notification 환영 메일.",
+  "type": "object",
+  "properties": {
+    "sub": {
+      "type": "string",
+      "minLength": 1,
+      "description": "사용자 sub(Authentik 사용자 UUID — 형식은 두지 않는다)"
+    },
+    "email_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$(?!\\n)",
+      "description": "메일 주소의 sha256(소문자 hex 64자). 메일이 없는 IdP 사용자(GitHub 등)는 생략한다"
+    },
+    "tenant_id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$(?!\\n)",
+      "description": "사용자가 속한 테넌트 UUID(소문자)"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "owner",
+        "member"
+      ],
+      "description": "테넌트 안의 역할(admin은 SP-2에 enum 값 추가로 넣는다 — 소비자 먼저 배포)"
+    },
+    "registered_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "등록 시각(RFC 3339)"
+    }
+  },
+  "required": [
+    "sub",
+    "tenant_id",
+    "role",
+    "registered_at"
+  ]
+}

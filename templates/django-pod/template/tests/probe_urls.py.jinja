@@ -1,0 +1,107 @@
+"""시험 전용 probe urlconf(T072 D17 — 오류 처리기 시험 · 계약 §기본 테스트 3) — 시험이 settings.ROOT_URLCONF = "tests.probe_urls"로 쓴다.
+
+pod urlconf({{ pod_snake }}.urls)의 패턴 전부 + 일부러 예외를 내는 Django 뷰 + Ninja probe API(install_error_handlers 재사용) — 처리기
+넷은 pod urlconf의 값을 그대로 복사한다(Django는 요청의 urlconf에서 처리기를 찾는다). 경로는 /probe/ 아래이고 인증 · 테넌트 면제가
+아니다(JwtAuthMiddleware · TenantContextMiddleware를 거친다 — 유효한 Access + Bearer(tenant_id)가 필요하다).
+
+- /probe/forbidden → PermissionDenied(403 forbidden) · /probe/bad-request → BadRequest(400 validation_error) · /probe/suspicious →
+  SuspiciousOperation(400 validation_error) · /probe/boom → RuntimeError(500 internal_error · detail 없음 — 시험 Client는
+  raise_request_exception=False로 본다) · /probe/read-body(POST · csrf_exempt) → request.POST 읽기(DATA_UPLOAD_MAX_MEMORY_SIZE를
+  넘으면 RequestDataTooBig → 400 validation_error) · /probe/csrf(POST · CSRF 보호) → 토큰 없으면 CSRF_FAILURE_VIEW(403 forbidden).
+- /probe/ninja/query?number=<int>(쿼리 누락 · 타입 오류 → 400 validation_error) · /probe/ninja/json(POST · JSON 본문 ProbeBody —
+  JSON이 아닌 본문 → 400 validation_error) · /probe/ninja/write(POST — 요청 테넌트 컨텍스트에서 RlsWidget을 쓰고 200 · 롤백 시험의
+  대조) · /probe/ninja/write-then-fail(POST — 같은 쓰기 뒤 예외 → 500 + 요청 트랜잭션 롤백 · catch-all 처리기가 없다는 증명).
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from django.core.exceptions import BadRequest, PermissionDenied, SuspiciousOperation
+from django.http import HttpRequest, HttpResponse
+from django.urls import path
+from django.views.decorators.csrf import csrf_exempt
+from ninja import NinjaAPI, Schema
+
+from {{ pod_snake }} import urls as pod_urls
+from {{ pod_snake }}.api import install_error_handlers
+
+
+def forbidden_view(request: HttpRequest) -> HttpResponse:
+    raise PermissionDenied
+
+
+def bad_request_view(request: HttpRequest) -> HttpResponse:
+    raise BadRequest("probe bad request")
+
+
+def suspicious_view(request: HttpRequest) -> HttpResponse:
+    raise SuspiciousOperation("probe suspicious operation")
+
+
+def boom_view(request: HttpRequest) -> HttpResponse:
+    raise RuntimeError("probe failure")
+
+
+@csrf_exempt
+def read_body_view(request: HttpRequest) -> HttpResponse:
+    request.POST  # noqa: B018 — 본문 읽기 자체가 시험이다(RequestDataTooBig)
+    return HttpResponse(status=204)
+
+
+def csrf_view(request: HttpRequest) -> HttpResponse:
+    return HttpResponse(status=204)
+
+
+# probe API — pod API와 다른 urls_namespace(Ninja는 같은 이름공간의 API 둘을 거부한다) · OpenAPI · docs 없음.
+probe_api = NinjaAPI(title="probe", version="1", urls_namespace="probe", openapi_url=None, docs_url=None)
+install_error_handlers(probe_api)
+
+
+class ProbeBody(Schema):
+    name: str
+
+
+@probe_api.get("/query")
+def probe_query(request: HttpRequest, number: int) -> dict[str, Any]:
+    return {"number": number}
+
+
+@probe_api.post("/json")
+def probe_json(request: HttpRequest, body: ProbeBody) -> dict[str, Any]:
+    return {"name": body.name}
+
+
+def _write_widget(request: HttpRequest, name: str) -> None:
+    from tests.rlsapp.models import RlsWidget
+
+    RlsWidget.objects.create(tenant_id=request.tenant_id, name=name)  # type: ignore[attr-defined]
+
+
+@probe_api.post("/write")
+def probe_write(request: HttpRequest, body: ProbeBody) -> dict[str, Any]:
+    _write_widget(request, body.name)
+    return {"name": body.name}
+
+
+@probe_api.post("/write-then-fail")
+def probe_write_then_fail(request: HttpRequest, body: ProbeBody) -> dict[str, Any]:
+    _write_widget(request, body.name)
+    raise RuntimeError("probe failure after write")
+
+
+PROBE_PATTERNS = [
+    path("probe/forbidden", forbidden_view),
+    path("probe/bad-request", bad_request_view),
+    path("probe/suspicious", suspicious_view),
+    path("probe/boom", boom_view),
+    path("probe/read-body", read_body_view),
+    path("probe/csrf", csrf_view),
+]
+
+urlpatterns = [*pod_urls.urlpatterns, *PROBE_PATTERNS, path("probe/ninja/", probe_api.urls)]
+
+handler400 = pod_urls.handler400
+handler403 = pod_urls.handler403
+handler404 = pod_urls.handler404
+handler500 = pod_urls.handler500

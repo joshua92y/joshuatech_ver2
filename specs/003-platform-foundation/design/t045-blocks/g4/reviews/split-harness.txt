@@ -1,0 +1,136 @@
+=== 정적 검사(AST lint · 붙여넣기 안전성) ===
+  g4-adopt.ps1     clean(단일 최상위 문 · 빈 줄 0 · CR 0 · 명령 이름 허용 목록 · 첫 두 문 고정 · kubectl 은 헬퍼 안 · 헬퍼별 동사 허용 목록 · 헬퍼 kubectl 인자 정확 일치 · ssh/oci 인자 고정 · 비밀 변수에 -match 0 · finally 첫 문 Remove-Variable + 맨 표현식 0 · Read-Host 앞 FlushInputBuffer)
+  g4-drill.ps1     clean(단일 최상위 문 · 빈 줄 0 · CR 0 · 명령 이름 허용 목록 · 첫 두 문 고정 · kubectl 은 헬퍼 안 · 헬퍼별 동사 허용 목록 · 헬퍼 kubectl 인자 정확 일치 · ssh/oci 인자 고정 · 비밀 변수에 -match 0 · finally 첫 문 Remove-Variable + 맨 표현식 0 · Read-Host 앞 FlushInputBuffer)
+  g4-restore.ps1   clean(단일 최상위 문 · 빈 줄 0 · CR 0 · 명령 이름 허용 목록 · 첫 두 문 고정 · kubectl 은 헬퍼 안 · 헬퍼별 동사 허용 목록 · 헬퍼 kubectl 인자 정확 일치 · ssh/oci 인자 고정 · 비밀 변수에 -match 0 · finally 첫 문 Remove-Variable + 맨 표현식 0 · Read-Host 앞 FlushInputBuffer)
+
+=== 시나리오 ===
+
+=== 결과 ===
+
+id             result desc                                                                                                                   detail
+--             ------ ----                                                                                                                   ------
+G4-01          PASS   캡처 → 머지 대기 → 판정 PASS → 인계(쓰기 0)
+G4-02b         PASS   resume은 해시·UID만 이어받아 판정(파드 불변 미판정)
+G4-53          PASS   중단한 resume도 쓰기 0(A5-1)
+G4-54          PASS   라벨·data-hash 둘 다 제거한 재인수도 쓰기 0(B5-02)
+G4-55          PASS   라벨만 제거한 재인수도 쓰기 0
+G4-EOF1        PASS   정지점 EOF
+G4-EOF2        PASS   기준 해시 입력 EOF
+G4-EOF3        PASS   PM 비밀 EOF
+G4-EMPTY       PASS   PM 비밀 빈 입력
+G4-02          PASS   이미 인수된 Secret(managed 라벨) → 시작 거부
+G4-02c         PASS   resume: 기준값 형식이 아니면 거부
+G4-02g         PASS   resume: ES 존재 확인 자체가 실패 → "ES 없음 = 인수 해제 상태"로 읽지 않는다(fail-closed)
+G4-03          PASS   키가 2개 → 거부(인수 순간 삭제되는 키)
+G4-04          PASS   머지 대기 중 ES 미출현 → 타임아웃(파드 미접촉)
+G4-05          PASS   ES SecretSyncedError → 파드 미접촉 중단
+G4-06          PASS   인수 뒤 값 해시 변경(폴링 중) → 파드 미접촉 중단 + 복구 안내(컨테이너 재시작 경고 · 키 집합 감별 포함)
+G4-06c         PASS   ES 매핑이 틀려 TUNNEL_TOKEN 키가 사라짐 → 원인을 kv 가 아니라 매핑으로 지목하고 R2 로 보낸다(B-1)
+G4-06d         PASS   값 변경 + 키 집합 조회까지 실패 → "정상"으로 읽지 않는다(fail-closed 안내)
+G4-32          PASS   폴링 중 값이 바뀌고 ES 는 끝내 SecretSynced 가 되지 않는다 → 감시 루프만이 잡을 수 있는 경로
+G4-33          PASS   resume 인데 라이브 값이 이미 덮여 있다 → 운영자가 든 preHash 가 그것을 드러낸다(가짜 PASS 금지)
+G4-07          PASS   UID 만 변경(값 해시는 같다) → kv 정정이 아니라 UID 전용 안내
+G4-06b         PASS   SecretSynced 직후(폴링이 끝난 뒤) 값이 바뀜 → 3) 인수 판정이 잡는다
+G4-07b         PASS   SecretSynced 직후(폴링이 끝난 뒤) UID 가 바뀜 → 3) 인수 판정이 잡는다
+G4-08          PASS   ownerReferences 부착 → 중단
+G4-09          PASS   Argo tracking 어노테이션이 Secret 에 복사됨 → 중단
+G4-10          PASS   머지 대기 중 파드 재시작(restartCount 변화) → 중단
+G4-13a         PASS   kubectl 조회 실패(캡처 시점) → fail-closed
+G4-13b         PASS   kubectl 조회 실패(머지 대기 폴링 중 · merge 입력 뒤에 무장) → fail-closed + 재시작 금지 경고
+G4-13c         PASS   kubectl 조회 실패(판정 시점) → fail-closed
+G4-13e         PASS   일시적 조회 실패 1회(폴링 중) → 재시도로 완주(실패를 성공으로 읽지 않는다)
+G4-14a         PASS   정지점 0) 에 빈 Enter → 중단
+G4-14c         PASS   정지점 단어는 Ordinal 비교다 — 대문자 GO 로는 통과하지 못한다
+G4-15          PASS   ssh 새 연결 실패 → 창 A 대조 불가 · 확인 단어가 noglass 로 바뀐다(미리 눌러 둔 go 가 통과하지 못한다)
+G4-15b         PASS   oci 자격 실패 → 단어가 no-oci 로 바뀐다(ssh 만 실패한 noglass 와 구분)
+G4-15c         PASS   창 A 의 boot_id 가 노드 A 와 다르다 → 열린 세션 없음으로 중단
+G4-15d         PASS   읽기 전용 svc-verify 프로파일 → oci 를 break-glass 로 세지 않는다(단어 no-oci)
+G4-16          PASS   SecretSynced 인데 managed 라벨 없음 → 양성 증거 부재로 중단
+G4-16b         PASS   managed 라벨은 있는데 data-hash 없음 → ESO 의 쓰기가 닿지 않았다(하드 판정)
+G4-17          PASS   ES 의 tracking-id 가 platform-secrets 가 아님 → 중단
+G4-17b         PASS   ES 의 tracking-id 가 비었음 → 판정 불가로 중단
+G4-18          PASS   platform-cloudflared 가 external-secrets.io 자원을 소유 → 중단
+G4-19          PASS   파드가 3개(노드당 1개 전제 붕괴) → 중단
+G4-19b         PASS   ns 안의 무관한 파드(app 라벨 다름)는 커넥터로 세지 않는다
+G4-20          PASS   머지 전인데 ES 가 이미 있다 → 중단
+G4-21          PASS   새 파드 로그에 Registered tunnel connection 없음 → 경고(중단 아님)
+G4-22          PASS   드릴 뒤 노드가 Ready 2 가 아니다 → 중단
+G4-23          PASS   드릴 뒤 ssh 만 실패(kubectl 은 정상) → 경고로 남기고 완주
+G4-26          PASS   agent-view kubeconfig(auth can-i = no · exit 1) → 재시도 없이 맞춤 문면
+G4-27          PASS   가드 통과 직후 ESO 가 손댐 → 같은 GET 의 managed 라벨로 잡아 가짜 기준값을 막는다
+G4-31          PASS   드릴 대기 중 남은 파드까지 재시작(서명 변경) → 더 이상 아무것도 삭제하지 않는다
+G4-30          PASS   1P) PM 토큰 해시가 기준값과 다르다 → 머지 전에 중단(아무것도 잠기지 않았다)
+G4-30b         PASS   1P) PM 토큰 해시 일치 → 확인 문면(토큰은 SecureString · 어떤 표면에도 남지 않는다)
+G4-30c         PASS   1P) 클립보드 기록이 켜져 있으면 토큰을 묻지 않는다
+G4-30d         PASS   1P) 에 엉뚱한 단어 → 중단
+G4-34          PASS   KUBECONFIG 가 다른 클러스터를 본다 → 아무것도 하지 않고 중단(A-7)
+G4-35          PASS   머지 전 파드 하나가 NotReady → 캡처 단계에서 중단(한쪽 커넥터가 이미 불안정하다 · A-7)
+G4-36b         PASS   break-glass 둘 다 실패인데 예전 단어(no-oci)를 넣으면 통과하지 못한다
+G4-38          PASS   1R) preHash 기록이 없어 pm 으로 유도 → 1P) 대조는 건너뛰고(같은 출처 비교) 기준값에 "PM 유도" 꼬리표가 붙는다(F-B2-02)
+G4-38b         PASS   1R) pm 인데 클립보드 기록이 켜져 있다 → 토큰을 묻기 전에 중단(A2-2)
+G4-42          PASS   기준값이 PM 유도인데 라이브와 다르다 → 복구 안내가 "kv 를 PM 값으로 정정"으로 단정하지 않는다(F-B2-02)
+G4-46b         PASS   같은 상황에서 옛 단어(noglass)로는 통과하지 못한다(A3-3)
+G4-47          PASS   파드 jsonpath 가 3필드로 온다 → 오판하지 않고 중단(A3-5)
+G4-47b         PASS   파드 목록이 exit 0 인데 빈 응답 → "파드 없음"으로 읽지 않는다(A3-5)
+G4-48          PASS   ssh 가 boot_id 형식이 아닌 것을 돌려준다 → 창 A 대조를 하지 않고 단어가 noglass 로 갈린다(A3-5)
+R-01           PASS   정상 복구: ES 없음 · Git 선언 없음 · PM 토큰 해시 일치 → 제자리 복구
+R-02           PASS   해시 불일치 토큰 → 거부(아무것도 쓰지 않는다)
+R-03           PASS   ES 가 아직 살아 있다 → restore 로는 통과하지 못한다(temporary 요구)
+R-04           PASS   ES 가 살아 있어도 temporary 를 입력하면 임시 복구
+R-05           PASS   현재 값이 이미 기준값과 같다 → SKIP(재실행 안전 · 토큰을 묻지 않는다)
+R-06           PASS   클립보드 기록이 켜져 있음 → 프롬프트 전에 중단
+R-07           PASS   붙여넣기 손상(공백 섞임) → 거부
+R-08           PASS   현재 UID 가 preUid 와 다름 → newuid 정지점에서 중단
+R-09           PASS   apply 가 비0 으로 끝남 → "쓰지 않았다"고 단정하지 않는다(모호한 실패)
+R-10           PASS   ES 는 없지만 Git 에 아직 선언돼 있다 → restore 로는 통과하지 못한다(selfHeal 이 되살린다)
+R-10b          PASS   Git 에서 빠져 requiresPruning=true → 정상 순서이므로 restore 로 통과
+R-11           PASS   agent-view kubeconfig(auth can-i = no · exit 1) → 재시도 없이 맞춤 문면 · 토큰 미입력
+R-12           PASS   apply 직후 ESO 가 값을 다시 덮음 → 쓰기 뒤 되읽기가 잡는다("OK 복구 완료"를 내지 않는다)
+R-13           PASS   apply 직후 Secret 이 재생성(UID 변경) → 제자리 수정이 아니라고 잡는다
+R-14           PASS   Argo 조회 실패 → 복구를 막지는 않되 단어를 temporary 로(빈 응답을 "선언 없음"으로 읽지 않는다 · B-3)
+R-14b          PASS   Argo 응답에 양성 대조 행이 없다 → 같은 취급(조회가 된 것이 아니다 · B-3)
+R-15           PASS   Secret 자체가 없다 → 제자리 복구 전용이라는 그 사실을 말한다(일반 조회 실패 문면이 아니다 · B-10)
+R-16           PASS   (복구) Secret 의 type 이 exit 0 인데 빈 응답 → 판정 불가로 중단(A3-5)
+R-17           PASS   (복구) apply 페이로드의 type 은 실제 Secret 의 type 이다(Opaque 하드코딩이 아니다 · A3-5)
+D-01           PASS   독립 드릴 정상 경로
+D-02           PASS   드릴 클러스터 신원 거부
+D-03           PASS   드릴 삭제 권한 거부
+D-04           PASS   드릴 ES 준비 상태 거부
+D-05           PASS   드릴 값 해시 거부
+D-06           PASS   드릴 UID 거부
+D-07           PASS   드릴 data-hash 없음 거부
+D-08           PASS   드릴 파드 개수 거부
+D-09           PASS   드릴 대상 NotReady 거부
+D-10           PASS   드릴 남길 파드 NotReady 거부
+D-11           PASS   양쪽 break-glass 실패는 단어 확인 후 삭제 거부
+D-12           PASS   지울 파드 이름 오타 거부
+D-13           PASS   이전 교체 흔적 second 입력
+D-14           PASS   이전 교체 흔적 일반 drill 단어 거부
+D-15           PASS   새 파드 Ready 타임아웃
+D-16           PASS   삭제 후 kubectl 지속 실패
+D-17           PASS   삭제 실패 회계 선행
+D-18           PASS   정지점 뒤 값 변경
+D-19           PASS   정지점 뒤 UID 변경
+D-20           PASS   정지점 뒤 파드 변경
+D-21           PASS   입력 EOF는 삭제 전에 중단
+D-22           PASS   Ready=False + SecretSynced 이유는 거부
+D-23           PASS   삭제 대상 선택 startTime이 이름보다 우선
+D-24           PASS   시각 같으면 이름 Ordinal 동률 해소
+D-25           PASS   삭제 후 남길 파드 변경 감지
+D-26           PASS   OCI 빈 응답과 SSH 실패는 삭제 거부
+D-27           PASS   조회 일시 오류는 기한 내 재시도
+D-28           PASS   삭제 중 예외 회계 선행
+D-29           PASS   ES 시각 형식 판정 불가
+D-30           PASS   빈 파드 시작시각은 판정 불가
+D-31           PASS   빈 Secret 값을 빈 문자열 해시로 승인할 수 없다
+D-32           PASS   삭제 후 생존 파드 Ready 상실
+D-34           PASS   삭제 대상이 남은 3파드 상태는 완료가 아니다
+D-35           PASS   비교는 Ordinal: 대문자 파드 이름 거부
+D-36           PASS   break-glass 거부의 경고 프롬프트
+D-37           PASS   삭제 직전 키 조회 실패의 복구 진단
+R3-BASH-GOOD   PASS   실제 R3 조각 · bash -i · 로컬 모의
+R3-BASH-SHORT  PASS   실제 R3 조각 · bash -i · 로컬 모의
+R3-BASH-BROKEN PASS   실제 R3 조각 · bash -i · 로컬 모의
+
+
+PASS 122 / 122   (lint 실패 파일 0 개)

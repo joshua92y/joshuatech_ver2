@@ -1,0 +1,1170 @@
+"""{{ pod_name }} 인증 미들웨어 · 호스트 · Django 오류 처리기 · admin · 기동 설정 시험(T072 D17 · D5 · D7 · D9 · D10 — 계약 §기본 테스트 3).
+
+계약: contracts/pod-template.md §기본 테스트 3 · 「인증」 · 「설정」 · 「오류」 행 · 규칙 django-pod.md §Auth · §Settings · §Errors. 토큰
+검증 규칙 자체(필수 클레임 · alg 혼동 · 백오프 · 캐시)는 django-common 계약 시험(T062 · T070)이 본다 — 여기서는 이 pod의 배선(미들웨어
+순서 · 설정 이름 · urlconf · 기동 자리)이 계약 동작을 내는지 본다.
+
+- 인증 행렬(보호 경로 = /api/openapi.json · 실제 미들웨어 사슬 · 로컬 키 서버 · 시험 Dragonfly pod 사용자): 유효 200 · Bearer 만료 ·
+  aud 불일치 401 invalid_token · Access 없음 · common_name 불일치 · aud 밖 403 access_required · ACCESS_AUD_ADMIN은 설정했을 때만
+  허용 · AUTH_ACTOR_SUB 미설정이면 act 무관 200, 설정하면 일치 200 · 불일치 · 없음 401 · revoked:sub(nbf > iat) · revoked:sid 401
+  session_revoked(nbf = iat는 200) · Dragonfly 다운 → 업무 경로 503 denylist_unavailable(0.5 s 안 · 응답에 자격 없음) · 헬스 3종
+  200 · JWKS · certs fetch 실패 → 503 auth_keys_unavailable · 면제는 정확 일치(/healthzz · /health/x · /ready/ → 403).
+- 호스트: ALLOWED_HOSTS 밖 호스트는 인증 전에 400 invalid_host(자격 없는 요청도 403이 아니라 400 · 헬스 경로도).
+- Django 자체 오류(pod가 라우팅하는 urlconf마다 — 처리기 선언 + probe urlconf로 실제 응답): 400 validation_error(BadRequest ·
+  SuspiciousOperation · RequestDataTooBig) · 403 forbidden(PermissionDenied · CSRF 실패) · 404 not_found · 500
+  internal_error(detail 없음) — 모두 application/problem+json. Ninja probe: 쿼리 누락 · 타입 오류 · JSON 아닌 본문 · 스키마 밖
+  본문 → 400 validation_error · 쓰기 뒤 예외 → 500 + 요청 트랜잭션 롤백(catch-all 처리기가 없다).
+{%- if has_admin %}
+- admin(D10): ADMIN_HOST 요청만 admin urlconf · ADMIN_SCRIPT_NAME 접두는 reverse() · Location에만 붙고 같은 스레드의 다음 m2m 요청에
+  남지 않는다 · m2m 호스트 /admin/ 404 · ADMIN_HOST 빈 값이면 어느 호스트에도 admin이 없다 · /static/<admin 자산>은 admin 호스트에서
+  자격 없이 200(JwtAuth · TenantContext 앞) · 경로 탈출은 400 validation_error(파일 내용 없음) · m2m 호스트 /static/…은 403.
+{%- else %}
+- admin 없음(has_admin=false): admin 앱 · urlconf가 없다 — /admin/은 404 not_found.
+{%- endif %}
+- 기동 설정(하위 프로세스 · pod 설정 — tests._boot): 필수값 누락 · 비밀 빈 값 · 공개 도메인 서비스 URL · dev의 http 팀 도메인과
+  sslmode=require · 런타임 DATABASE_OWNER_URL · PLACEHOLDER- · 상수 밖 면제 이름 · 모르는 프로필 · 잘못된 POD_IP ·
+{%- if has_admin %}
+  FORCE_SCRIPT_NAME 꼴 ·
+{%- endif %}
+  약한 SECRET_KEY · 자격 URL 사용자 정보의 `%` · 검증된 설정을 대신하는 env(Celery 브로커 · 결과 URL · GUNICORN_CMD_ARGS — 빈
+  값 포함) · 인증 설정 검사(ready의 check_settings) → 전부 기동 실패 + 출력에 설정 이름만(값 · 비밀 조각 · `input_value=` · 공개
+  이름 조회 없음 — 거부 이름 집합도 정확히 본다) / migrate 프로필은 DATABASE_OWNER_URL만으로 기동 /
+{%- if has_admin %}
+  FORCE_SCRIPT_NAME → 절대 STATIC_URL /
+{%- endif %}
+  클러스터 교차 규칙: dev · prod 모양 기동은 통과(이름 조회 0 · prod 토픽 접두 "" · prod Kafka 사용자 = pod 이름) · 음성 다섯은
+  이름만 실은 기동 실패. 기동 단언(startup.run)은 라이브러리 소유 Kafka 키 · 면제 경로 빈틈을 거부한다.
+- conf.load(environ=…)(하위 프로세스 없이): IN_CLUSTER_URL_SETTINGS의 이름마다 공개 도메인 호스트 → 그 이름만 거부(목록에서 직접
+  매개화 · 넓힌 이름 · 모델 필드 없는 이름은 닫힌 쪽) · 계약 거부 규칙 회귀 여덟(ALLOWED_HOSTS `*` · 빈 항목 · DB 쿼리 키 둘 ·
+  ENV=test sslmode=disable · 대문자 · 7자 미만 APP_GIT_SHA · 포트 없는 KAFKA_BOOTSTRAP).
+
+비밀(Dragonfly 비밀번호 · 자격 URL · 토큰)은 Secret으로 감싸고 노출 단언은 위치 번호로 접는다. 설정 env 매핑 · 자격 헤더(토큰)를
+인자로 받는 호출은 단언 식 밖에서 지역 변수로 받아 그 결과를 단언한다 — 단언 재작성은 단언 식 안 호출의 인자를 실패 출력에 찍는다
+(T072 ② r3 J1). 요청 · 명령 예외는 원 트레이스백 없이 형식 이름만 실은 실패로 바꾼다(psycopg 접속 문자열이 긴 트레이스백에 실리지
+않게).
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import secrets
+import socket
+import threading
+import time
+from collections.abc import Callable, Iterator, Mapping
+from typing import TYPE_CHECKING, Any, NoReturn
+from urllib.parse import {% if has_admin %}parse_qs, {% endif %}urlsplit, urlunsplit
+
+import pytest
+import redis
+from django.core.exceptions import ImproperlyConfigured
+from django.db import connections
+from django.test import Client
+{%- if has_admin %}
+from django.urls import set_script_prefix
+{%- endif %}
+from django.utils.module_loading import import_string
+
+from {{ pod_snake }}.conf import IN_CLUSTER_URL_SETTINGS
+from tests._boot import (
+    PG_CA_FILE,
+    PYDANTIC_INPUT_MARK,
+    assert_absent,
+    assert_boot_hygiene,
+    assert_refused,
+    boot,
+    boot_facts,
+    db_url,
+    dev_shape_env,
+    refused_names,
+)
+from tests._jwt import ACCESS_KID, AUTHENTIK_KID, BEARER_SID, BEARER_SUB, JWKS_PATH, access_claims, bearer_claims, mint
+from tests._problem import assert_problem
+from tests._secret import Secret
+
+if TYPE_CHECKING:
+    from django.http import HttpResponse
+    from pytest_django.fixtures import SettingsWrapper
+
+    from tests.conftest import DragonflyInfo, JwksInfo
+
+DB = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
+
+POD_NAME = "{{ pod_name }}"
+POD_SNAKE = "{{ pod_snake }}"
+HOST = "{{ pod_name }}.test.svc"  # 시험 래퍼의 ALLOWED_HOSTS(m2m · svc 호스트 자리)
+EVIL_HOST = "evil.example.com"  # ALLOWED_HOSTS 밖
+{%- if has_admin %}
+ADMIN_HOST_VALUE = "admin.{{ pod_name }}.test"
+ADMIN_PREFIX = "/{{ pod_name }}"  # prod admin 경로 접두(env FORCE_SCRIPT_NAME → 설정 ADMIN_SCRIPT_NAME)
+ADMIN_ASSET = "/static/admin/css/base.css"
+{%- endif %}
+OPENAPI_PATH = "/api/openapi.json"
+HEALTH_PATHS = ("/healthz", "/ready", "/health")
+ADMIN_AUDIENCE = "test-access-admin-audience"
+ACTOR_SUB = "web-bff-test"
+PUBLIC = "joshuatech.dev"
+DENYLIST_TTL_S = 330  # contracts/denylist.md §키 스키마(access 토큰 TTL 300 s + 30 s)
+# 거부 목록 판정 상한 — 클라이언트 0.2 s 시간 초과 + 처리 여유 0.3 s(키는 미리 받아 둔다 · T062 · T066 근거와 같다).
+DENYLIST_VERDICT_LIMIT_S = 0.5
+# 시간 초과가 없는 구현(영구 대기)을 유한한 실패로 끝내는 상한 — 성능 요구가 아니다.
+HANG_LIMIT_S = 10.0
+BODY_LIMIT = 64  # 시험에서 줄인 DATA_UPLOAD_MAX_MEMORY_SIZE(바이트)
+PROBLEM_KEYS = frozenset({"type", "title", "status"})
+# 계약 「설정」 행 · conf.RuntimeEnv — 없으면 기동 실패(뒤 둘은 존재만 · 빈 값 유효)
+REQUIRED_SETTINGS = (
+    "SECRET_KEY",
+    "DATABASE_URL",
+    "DRAGONFLY_URL",
+    "KAFKA_BOOTSTRAP",
+    "KAFKA_USERNAME",
+    "KAFKA_PASSWORD",
+    "AUTHENTIK_ISSUER",
+    "AUTHENTIK_JWKS_URL",
+    "AUTHENTIK_AUDIENCE",
+    "ACCESS_TEAM_DOMAIN",
+    "ACCESS_AUD_M2M",
+    "ACCESS_EXPECTED_CN",
+    "ALLOWED_HOSTS",
+    "ENV",
+    "APP_VERSION",
+    "APP_GIT_SHA",
+    "ACCESS_AUD_ADMIN",
+    "ADMIN_HOST",
+)
+SECRET_SETTINGS = ("SECRET_KEY", "KAFKA_PASSWORD")  # 빈 값도 기동 실패(conf.SECRET_SETTINGS)
+# 검증된 설정을 대신하는 env(T072 ② r2 H10 · B-2) — Celery는 broker · result URL을 app.conf보다 이 env에서 먼저 읽고(DRAGONFLY_URL
+# 검증 · 공개 도메인 거부 · 마스킹 목록을 비켜 간다), gunicorn은 GUNICORN_CMD_ARGS로 --config 파일 값을 덮는다 → 기동 실패.
+OVERRIDING_ENV = (
+    "CELERY_BROKER_URL",
+    "CELERY_BROKER_READ_URL",
+    "CELERY_BROKER_WRITE_URL",
+    "CELERY_RESULT_BACKEND",
+    "GUNICORN_CMD_ARGS",
+)
+REFUSAL_PREFIX = "설정 오류: "  # conf · startup의 거부 문구 앞머리(이름만 싣는다)
+
+
+def _kebab(name: str) -> str:
+    return name.lower().replace("_", "-")
+
+
+# --- 도우미 --------------------------------------------------------------------------------------------------------------
+
+
+def _access(jwks: JwksInfo, **overrides: Any) -> str:
+    """Access 키로 서명한 Cf-Access-Jwt-Assertion(기본 = 유효 서비스 토큰)."""
+    return mint(access_claims(**overrides), jwks.access_key, ACCESS_KID)
+
+
+def _bearer(jwks: JwksInfo, **overrides: Any) -> str:
+    """Authentik 키로 서명한 Bearer 토큰(기본 = 유효 · tenant_id = 테넌트 A)."""
+    return mint(bearer_claims(**overrides), jwks.authentik_key, AUTHENTIK_KID)
+
+
+def _headers(host: str = HOST, *, access: str | None = None, bearer: str | None = None) -> dict[str, str]:
+    headers = {"host": host}
+    if access is not None:
+        headers["Cf-Access-Jwt-Assertion"] = access
+    if bearer is not None:
+        headers["Authorization"] = f"Bearer {bearer}"
+    return headers
+
+
+def _valid(jwks: JwksInfo, host: str = HOST) -> dict[str, str]:
+    """유효한 Access(서비스 토큰) + Bearer(테넌트 A) 헤더."""
+    return _headers(host, access=_access(jwks), bearer=_bearer(jwks))
+
+
+def _closed_port() -> int:
+    """연결을 받지 않는 127.0.0.1 포트 — bind로 번호만 받고 닫는다."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port: int = probe.getsockname()[1]
+    return port
+
+
+def _fail_without_trace(what: str, exc: BaseException) -> NoReturn:
+    """예외를 원 트레이스백 · 메시지 없이 실패로 바꾼다(형식 이름만 — 호출자는 except 블록 밖에서 부른다)."""
+    kind = f"{type(exc).__module__}.{type(exc).__name__}"
+    pytest.fail(f"{what}: 예외로 끝났다({kind}) — 원 트레이스백 · 메시지는 비밀 노출을 막으려고 싣지 않는다", pytrace=False)
+
+
+def _call(what: str, request: Callable[[], HttpResponse]) -> HttpResponse:
+    failure: BaseException | None = None
+    try:
+        return request()
+    except Exception as exc:  # noqa: BLE001 — 어떤 예외든 원 트레이스백 없이 실패로 바꾼다
+        failure = exc
+    _fail_without_trace(what, failure)
+
+
+def _get(client: Client, path: str, headers: dict[str, str]) -> HttpResponse:
+    return _call(f"GET {path}", lambda: client.get(path, headers=headers))
+
+
+def _post(client: Client, path: str, headers: dict[str, str], body: str, content_type: str) -> HttpResponse:
+    return _call(f"POST {path}", lambda: client.post(path, data=body, content_type=content_type, headers=headers))
+
+
+def _timed_get(client: Client, path: str, headers: dict[str, str]) -> tuple[HttpResponse, float]:
+    """GET 한 번과 그 경과(초) — 요청은 데몬 스레드에서 돌고 HANG_LIMIT_S 안에 끝나지 않으면 실패로 끝낸다. 작업 스레드의 DB
+    연결은 끝날 때 닫는다."""
+    outcome: list[HttpResponse | BaseException] = []
+
+    def run() -> None:
+        try:
+            outcome.append(client.get(path, headers=headers))
+        except BaseException as exc:  # noqa: BLE001 — 스레드 경계: 어떤 예외든 호출 스레드로 넘긴다
+            outcome.append(exc)
+        finally:
+            connections.close_all()
+
+    worker = threading.Thread(target=run, name="auth-timed-get", daemon=True)
+    start = time.perf_counter()
+    worker.start()
+    worker.join(HANG_LIMIT_S)
+    elapsed = time.perf_counter() - start
+    if worker.is_alive():
+        pytest.fail(f"GET {path}가 {HANG_LIMIT_S:.0f} s 안에 끝나지 않았다 — 의존 조회에 시간 초과가 없는 구현인가")
+    result = outcome[0]
+    if isinstance(result, BaseException):
+        _fail_without_trace(f"GET {path}", result)
+    return result, elapsed
+
+
+def _response_text(response: HttpResponse) -> str:
+    headers = "\n".join(f"{name}: {value}" for name, value in response.items())
+    return f"{response.content.decode('utf-8', errors='replace')}\n{headers}"
+
+
+def _assert_django_errors(client: Client, headers: dict[str, str]) -> None:
+    """probe urlconf(tests.probe_urls · tests.probe_admin_urls — 처리기는 pod urlconf의 것을 복사)의 Django 자체 오류가 모두
+    problem+json이다(detail 없음). client는 raise_request_exception=False(500을 응답으로 받는다)."""
+    urlencoded = "application/x-www-form-urlencoded"
+    cases: list[tuple[str, Callable[[], HttpResponse], int, str]] = [
+        ("bad-request", lambda: client.get("/probe/bad-request", headers=headers), 400, "validation_error"),
+        ("suspicious", lambda: client.get("/probe/suspicious", headers=headers), 400, "validation_error"),
+        (
+            "request-data-too-big",
+            lambda: client.post("/probe/read-body", data="x=" + "a" * (BODY_LIMIT * 2), content_type=urlencoded,
+                                headers=headers),
+            400,
+            "validation_error",
+        ),
+        ("permission-denied", lambda: client.get("/probe/forbidden", headers=headers), 403, "forbidden"),
+        ("no-such-url", lambda: client.get("/probe/no-such-path", headers=headers), 404, "not_found"),
+        ("unhandled", lambda: client.get("/probe/boom", headers=headers), 500, "internal_error"),
+    ]
+    for case, request, status, slug in cases:
+        response = _call(case, request)
+        assert response.status_code == status, case
+        body = assert_problem(response, status, slug)
+        assert "detail" not in body, case
+    small = _post(client, "/probe/read-body", headers, "x=1", urlencoded)
+    assert small.status_code == 204  # 한도 안의 본문은 통과한다 — 위 400은 크기 때문이다
+
+
+@pytest.fixture
+def df_admin(dragonfly: DragonflyInfo) -> Iterator[redis.Redis]:
+    """거부 목록 쓰기 클라이언트(admin — pod 사용자는 revoked:*를 읽기만 한다)."""
+    client = redis.Redis.from_url(dragonfly.admin_url)
+    try:
+        yield client
+    finally:
+        client.close()
+
+
+# --- 인증 행렬(보호 경로 /api/openapi.json) -----------------------------------------------------------------------------------
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
+def test_valid_credentials_reach_protected_path(jwks_server: JwksInfo) -> None:
+    """유효 Access + 유효 Bearer → 200 · OpenAPI 문서(application/json · paths에 헬스 3종)."""
+    response = _get(Client(), OPENAPI_PATH, _valid(jwks_server))
+    assert response.status_code == 200
+    assert response["Content-Type"].startswith("application/json")
+    paths: dict[str, Any] = json.loads(response.content).get("paths", {})
+    assert set(HEALTH_PATHS) <= set(paths)
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
+def test_bearer_expired_or_for_another_audience_is_401(jwks_server: JwksInfo) -> None:
+    """Bearer exp 과거 → 401 invalid_token · Bearer aud = 다른 pod → 401 invalid_token(Access는 유효)."""
+    client = Client()
+    access = _access(jwks_server)
+    now = int(time.time())
+    for case, bearer in {
+        "expired": _bearer(jwks_server, iat=now - 360, exp=now - 60),
+        "other-audience": _bearer(jwks_server, aud="other-pod"),
+    }.items():
+        response = _get(client, OPENAPI_PATH, _headers(access=access, bearer=bearer))
+        assert response.status_code == 401, case
+        assert_problem(response, 401, "invalid_token")
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
+def test_access_assertion_missing_or_foreign_is_403(jwks_server: JwksInfo) -> None:
+    """Access 없음(Bearer 유효) · 자격 전부 없음 · common_name ≠ ACCESS_EXPECTED_CN · aud가 M2M · ADMIN 밖 → 403 access_required."""
+    client = Client()
+    bearer = _bearer(jwks_server)
+    cases = {
+        "access-missing": _headers(bearer=bearer),
+        "no-credentials": _headers(),
+        "other-common-name": _headers(access=_access(jwks_server, common_name="someone-else.access"), bearer=bearer),
+        "other-audience": _headers(access=_access(jwks_server, aud=["other"]), bearer=bearer),
+    }
+    for case, headers in cases.items():
+        response = _get(client, OPENAPI_PATH, headers)
+        assert response.status_code == 403, case
+        assert_problem(response, 403, "access_required")
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
+def test_admin_audience_accepted_only_when_configured(jwks_server: JwksInfo, settings: SettingsWrapper) -> None:
+    """ACCESS_AUD_ADMIN 빈 값(래퍼 기본 — admin AUD 없음) → admin aud 토큰 403 / 설정하면(새 Client) admin aud 200 · M2M aud도 200."""
+    assert settings.ACCESS_AUD_ADMIN == ""
+    bearer = _bearer(jwks_server)
+    admin_access = _access(jwks_server, aud=[ADMIN_AUDIENCE])
+    assert_problem(_get(Client(), OPENAPI_PATH, _headers(access=admin_access, bearer=bearer)), 403, "access_required")
+    settings.ACCESS_AUD_ADMIN = ADMIN_AUDIENCE
+    client = Client()
+    admin_response = _get(client, OPENAPI_PATH, _headers(access=admin_access, bearer=bearer))
+    assert admin_response.status_code == 200
+    m2m_response = _get(client, OPENAPI_PATH, _headers(access=_access(jwks_server), bearer=bearer))
+    assert m2m_response.status_code == 200
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
+def test_actor_sub_checked_only_when_configured(jwks_server: JwksInfo, settings: SettingsWrapper) -> None:
+    """AUTH_ACTOR_SUB 빈 값(래퍼 · impersonation 모드) → act가 없거나 달라도 200 / 설정하면 act.sub 일치 200 · 불일치 · 없음 401."""
+    assert settings.AUTH_ACTOR_SUB == ""
+    client = Client()
+    access = _access(jwks_server)
+    for act in (None, {"sub": "anything"}):
+        response = _get(client, OPENAPI_PATH, _headers(access=access, bearer=_bearer(jwks_server, act=act)))
+        assert response.status_code == 200, act
+    settings.AUTH_ACTOR_SUB = ACTOR_SUB
+    client = Client()
+    matching = _headers(access=access, bearer=_bearer(jwks_server, act={"sub": ACTOR_SUB}))
+    matched = _get(client, OPENAPI_PATH, matching)
+    assert matched.status_code == 200
+    for act in ({"sub": "other"}, None):
+        response = _get(client, OPENAPI_PATH, _headers(access=access, bearer=_bearer(jwks_server, act=act)))
+        assert response.status_code == 401, act
+        assert_problem(response, 401, "invalid_token")
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
+def test_revoked_subject_and_session_are_401(jwks_server: JwksInfo, df_admin: redis.Redis) -> None:
+    """revoked:sub:{sub} 값 nbf > iat → 401 session_revoked · nbf = iat → 200(같은 Client — 결과를 캐시하지 않는다) /
+    revoked:sid:{sid} 있음 → 401 session_revoked · sid 클레임 없는 토큰은 200."""
+    iat = int(time.time())
+    access = _access(jwks_server)
+    headers = _headers(access=access, bearer=_bearer(jwks_server, iat=iat))
+    sub_key, sid_key = f"revoked:sub:{BEARER_SUB}", f"revoked:sid:{BEARER_SID}"
+    client = Client()
+    try:
+        df_admin.set(sub_key, iat + 60, ex=DENYLIST_TTL_S)
+        assert_problem(_get(client, OPENAPI_PATH, headers), 401, "session_revoked")
+        df_admin.set(sub_key, iat, ex=DENYLIST_TTL_S)
+        same_instant = _get(client, OPENAPI_PATH, headers)
+        assert same_instant.status_code == 200
+        df_admin.delete(sub_key)
+        df_admin.set(sid_key, 1, ex=DENYLIST_TTL_S)
+        assert_problem(_get(client, OPENAPI_PATH, headers), 401, "session_revoked")
+        without_sid = _headers(access=access, bearer=_bearer(jwks_server, sid=None))
+        sidless = _get(client, OPENAPI_PATH, without_sid)
+        assert sidless.status_code == 200
+    finally:
+        df_admin.delete(sub_key, sid_key)
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
+def test_dragonfly_down_refuses_business_paths_but_not_health(jwks_server: JwksInfo, settings: SettingsWrapper) -> None:
+    """키를 받아 둔 Client(첫 요청 200)에서 DRAGONFLY_URL을 닫힌 포트로 → /api/openapi.json 503 denylist_unavailable(0.5 s 안 ·
+    응답에 그 URL · 비밀번호 없음) · /healthz · /ready · /health는 200(헬스는 인증 면제 · /health는 dragonfly fail을 싣는다)."""
+    client = Client()
+    warmed = _get(client, OPENAPI_PATH, _valid(jwks_server))
+    assert warmed.status_code == 200
+    password = Secret(secrets.token_urlsafe(16))
+    url = Secret(f"redis://{POD_NAME}:{password}@127.0.0.1:{_closed_port()}/0")
+    settings.DRAGONFLY_URL = url
+    headers = _valid(jwks_server)
+    response, elapsed = _timed_get(client, OPENAPI_PATH, headers)
+    assert_problem(response, 503, "denylist_unavailable")
+    assert elapsed < DENYLIST_VERDICT_LIMIT_S, f"판정 {elapsed:.3f} s"
+    assert_absent("응답", _response_text(response), url, password)
+    for path in HEALTH_PATHS:
+        health, _ = _timed_get(client, path, {"host": HOST})
+        assert health.status_code == 200, path
+        assert_absent("헬스 응답", _response_text(health), url, password)
+    checks = json.loads(health.content)["checks"]
+    assert checks["dragonfly"]["status"] == "fail"
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
+@pytest.mark.parametrize(
+    "setting", ["AUTHENTIK_JWKS_URL", "ACCESS_TEAM_DOMAIN"], ids=["authentik-jwks", "access-certs"]
+)
+def test_signing_key_fetch_failure_is_503(setting: str, jwks_server: JwksInfo, settings: SettingsWrapper) -> None:
+    """서명 키 fetch 실패(Authentik JWKS URL · Access 팀 도메인을 닫힌 포트로 — 새 Client) → 503 auth_keys_unavailable(의존성
+    장애 — 401 · 403이 아니다)."""
+    closed = f"http://127.0.0.1:{_closed_port()}"
+    setattr(settings, setting, closed + JWKS_PATH if setting == "AUTHENTIK_JWKS_URL" else closed)
+    response, _ = _timed_get(Client(), OPENAPI_PATH, _valid(jwks_server))
+    assert_problem(response, 503, "auth_keys_unavailable")
+
+
+def test_exempt_paths_are_exact_matches() -> None:
+    """면제는 정확 일치다 — /healthzz · /health/x · /ready/는 자격 없이 403 access_required(DB 마크 없음 — 인증이 먼저 거른다)."""
+    client = Client()
+    for path in ("/healthzz", "/health/x", "/ready/"):
+        response = client.get(path, headers={"host": HOST})
+        assert response.status_code == 403, path
+        assert_problem(response, 403, "access_required")
+
+
+# --- 호스트 --------------------------------------------------------------------------------------------------------------
+
+
+def test_disallowed_host_is_400_before_authentication(jwks_server: JwksInfo) -> None:
+    """ALLOWED_HOSTS 밖 호스트 → 400 invalid_host: 자격 없음 · 자격 전부 · 헬스 경로 모두(호스트 판정이 인증보다 먼저 — DB 마크
+    없음: 요청 트랜잭션까지 가지 않는다)."""
+    client = Client()
+    cases = {
+        "no-credentials": (OPENAPI_PATH, {"host": EVIL_HOST}),
+        "credentials": (OPENAPI_PATH, _valid(jwks_server, EVIL_HOST)),
+        "health": ("/healthz", {"host": EVIL_HOST}),
+    }
+    for case, (path, headers) in cases.items():
+        response = client.get(path, headers=headers)
+        assert response.status_code == 400, case
+        assert_problem(response, 400, "invalid_host")
+
+
+# --- Django 오류 처리기 · Ninja --------------------------------------------------------------------------------------------
+
+
+def test_error_handlers_declared_in_every_urlconf() -> None:
+    """pod가 라우팅하는 urlconf마다 handler400/403/404/500 = {{ pod_snake }}.errors의 처리기(Django는 요청의 urlconf에서 처리기를
+    찾는다) · probe urlconf는 그 값을 그대로 복사했다(아래 probe 시험이 pod 처리기를 본다)."""
+    from {{ pod_snake }} import errors, urls
+{%- if has_admin %}
+    from {{ pod_snake }} import urls_admin
+{%- endif %}
+
+    import tests.probe_urls
+{%- if has_admin %}
+    import tests.probe_admin_urls
+{%- endif %}
+
+    expected = {
+        "handler400": errors.bad_request,
+        "handler403": errors.permission_denied,
+        "handler404": errors.page_not_found,
+        "handler500": errors.server_error,
+    }
+    pairs = [(urls, tests.probe_urls){% if has_admin %}, (urls_admin, tests.probe_admin_urls){% endif %}]
+    for pod_urlconf, probe_urlconf in pairs:
+        declared = {name: import_string(getattr(pod_urlconf, name)) for name in expected}
+        assert declared == expected, pod_urlconf.__name__
+        copied = {name: getattr(probe_urlconf, name) for name in expected}
+        assert copied == {name: getattr(pod_urlconf, name) for name in expected}, probe_urlconf.__name__
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
+def test_root_urlconf_django_errors_are_problem_json(jwks_server: JwksInfo, settings: SettingsWrapper) -> None:
+    """루트 urlconf(probe — 처리기 = pod urls): BadRequest · SuspiciousOperation · RequestDataTooBig 400 validation_error ·
+    PermissionDenied 403 forbidden · 없는 URL 404 not_found · 처리하지 못한 예외 500 internal_error — 모두 problem+json ·
+    detail 없음."""
+    settings.ROOT_URLCONF = "tests.probe_urls"
+    settings.DATA_UPLOAD_MAX_MEMORY_SIZE = BODY_LIMIT
+    _assert_django_errors(Client(raise_request_exception=False), _valid(jwks_server))
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
+def test_csrf_failure_is_problem_json(jwks_server: JwksInfo, settings: SettingsWrapper) -> None:
+    """CSRF 보호 뷰에 토큰 없는 POST(Client enforce_csrf_checks) → CSRF_FAILURE_VIEW 403 forbidden problem+json(handler403이 아니라
+    CSRF_FAILURE_VIEW로 간다 — settings가 두었다) · 검사를 끈 Client로는 204(위 403은 CSRF 때문이다)."""
+    settings.ROOT_URLCONF = "tests.probe_urls"
+    headers = _valid(jwks_server)
+    urlencoded = "application/x-www-form-urlencoded"
+    response = _post(Client(enforce_csrf_checks=True), "/probe/csrf", headers, "x=1", urlencoded)
+    body = assert_problem(response, 403, "forbidden")
+    assert "detail" not in body
+    unenforced = _post(Client(), "/probe/csrf", headers, "x=1", urlencoded)
+    assert unenforced.status_code == 204
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
+def test_ninja_request_validation_is_400(jwks_server: JwksInfo, settings: SettingsWrapper) -> None:
+    """Ninja probe(install_error_handlers 재사용): 쿼리 누락 · 타입 오류 · JSON 아닌 본문 · 스키마 밖 본문 → 400
+    validation_error(Ninja 기본 422 {detail}이 아니다) · 맞는 요청은 200."""
+    settings.ROOT_URLCONF = "tests.probe_urls"
+    client = Client()
+    headers = _valid(jwks_server)
+    for path in ("/probe/ninja/query", "/probe/ninja/query?number=abc"):
+        assert_problem(_get(client, path, headers), 400, "validation_error")
+    ok = _get(client, "/probe/ninja/query?number=7", headers)
+    assert (ok.status_code, json.loads(ok.content)) == (200, {"number": 7})
+    for body in ("not json", json.dumps({"wrong": 1})):
+        assert_problem(_post(client, "/probe/ninja/json", headers, body, "application/json"), 400, "validation_error")
+    ok = _post(client, "/probe/ninja/json", headers, json.dumps({"name": "x"}), "application/json")
+    assert (ok.status_code, json.loads(ok.content)) == (200, {"name": "x"})
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
+def test_ninja_exception_after_write_rolls_back(jwks_server: JwksInfo, settings: SettingsWrapper) -> None:
+    """Ninja 뷰가 요청 테넌트 컨텍스트에서 RlsWidget을 쓴 뒤 예외 → 500 internal_error(detail 없음) + 요청 트랜잭션 롤백(행이 남지
+    않는다 — catch-all 처리기가 없어 handler500 · TenantContextMiddleware 롤백) / 대조: 예외 없는 쓰기는 200 · 행 1이 남는다."""
+    from tests.rlsapp.models import RlsWidget
+
+    settings.ROOT_URLCONF = "tests.probe_urls"
+    headers = _valid(jwks_server)
+    written = _post(Client(), "/probe/ninja/write", headers, json.dumps({"name": "kept"}), "application/json")
+    assert written.status_code == 200
+    assert RlsWidget.objects.using("owner").count() == 1
+    client = Client(raise_request_exception=False)
+    body_json = json.dumps({"name": "rolled-back"})
+    failed = _post(client, "/probe/ninja/write-then-fail", headers, body_json, "application/json")
+    body = assert_problem(failed, 500, "internal_error")
+    assert "detail" not in body
+    assert list(RlsWidget.objects.using("owner").values_list("name", flat=True)) == ["kept"]
+{%- if has_admin %}
+
+
+# --- admin(D10) -------------------------------------------------------------------------------------------------------
+
+
+def _admin_settings(settings: SettingsWrapper, *, prefix: str = "") -> None:
+    """ADMIN_HOST = admin 호스트(ALLOWED_HOSTS에 더한다) · ADMIN_SCRIPT_NAME = prefix · STATIC_URL은 settings.py와 같은 규칙."""
+    settings.ADMIN_HOST = ADMIN_HOST_VALUE
+    settings.ALLOWED_HOSTS = [*settings.ALLOWED_HOSTS, ADMIN_HOST_VALUE]
+    settings.ADMIN_SCRIPT_NAME = prefix
+    settings.STATIC_URL = f"{prefix}/static/" if prefix else "static/"
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
+def test_admin_urlconf_django_errors_are_problem_json(jwks_server: JwksInfo, settings: SettingsWrapper) -> None:
+    """admin urlconf(probe — 처리기 = pod urls_admin · ADMIN_HOST 요청만)도 400 · 403 · 404 · 500이 problem+json이고, admin 로그인
+    POST에 CSRF 토큰이 없으면 403 forbidden problem+json이다(M2M 자격 — 사람 admin 경로는 T084)."""
+    _admin_settings(settings)
+    settings.ADMIN_URLCONF = "tests.probe_admin_urls"
+    settings.DATA_UPLOAD_MAX_MEMORY_SIZE = BODY_LIMIT
+    headers = _valid(jwks_server, ADMIN_HOST_VALUE)
+    _assert_django_errors(Client(raise_request_exception=False), headers)
+    urlencoded = "application/x-www-form-urlencoded"
+    login = _post(Client(enforce_csrf_checks=True), "/admin/login/", headers, "username=probe", urlencoded)
+    body = assert_problem(login, 403, "forbidden")
+    assert "detail" not in body
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
+def test_admin_mounted_on_admin_host_with_script_prefix(jwks_server: JwksInfo, settings: SettingsWrapper) -> None:
+    """ADMIN_SCRIPT_NAME = /{{ pod_name }}(prod 꼴) · Client 하나로 차례로: admin 호스트 /admin/(M2M 자격) → 302 · Location 경로 =
+    /{{ pod_name }}/admin/login/ · next = /{{ pod_name }}/admin/ → m2m 호스트 /api/openapi.json 200 · 경로 키에 접두 0(앞 요청의
+    스레드 로컬 접두가 새지 않는다) → m2m 호스트 /admin/ 404 not_found. 미들웨어 적재는 설정 변경 전에 끝낸다(호출 시점에 읽는지
+    본다). 끝에 script prefix를 "/"로 되돌린다(구현이 되돌리지 않아도 뒤 시험으로 번지지 않게)."""
+    client = Client()
+    assert client.get("/healthz", headers={"host": HOST}).status_code == 200
+    _admin_settings(settings, prefix=ADMIN_PREFIX)
+    access, bearer = _access(jwks_server), _bearer(jwks_server)
+    try:
+        response = _get(client, "/admin/", _headers(ADMIN_HOST_VALUE, access=access, bearer=bearer))
+        assert response.status_code == 302
+        location = urlsplit(response["Location"])
+        assert location.path == f"{ADMIN_PREFIX}/admin/login/"
+        assert parse_qs(location.query).get("next") == [f"{ADMIN_PREFIX}/admin/"]
+        spec = _get(client, OPENAPI_PATH, _headers(access=access, bearer=bearer))
+        assert spec.status_code == 200
+        paths: dict[str, Any] = json.loads(spec.content).get("paths", {})
+        assert set(HEALTH_PATHS) <= set(paths)
+        assert [path for path in paths if path.startswith(ADMIN_PREFIX)] == []
+        assert_problem(_get(client, "/admin/", _headers(access=access, bearer=bearer)), 404, "not_found")
+    finally:
+        set_script_prefix("/")
+
+
+def test_admin_static_assets_served_without_credentials(settings: SettingsWrapper) -> None:
+    """admin 호스트(ADMIN_SCRIPT_NAME 있음 — stripPrefix 뒤 pod가 받는 경로) GET · HEAD /static/admin/css/base.css → 200 text/css ·
+    자격 없음 · DB 마크 없음(JwtAuth · TenantContext 앞에서 응답한다) / m2m 호스트의 같은 경로 → 403 access_required."""
+    _admin_settings(settings, prefix=ADMIN_PREFIX)
+    client = Client()
+    response = client.get(ADMIN_ASSET, headers={"host": ADMIN_HOST_VALUE})
+    try:
+        assert response.status_code == 200
+        assert response["Content-Type"].startswith("text/css")
+        content = b"".join(response.streaming_content)
+    finally:
+        response.close()
+    assert content
+    head = client.head(ADMIN_ASSET, headers={"host": ADMIN_HOST_VALUE})
+    head.close()
+    assert head.status_code == 200
+    assert_problem(client.get(ADMIN_ASSET, headers={"host": HOST}), 403, "access_required")
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/static/../conf.py", "/static/%2e%2e/conf.py", "/static/admin/../../conf.py"],
+    ids=["dot-dot", "encoded-dot-dot", "nested-dot-dot"],
+)
+def test_admin_static_path_escape_is_400(path: str, settings: SettingsWrapper) -> None:
+    """admin 호스트 정적 경로 탈출 → 400 validation_error(staticfiles safe_join의 SuspiciousFileOperation → handler400) · 본문은 문제
+    문서 키(type · title · status)뿐(파일 내용 없음)."""
+    _admin_settings(settings, prefix=ADMIN_PREFIX)
+    response = Client().get(path, headers={"host": ADMIN_HOST_VALUE})
+    body = assert_problem(response, 400, "validation_error")
+    assert set(body) <= PROBLEM_KEYS
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
+def test_admin_absent_when_admin_host_empty(jwks_server: JwksInfo, settings: SettingsWrapper) -> None:
+    """ADMIN_HOST 빈 값(dev) → m2m · admin 이름 호스트 모두 /admin/ 404 not_found(빈 값은 어떤 호스트와도 같지 않다) · admin 이름
+    호스트의 /static/…도 정적 서빙이 없어 인증이 거른다(403)."""
+    settings.ADMIN_HOST = ""
+    settings.ALLOWED_HOSTS = [*settings.ALLOWED_HOSTS, ADMIN_HOST_VALUE]
+    client = Client()
+    for host in (HOST, ADMIN_HOST_VALUE):
+        response = _get(client, "/admin/", _valid(jwks_server, host))
+        assert response.status_code == 404, host
+        assert_problem(response, 404, "not_found")
+    assert_problem(client.get(ADMIN_ASSET, headers={"host": ADMIN_HOST_VALUE}), 403, "access_required")
+{%- else %}
+
+
+# --- admin 없음 ---------------------------------------------------------------------------------------------------------
+
+
+@DB
+@pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
+def test_no_admin_surface(jwks_server: JwksInfo, settings: SettingsWrapper) -> None:
+    """has_admin=false: admin 앱 · ADMIN_URLCONF가 없고 자격을 갖춘 /admin/은 404 not_found."""
+    assert "django.contrib.admin" not in settings.INSTALLED_APPS
+    assert getattr(settings, "ADMIN_URLCONF", None) is None
+    assert_problem(_get(Client(), "/admin/", _valid(jwks_server)), 404, "not_found")
+{%- endif %}
+
+
+# --- 기동 설정(하위 프로세스) ---------------------------------------------------------------------------------------------------
+
+
+def test_required_settings_match_contract() -> None:
+    """conf.RuntimeEnv의 필수 필드(기본값 없음) = 계약 「설정」 행의 필수 목록(아래 누락 기동 시험이 빠짐없이 돈다)."""
+    from {{ pod_snake }} import conf
+
+    required = {name for name, info in conf.RuntimeEnv.model_fields.items() if info.is_required()}
+    assert required == set(REQUIRED_SETTINGS)
+    assert set(conf.SECRET_SETTINGS) == set(SECRET_SETTINGS)
+
+
+@pytest.mark.parametrize("name", REQUIRED_SETTINGS, ids=_kebab)
+def test_boot_refuses_missing_setting(name: str) -> None:
+    """필수 설정 env 하나가 없음 → 기동 실패 · 거부 이름 = 그 이름 · 위생(값 · 비밀 조각 · input_value= · 공개 이름 조회 0)."""
+    assert_refused(boot(remove=(name,)), name)
+
+
+@pytest.mark.parametrize("name", SECRET_SETTINGS, ids=_kebab)
+def test_boot_refuses_empty_secret(name: str) -> None:
+    """비밀 설정의 빈 값 → 기동 실패(빈 키 · 비밀번호는 누구나 만든다 — 빈 값이 유효한 것은 ACCESS_AUD_ADMIN · ADMIN_HOST뿐)."""
+    assert_refused(boot({name: ""}), name)
+
+
+def _public_case(case: str) -> tuple[str, str]:
+    password = secrets.token_urlsafe(24)
+    cases = {
+        "jwks-subdomain": ("AUTHENTIK_JWKS_URL", f"https://auth.{PUBLIC}/application/o/{POD_NAME}/jwks/"),
+        "jwks-apex-uppercase": ("AUTHENTIK_JWKS_URL", f"https://{PUBLIC.upper()}/jwks/"),
+        "database": (
+            "DATABASE_URL",
+            db_url(f"{POD_SNAKE}_app", POD_SNAKE, host=f"db.{PUBLIC}:5432", query="sslmode=require"),
+        ),
+        "dragonfly": ("DRAGONFLY_URL", f"redis://{POD_NAME}:{password}@cache.{PUBLIC}:6379/0"),
+        "kafka": ("KAFKA_BOOTSTRAP", f"kafka.{PUBLIC}:9093"),
+        "otlp": ("OTEL_EXPORTER_OTLP_ENDPOINT", f"https://otel.{PUBLIC}"),
+        "otlp-traces": ("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", f"https://otel.{PUBLIC}/v1/traces"),
+    }
+    return cases[case]
+
+
+@pytest.mark.parametrize(
+    "case", ["jwks-subdomain", "jwks-apex-uppercase", "database", "dragonfly", "kafka", "otlp", "otlp-traces"]
+)
+def test_boot_refuses_public_domain_service_urls(case: str) -> None:
+    """pod가 직접 부르는 클러스터 안 URL(JWKS · DB · Dragonfly · Kafka · OTLP 내보내기)의 호스트가 공개 도메인(자체 · 하위 ·
+    대소문자 무관)이면 기동 실패 — 문자열 판정이라 이름 조회도 없다(위생이 본다)."""
+    name, value = _public_case(case)
+    assert_refused(boot({name: value}), name)
+
+
+def _dev_case(case: str) -> tuple[dict[str, str], str]:
+    env = dev_shape_env()
+    if case == "http-team-domain":
+        env["ACCESS_TEAM_DOMAIN"] = "http://joshua-tech.cloudflareaccess.com"
+        return env, "ACCESS_TEAM_DOMAIN"
+    env["DATABASE_URL"] = db_url(
+        f"dev_{POD_SNAKE}_app", f"dev_{POD_SNAKE}", host="pg-main-rw.data.svc:5432", query="sslmode=require"
+    )
+    return env, "DATABASE_URL"
+
+
+@pytest.mark.parametrize("case", ["http-team-domain", "sslmode-require"])
+def test_boot_refuses_insecure_dev_values(case: str) -> None:
+    """ENV=dev(dev 모양 — 교차 규칙은 만족)에서 http 팀 도메인 · DB sslmode=require(verify-full + /etc/pg/ca.crt가 아님) → 기동 실패."""
+    env, name = _dev_case(case)
+    assert_refused(boot(env), name)
+
+
+def _runtime_case(case: str) -> tuple[dict[str, str], tuple[str, ...]]:
+    placeholder = "PLACEHOLDER-SET-IN-OVERLAY"
+    owner = db_url(f"{POD_SNAKE}_owner", POD_SNAKE, host=f"127.0.0.1:{_closed_port()}", query="sslmode=require")
+    cases: dict[str, tuple[dict[str, str], tuple[str, ...]]] = {
+        "owner-url-at-runtime": ({"DATABASE_OWNER_URL": owner}, ("DATABASE_OWNER_URL",)),
+        "placeholder-value": ({"ACCESS_AUD_M2M": placeholder}, ("ACCESS_AUD_M2M",)),
+        "placeholder-exempt-not-exemptable": (
+            {"ACCESS_AUD_M2M": placeholder, "JT_PLACEHOLDER_EXEMPT": "ACCESS_AUD_M2M"},
+            ("ACCESS_AUD_M2M", "JT_PLACEHOLDER_EXEMPT"),
+        ),
+        "exempt-name-outside-constant": ({"JT_PLACEHOLDER_EXEMPT": "ACCESS_EXPECTED_CN"}, ("JT_PLACEHOLDER_EXEMPT",)),
+        "unknown-profile": ({"JT_SETTINGS_PROFILE": "bogus"}, ("JT_SETTINGS_PROFILE",)),
+        "empty-profile": ({"JT_SETTINGS_PROFILE": ""}, ("JT_SETTINGS_PROFILE",)),
+        "pod-ip-not-ip": ({"POD_IP": "10.42.0.300"}, ("POD_IP",)),
+{%- if has_admin %}
+        "force-script-name-trailing-slash": ({"FORCE_SCRIPT_NAME": f"/{POD_NAME}/"}, ("FORCE_SCRIPT_NAME",)),
+        "force-script-name-relative": ({"FORCE_SCRIPT_NAME": POD_NAME}, ("FORCE_SCRIPT_NAME",)),
+{%- endif %}
+    }
+    return cases[case]
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "owner-url-at-runtime",
+        "placeholder-value",
+        "placeholder-exempt-not-exemptable",
+        "exempt-name-outside-constant",
+        "unknown-profile",
+        "empty-profile",
+        "pod-ip-not-ip",
+{%- if has_admin %}
+        "force-script-name-trailing-slash",
+        "force-script-name-relative",
+{%- endif %}
+    ],
+)
+def test_boot_refuses_runtime_misconfiguration(case: str) -> None:
+    """런타임에 owner 자격(DATABASE_OWNER_URL) · PLACEHOLDER- 자리값(게이트 2 — 면제는 코드 상수 PLACEHOLDER_EXEMPTABLE(템플릿은
+    빈 집합)과 env의 교집합뿐이라 env만으로는 풀 수 없고, 상수 밖 이름을 적은 env 자체도 거부) · 모르는 · 빈 프로필 · IP가 아닌
+    POD_IP{% if has_admin %} · FORCE_SCRIPT_NAME 꼴(/<케밥> · 끝 슬래시 없음){% endif %} → 기동 실패 · 거부 이름 정확히."""
+    overrides, names = _runtime_case(case)
+    assert_refused(boot(overrides), *names)
+
+
+def _weak_secret_key(case: str) -> str:
+    if case == "49-characters":
+        return secrets.token_urlsafe(48)[:49]
+    if case == "insecure-prefix":
+        return "django-insecure-" + secrets.token_urlsafe(48)
+    return "".join(secrets.choice("wxyz") for _ in range(64))
+
+
+@pytest.mark.parametrize("case", ["49-characters", "insecure-prefix", "4-distinct-characters"])
+def test_boot_refuses_weak_secret_key(case: str) -> None:
+    """SECRET_KEY가 Django security.W009 기준(50자 이상 · 서로 다른 글자 5 이상 · django-insecure- 접두 아님)을 못 넘으면 기동
+    실패 — 거부 출력에 그 값 · 조각이 없다."""
+    assert_refused(boot({"SECRET_KEY": _weak_secret_key(case)}), "SECRET_KEY")
+
+
+def _percent_case(case: str) -> tuple[str, str]:
+    password = f"{secrets.token_urlsafe(12)}%2F{secrets.token_urlsafe(12)}"
+    closed = _closed_port()
+    if case == "database-url":
+        url = db_url(
+            f"{POD_SNAKE}_app", POD_SNAKE, host=f"127.0.0.1:{closed}", query="sslmode=require", password=password
+        )
+        return "DATABASE_URL", url
+    return "DRAGONFLY_URL", f"redis://{POD_NAME}:{password}@127.0.0.1:{closed}/0"
+
+
+@pytest.mark.parametrize("case", ["database-url", "dragonfly-url"])
+def test_boot_refuses_percent_in_url_user_info(case: str) -> None:
+    """자격 URL 사용자 정보는 [A-Za-z0-9_-]만(libpq · redis URI 파서 오류 문구가 자격 조각을 싣지 않게) — `%`가 든 비밀번호 →
+    기동 실패 · 이름만(그 URL · 비밀번호 · 조각 없음)."""
+    name, value = _percent_case(case)
+    assert_refused(boot({name: value}), name)
+
+
+def _overriding_case(case: str) -> tuple[str, str]:
+    """(env 이름, 값) — 브로커 · 결과 URL은 공개 호스트 + 새 난수 비밀번호(위생이 그 URL · 비밀번호 부재를 본다) · gunicorn은 워커 수 ·
+    preload를 덮는 인자 · `-empty` 사례는 빈 값(빈 값도 거부 — 있는 것 자체가 오설정이다)."""
+    name = case.removesuffix("-empty").upper().replace("-", "_")
+    if case.endswith("-empty"):
+        return name, ""
+    if name == "GUNICORN_CMD_ARGS":
+        return name, "--workers 4 --preload"
+    return name, f"redis://{POD_NAME}:{secrets.token_urlsafe(24)}@cache.{PUBLIC}:6379/0"
+
+
+@pytest.mark.parametrize("case", [*(_kebab(name) for name in OVERRIDING_ENV), "celery-broker-url-empty"])
+def test_boot_refuses_env_overriding_validated_settings(case: str) -> None:
+    """검증된 설정을 대신하는 env(OVERRIDING_ENV — Celery 브로커 · 결과 URL은 DRAGONFLY_URL 검증 · 공개 도메인 거부 · 마스킹 목록을
+    비켜 가고, GUNICORN_CMD_ARGS는 gunicorn_conf를 덮는다)가 있으면(빈 값 포함) runtime 기동 단언(startup.run — runtime 프로필의
+    모든 프로세스)이 이름만 실은 ImproperlyConfigured로 멈춘다 · 거부 이름 정확히 그 env · 위생(그 URL · 비밀번호 · 조각이 출력에
+    없다)."""
+    name, value = _overriding_case(case)
+    assert_refused(boot({name: value}), name)
+
+
+def test_boot_runs_auth_settings_check() -> None:
+    """인증 설정 검사(django_common.auth.check_settings)는 ready()의 기동 단언에서 돈다 — 공백이 든 ACCESS_TEAM_DOMAIN(conf의 교차
+    규칙은 통과하는 값)은 요청 시점 403이 아니라 기동 실패이고, 메시지는 그 설정 이름을 싣는다 · 위생."""
+    result = boot({"ACCESS_TEAM_DOMAIN": "joshua tech.cloudflareaccess.com"})
+    assert result.returncode != 0, result.summary()
+    assert_boot_hygiene(result)
+    assert refused_names(result) is None  # conf 단계는 통과했다 — 거부는 기동 단언(check_settings)이 냈다
+    line = result.refused_line()
+    assert "ACCESS_TEAM_DOMAIN" in line, result.summary()
+
+
+def _improperly_configured(call: Callable[[], object]) -> str:
+    failure: ImproperlyConfigured | None = None
+    try:
+        call()
+    except ImproperlyConfigured as exc:
+        failure = exc
+    assert failure is not None, "ImproperlyConfigured가 나지 않았다"
+    return str(failure)
+
+
+def test_startup_checks_refuse_library_owned_kafka_keys_and_exempt_gaps(settings: SettingsWrapper) -> None:
+    """기동 단언(startup.run — PodConfig.ready가 부른다): 시험 설정에서는 통과 · KAFKA_CLIENT_CONFIG에 라이브러리 고정 키
+    delivery.timeout.ms → ImproperlyConfigured(그 키 이름) · TENANT_CONTEXT_EXEMPT_PATHS에 없는 인증 면제 경로 →
+    ImproperlyConfigured(AUTH_EXEMPT_PATHS)."""
+    from {{ pod_snake }} import startup
+
+    startup.run()
+    settings.KAFKA_CLIENT_CONFIG = {**settings.KAFKA_CLIENT_CONFIG, "delivery.timeout.ms": 1000}
+    assert "delivery.timeout.ms" in _improperly_configured(startup.run)
+    settings.KAFKA_CLIENT_CONFIG = {"security.protocol": "PLAINTEXT"}
+    settings.AUTH_EXEMPT_PATHS = (*settings.AUTH_EXEMPT_PATHS, "/webhooks/probe")
+    assert "AUTH_EXEMPT_PATHS" in _improperly_configured(startup.run)
+
+
+def test_settings_model_never_repeats_input() -> None:
+    """설정 모델(hide_input_in_errors=True): 잘못된 값의 ValidationError 문자열 표현에 입력 값 · `input_value=`가 없다(이름 ENV만
+    싣는다) · 비밀 필드(SECRET_KEY · DATABASE_URL · DRAGONFLY_URL · KAFKA_PASSWORD)는 모델 repr에 없다."""
+    from pydantic import ValidationError
+
+    from {{ pod_snake }} import conf
+
+    planted = Secret(secrets.token_urlsafe(48))
+    failure: ValidationError | None = None
+    try:
+        conf.RuntimeEnv.model_validate({"ENV": planted})
+    except ValidationError as exc:
+        failure = exc
+    assert failure is not None
+    text = str(failure)
+    repeated = planted in text or PYDANTIC_INPUT_MARK in text
+    assert not repeated, "설정 모델 오류 표현이 입력 값을 되풀이한다(hide_input_in_errors)"
+    assert {str(item["loc"][0]) for item in failure.errors(include_input=False)} == {"ENV"}
+    secret_names = ("SECRET_KEY", "DATABASE_URL", "DRAGONFLY_URL", "KAFKA_PASSWORD")
+    model_repr = repr(conf.RuntimeEnv())
+    assert_absent("설정 모델 repr", model_repr, *(os.environ[name] for name in secret_names))
+
+
+def test_settings_load_validates_given_mapping_only() -> None:
+    """conf.load(environ=매핑)(시험용 진입점)은 그 매핑만 검증한다 — 이 프로세스 env의 값이 섞이지 않는다(BaseSettings는
+    model_validate · 생성자 인자에도 env 소스를 합친다): SECRET_KEY가 없는 매핑 → ImproperlyConfigured("설정 오류: SECRET_KEY") ·
+    연쇄 예외(__cause__ · __context__) 없음 / 매핑 전체 → runtime 프로필로 읽힌다."""
+    from {{ pod_snake }} import conf
+
+    # 래퍼가 채웠다 — 섞이면 아래 거부가 통과로 바뀐다(bool로 접는다: 단언 식의 os.environ은 실패 출력에 env 전체를 찍는다 — r3 J1)
+    wrapped = "SECRET_KEY" in os.environ
+    assert wrapped, "시험 래퍼가 SECRET_KEY를 채우지 않았다"
+    without_key = {name: value for name, value in _wrapper_environ().items() if name != "SECRET_KEY"}
+    refused: ImproperlyConfigured | None = None
+    try:
+        conf.load(environ=without_key)
+    except ImproperlyConfigured as exc:
+        refused = exc
+    assert refused is not None, "conf.load(environ=…)가 매핑에 없는 SECRET_KEY를 process env에서 읽었다"
+    assert str(refused) == "설정 오류: SECRET_KEY"
+    assert (refused.__cause__, refused.__context__) == (None, None)
+    loaded = conf.load(environ=_wrapper_environ())
+    assert loaded.profile == conf.RUNTIME
+
+
+# --- conf.load(environ=…) 거부 규칙(같은 모델 · 교차 규칙 · process env 섞임 없음 — 하위 프로세스 없이 빠르게) ---------------------------
+
+
+def _wrapper_environ() -> dict[str, str]:
+    """시험 래퍼가 채운 설정 env(ENV=test · 닫힌 포트 자리값) — conf.load(environ=…)가 그대로 통과하는 기준 매핑. 래퍼가 정한 이름
+    (래퍼 상수 POD_SETTINGS_ENV — _runtime_env_names)만 싣는다: 개발자 · CI 셸의 다른 env는 들어가지 않는다(T072 ② r3 J1 · B-1).
+    래퍼가 지운 이름(선택 설정 · 프로필 · OTLP 엔드포인트 — POD_SETTINGS_ENV_REMOVED)은 process env에도 없으므로 결과는 같다. 이
+    매핑(자리값 비밀 포함)을 넘기는 호출은 단언 밖에서 지역 변수로 받는다 — 단언 재작성은 단언 식 안 호출의 인자를 실패 출력에 찍는다."""
+    return {name: os.environ[name] for name in _runtime_env_names() if name in os.environ}
+
+
+def _load_refusal(environ: Mapping[str, str]) -> list[str] | None:
+    """conf.load(environ=environ)의 거부 이름(정렬 · 「설정 오류: <이름들>」 꼴) — 통과하면 None."""
+    from {{ pod_snake }} import conf
+
+    refused: ImproperlyConfigured | None = None
+    try:
+        conf.load(environ=environ)
+    except ImproperlyConfigured as exc:
+        refused = exc
+    if refused is None:
+        return None
+    text = str(refused)
+    shaped = text.startswith(REFUSAL_PREFIX)
+    assert shaped, "거부 문구가 「설정 오류: <이름들>」 꼴이 아니다"
+    return sorted(part.strip() for part in text.removeprefix(REFUSAL_PREFIX).split(","))
+
+
+def _with_host(value: str, host: str) -> str:
+    """URL value의 호스트만 host로 바꾼다(스킴 · 사용자 정보 · 포트 · 경로 · 질의는 그대로 — 다른 규칙이 함께 걸리지 않게)."""
+    parts = urlsplit(value)
+    userinfo, at, _ = parts.netloc.rpartition("@")
+    port = f":{parts.port}" if parts.port is not None else ""
+    return urlunsplit(parts._replace(netloc=f"{userinfo}{at}{host}{port}"))
+
+
+def _public_value(name: str, base: Mapping[str, str], host: str) -> str:
+    """IN_CLUSTER_URL_SETTINGS 이름의 공개 호스트 값 — KAFKA_BOOTSTRAP은 host:port 목록, 나머지는 기준 URL(없으면 https URL)의
+    호스트만 바꾼다."""
+    if name == "KAFKA_BOOTSTRAP":
+        return f"{host}:9093"
+    return _with_host(base.get(name) or "https://placeholder.invalid/", host)
+
+
+@pytest.mark.parametrize("name", IN_CLUSTER_URL_SETTINGS, ids=_kebab)
+def test_settings_load_refuses_public_in_cluster_url(name: str) -> None:
+    """conf.IN_CLUSTER_URL_SETTINGS의 이름마다(목록에서 직접 매개화 — T073 · SP-2가 넓힌 이름도 스스로 검증된다): 기준 매핑(래퍼
+    env)은 통과하고, 그 이름 하나만 공개 도메인 호스트(하위 소문자 · apex 대문자)로 바꾸면 conf.load(environ=…)의 거부 이름이 정확히
+    그 이름이다(DATABASE_URL · DRAGONFLY_URL · KAFKA_BOOTSTRAP 밖의 이름은 http(s) URL로 일반 계산한다 — FR-046)."""
+    base = _wrapper_environ()
+    baseline = _load_refusal(base)
+    assert baseline is None, f"기준 매핑이 거부됐다 {baseline} — 넓힌 이름은 모델 필드와 래퍼 자리값이 함께 필요하다"
+    for host in (f"svc.{PUBLIC}", PUBLIC.upper()):
+        refused = _load_refusal({**base, name: _public_value(name, base, host)})
+        assert refused == [name], f"{name}: 공개 호스트 {host!r}의 거부 이름 {refused}(기대 [{name!r}])"
+
+
+def test_in_cluster_url_settings_extension_is_checked(monkeypatch: pytest.MonkeyPatch) -> None:
+    """확장 지점(T073 · SP-2가 모델 필드와 IN_CLUSTER_URL_SETTINGS에 함께 더하는 http(s) URL 설정 — 여기서는 시험용 필드
+    PROBE_API_URL): 클러스터 안 호스트는 통과 · 공개 도메인(하위 · apex 대문자)이면 그 이름만 거부 · URL 꼴이 아니면 그 이름 거부 /
+    목록에만 있고 모델 필드가 없는 이름도 거부(닫힌 쪽 — SECRET_SETTINGS와 같다). 따로 파싱하는 셋 밖의 이름이 조용히 빠지지
+    않는다(옛 코드는 이 이름들을 검사하지 않았다 — A-1)."""
+    from {{ pod_snake }} import conf
+
+    class ProbeEnv(conf.RuntimeEnv):
+        PROBE_API_URL: str
+
+    monkeypatch.setattr(conf, "RuntimeEnv", ProbeEnv)
+    monkeypatch.setattr(conf, "IN_CLUSTER_URL_SETTINGS", (*conf.IN_CLUSTER_URL_SETTINGS, "PROBE_API_URL"))
+    base = {**_wrapper_environ(), "PROBE_API_URL": "http://probe-api.identity.svc:8080/api/v1/"}
+    baseline = _load_refusal(base)
+    assert baseline is None
+    for value in (f"https://api.{PUBLIC}/api/v1/", f"HTTPS://{PUBLIC.upper()}", "probe-api.identity.svc:8080"):
+        refused = _load_refusal({**base, "PROBE_API_URL": value})
+        assert refused == ["PROBE_API_URL"], f"PROBE_API_URL={value!r}의 거부 이름 {refused}"
+    monkeypatch.setattr(conf, "IN_CLUSTER_URL_SETTINGS", (*conf.IN_CLUSTER_URL_SETTINGS, "PROBE_MISSING_URL"))
+    missing_field = _load_refusal(base)
+    assert missing_field == ["PROBE_MISSING_URL"]
+
+
+def _documented_violation(case: str, base: Mapping[str, str]) -> tuple[dict[str, str], str]:
+    database = base["DATABASE_URL"]
+    cases: dict[str, tuple[dict[str, str], str]] = {
+        "allowed-hosts-star": ({"ALLOWED_HOSTS": "*"}, "ALLOWED_HOSTS"),
+        "allowed-hosts-empty-item": ({"ALLOWED_HOSTS": f"{HOST},"}, "ALLOWED_HOSTS"),
+        "database-query-target-session-attrs": (
+            {"DATABASE_URL": f"{database}&target_session_attrs=any"},
+            "DATABASE_URL",
+        ),
+        "database-query-options": ({"DATABASE_URL": f"{database}&options=-c%20statement_timeout%3D0"}, "DATABASE_URL"),
+        "test-env-sslmode-disable": (
+            {"DATABASE_URL": database.replace("sslmode=require", "sslmode=disable")},
+            "DATABASE_URL",
+        ),
+        "git-sha-uppercase": ({"APP_GIT_SHA": "ABCDEF0"}, "APP_GIT_SHA"),
+        "git-sha-too-short": ({"APP_GIT_SHA": "abcdef"}, "APP_GIT_SHA"),
+        "kafka-bootstrap-without-port": ({"KAFKA_BOOTSTRAP": "kafka-bootstrap"}, "KAFKA_BOOTSTRAP"),
+    }
+    return cases[case]
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "allowed-hosts-star",
+        "allowed-hosts-empty-item",
+        "database-query-target-session-attrs",
+        "database-query-options",
+        "test-env-sslmode-disable",
+        "git-sha-uppercase",
+        "git-sha-too-short",
+        "kafka-bootstrap-without-port",
+    ],
+)
+def test_settings_load_refuses_documented_violations(case: str) -> None:
+    """계약 · D5 거부 규칙의 회귀 보호(기준 = 래퍼 env · ENV=test에서 하나만 바꾼다): ALLOWED_HOSTS `*` · 빈 항목 · DATABASE_URL 쿼리
+    키는 sslmode · sslrootcert만(target_session_attrs · options 거부 — Django 설정이 버려 조용히 무시되는 오설정이 되지 않게) ·
+    ENV=test도 sslmode는 require 이상(disable 거부) · APP_GIT_SHA는 소문자 hex 7–64(대문자 · 7자 미만 거부 — r3 J3) ·
+    KAFKA_BOOTSTRAP은 host:port 목록 → conf.load(environ=…)의 거부 이름이 정확히 그 설정이다."""
+    base = _wrapper_environ()
+    premise = base.get("ENV") == "test" and "?sslmode=require" in base.get("DATABASE_URL", "")
+    assert premise, "기준 매핑의 전제(ENV=test · DATABASE_URL 쿼리 sslmode=require 하나)가 아니다"
+    changes, name = _documented_violation(case, base)
+    refused = _load_refusal({**base, **changes})
+    assert refused == [name]
+
+
+def _migrate_overrides(query: str, password: str | None = None) -> dict[str, str]:
+    owner = db_url(f"{POD_SNAKE}_owner", POD_SNAKE, host="pg-main-rw.data.svc:5432", query=query, password=password)
+    return {"JT_SETTINGS_PROFILE": "migrate", "DATABASE_OWNER_URL": owner}
+
+
+def _runtime_env_names() -> tuple[str, ...]:
+    """migrate Job env에 없는 런타임 키 — 시험 래퍼가 덮어쓴 필수 키(Django 설정 POD_SETTINGS_ENV)."""
+    from django.conf import settings
+
+    return tuple(settings.POD_SETTINGS_ENV)
+
+
+def test_boot_migrate_profile_needs_only_owner_url() -> None:
+    """migrate 프로필(JT_SETTINGS_PROFILE=migrate · 런타임 키 없음 · ENV 없음 → verify-full 강제)이 DATABASE_OWNER_URL만으로 기동 —
+    profile migrate · ENV 없음 · 런타임 설정(DRAGONFLY_URL · KAFKA_CLIENT_CONFIG · AUTHENTIK_JWKS_URL) 없음 · celery 미import ·
+    DB 사용자 = owner · 이름 조회 0."""
+    facts = boot_facts(
+        boot(_migrate_overrides(f"sslmode=verify-full&sslrootcert={PG_CA_FILE}"), remove=_runtime_env_names()),
+        network_zero=True,
+    )
+    assert (facts["profile"], facts["env"]) == ("migrate", None)
+    assert facts["runtime_settings"] == []
+    assert facts["celery_imported"] is False
+    assert facts["db_user"] == f"{POD_SNAKE}_owner"
+
+
+@pytest.mark.parametrize("case", ["sslmode-require-without-env", "percent-in-password"])
+def test_boot_migrate_profile_refuses_weak_owner_url(case: str) -> None:
+    """migrate 프로필: ENV 없이 sslmode=require(verify-full이 아님) · 사용자 정보에 `%` → 기동 실패 · 거부 이름 DATABASE_OWNER_URL ·
+    위생."""
+    if case == "sslmode-require-without-env":
+        overrides = _migrate_overrides("sslmode=require")
+    else:
+        password = f"{secrets.token_urlsafe(12)}%40{secrets.token_urlsafe(12)}"
+        overrides = _migrate_overrides(f"sslmode=verify-full&sslrootcert={PG_CA_FILE}", password)
+    assert_refused(boot(overrides, remove=_runtime_env_names()), "DATABASE_OWNER_URL")
+{%- if has_admin %}
+
+
+def test_boot_force_script_name_sets_absolute_static_url() -> None:
+    """env FORCE_SCRIPT_NAME=/{{ pod_name }} + ADMIN_HOST → ADMIN_SCRIPT_NAME = 접두 · STATIC_URL = 절대
+    /{{ pod_name }}/static/ · Django 전역 FORCE_SCRIPT_NAME None · 기동 직후 script prefix "/" · CSRF_TRUSTED_ORIGINS =
+    https://<ADMIN_HOST> / env 없음(래퍼) → ADMIN_SCRIPT_NAME 빈 값 · ADMIN_HOST 빈 값(존재만 — 유효) · CSRF_TRUSTED_ORIGINS 빈
+    목록."""
+    facts = boot_facts(boot({"FORCE_SCRIPT_NAME": ADMIN_PREFIX, "ADMIN_HOST": ADMIN_HOST_VALUE}))
+    observed = (facts["admin_script_name"], facts["static_url"], facts["force_script_name"], facts["script_prefix"])
+    assert observed == (ADMIN_PREFIX, f"{ADMIN_PREFIX}/static/", None, "/")
+    assert facts["csrf_trusted_origins"] == [f"https://{ADMIN_HOST_VALUE}"]
+    plain = boot_facts(boot())
+    assert (plain["admin_script_name"], plain["admin_host"], plain["csrf_trusted_origins"]) == ("", "", [])
+{%- endif %}
+
+
+def test_boot_dev_shape_passes_cluster_rules() -> None:
+    """클러스터 교차 규칙 양성: dev 모양(POD_NAMESPACE=jt-dev · ENV=dev · KAFKA_USERNAME=dev-{{ pod_name }} ·
+    dev_{{ pod_snake }}_app + verify-full · svc 이름 · https 팀 도메인 · *.svc 호스트) → 기동 통과 · 이름 조회 0(네트워크 0) · 위생."""
+    facts = boot_facts(boot(dev_shape_env()), network_zero=True)
+    assert (facts["profile"], facts["env"]) == ("runtime", "dev")
+    assert facts["allowed_hosts"] == [f"{POD_NAME}.jt-dev.svc"]
+    assert facts["db_user"] == f"dev_{POD_SNAKE}_app"
+
+
+def _prod_shape() -> dict[str, str]:
+    """dev 모양 위에 덮는 prod 값 — 클러스터 교차 규칙(ENV=prod · jt-prod · Kafka 사용자 = pod 이름 · DB 사용자 접두 없음 · svc 이름)."""
+    verify_full = f"sslmode=verify-full&sslrootcert={PG_CA_FILE}"
+    return {
+        "POD_NAMESPACE": "jt-prod",
+        "ENV": "prod",
+        "KAFKA_USERNAME": POD_NAME,
+        "DATABASE_URL": db_url(f"{POD_SNAKE}_app", POD_SNAKE, host="pg-main-rw.data.svc:5432", query=verify_full),
+        "ALLOWED_HOSTS": f"{POD_NAME}.jt-prod.svc",
+    }
+
+
+def test_boot_prod_shape_passes_cluster_rules() -> None:
+    """클러스터 교차 규칙 양성 — prod 모양(dev 모양 위에 POD_NAMESPACE=jt-prod · ENV=prod · KAFKA_USERNAME={{ pod_name }} ·
+    {{ pod_snake }}_app/{{ pod_snake }} + verify-full · {{ pod_name }}.jt-prod.svc) → 기동 통과 · 이름 조회 0 · 위생 · prod 토픽 접두 ""(prod
+    이벤트가 dev. 토픽으로 가지 않는다 — prod KafkaUser ACL은 <pod>. 접두만 연다) · Kafka 사용자 = pod 이름 · CA =
+    /etc/kafka/ca.crt · DB 사용자 = {{ pod_snake }}_app."""
+    env = dev_shape_env()
+    env.update(_prod_shape())
+    facts = boot_facts(boot(env), network_zero=True)
+    assert (facts["profile"], facts["env"]) == ("runtime", "prod")
+    assert facts["outbox_topic_prefix"] == ""
+    assert facts["kafka_sasl_username"] == POD_NAME
+    assert facts["kafka_ca_location"] == "/etc/kafka/ca.crt"
+    assert facts["db_user"] == f"{POD_SNAKE}_app"
+    assert facts["allowed_hosts"] == [f"{POD_NAME}.jt-prod.svc"]
+
+
+def _cluster_case(case: str) -> tuple[dict[str, str], tuple[str, ...]]:
+    env = dev_shape_env()
+    verify_full = f"sslmode=verify-full&sslrootcert={PG_CA_FILE}"
+    prod_db = db_url(f"{POD_SNAKE}_app", POD_SNAKE, host="pg-main-rw.data.svc:5432", query=verify_full)
+    prod_svc = f"{POD_NAME}.jt-prod.svc"
+    changes: dict[str, tuple[dict[str, str], tuple[str, ...]]] = {
+        "namespace-not-jt-env": ({"POD_NAMESPACE": "jt-prod", "ALLOWED_HOSTS": prod_svc}, ("POD_NAMESPACE",)),
+        "prod-with-dev-kafka-user": (
+            {"ENV": "prod", "POD_NAMESPACE": "jt-prod", "ALLOWED_HOSTS": prod_svc, "DATABASE_URL": prod_db},
+            ("KAFKA_USERNAME",),
+        ),
+        "db-user-without-dev-prefix": (
+            {"DATABASE_URL": prod_db.replace(f"/{POD_SNAKE}?", f"/dev_{POD_SNAKE}?")},
+            ("DATABASE_URL",),
+        ),
+        "svc-name-missing": ({"ALLOWED_HOSTS": "other-pod.jt-dev.svc"}, ("ALLOWED_HOSTS",)),
+        "test-env-in-cluster": ({"ENV": "test"}, ("ENV", "POD_NAMESPACE")),
+    }
+    overrides, names = changes[case]
+    env.update(overrides)
+    return env, names
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "namespace-not-jt-env",
+        "prod-with-dev-kafka-user",
+        "db-user-without-dev-prefix",
+        "svc-name-missing",
+        "test-env-in-cluster",
+    ],
+)
+def test_boot_refuses_cluster_cross_rule_violation(case: str) -> None:
+    """클러스터 교차 규칙 음성(dev 모양에서 하나만 바꾼다): POD_NAMESPACE ≠ jt-<ENV> · ENV=prod에 dev- Kafka 사용자 · dev에 dev_ 없는
+    DB 사용자 · ALLOWED_HOSTS에 <pod>.<ns>.svc 없음 · 클러스터 안 ENV=test → 기동 실패 · 거부 이름 정확히(그 규칙만) · 위생."""
+    env, names = _cluster_case(case)
+    assert_refused(boot(env), *names)

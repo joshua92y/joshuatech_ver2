@@ -1,0 +1,57 @@
+# {{ pod_name }} — Django pod generated from templates/django-pod (T072 · contracts/pod-template.md §생성 트리).
+# 독립 uv 프로젝트다(루트 워크스페이스 멤버가 아니다) — 잠금은 이 디렉터리의 uv.lock(copier _tasks: uv lock이 만들었다).
+# CI · 이미지는 uv sync --locked로 이 잠금을 쓴다. 의존을 바꾸면 이 디렉터리에서 uv lock을 다시 돌리고 uv.lock을 함께 커밋한다.
+# 시험: uv run --locked pytest -q(Docker 필요 — testcontainers) · 실패 출력 위생은 아래 addopts(규칙 django-pod.md §Tests).
+[project]
+name = "{{ pod_name }}"
+version = "0.0.0"
+description = {{ description | tojson }}
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "django>=6.1.3,<6.2",
+    # 정확 핀 — 판을 바꾸면 OpenAPI 스냅샷 갱신 절차(규칙 django-pod.md §OpenAPI snapshot refresh)를 따른다.
+    "django-ninja==1.7.0",
+    # 3.3.7은 회귀판이라 뺀다.
+    "psycopg[binary]>=3.3,!=3.3.7,<4",
+{%- if has_celery %}
+    "celery[redis]>=5.6.3,<5.7",
+{%- endif %}
+    "django-common",
+    "pydantic-settings>=2.16,<3",
+    "gunicorn>=26.2,<27",
+    "prometheus-client>=0.23,<1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9,<10",
+    "pytest-django>=4.14,<5",
+    "testcontainers[postgres]>=4.15,<5",
+    "django-migration-linter>=6,<7",
+    "pyyaml>=6,<7",
+]
+
+[tool.uv]
+package = false
+# 숙성 창 — 3일 안에 올라온 판은 잠금 후보에서 뺀다(공급망 · UD-2). uv.lock은 기간(exclude-newer-span)을 기록하므로
+# 날이 지나도 uv sync --locked가 깨지지 않는다(VD-T072-17). 창 안의 긴급 보안판은 exclude-newer-package로 그 패키지만 연다.
+exclude-newer = "3 days"
+
+[tool.uv.sources]
+django-common = { path = "../../packages/django-common", editable = true }
+
+[tool.pytest.ini_options]
+# 시험 래퍼 — 설정 env를 시험 자리값으로 덮어쓴 뒤 pod 설정을 적재한다(tests/settings.py).
+DJANGO_SETTINGS_MODULE = "tests.settings"
+testpaths = ["tests"]
+pythonpath = ["."]
+# --tb=short: 긴 트레이스백은 psycopg 접속 문자열(비밀번호)을 찍는다 · --show-capture=no: 실패 보고의 캡처 칸이 기동 시험이
+# 심은 비밀 · 감시 값을 찍지 않게 한다 · --ds=tests.settings: pytest-django는 옵션 > env > ini 순이라 ini만 두면 셸 env
+# DJANGO_SETTINGS_MODULE이 시험 래퍼를 비켜 간다. tests/conftest.py 가드가 python -O · 실패 출력을 넓히는 옵션 · 다른 설정 모듈로
+# 돈 실행을 시험 전에 거부한다(UsageError).
+addopts = ["--tb=short", "--show-capture=no", "--ds=tests.settings"]
+# DeprecationWarning을 오류로 바꾸는 범위는 자기 모듈뿐이다(의존 라이브러리의 경고로 스위트가 죽지 않게).
+filterwarnings = [
+    "error::DeprecationWarning:{{ pod_snake }}",
+    "error::DeprecationWarning:tests",
+]

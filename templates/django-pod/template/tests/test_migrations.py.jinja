@@ -1,0 +1,587 @@
+"""{{ pod_name }} 마이그레이션 시험(T072 D17 · D12 · D5 — 계약 §기본 테스트 5 · 「마이그레이션」 행 · 규칙 django-pod.md §Migrations).
+
+- makemigrations --check --dry-run: 모델과 마이그레이션 파일이 어긋나지 않는다(어긋나면 SystemExit 1 · 파일을 쓰지 않는다). 시험
+  래퍼는 django_migration_linter를 INSTALLED_APPS에 더하므로 makemigrations는 그 하위 클래스로 돈다 — --check · --dry-run 동작은
+  Django 그대로다(린트는 파일을 쓸 때만 붙는다).
+- lintmigrations(django-migration-linter — 파괴적 연산 검사 · CI 관문): 대상 = pod 패키지의 앱 라벨 전부({{ pod_snake }} · core —
+  시험 래퍼 MIGRATION_LINTER_OPTIONS include_apps · no_cache) · 오류 0(오류가 있으면 명령이 SystemExit 1) · core의
+  마이그레이션이 하나도 빠짐없이 판정되고 0001_app_role_grants는 OK(RunSQL 본문과 reverse_sql도 SQL 분석기를 거친다). 린터는
+  판정 줄을 명령 stdout이 아니라 sys.stdout에 print한다(capsys로 읽는다) · 마이그레이션 적용 상태를 DB에서 읽고 sqlmigrate를
+  부르므로 DB 마크가 필요하다.
+- migrate 프로필 하위 프로세스(PreSync migrate Job과 같은 꼴 — DJANGO_SETTINGS_MODULE={{ pod_snake }}.settings ·
+  JT_SETTINGS_PROFILE=migrate · ENV=test · DATABASE_OWNER_URL만 · 런타임 설정 키는 env에서 지운다 — SECRET_KEY · DRAGONFLY_URL
+  없음): `migrate core zero`가 0001_app_role_grants를 되돌리면(reverse_sql) app role의 표 권한 · 기본 권한이 사라지고,
+  `migrate --noinput`이 다시 적용하면 돌아온다 — 둘 다 종료 0. 같은 프로필의 기동 탐침은 django.setup() + ROOT_URLCONF import
+  뒤에도 celery를 import하지 않고 런타임 설정(DRAGONFLY_URL · KAFKA_* · AUTHENTIK_* …)을 정의하지 않는다(X7).
+- migrate Job 스크립트 실물 시험(T072 D17 · r2 E7 · X4 · X25 · 마지막 라운드 N1 · N2(2)): deploy/base/migrate-job.yaml을 pyyaml로 읽어
+  migrate 컨테이너의 `python -c` 스크립트를 이 venv의 인터프리터로 실제로 돈다(cwd = pod 루트 · env = 허용 목록 + Job 매니페스트 env +
+  심은 값만 — 셸 env를 물려주지 않는다 · 마감 env JT_DB_CONNECT_WAIT_SECONDS는 매니페스트처럼 두지 않는다 = 기본 120, 시험이 줄 때만).
+  (a) 시험 DB owner로 접속 · REVOKE CONNECT FROM PUBLIC · GRANT CONNECT TO <db>_app, <db>_owner가 끝난 뒤 하위 `manage.py migrate
+  --noinput`이 실패하면(JT_SETTINGS_PROFILE=bogus — 모르는 프로필) 스크립트 종료 코드 = 그 하위 프로세스를 같은 env로 따로 돈 종료
+  코드(≠ 0)이고, DB ACL의 CONNECT는 PUBLIC에서 빠지고 두 role에 있다(PUBLIC = 아무 권한도 받지 않은 새 role이 받는 권한 — 시험 세션에는
+  role을 만들 자격이 없어 PUBLIC 의사 role로 본다 · 끝에 PUBLIC CONNECT를 되돌린다) · 성공 경로(매니페스트 env + ENV=test) → 종료 0 ·
+  하위 migrate가 돈다 · 경계 적용 (b) 닫힌 포트 + 마감 8 s → 종료 1 · stdout = 재시도 줄 하나 이상 · stderr = 정확히 한 줄
+  `db_connect_failed <클래스>`(psycopg.OperationalError 계열 — Linux OperationalError · Windows psycopg는 거부된 접속을 connect_timeout 뒤
+  ConnectionTimeout으로 낸다 · 트레이스백 · 메시지 · 값 없음) · 심은 비밀번호가 출력에 없다 · URL 해석 실패 → stderr 한 줄
+  `db_url_invalid ValueError`(netloc · 비밀번호 없음) · 경계 SQL이 app role 없음으로 마감까지 실패 → 재시도 줄 · stderr 한 줄
+  `db_boundary_failed UndefinedObject`.
+"""
+
+from __future__ import annotations
+
+import io
+import json
+import os
+import re
+import secrets
+import socket
+import subprocess
+import sys
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+import pytest
+import yaml
+from django.conf import settings
+from django.core.management import call_command
+from django.db import connections
+from django.db.migrations.loader import MigrationLoader
+from psycopg import sql
+
+if TYPE_CHECKING:
+    from tests.conftest import PgInfo
+
+DB = pytest.mark.django_db(transaction=True, databases=["default", "owner"])
+
+POD_ROOT = Path(__file__).resolve().parents[1]
+POD_SNAKE = "{{ pod_snake }}"
+POD_SETTINGS = "{{ pod_snake }}.settings"
+POD_APP_LABEL = "core"  # pod 도메인 앱(마이그레이션 0001_app_role_grants) — 린터 대상(시험 래퍼 MIGRATION_LINTER_OPTIONS)
+GRANTS_MIGRATION = "0001_app_role_grants"
+DML = frozenset({"SELECT", "INSERT", "UPDATE", "DELETE"})
+# 기본 권한(pg_default_acl — owner가 나중에 만드는 객체): 표 r = arwd · 시퀀스 S = rU
+DEFAULT_GRANTS = frozenset(
+    {("r", "SELECT"), ("r", "INSERT"), ("r", "UPDATE"), ("r", "DELETE"), ("S", "USAGE"), ("S", "SELECT")}
+)
+ERRONEOUS_SUMMARY = re.compile(r"Erroneous migrations: 0/[0-9]+")
+BOOT_TIMEOUT_S = 120
+PROBE_MARK = "JT-MIGRATE-PROBE "
+SENSITIVE_ENV_MARKERS = ("PASSWORD", "SECRET", "TOKEN", "KEY", "URL", "DSN")
+# migrate 프로필이 정의하지 않는 런타임 설정(D5 — 읽는 코드는 runtime 분기 안이다)
+RUNTIME_ONLY_SETTINGS = (
+    "DRAGONFLY_URL",
+    "KAFKA_BOOTSTRAP_SERVERS",
+    "KAFKA_CLIENT_CONFIG",
+    "OUTBOX_TOPIC_PREFIX",
+    "AUTHENTIK_ISSUER",
+    "AUTHENTIK_JWKS_URL",
+    "ACCESS_TEAM_DOMAIN",
+    "ACCESS_EXPECTED_CN",
+)
+
+# migrate 프로필 기동 탐침 — SECRET_KEY는 읽지 않는다(migrate 프로필은 비워 두고 Django는 빈 값 접근을 오류로 낸다).
+_PROBE_BODY = """
+import json
+import sys
+from importlib import import_module
+
+import django
+
+django.setup()
+from django.conf import settings
+
+import_module(settings.ROOT_URLCONF)
+facts = {
+    "profile": settings.SETTINGS_PROFILE,
+    "celery_imported": "celery" in sys.modules,
+    "runtime_settings": sorted(name for name in RUNTIME_ONLY if hasattr(settings, name)),
+    "db_user": settings.DATABASES["default"]["USER"],
+}
+print(MARK + json.dumps(facts), flush=True)
+"""
+PROBE_SCRIPT = f"MARK = {PROBE_MARK!r}\nRUNTIME_ONLY = {RUNTIME_ONLY_SETTINGS!r}\n" + _PROBE_BODY
+
+# migrate Job 스크립트(deploy/base/migrate-job.yaml — D20 단계 1–4 · r2 E7)
+MIGRATE_JOB = POD_ROOT / "deploy" / "base" / "migrate-job.yaml"
+MIGRATE_CONTAINER = "migrate"
+WAIT_ENV = "JT_DB_CONNECT_WAIT_SECONDS"
+# (b)의 마감 — 재시도가 두 OS 모두에서 한 번 이상 생긴다(T072 마지막 라운드 N2(2) · 조각 ④ 리뷰 A-1): Linux는 거부된 접속이 곧바로
+# 끝나 재시도 셋(약 7 s) · Windows psycopg는 거부된 접속을 connect_timeout 5 s 뒤에 내 재시도 하나(약 11 s — 첫 시도 5 s + 지연 1 s가 8 안).
+CONNECT_FAILURE_WAIT = "8"
+# 경계 마감 시험의 마감 — 첫 시도(열린 시험 DB 접속 + 경계 SQL — 짧다) + 지연 1 s가 4 안이라 재시도가 한 번 이상 생긴 뒤 마감
+BOUNDARY_FAILURE_WAIT = "4"
+# 스크립트 줄(값 없음 — 예외 클래스 이름만). 접속 클래스는 psycopg.OperationalError 계열이다: Linux의 거부된 접속은
+# OperationalError, Windows의 psycopg(3.3.8 실측)는 거부된 접속을 connect_timeout 뒤 하위 클래스 ConnectionTimeout으로 낸다.
+CONNECT_FAILED_LINE = re.compile(r"db_connect_failed ([A-Za-z_][A-Za-z0-9_]*)")
+RETRY_LINE = re.compile(r"db_connect_retry ([A-Za-z_][A-Za-z0-9_]*) attempt=[0-9]+")
+URL_INVALID_LINE = re.compile(r"db_url_invalid ([A-Za-z_][A-Za-z0-9_]*)")
+BOUNDARY_FAILED_LINE = re.compile(r"db_boundary_failed ([A-Za-z_][A-Za-z0-9_]*)")
+BOUNDARY_RETRY_LINE = re.compile(r"db_boundary_retry ([A-Za-z_][A-Za-z0-9_]*) attempt=[0-9]+")
+PROFILE_REFUSED = re.compile(r"ImproperlyConfigured: 설정 오류: JT_SETTINGS_PROFILE$")
+# 하위 manage.py migrate가 돌았다는 표식(Django migrate 머리 줄 — 적용할 것이 있든 없든 찍는다 · 세션 DB가 이미 마이그레이션됐는지와 무관)
+MIGRATE_RAN = ("Operations to perform:", "Running migrations:")
+PUBLIC = "PUBLIC"
+# 경계 SQL이 app role 없음(UndefinedObject)으로 실패하는 DB — 시험 owner role이 PUBLIC CONNECT로 접속할 수 있고 <db>_app role은 없는
+# DB(클러스터 기본 DB postgres — 첫 배포에서 app role이 DB보다 늦게 생길 때와 같은 GRANT 실패). owner는 그 DB의 소유자가 아니라 REVOKE는
+# 경고만 내고 아무것도 거두지 않는다(PostgreSQL REVOKE — 권한이 조금이라도 있으면 진행하고 grant 옵션이 없는 권한은 경고).
+ROLELESS_DB = "postgres"
+# 스크립트 하위 프로세스가 물려받는 셸 env(허용 목록 — 인터프리터 · 임시 디렉터리 · 로캘만. 나머지는 심은 값이다)
+JOB_BASE_ENV = frozenset(
+    {
+        "PATH",
+        "SYSTEMROOT",
+        "SYSTEMDRIVE",
+        "WINDIR",
+        "COMSPEC",
+        "TEMP",
+        "TMP",
+        "TMPDIR",
+        "HOME",
+        "USERPROFILE",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "TZ",
+    }
+)
+
+
+# --- 도우미 --------------------------------------------------------------------------------------------------------------
+
+
+# URL 값의 비밀번호 자리(scheme://user:<비밀번호>@) — urlsplit이 읽지 못하는 URL(netloc 해석 실패)에서도 찾는다: 예외 문구가 netloc만
+# 실으면 URL 통째 가리기로는 비밀번호가 남는다(T072 마지막 라운드 N1 시험이 옛 스크립트에서 실측)
+_URL_PASSWORD_RE = re.compile(r"://[^/@:\s]*:([^@/\s]+)@")
+
+
+def _redact(text: str, env: Mapping[str, str]) -> str:
+    values: set[str] = set()
+    for name, value in env.items():
+        if value and len(value) >= 4 and any(marker in name.upper() for marker in SENSITIVE_ENV_MARKERS):
+            values.add(value)
+            values.update(password for password in _URL_PASSWORD_RE.findall(value) if len(password) >= 4)
+    for value in sorted(values, key=len, reverse=True):
+        text = text.replace(value, "***")
+    return text
+
+
+@dataclass(frozen=True)
+class CommandRun:
+    """하위 프로세스 결과 — 출력 · env는 repr에서 뺀다(단언 실패 출력에 실리지 않게)."""
+
+    returncode: int
+    stdout: str = field(repr=False)
+    stderr: str = field(repr=False)
+    env: dict[str, str] = field(repr=False)
+
+    def summary(self) -> str:
+        """종료 코드 + stderr 마지막 줄(env 비밀 값 가림 · 300자)."""
+        lines = [line for line in self.stderr.splitlines() if line.strip()]
+        last = _redact(lines[-1], self.env)[:300] if lines else ""
+        return f"종료 코드 {self.returncode} · stderr 마지막 줄: {last}"
+
+
+def _migrate_env(pg: PgInfo) -> dict[str, str]:
+    """migrate Job과 같은 env — 이 프로세스의 os.environ에서 pod 설정 키(시험 래퍼가 덮어쓴 필수 키 · 지운 선택 키)를 빼고
+    JT_SETTINGS_PROFILE=migrate · ENV=test · DATABASE_OWNER_URL(시험 DB owner) · DJANGO_SETTINGS_MODULE=pod 설정을 넣는다."""
+    removed = {name.upper() for name in (*settings.POD_SETTINGS_ENV, *settings.POD_SETTINGS_ENV_REMOVED)}
+    env = {name: value for name, value in os.environ.items() if name.upper() not in removed}
+    env.update(
+        JT_SETTINGS_PROFILE="migrate",
+        ENV="test",
+        DATABASE_OWNER_URL=str(pg.url("owner")),
+        DJANGO_SETTINGS_MODULE=POD_SETTINGS,
+        PYTHONIOENCODING="utf-8",
+    )
+    return env
+
+
+def _run(argv: list[str], env: dict[str, str]) -> CommandRun:
+    completed: subprocess.CompletedProcess[str] | None
+    try:
+        completed = subprocess.run(  # noqa: S603 — 인자 고정 · shell 없음 · 이 프로세스의 인터프리터
+            [sys.executable, *argv],
+            cwd=POD_ROOT,
+            env=env,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=BOOT_TIMEOUT_S,
+            check=False,
+            shell=False,
+        )
+    except subprocess.TimeoutExpired:
+        completed = None  # 실패는 except 밖에서 낸다(명령 줄 · 부분 출력이 연쇄 예외로 실리지 않게)
+    if completed is None:
+        pytest.fail(f"하위 프로세스가 {BOOT_TIMEOUT_S} s 안에 끝나지 않았다", pytrace=False)
+    return CommandRun(completed.returncode, completed.stdout, completed.stderr, env)
+
+
+def _app_table_privileges(pg: PgInfo, table: str) -> frozenset[str]:
+    held: set[str] = set()
+    with connections["owner"].cursor() as cursor:
+        for privilege in sorted(DML):
+            cursor.execute("SELECT has_table_privilege(%s, %s, %s)", [pg.app_user, f"public.{table}", privilege])
+            if cursor.fetchone()[0]:
+                held.add(privilege)
+    return frozenset(held)
+
+
+def _app_default_grants(pg: PgInfo) -> frozenset[tuple[str, str]]:
+    """pg_default_acl에서 app role이 받는 (객체 종류, 권한) 쌍."""
+    with connections["owner"].cursor() as cursor:
+        cursor.execute(
+            "SELECT d.defaclobjtype::text, a.privilege_type FROM pg_catalog.pg_default_acl d"
+            " CROSS JOIN LATERAL aclexplode(d.defaclacl) a"
+            " WHERE a.grantee = (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = %s)",
+            [pg.app_user],
+        )
+        return frozenset((objtype, privilege) for objtype, privilege in cursor.fetchall())
+
+
+def _grants_state(pg: PgInfo) -> dict[str, Any]:
+    return {
+        "outbox": _app_table_privileges(pg, "outbox"),
+        "rls_widget": _app_table_privileges(pg, "rls_widget"),
+        "django_migrations": _app_table_privileges(pg, "django_migrations"),
+        "default": _app_default_grants(pg),
+    }
+
+
+GRANTED = {
+    "outbox": DML,
+    "rls_widget": DML,
+    "django_migrations": frozenset({"SELECT"}),
+    "default": DEFAULT_GRANTS,
+}
+REVOKED: dict[str, Any] = {
+    "outbox": frozenset(),
+    "rls_widget": frozenset(),
+    "django_migrations": frozenset(),
+    "default": frozenset(),
+}
+
+
+def _job_script() -> str:
+    """deploy/base/migrate-job.yaml(pyyaml)의 Job 하나 · migrate 컨테이너 하나의 command + args = ["python", "-c", <스크립트>] — 그
+    스크립트(값이 없는 고정 문자열이라 실패 출력에 실려도 된다)."""
+    documents = [doc for doc in yaml.safe_load_all(MIGRATE_JOB.read_text(encoding="utf-8")) if doc is not None]
+    jobs = [doc for doc in documents if isinstance(doc, dict) and doc.get("kind") == "Job"]
+    assert len(jobs) == 1, f"migrate-job.yaml의 Job 문서 {len(jobs)}개(기대 1)"
+    containers = jobs[0]["spec"]["template"]["spec"]["containers"]
+    commands = [
+        [*container.get("command", []), *container.get("args", [])]
+        for container in containers
+        if container.get("name") == MIGRATE_CONTAINER
+    ]
+    assert len(commands) == 1, f"{MIGRATE_CONTAINER} 컨테이너 {len(commands)}개(기대 1)"
+    command = commands[0]
+    shape = [*command[:2], type(command[2]).__name__ if len(command) > 2 else None, len(command)]
+    assert shape == ["python", "-c", "str", 3], f"migrate 명령 꼴 {shape}(기대 python -c <스크립트>)"
+    return command[2]
+
+
+def _job_env(owner_url: str | None, **overrides: str) -> dict[str, str]:
+    """migrate Job 컨테이너 꼴의 하위 프로세스 env — 셸 env는 허용 목록(JOB_BASE_ENV)만 물려주고 DATABASE_OWNER_URL(<pod>-migrate — None이면
+    없음) · JT_SETTINGS_PROFILE=migrate(Job env) · DJANGO_SETTINGS_MODULE(이미지 ENV와 같은 값) + overrides. 마감 env
+    JT_DB_CONNECT_WAIT_SECONDS는 매니페스트처럼 두지 않는다(스크립트 기본 120 — T072 마지막 라운드 N2(2)) — 시험이 overrides로 줄 때만 있다."""
+    env = {name: value for name, value in os.environ.items() if name.upper() in JOB_BASE_ENV}
+    env.update(
+        JT_SETTINGS_PROFILE="migrate",
+        DJANGO_SETTINGS_MODULE=POD_SETTINGS,
+        PYTHONIOENCODING="utf-8",
+    )
+    if owner_url is not None:
+        env["DATABASE_OWNER_URL"] = owner_url
+    env.update(overrides)
+    return env
+
+
+def _connect_grantees(pg: PgInfo) -> frozenset[str]:
+    """시험 DB ACL(pg_database.datacl)에서 CONNECT를 받는 grantee — PUBLIC 의사 role은 'PUBLIC'(owner 연결로 읽는다)."""
+    with pg.connect("owner") as conn:
+        rows = conn.execute(
+            "SELECT CASE WHEN a.grantee = 0 THEN %s ELSE pg_catalog.pg_get_userbyid(a.grantee)::text END"
+            " FROM pg_catalog.pg_database d CROSS JOIN LATERAL pg_catalog.aclexplode(d.datacl) a"
+            " WHERE d.datname = %s AND a.privilege_type = 'CONNECT'",
+            [PUBLIC, pg.dbname],
+        ).fetchall()
+    return frozenset(row[0] for row in rows)
+
+
+def _public_can_connect(pg: PgInfo) -> bool:
+    """PUBLIC 의사 role(권한을 하나도 받지 않은 새 role이 받는 권한)이 시험 DB에 CONNECT할 수 있는가."""
+    with pg.connect("owner") as conn:
+        row = conn.execute("SELECT pg_catalog.has_database_privilege('public', %s, 'CONNECT')", [pg.dbname]).fetchone()
+    return bool(row and row[0])
+
+
+def _grant_public_connect(pg: PgInfo) -> None:
+    """PUBLIC CONNECT를 되돌린다(conftest가 만든 세션 DB 상태 — DB 소유자 owner로 · 멱등)."""
+    with pg.connect("owner") as conn:
+        conn.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO PUBLIC").format(sql.Identifier(pg.dbname)))
+
+
+def _closed_port() -> int:
+    """127.0.0.1의 빈 포트(잡았다 놓은 포트 — 그 사이 다른 프로세스가 잡을 확률은 무시한다)."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
+
+
+def _operational_error_names() -> frozenset[str]:
+    """psycopg.OperationalError와 그 하위 클래스 전부의 이름 — 스크립트의 재시도 경로(except psycopg.OperationalError)가 싣는 클래스
+    이름이다(그 밖의 예외는 다른 경로 — 즉시 실패)."""
+    import psycopg
+
+    names: set[str] = set()
+    pending: list[type] = [psycopg.OperationalError]
+    while pending:
+        cls = pending.pop()
+        if cls.__name__ not in names:
+            names.add(cls.__name__)
+            pending.extend(cls.__subclasses__())
+    return frozenset(names)
+
+
+def _line_class(pattern: re.Pattern[str], line: str) -> str | None:
+    """pattern에 통째로 맞는 줄이면 그 예외 클래스 이름(첫 무리), 아니면 None."""
+    match = pattern.fullmatch(line)
+    return match.group(1) if match else None
+
+
+# --- makemigrations · lintmigrations ----------------------------------------------------------------------------------
+
+
+@DB
+def test_makemigrations_check_detects_no_changes() -> None:
+    """모델과 마이그레이션 파일이 맞다 — makemigrations --check --dry-run이 SystemExit 없이 `No changes detected`."""
+    out = io.StringIO()
+    call_command("makemigrations", "--check", "--dry-run", stdout=out, stderr=io.StringIO())
+    assert out.getvalue().strip() == "No changes detected"
+
+
+@DB
+def test_lintmigrations_pod_apps_have_no_errors(capsys: pytest.CaptureFixture[str]) -> None:
+    """lintmigrations: SystemExit 없음(오류 0) · 요약 「Erroneous migrations: 0/N」 · pod 앱 core의 마이그레이션이 전부 판정됐고
+    (OK · WARNING · OK (ignored) 가운데 하나) 0001_app_role_grants는 OK."""
+    capsys.readouterr()
+    call_command("lintmigrations")
+    output = capsys.readouterr().out
+    lines = output.splitlines()
+    assert [line for line in lines if ERRONEOUS_SUMMARY.fullmatch(line)], "린터 요약에 「Erroneous migrations: 0/N」이 없다"
+    on_disk = MigrationLoader(None, ignore_no_migrations=True).disk_migrations
+    core_migrations = sorted(name for app_label, name in on_disk if app_label == POD_APP_LABEL)
+    assert GRANTS_MIGRATION in core_migrations
+    verdicts = {
+        name: line.split("... ", 1)[1]
+        for name in core_migrations
+        for line in lines
+        if line.startswith(f"({POD_APP_LABEL}, {name})... ")
+    }
+    assert sorted(verdicts) == core_migrations, "린터가 판정하지 않은 core 마이그레이션이 있다"
+    assert verdicts[GRANTS_MIGRATION] == "OK"
+    assert not [name for name, verdict in verdicts.items() if verdict.startswith("ERR")]
+
+
+def test_lintmigrations_covers_every_pod_app() -> None:
+    """린터 대상(시험 래퍼 MIGRATION_LINTER_OPTIONS include_apps) = pod 패키지의 앱 라벨 전부({{ pod_snake }} · core — pod가 앱을
+    더하면 그 라벨도) · 캐시 파일 없음 — pod 앱({{ pod_snake }})에 모델 · 마이그레이션이 생겨도 린트된다(T072 ② r2 H8 · A-8)."""
+    from django.apps import apps
+
+    pod_labels = sorted(
+        config.label
+        for config in apps.get_app_configs()
+        if config.name == POD_SNAKE or config.name.startswith(f"{POD_SNAKE}.")
+    )
+    options = settings.MIGRATION_LINTER_OPTIONS
+    assert {POD_SNAKE, POD_APP_LABEL} <= set(pod_labels)
+    assert sorted(options["include_apps"]) == pod_labels
+    assert options["no_cache"] is True
+
+
+# --- migrate 프로필(PreSync migrate Job과 같은 꼴) ---------------------------------------------------------------------------
+
+
+@DB
+def test_migrate_profile_reverses_and_reapplies_app_role_grants(pg: PgInfo) -> None:
+    """migrate 프로필 하위 프로세스(owner · SECRET_KEY · DRAGONFLY_URL 없음): `migrate core zero` 종료 0 → app role의 표 권한 ·
+    기본 권한이 사라진다(reverse_sql) → `migrate --noinput` 종료 0 · 0001_app_role_grants 적용 → 권한이 돌아온다. 중간에 실패해도
+    끝에 같은 마이그레이션을 다시 적용해 둔다(이 세션의 다른 시험이 쓰는 권한)."""
+    env = _migrate_env(pg)
+    assert not {"SECRET_KEY", "DRAGONFLY_URL", "DATABASE_URL"} & {name.upper() for name in env}
+    assert _grants_state(pg) == GRANTED
+    try:
+        unapplied = _run(["manage.py", "migrate", POD_APP_LABEL, "zero", "--noinput"], env)
+        assert unapplied.returncode == 0, unapplied.summary()
+        assert f"Unapplying {POD_APP_LABEL}.{GRANTS_MIGRATION}... OK" in unapplied.stdout
+        assert _grants_state(pg) == REVOKED
+        applied = _run(["manage.py", "migrate", "--noinput"], env)
+        assert applied.returncode == 0, applied.summary()
+        assert f"Applying {POD_APP_LABEL}.{GRANTS_MIGRATION}... OK" in applied.stdout
+    finally:
+        # 이미 적용돼 있으면 아무것도 하지 않는다(멱등) — 하위 프로세스가 중간에 실패한 경우만 되살린다.
+        call_command("migrate", POD_APP_LABEL, database="owner", verbosity=0)
+    assert _grants_state(pg) == GRANTED
+
+
+@DB
+def test_migrate_profile_boots_without_runtime_settings(pg: PgInfo) -> None:
+    """migrate 프로필 기동 탐침: django.setup() + ROOT_URLCONF import → 종료 0 · 프로필 migrate · celery 미import(브로커 설정은
+    runtime 분기 안) · 런타임 설정 0 · default 별칭 = owner role(DATABASE_OWNER_URL)."""
+    result = _run(["-c", PROBE_SCRIPT], _migrate_env(pg))
+    assert result.returncode == 0, result.summary()
+    marked = [line for line in result.stdout.splitlines() if line.startswith(PROBE_MARK)]
+    assert len(marked) == 1, f"탐침 결과 줄 수 {len(marked)} · {result.summary()}"
+    facts = json.loads(marked[0][len(PROBE_MARK) :])
+    assert facts["profile"] == "migrate"
+    assert facts["celery_imported"] is False
+    assert facts["runtime_settings"] == []
+    assert facts["db_user"] == pg.owner_user
+
+
+# --- migrate Job 스크립트(deploy/base/migrate-job.yaml — 실제로 돈다) ------------------------------------------------------
+
+
+def test_migrate_job_script_passes_migrate_exit_code_after_connect_boundary(pg: PgInfo) -> None:
+    """(a) 시험 DB owner로 접속 · CONNECT 경계 SQL이 끝난 뒤 하위 migrate가 실패한다(JT_SETTINGS_PROFILE=bogus): 스크립트 종료 코드 =
+    같은 env로 따로 돈 `manage.py migrate --noinput`의 종료 코드(≠ 0 · 거부 이름 JT_SETTINGS_PROFILE — X4 · sys.exit(subprocess.call)) ·
+    CONNECT를 받는 grantee {PUBLIC, <db>_owner, <db>_app} → {<db>_owner, <db>_app} · PUBLIC 의사 role의 CONNECT 거짓 · 출력에 owner
+    URL · 비밀번호 없음. 끝에 PUBLIC CONNECT를 되돌린다(이 세션의 다른 시험이 보는 DB 상태)."""
+    script = _job_script()
+    owner_url = str(pg.url("owner"))
+    env = _job_env(owner_url, JT_SETTINGS_PROFILE="bogus")
+    alone = _run(["manage.py", "migrate", "--noinput"], env)
+    alone_refused = any(PROFILE_REFUSED.search(line.strip()) for line in alone.stderr.splitlines())
+    assert alone.returncode != 0, alone.summary()
+    assert alone_refused, alone.summary()
+    before = _connect_grantees(pg)
+    assert before == {PUBLIC, pg.owner_user, pg.app_user}  # 회수가 보이는 출발점(PUBLIC 기본 CONNECT + conftest GRANT 둘)
+    try:
+        result = _run(["-c", script], env)
+        after = _connect_grantees(pg)
+        public_after = _public_can_connect(pg)
+    finally:
+        _grant_public_connect(pg)
+    script_refused = any(PROFILE_REFUSED.search(line.strip()) for line in result.stderr.splitlines())
+    output = result.stdout + result.stderr
+    leaked = owner_url in output or pg.owner_password in output
+    assert result.returncode == alone.returncode, result.summary()
+    assert script_refused, result.summary()
+    assert not leaked, "스크립트 출력에 owner URL · 비밀번호가 있다"
+    assert after == {pg.owner_user, pg.app_user}
+    assert public_after is False
+    assert _public_can_connect(pg) is True  # 되돌림 확인
+
+
+def test_migrate_job_script_succeeds_with_manifest_env(pg: PgInfo) -> None:
+    """(a) 성공 경로(T072 마지막 라운드 N2(2) · 조각 ④ 리뷰 A-1 — 상수 종료 1 · 기본 마감 무효화 변이를 잡는다): Job 매니페스트 env 그대로
+    (JT_SETTINGS_PROFILE=migrate · JT_DB_CONNECT_WAIT_SECONDS 없음 = 스크립트 기본 120) + 시험 DB owner URL + ENV=test(시험 DB는 TLS require다 —
+    운영 Job의 verify-full + /etc/pg/ca.crt는 이 호스트에 없다) → 스크립트 종료 0 · 하위 migrate가 돌았다(Django migrate 머리 줄 둘 — 세션
+    DB가 이미 마이그레이션됐는지와 무관하다) · CONNECT 경계 적용(PUBLIC 회수 · <db>_owner · <db>_app만) · 스크립트 줄(db_*) 0 · 출력에 owner
+    URL · 비밀번호 없음. 끝에 PUBLIC CONNECT를 되돌린다(이 세션의 다른 시험이 보는 DB 상태)."""
+    script = _job_script()
+    owner_url = str(pg.url("owner"))
+    env = _job_env(owner_url, ENV="test")
+    manifest_wait = WAIT_ENV in env
+    assert not manifest_wait, f"{WAIT_ENV}가 env에 있다(매니페스트에는 없다 — 기본 120을 시험한다)"
+    before = _connect_grantees(pg)
+    assert before == {PUBLIC, pg.owner_user, pg.app_user}  # 회수가 보이는 출발점(PUBLIC 기본 CONNECT + conftest GRANT 둘)
+    try:
+        result = _run(["-c", script], env)
+        after = _connect_grantees(pg)
+        public_after = _public_can_connect(pg)
+    finally:
+        _grant_public_connect(pg)
+    output = result.stdout + result.stderr
+    leaked = owner_url in output or pg.owner_password in output
+    script_lines = [line for line in output.splitlines() if line.startswith("db_")]
+    migrated = all(marker in result.stdout for marker in MIGRATE_RAN)
+    assert result.returncode == 0, result.summary()
+    assert migrated, f"하위 migrate 출력에 머리 줄 {MIGRATE_RAN}가 없다 — {result.summary()}"
+    assert script_lines == [], f"스크립트 줄 {len(script_lines)}개(기대 0 — 재시도 · 실패 없음)"
+    assert not leaked, "스크립트 출력에 owner URL · 비밀번호가 있다"
+    assert after == {pg.owner_user, pg.app_user}
+    assert public_after is False
+    assert _public_can_connect(pg) is True  # 되돌림 확인
+
+
+def test_migrate_job_script_connect_failure_is_one_stderr_line() -> None:
+    """(b) 닫힌 포트(127.0.0.1의 빈 포트) + JT_DB_CONNECT_WAIT_SECONDS=8(CONNECT_FAILURE_WAIT — 두 OS 모두에서 재시도가 한 번 이상 생기는 마감 ·
+    T072 마지막 라운드 N2(2)): 종료 1 · stdout = 재시도 줄(`db_connect_retry <클래스> attempt=N`) 하나 이상뿐 · stderr = 정확히 한 줄
+    `db_connect_failed <클래스>`(클래스 = psycopg.OperationalError 계열 — 재시도 경로의 마감 · Linux는 OperationalError · Windows psycopg는
+    ConnectionTimeout · 트레이스백 · 예외 메시지 · 값 없음 — X25) · 출력에 심은 비밀번호 · URL 없음. 접속이 실패하는 경로라 DB가 필요 없다."""
+    script = _job_script()
+    password = secrets.token_urlsafe(24)
+    owner_url = f"postgresql://{POD_SNAKE}_owner:{password}@127.0.0.1:{_closed_port()}/{POD_SNAKE}?sslmode=require"
+    result = _run(["-c", script], _job_env(owner_url, **{WAIT_ENV: CONNECT_FAILURE_WAIT}))
+    family = _operational_error_names()
+    stderr_lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
+    stdout_lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    failed = [_line_class(CONNECT_FAILED_LINE, line) for line in stderr_lines]
+    retried = [_line_class(RETRY_LINE, line) for line in stdout_lines]
+    one_line = len(failed) == 1 and failed[0] in family
+    retries_only = len(retried) >= 1 and all(name in family for name in retried)
+    output = result.stdout + result.stderr
+    leaked = password in output or owner_url in output
+    assert result.returncode == 1, result.summary()
+    assert one_line, f"stderr {len(stderr_lines)}줄(기대 정확히 한 줄 db_connect_failed <OperationalError 계열>) — {result.summary()}"
+    assert retries_only, (
+        f"stdout {len(stdout_lines)}줄(기대 재시도 줄 db_connect_retry <OperationalError 계열> attempt=N 하나 이상뿐 — 마감"
+        f" {CONNECT_FAILURE_WAIT} s)"
+    )
+    assert not leaked, "스크립트 출력에 심은 비밀번호 · URL이 있다"
+
+
+def test_migrate_job_script_url_failure_is_one_stderr_line() -> None:
+    """DATABASE_OWNER_URL 해석 실패(T072 마지막 라운드 N1 · N2(2)): netloc의 비ASCII 글자가 NFKC로 '/'가 되는 owner URL(Python urlsplit이
+    netloc 전체 — 심은 비밀번호 포함 — 를 실은 ValueError를 낸다) → 접속 전에 종료 1 · stderr = 정확히 한 줄 `db_url_invalid ValueError` ·
+    stdout 없음 · 출력에 심은 비밀번호 · netloc · 트레이스백 없음."""
+    script = _job_script()
+    password = secrets.token_urlsafe(24)
+    netloc = f"{POD_SNAKE}_owner:{password}{chr(0xFF0F)}x@127.0.0.1:{_closed_port()}"
+    owner_url = f"postgresql://{netloc}/{POD_SNAKE}?sslmode=require"
+    result = _run(["-c", script], _job_env(owner_url))
+    stderr_lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
+    failed = [_line_class(URL_INVALID_LINE, line) for line in stderr_lines]
+    output = result.stdout + result.stderr
+    leaked = password in output or netloc in output or "Traceback" in output
+    quiet = result.stdout.strip() == ""
+    assert result.returncode == 1, result.summary()
+    assert failed == ["ValueError"], f"stderr {len(stderr_lines)}줄(기대 정확히 한 줄 db_url_invalid ValueError) — {result.summary()}"
+    assert quiet, "stdout에 줄이 있다(URL 해석 실패는 접속 전이다)"
+    assert not leaked, "스크립트 출력에 심은 비밀번호 · netloc · 트레이스백이 있다"
+
+
+def test_migrate_job_script_boundary_failure_is_one_stderr_line(pg: PgInfo) -> None:
+    """CONNECT 경계 SQL 실패(T072 마지막 라운드 N1 · N2(2)): 시험 owner로 <db>_app role이 없는 DB(ROLELESS_DB — 첫 배포에서 app role이 DB보다
+    늦게 생길 때와 같은 GRANT 실패 · 실제 psycopg가 UndefinedObject를 낸다)에 접속 + 마감 4 s(BOUNDARY_FAILURE_WAIT) → 다시 접속해 경계를
+    재시도(stdout `db_boundary_retry UndefinedObject attempt=N` 하나 이상) → 마감 뒤 종료 1 · stderr = 정확히 한 줄 `db_boundary_failed
+    UndefinedObject` · 하위 migrate 없음 · 출력에 owner URL · 비밀번호 없음 · 시험 DB의 CONNECT 경계는 그대로(다른 DB에 접속했다)."""
+    script = _job_script()
+    owner_url = str(pg.url("owner")).replace(f"/{pg.dbname}?", f"/{ROLELESS_DB}?", 1)
+    before = _connect_grantees(pg)
+    try:
+        result = _run(["-c", script], _job_env(owner_url, **{WAIT_ENV: BOUNDARY_FAILURE_WAIT}))
+    finally:
+        _grant_public_connect(pg)  # 시험 DB는 건드리지 않는다 — 혹시 바뀌었으면 세션 상태로 되돌린다(멱등)
+    after = _connect_grantees(pg)
+    stderr_lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
+    stdout_lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    failed = [_line_class(BOUNDARY_FAILED_LINE, line) for line in stderr_lines]
+    retried = [_line_class(BOUNDARY_RETRY_LINE, line) for line in stdout_lines]
+    output = result.stdout + result.stderr
+    leaked = owner_url in output or pg.owner_password in output
+    migrated = any(marker in output for marker in MIGRATE_RAN)
+    assert result.returncode == 1, result.summary()
+    assert failed == ["UndefinedObject"], (
+        f"stderr {len(stderr_lines)}줄(기대 정확히 한 줄 db_boundary_failed UndefinedObject) — {result.summary()}"
+    )
+    assert len(retried) >= 1 and set(retried) == {"UndefinedObject"}, (
+        f"stdout {len(stdout_lines)}줄(기대 재시도 줄 db_boundary_retry UndefinedObject attempt=N 하나 이상뿐)"
+    )
+    assert not migrated, "경계 실패 뒤 하위 migrate가 돌았다"
+    assert not leaked, "스크립트 출력에 owner URL · 비밀번호가 있다"
+    assert after == before

@@ -1,0 +1,531 @@
+"""{{ pod_name }} 시험 공용 픽스처(T072 D16 — django-common tests/conftest.py를 pod 이름으로 매개화해 옮겼다 · import하지 않는다).
+
+autouse 픽스처는 없다 — 시험이 필요한 것만 요청한다. 비밀(비밀번호 · 자격 URL)은 세션마다 secrets.token_urlsafe로 만들고 출력하지
+않는다(tests._secret.Secret — repr 가림 · 데이터클래스 repr 제외).
+
+- 시험 실행 위생(T072 ② r2 H9 · H12): 도우미 모듈(tests._boot · _problem · _outbox_fakes · _jwt · _kafka)을 단언 재작성에 등록한다
+  (import 앞 — -O에서도 단언이 남는다) · pytest_configure 가드가 python -O · PYTHONOPTIMIZE · short가 아닌 --tb · -l · no가 아닌
+  --show-capture · --full-trace · tests.settings가 아닌 설정 모듈로 돈 실행을 시험 전에 UsageError로 멈춘다(조건 이름만).
+
+- `pg`(세션): tests/docker/pg-tls(TLS 전용 PostgreSQL 18.6 · hostssl만 — 평문 거부) 이미지를 빌드해(태그 jt-{{ pod_name }}-pg-tls:18.6
+  · 세션이 끝나도 남긴다 — 같은 이미지를 쓰는 동시 세션의 삭제 충돌을 피한다) 띄우고 DB `{{ pod_snake }}`와 role 둘을 만든다 —
+  `{{ pod_snake }}_owner`(LOGIN BYPASSRLS · DB 소유자 · 마이그레이션 · 시드 전용) ·
+  `{{ pod_snake }}_app`(LOGIN NOBYPASSRLS · 런타임). CONNECT는 둘 다 · 멤버십 없음 · **기본 권한을 주지 않는다** — app role의 표 ·
+  시퀀스 권한은 pod 마이그레이션 core/0001_app_role_grants가 준다(시험이 그 경로를 증명한다). superuser 자격은 이 픽스처 안에서만 쓴다.
+- `django_db_modify_db_settings` · `django_db_setup`(pytest-django 재정의): 시험 DB(test_*)를 만들지 않고 컨테이너의 DB에 owner 별칭으로
+  migrate만 한다(default = app role · TEST.MIRROR owner — tests/settings.py). DB 마크는 databases=["default", "owner"]다.
+- `kafka`(세션): KRaft 단일 노드 Kafka(cp-kafka 8.0.0 · PLAINTEXT · 자격 없음)의 bootstrap `host:port`. `kafka_settings`(세션)는 그
+  주소를 Django 설정 KAFKA_BOOTSTRAP_SERVERS에 채운다(실 Kafka로 릴레이하는 시험만 요청한다).
+- `dragonfly`(세션): Dragonfly v1.40.1(digest 핀) + 기동 뒤 `ACL SETUSER`(운영 aclfile과 같은 규칙 문자열) — admin(전 키) ·
+  `{{ pod_name }}`(resetchannels %R~revoked:* ~{{ pod_name }}:* +@all — 운영 pod 사용자) · default off. 속성 host · port · admin_url ·
+  pod_url(Secret). `dragonfly_clean`(함수)은 admin으로 FLUSHALL.
+- `jwks_server`(세션): 127.0.0.1 임시 포트의 로컬 키 서버 — Authentik JWKS(tests._jwt.JWKS_PATH)와 Cloudflare Access certs
+  (/cdn-cgi/access/certs)를 서빙하고 경로별 GET 수(hits)를 센다. 속성 base_url · jwks_url · certs_url · authentik_key · access_key.
+- `auth_settings`(세션 · 요청할 때만): Django 설정 AUTHENTIK_JWKS_URL · ACCESS_TEAM_DOMAIN을 로컬 키 서버로, DRAGONFLY_URL을
+  pod 사용자로 바꾼다(세션 끝에 되돌린다). 그 밖의 인증 설정은 래퍼 자리값(ACCESS_AUD_M2M · ACCESS_EXPECTED_CN · AUTHENTIK_ISSUER
+  · AUTHENTIK_AUDIENCE = pod 이름) — tests._jwt가 같은 값으로 토큰을 만든다.
+- `log_sink`(세션) · `log_lines`(함수): configure_logging(stream=StringIO)을 세션에 한 번 걸고(PodConfig.ready가 건 stdout 핸들러를
+  바꾼다) 읽기 객체 LogLines를 준다 — 부를 때마다 새 줄을 JSON 객체 목록으로(한 줄 = 한 JSON 객체가 아니면 AssertionError).
+- `otel`(함수): pod MIDDLEWARE의 새 목록에 configure_otel(span_exporter=InMemorySpanExporter())로 OTel 계측을 건다(샘플러 env =
+  계약 값 parentbased_traceidratio 0.1 — span을 보려면 sampled traceparent를 보낸다) · 끝에 uninstrument · shutdown.
+
+Windows: testcontainers가 돌려주는 호스트를 127.0.0.1로 고정한다(아래 — Docker Desktop은 게시 포트를 IPv4에만 연다).
+"""
+
+from __future__ import annotations
+
+import io
+import json
+import os
+import secrets
+import sys
+import threading
+from collections.abc import Iterator
+from dataclasses import dataclass, field
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Literal
+
+import psycopg
+import pytest
+import redis
+from psycopg import sql
+
+# 도우미 모듈의 plain assert도 pytest 단언 재작성에 맡긴다(T072 ② r2 H12 · B-4) — 시험 모듈(test_*.py)이 아니라 재작성되지 않으면
+# python -O · PYTHONOPTIMIZE가 기동 거부 · 위생 · 문제 응답 단언을 지워 시험이 공허하게 통과한다(재작성한 단언은 명시 raise라 -O에도
+# 남는다). 도우미가 import되기 전(아래 tests._jwt import 앞)에 불러야 한다.
+pytest.register_assert_rewrite("tests._boot", "tests._problem", "tests._outbox_fakes", "tests._jwt", "tests._kafka")
+
+# Windows Docker Desktop은 게시 포트를 IPv4(0.0.0.0)에만 열고 `localhost`는 ::1이 먼저 풀린다 — psycopg · librdkafka · redis-py가
+# ::1에서 멈춘다. testcontainers.core.config가 import 시점에 이 env를 읽으므로 그 import보다 앞에 둔다(운영자가 env를 직접 주면 그
+# 값이 우선).
+if sys.platform == "win32":
+    os.environ.setdefault("TESTCONTAINERS_HOST_OVERRIDE", "127.0.0.1")
+
+from testcontainers.community.kafka import KafkaContainer  # noqa: E402
+from testcontainers.community.postgres import PostgresContainer  # noqa: E402
+from testcontainers.community.redis import RedisContainer  # noqa: E402
+from testcontainers.core.image import DockerImage  # noqa: E402
+
+from tests._jwt import ACCESS_KID, AUTHENTIK_KID, CERTS_PATH, JWKS_PATH, make_rsa_key, to_jwk  # noqa: E402
+from tests._secret import Secret  # noqa: E402
+
+if TYPE_CHECKING:
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+    from pytest_django import DjangoDbBlocker
+    from pytest_django.fixtures import SettingsWrapper
+
+POD_NAME = "{{ pod_name }}"
+POD_SNAKE = "{{ pod_snake }}"
+
+# --- 시험 실행 위생 가드(T072 ② r2 H9 · H12 — B-1 · B-4) ----------------------------------------------------------------------
+
+WRAPPER_SETTINGS = "tests.settings"
+RUN_GUARD_PREFIX = "생성물 시험 실행 위생 위반: "
+
+
+def run_guard_problems(config: pytest.Config) -> list[str]:
+    """이 pytest 실행이 어긴 위생 조건의 이름(값 없음) — python -O · PYTHONOPTIMIZE(재작성 밖 assert가 사라진다) · short가 아닌
+    --tb · -l/--showlocals · no가 아닌 --show-capture · --full-trace(실패 출력이 접속 문자열 · 심은 비밀을 싣는다 — --full-trace는
+    --tb를 long으로 바꾼다) · tests.settings가 아닌 설정 모듈(셸 env DJANGO_SETTINGS_MODULE · --ds가 시험 래퍼를 비켜 가면 셸의 실제
+    설정이 pod 설정이 된다 — pytest-django를 끈 실행도 여기 걸린다). 명령줄 · PYTEST_ADDOPTS · -o로 들어온 값 모두 본다."""
+    from django.conf import settings
+
+    problems: list[str] = []
+    if sys.flags.optimize:
+        problems.append("PYTHONOPTIMIZE(-O)")
+    if config.getoption("tbstyle", "auto") != "short":
+        problems.append("--tb")
+    if config.getoption("showlocals", False):
+        problems.append("--showlocals(-l)")
+    if config.getoption("showcapture", "all") != "no":
+        problems.append("--show-capture")
+    if config.getoption("fulltrace", False):
+        problems.append("--full-trace")
+    if (settings.SETTINGS_MODULE if settings.configured else None) != WRAPPER_SETTINGS:
+        problems.append("DJANGO_SETTINGS_MODULE(--ds)")
+    return problems
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """시험 실행 위생 가드 — 어긴 조건이 있으면 시험을 모으기 전에 UsageError(종료 4 · 조건 이름만). pytest-django는 이 훅보다 먼저
+    (pytest_load_initial_conftests) 설정을 적재한다."""
+    problems = run_guard_problems(config)
+    if problems:
+        raise pytest.UsageError(
+            RUN_GUARD_PREFIX
+            + " · ".join(problems)
+            + " — pyproject addopts(--tb=short · --show-capture=no · --ds=tests.settings)를 넓히거나 덮지 말고 python -O 없이"
+            " 돈다(README 「시험」)"
+        )
+
+
+# --- PostgreSQL(TLS 전용) -------------------------------------------------------------------------------------------------
+
+PG_TLS_CONTEXT = Path(__file__).resolve().parent / "docker" / "pg-tls"
+PG_TLS_TAG = "jt-{{ pod_name }}-pg-tls:18.6"
+PG_SUPERUSER = "postgres"
+PG_DB = POD_SNAKE
+OWNER_ROLE = f"{POD_SNAKE}_owner"
+APP_ROLE = f"{POD_SNAKE}_app"
+CONNECT_TIMEOUT_S = 10
+
+
+@dataclass(frozen=True)
+class PgInfo:
+    """컨테이너 접속 정보 — 비밀번호는 repr에서 뺀다(실패 출력에 남지 않게)."""
+
+    host: str
+    port: int
+    dbname: str
+    owner_user: str
+    app_user: str
+    owner_password: str = field(repr=False)
+    app_password: str = field(repr=False)
+
+    def connect(self, role: Literal["owner", "app"], *, sslmode: str = "require") -> psycopg.Connection[Any]:
+        """role로 시험 DB에 접속한다(기본 sslmode=require)."""
+        user, password = {
+            "owner": (self.owner_user, self.owner_password),
+            "app": (self.app_user, self.app_password),
+        }[role]
+        return psycopg.connect(
+            host=self.host,
+            port=self.port,
+            dbname=self.dbname,
+            user=user,
+            password=password,
+            sslmode=sslmode,
+            connect_timeout=CONNECT_TIMEOUT_S,
+        )
+
+    def url(self, role: Literal["owner", "app"], *, sslmode: str = "require") -> Secret:
+        """role의 postgresql URL(Secret) — 기동 하위 프로세스에 DATABASE_URL · DATABASE_OWNER_URL로 넘길 때 쓴다(token_urlsafe
+        비밀번호는 URL 인코딩이 필요 없다)."""
+        user, password = (self.owner_user, self.owner_password) if role == "owner" else (self.app_user, self.app_password)
+        return Secret(f"postgresql://{user}:{password}@{self.host}:{self.port}/{self.dbname}?sslmode={sslmode}")
+
+
+def _redacted(text: str, *values: str) -> str:
+    for value in values:
+        text = text.replace(value, "***")
+    return text
+
+
+def _bootstrap_roles(info: PgInfo, superuser_password: str) -> None:
+    """superuser로 owner/app role을 만든다 — 기본 권한(DEFAULT PRIVILEGES)과 멤버십은 주지 않는다(GRANT 마이그레이션이 증명한다).
+
+    CREATE ROLE … PASSWORD는 유틸리티 문이라 서버 쪽 바인드 파라미터를 받지 않는다 → psycopg.sql.Literal로 클라이언트에서 묶는다.
+    """
+    owner, app, db = sql.Identifier(OWNER_ROLE), sql.Identifier(APP_ROLE), sql.Identifier(PG_DB)
+    statements = (
+        sql.SQL("CREATE ROLE {} LOGIN BYPASSRLS PASSWORD {}").format(owner, sql.Literal(info.owner_password)),
+        sql.SQL("CREATE ROLE {} LOGIN NOBYPASSRLS PASSWORD {}").format(app, sql.Literal(info.app_password)),
+        sql.SQL("ALTER DATABASE {} OWNER TO {}").format(db, owner),
+        sql.SQL("GRANT CONNECT ON DATABASE {} TO {}, {}").format(db, owner, app),
+    )
+    with psycopg.connect(
+        host=info.host,
+        port=info.port,
+        dbname=PG_DB,
+        user=PG_SUPERUSER,
+        password=superuser_password,
+        sslmode="require",
+        connect_timeout=CONNECT_TIMEOUT_S,
+        autocommit=True,
+    ) as conn:
+        for statement in statements:
+            conn.execute(statement)
+
+
+@pytest.fixture(scope="session")
+def pg() -> Iterator[PgInfo]:
+    """TLS 전용 PostgreSQL 18.6 컨테이너 + owner/app role(세션 1회 · 이미지 빌드도 세션 1회 — 빌드 캐시로 빠르다).
+
+    시험 이미지는 세션이 끝나도 지우지 않는다(clean_up=False · T072 ② r2 H11 · B-3): testcontainers의 정리는 이미지 ID로 force
+    삭제라, 같은 이미지 ID를 쓰는 다른 세션(같은 태그의 다른 생성물 · 하네스 gen-5 · 같은 Dockerfile을 빌드 캐시로 공유하는
+    django-common 시험)이 그 이미지로 PG를 돌리는 중이면 teardown ERROR가 되거나(쓰는 중인 이미지는 force여도 거부) 빌드와 기동
+    사이의 상대 세션에서 태그를 지운다. 남은 이미지는 다음 세션의 빌드(캐시)가 같은 태그로 덮는다(작은 로컬 시험 이미지 —
+    레지스트리에 올리지 않는다)."""
+    superuser_password = secrets.token_urlsafe(24)
+    with DockerImage(path=PG_TLS_CONTEXT, tag=PG_TLS_TAG, clean_up=False):
+        container = PostgresContainer(image=PG_TLS_TAG, username=PG_SUPERUSER, password=superuser_password, dbname=PG_DB)
+        try:
+            failure: str | None = None
+            try:
+                container.start()
+            except Exception as exc:  # noqa: BLE001 — 대기 전략의 시간 초과 메시지는 PGPASSWORD가 든 명령을 싣는다
+                failure = _redacted(f"PostgreSQL 시험 컨테이너 기동 실패: {type(exc).__name__}: {exc}", superuser_password)
+            if failure is not None:
+                raise RuntimeError(failure)
+            info = PgInfo(
+                host=container.get_container_host_ip(),
+                port=int(container.get_exposed_port(5432)),
+                dbname=PG_DB,
+                owner_user=OWNER_ROLE,
+                app_user=APP_ROLE,
+                owner_password=secrets.token_urlsafe(24),
+                app_password=secrets.token_urlsafe(24),
+            )
+            _bootstrap_roles(info, superuser_password)
+            yield info
+        finally:
+            container.stop()
+
+
+@pytest.fixture(scope="session")
+def django_db_modify_db_settings(pg: PgInfo) -> None:
+    """pytest-django 재정의: 컨테이너 접속 정보를 settings.DATABASES에 채운다(default = app · owner = owner)."""
+    from django.conf import settings
+
+    common = {"HOST": pg.host, "PORT": str(pg.port), "NAME": pg.dbname}
+    settings.DATABASES["default"].update(common, USER=pg.app_user, PASSWORD=pg.app_password)
+    settings.DATABASES["owner"].update(common, USER=pg.owner_user, PASSWORD=pg.owner_password)
+
+
+@pytest.fixture(scope="session")
+def django_db_setup(django_db_modify_db_settings: None, django_db_blocker: DjangoDbBlocker) -> None:
+    """pytest-django 재정의: 시험 DB(test_*)를 만들지 않고 컨테이너 DB에 owner 별칭으로 migrate만 한다(core/0001_app_role_grants가
+    app role 권한을 준다). 컨테이너가 세션과 함께 사라지므로 teardown은 없다."""
+    from django.core.management import call_command
+
+    with django_db_blocker.unblock():
+        call_command("migrate", database="owner", verbosity=0)
+
+
+# --- Kafka(KRaft) ----------------------------------------------------------------------------------------------------------
+
+# testcontainers KafkaContainer.with_kraft()가 이미지 태그에서 판(7.0.0 이상인지)을 읽는다 → digest 핀을 쓸 수 없어 태그로 고정한다.
+# 대조용 인덱스 digest(django-common 실측): sha256:9cdc8119cb39c45f0efa6da8e2220058020c7433e3ba3a3ce11a8006a18cb336
+KAFKA_IMAGE = "confluentinc/cp-kafka:8.0.0"
+KAFKA_START_TIMEOUT_S = 120
+
+
+@pytest.fixture(scope="session")
+def kafka() -> Iterator[str]:
+    """KRaft 단일 노드 Kafka(PLAINTEXT · 자격 없음 · 세션 1회)의 bootstrap `host:port`. stop()은 익명 볼륨도 지운다."""
+    container = KafkaContainer(KAFKA_IMAGE).with_kraft()
+    try:
+        container.start(timeout=KAFKA_START_TIMEOUT_S)
+        yield container.get_bootstrap_server()
+    finally:
+        container.stop()
+
+
+@pytest.fixture(scope="session")
+def kafka_settings(kafka: str) -> Iterator[None]:
+    """Django 설정 KAFKA_BOOTSTRAP_SERVERS를 시험 브로커 주소로 채운다(세션 · 요청할 때만 · 끝에 되돌린다)."""
+    from django.conf import settings
+
+    previous = settings.KAFKA_BOOTSTRAP_SERVERS
+    settings.KAFKA_BOOTSTRAP_SERVERS = kafka
+    try:
+        yield
+    finally:
+        settings.KAFKA_BOOTSTRAP_SERVERS = previous
+
+
+# --- Dragonfly(거부 목록 · Celery 브로커) -----------------------------------------------------------------------------------
+
+# 태그 v1.40.1과 같은 OCI 인덱스 digest(django-common 실측). 스레드 2 · maxmemory 512 MiB(작은 호스트에서도 기동한다).
+DRAGONFLY_IMAGE = (
+    "ghcr.io/dragonflydb/dragonfly@sha256:ebf3c6c213e82fb51b4521660cca13f06f3421dc5b1ed14f2f474c50b5e29986"
+)
+DRAGONFLY_COMMAND = "--proactor_threads=2 --maxmemory=512mb"
+DRAGONFLY_PORT = 6379
+# 기동 뒤 ACL SETUSER 규칙 — 운영 aclfile(platform/dragonfly)과 같은 규칙 문자열(contracts/denylist.md §ACL). 사용자마다 `on >비밀번호`를
+# 앞에 붙인다.
+DRAGONFLY_USERS: dict[str, tuple[str, ...]] = {
+    "admin": ("~*", "+@all"),
+    POD_NAME: ("resetchannels", "%R~revoked:*", f"~{POD_NAME}:*", "+@all"),
+}
+
+
+@dataclass(frozen=True)
+class DragonflyInfo:
+    """Dragonfly 접속 정보 — admin = 전 키(시험 준비 · 관측 · FLUSHALL) · pod = 운영 pod 사용자 규칙(거부 목록 읽기 전용 · 자기 접두).
+    자격 URL은 repr에서 빼고 값도 Secret이다."""
+
+    host: str
+    port: int
+    admin_url: Secret = field(repr=False)
+    pod_url: Secret = field(repr=False)
+
+
+def _redis_url(user: str, password: str, host: str, port: int) -> Secret:
+    return Secret(f"redis://{user}:{password}@{host}:{port}/0")
+
+
+def _ipv4_loopback(host: str) -> str:
+    """testcontainers가 준 `localhost`를 `127.0.0.1`로 바꾼다 — `::1` 시도가 0.2 s 예산(거부 목록 클라이언트)을 다 쓰지 않게."""
+    return "127.0.0.1" if host == "localhost" else host
+
+
+@pytest.fixture(scope="session")
+def dragonfly() -> Iterator[DragonflyInfo]:
+    """Dragonfly 컨테이너 + ACL 사용자 둘(세션 1회) — 마지막에 default 사용자를 끈다(자격 없는 접속 = 인증 오류)."""
+    passwords = {user: Secret(secrets.token_urlsafe(24)) for user in DRAGONFLY_USERS}
+    container = RedisContainer(image=DRAGONFLY_IMAGE, port=DRAGONFLY_PORT).with_command(DRAGONFLY_COMMAND)
+    try:
+        container.start()
+        host = _ipv4_loopback(container.get_container_host_ip())
+        port = int(container.get_exposed_port(DRAGONFLY_PORT))
+        bootstrap = container.get_client()
+        failure: str | None = None
+        try:
+            for user, rules in DRAGONFLY_USERS.items():
+                secret_rule = Secret(f">{passwords[user]}")  # redis-py 프레임 인자로 흘러가도 repr이 가려진다
+                bootstrap.execute_command("ACL", "SETUSER", user, "on", secret_rule, *rules)
+            bootstrap.execute_command("ACL", "SETUSER", "default", "off")
+        except Exception as exc:  # noqa: BLE001 — 오류 메시지가 규칙 토큰(비밀번호)을 되풀이할 수 있다 → 가린 사본만
+            failure = _redacted(f"Dragonfly ACL 준비 실패: {type(exc).__name__}: {exc}", *passwords.values())
+        finally:
+            bootstrap.close()
+        if failure is not None:
+            raise RuntimeError(failure)
+        yield DragonflyInfo(
+            host=host,
+            port=port,
+            admin_url=_redis_url("admin", passwords["admin"], host, port),
+            pod_url=_redis_url(POD_NAME, passwords[POD_NAME], host, port),
+        )
+    finally:
+        container.stop()
+
+
+@pytest.fixture
+def dragonfly_clean(dragonfly: DragonflyInfo) -> Iterator[None]:
+    """시험마다 Dragonfly를 비운다(admin FLUSHALL) — 거부 목록 키가 시험 사이에 새지 않게."""
+    admin = redis.Redis.from_url(dragonfly.admin_url)
+    try:
+        admin.flushall()
+    finally:
+        admin.close()
+    yield
+
+
+# --- 로컬 키 서버(Authentik JWKS · Cloudflare Access certs) ---------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class JwksInfo:
+    """로컬 키 서버 — base_url = `http://127.0.0.1:<port>`(Access 팀 도메인 자리 · Access iss) · jwks_url(운영 svc DNS 자리) ·
+    certs_url · hits = 경로별 GET 수(서버 스레드가 잠금 아래 올린다). 서명 키(세션 생성 RSA 2048)는 repr에서 뺀다."""
+
+    base_url: str
+    jwks_url: str
+    certs_url: str
+    authentik_key: rsa.RSAPrivateKey = field(repr=False)
+    access_key: rsa.RSAPrivateKey = field(repr=False)
+    hits: dict[str, int]
+
+
+def _jwks_handler(documents: dict[str, bytes], hits: dict[str, int], lock: threading.Lock) -> type[BaseHTTPRequestHandler]:
+    class JwksHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # 이름은 BaseHTTPRequestHandler 규약(do_<METHOD>)이다
+            with lock:
+                hits[self.path] = hits.get(self.path, 0) + 1
+            body = documents.get(self.path)
+            if body is None:
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args: Any) -> None:  # 인자 이름 format은 부모 시그니처 그대로다
+            """요청 로그를 끈다(기본 구현은 요청마다 stderr에 한 줄을 쓴다)."""
+
+    return JwksHandler
+
+
+@pytest.fixture(scope="session")
+def jwks_server() -> Iterator[JwksInfo]:
+    """로컬 키 서버(세션 1회): Authentik JWKS(kid authentik-test-1) · Access certs(kid access-test-1). 서명 키는 세션마다 만든다."""
+    authentik_key, access_key = make_rsa_key(), make_rsa_key()
+    documents = {
+        JWKS_PATH: json.dumps({"keys": [to_jwk(authentik_key.public_key(), AUTHENTIK_KID)]}).encode(),
+        CERTS_PATH: json.dumps({"keys": [to_jwk(access_key.public_key(), ACCESS_KID)]}).encode(),
+    }
+    hits = dict.fromkeys(documents, 0)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _jwks_handler(documents, hits, threading.Lock()))
+    thread = threading.Thread(target=server.serve_forever, name="jwks-server", daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_address[1]}"
+    try:
+        yield JwksInfo(
+            base_url=base_url,
+            jwks_url=base_url + JWKS_PATH,
+            certs_url=base_url + CERTS_PATH,
+            authentik_key=authentik_key,
+            access_key=access_key,
+            hits=hits,
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+@pytest.fixture(scope="session")
+def auth_settings(jwks_server: JwksInfo, dragonfly: DragonflyInfo) -> Iterator[None]:
+    """인증 설정을 로컬 의존으로 바꾼다(세션 · 요청할 때만 · 끝에 되돌린다): AUTHENTIK_JWKS_URL = 로컬 JWKS · ACCESS_TEAM_DOMAIN =
+    로컬 키 서버 base URL · DRAGONFLY_URL = pod 사용자 URL(Secret)."""
+    from django.conf import settings
+
+    values = {
+        "AUTHENTIK_JWKS_URL": jwks_server.jwks_url,
+        "ACCESS_TEAM_DOMAIN": jwks_server.base_url,
+        "DRAGONFLY_URL": dragonfly.pod_url,
+    }
+    previous = {name: getattr(settings, name) for name in values}
+    for name, value in values.items():
+        setattr(settings, name, value)
+    try:
+        yield
+    finally:
+        for name, value in previous.items():
+            setattr(settings, name, value)
+
+
+# --- 구조 로그 · OTel -------------------------------------------------------------------------------------------------------
+
+# 계약(contracts/pod-template.md 「트레이스 · Sentry」 행)의 샘플러 env — SDK TracerProvider()가 생성 시점에 읽는다.
+OTEL_SAMPLER_ENV = {"OTEL_TRACES_SAMPLER": "parentbased_traceidratio", "OTEL_TRACES_SAMPLER_ARG": "0.1"}
+
+
+@pytest.fixture(scope="session")
+def log_sink() -> Iterator[io.StringIO]:
+    """구조 로그 sink(세션) — configure_logging(stream=sink)을 세션에 한 번 건다(전역 설정이라 세션 끝 정리는 없다)."""
+    from django_common.observability import configure_logging
+
+    sink = io.StringIO()
+    configure_logging(stream=sink)
+    yield sink
+
+
+class LogLines:
+    """log_sink 읽기 객체 — 부를 때마다 지난 호출 뒤에 쓰인 새 줄을 JSON 객체(dict) 목록으로 돌려준다.
+
+    한 줄 = 한 JSON 객체여야 한다(아니면 AssertionError — 실패 메시지에는 줄 번호와 길이만). 읽은 원문은 raw에 쌓는다 — "출력
+    어디에도 X가 없다" 단언은 `needle in raw`를 따로 계산해 bool만 단언한다(원문이 실패 출력에 실리지 않게).
+    """
+
+    def __init__(self, sink: io.StringIO) -> None:
+        self._sink = sink
+        self.raw = ""
+
+    def __call__(self) -> list[dict[str, Any]]:
+        text = self._sink.getvalue()
+        self._sink.seek(0)
+        self._sink.truncate()
+        self.raw += text
+        if text and not text.endswith("\n"):
+            raise AssertionError("로그 출력이 줄바꿈으로 끝나지 않는다(한 줄 = 한 JSON 객체)")
+        records: list[dict[str, Any]] = []
+        # splitlines()가 아니라 "\n"으로 자른다 — 문자열 안에 그대로 둔 U+2028 등을 줄 끝으로 오인하지 않게.
+        for number, line in enumerate(text.split("\n")[:-1], start=1):
+            try:
+                record = json.loads(line)
+            except ValueError:
+                raise AssertionError(f"로그 {number}번째 줄이 JSON이 아니다(길이 {len(line)})") from None
+            if not isinstance(record, dict):
+                raise AssertionError(f"로그 {number}번째 줄이 JSON 객체가 아니다({type(record).__name__})")
+            records.append(record)
+        return records
+
+
+@pytest.fixture
+def log_lines(log_sink: io.StringIO) -> LogLines:
+    """sink를 비우고 LogLines를 준다(함수 스코프) — 이 시험이 만든 줄만 읽힌다."""
+    log_sink.seek(0)
+    log_sink.truncate()
+    return LogLines(log_sink)
+
+
+@pytest.fixture
+def otel(
+    settings: SettingsWrapper, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[tuple[TracerProvider, InMemorySpanExporter]]:
+    """OTel 계측(함수) — pod MIDDLEWARE의 새 목록(DjangoInstrumentor는 MIDDLEWARE 목록에 제자리로 넣고 뺀다)에
+    configure_otel(span_exporter=InMemorySpanExporter())을 건다. 시험 Client는 첫 요청 때 미들웨어를 적재하므로 OTel이 필요한
+    시험은 이 픽스처를 Client보다 먼저 요청한다. teardown: uninstrument → provider.shutdown()."""
+    from django_common.observability import configure_otel
+    from opentelemetry.instrumentation.django import DjangoInstrumentor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    settings.MIDDLEWARE = list(settings.MIDDLEWARE)
+    for name, value in OTEL_SAMPLER_ENV.items():
+        monkeypatch.setenv(name, value)
+    exporter = InMemorySpanExporter()
+    provider = configure_otel(span_exporter=exporter)
+    try:
+        yield provider, exporter
+    finally:
+        DjangoInstrumentor().uninstrument()
+        provider.shutdown()
