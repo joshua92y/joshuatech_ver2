@@ -1041,7 +1041,7 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
 
   | PR | 내용 | 관문 | 머지 선행 |
   |---|---|---|---|
-  | GP-1 검사 · 경계 | validate.sh 검사(3.9 · 7.1 · 7.5 · 13.7 · 14.0–14.8) · AppProject dev/prod 허용 목록 · classify 넓힘 · 렌더와 무관한 문서 | need(`clusters/oci-k3s/projects/**`) | 없음 — dev/prod 프로젝트 소비자 0 · CI 자기검사 전체 초록 |
+  | GP-1 검사 · 경계 | validate.sh 검사(3.9 · 7.1 · 7.5 · 13.7 · 14.0–14.9 · 11.6 · 11.7 — 14.9 · 11.6 · 11.7과 네트워크 없는 렌더는 GP-1 리뷰에서 더함 · 2026-11-18 · gitops PR #62) · AppProject dev/prod 허용 목록 · classify 넓힘(+ `clusters/oci-k3s/apps`의 yaml/README 밖 경로) · 렌더와 무관한 문서 | need(`clusters/oci-k3s/projects/**`) | 없음 — dev/prod 프로젝트 소비자 0 · CI 자기검사 전체 초록 |
   | GP-A UD-9 | data-assert `acl-list` 새 뜻(identity-admin `ACL LIST` → NOPERM) · 문서 | skip | **L6 끝** — dev · prod W-6 + `ACL LOAD` + O-6 사후 PASS(§4 T075 B) |
   | GP-2 dev | base 사본 · overlays/dev · Application 둘(`identity-admin-dev` · `identity-admin-prod` — prod는 빈 overlay) · README 행 | need(`apps/*/base/**` · `*-prod.yaml`) | GP-1 · GP-A 머지 · **L6 완료 · data-assert 7 id PASS(`acl-list` = NOPERM)** · W-2 dev · **O-3 dev `gate=PASS`**(§4 T075 A) |
   | GP-3 prod | overlays/prod(kustomization · `ingress-admin.yaml` · `middleware-admin.yaml`) | need | dev 확인(아래 L10 · L11) 통과 · W-2 prod · **O-3 prod `gate=PASS`** · attestation 확인(L13) |
