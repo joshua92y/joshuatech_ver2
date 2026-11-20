@@ -27,7 +27,9 @@
       "PowerShell(git clean -d*)",
       "PowerShell(git clean --force*)",
       "PowerShell(docker system prune*)",
-      "PowerShell(docker * prune*)"
+      "PowerShell(docker * prune*)",
+      "Bash(vault *)",
+      "PowerShell(vault *)"
     ]
   },
   "hooks": {

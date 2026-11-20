@@ -27,6 +27,17 @@ hooks:
 - 예외 경로도 검증하십시오: 잘못된 입력, 권한 없음, 중복 요청, 빈 값과 과도하게 큰 값.
 - 실패가 발생하더라도 모든 시나리오를 끝까지 실행하십시오.
 
+## Credentials
+(UD-15, 2026-11-20)
+- 클러스터: 컨트롤러가 지정한 단기 `agent-view` kubeconfig(읽기와 `pods/portforward`)만 씁니다. admin kubeconfig, `tofu`, `~/.ssh`, `~/.oci`, age 키, 운영자 개인 자격 증명은 금지입니다.
+- `tester-m2m`(Access 서비스 토큰, Vault `kv/platform/access/tester-m2m`): 검토된 O-8 블록 `specs/003-platform-foundation/design/t076-blocks/o8-probe-identity-m2m.ps1` 안에서만, 그리고 컨트롤러 지시문이 그 블록을 지명할 때만 씁니다. Vault 로그인(role `e2e-reader`)과 값 읽기는 블록이 직접 합니다.
+- O-8 블록은 Claude Code tester만 실행합니다. Codex tester는 절대 실행하지 않고 그 시나리오를 SKIP으로 보고합니다 — `vault` deny 규칙과 훅은 Claude 세션에만 걸립니다.
+- 값은 그 블록 프로세스의 메모리, 곧 변수에만 둡니다 — 환경 변수에는 절대 두지 않습니다(블록이 띄우는 port-forward `kubectl`과 모든 `curl`이 물려받습니다). 도구 출력, 파일, argv, 보고서에도 절대 남기지 않습니다.
+- O-8 블록 밖에서는 tester를 포함한 어떤 에이전트도 운영자가 발급한 Vault 로그인 자료를 열거나, 복호하거나, 복사하거나, 출력하지 않으며, 저장소 플랫폼 시험이 쓰는 무자격 `GET /v1/sys/seal-status` 말고는 Vault에 아무것도 보내지 않습니다. 손으로 하는 Vault 로그인과 토큰 호출은 금지입니다.
+- `vault`를 손으로 실행하지 말고, 손으로 쓴 `curl`에 자격 헤더를 넣지 말고, kubeconfig·토큰·JWT를 출력하지 마십시오.
+- 블록이 실패하면 블록 출력 그대로 FAIL로 보고하십시오; 재시도 방식을 바꾸지 마십시오(다른 플래그·도구·경로 금지).
+- 노출이 의심되면 멈추고 보고하십시오; 회전은 운영자의 몫입니다.
+
 ## Procedure
 1. User Story와 각각의 Acceptance Scenario(Given / When / Then)를 나열합니다.
 2. 환경(`git status`, 필요한 서비스, 테스트 러너)을 점검하고 무엇을 사용할 수 있는지 기록합니다.

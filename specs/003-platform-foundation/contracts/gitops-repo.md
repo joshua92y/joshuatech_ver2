@@ -141,7 +141,7 @@ spec:
 
 | store | provider | `conditions.namespaces` | 인증 주체(SA, ns `external-secrets`) | 접근 범위 |
 |---|---|---|---|---|
-| `vault-platform` | vault(kv v2) | 플랫폼 ns 12개(network-policy.md 표에서 `jt-dev`·`jt-prod` 제외 — `kube-system` 포함) | `eso-platform` | Vault role `eso-platform`: `kv/data/platform/*` · `kv/metadata/platform/*` read |
+| `vault-platform` | vault(kv v2) | 플랫폼 ns 12개(network-policy.md 표에서 `jt-dev`·`jt-prod` 제외 — `kube-system` 포함) | `eso-platform` | Vault role `eso-platform`: `kv/data/platform/*` · `kv/metadata/platform/*` read. 예외(T076 보정 2026-11-20 · UD-15): `kv/data/platform/access/*` · `kv/metadata/platform/access/*`는 **deny** — tester Access 서비스 토큰(data-model §8 「ESO 밖」)을 관례가 아니라 Vault ACL로 강제한다(더 긴 경로 규칙이 이긴다 — 나머지 `platform/*` 읽기는 그대로). eso-* · e2e-reader · vault-backup 정책의 capabilities는 정확히 `["read"]`이고 이 deny 두 줄이 유일한 예외다(모노레포 하네스 vt-14 · vt-14b) |
 | `vault-dev` | vault | `jt-dev` | `eso-dev` | role `eso-dev`: `kv/data/dev/*` · `kv/metadata/dev/*` read |
 | `vault-prod` | vault | `jt-prod` | `eso-prod` | role `eso-prod`: `kv/data/prod/*` · `kv/metadata/prod/*` read |
 | `vault-data` | vault | `data` · `identity` | `eso-data` | role `eso-data`: **열거 경로만**(env 와일드카드 금지) — `kv/data/{dev,prod}/db/*` · `kv/data/{dev,prod}/kafka/*` · `kv/data/{dev,prod}/dragonfly/*` · `kv/data/{dev,prod}/openfga/*` · `kv/data/{dev,prod}/authentik/webhooks/*` + 같은 `kv/metadata/…` read |
@@ -166,7 +166,7 @@ Authentik·OpenFGA는 pod가 아니라 환경 공유 컴포넌트이므로 env �
 |---|---|
 | `kv/platform/db/authentik/owner` · `kv/platform/db/openfga/owner` | `platform/cnpg-databases/`의 CNPG `DatabaseRole` passwordSecret · Authentik/OpenFGA Deployment (`vault-platform`) |
 | `kv/platform/authentik/sources/github` · `kv/platform/authentik/sources/google` | Authentik 소셜 로그인 소스 blueprint (`vault-platform`) |
-| `kv/platform/authentik/e2e` | Authentik 로컬 사용자 `e2e@joshuatech.dev`의 비밀번호·TOTP 시드. blueprint가 `vault-platform`으로, tester는 Vault role `e2e-reader`(bound `kube-system/agent-view`, ttl 1h)로 **같은 경로**를 읽는다 |
+| `kv/platform/authentik/e2e` | Authentik 로컬 사용자 `e2e@joshuatech.dev`의 비밀번호·TOTP 시드. blueprint가 `vault-platform`으로, tester는 Vault role `e2e-reader`(bound `kube-system/agent-view`, ttl 1h)로 **같은 경로**를 읽는다. (T076 보정 2026-11-20 · UD-15) `e2e-reader` 정책 = 정확히 두 경로 read — 이 경로(`kv/data/platform/authentik/e2e`)와 `kv/data/platform/access/tester-m2m`(tester Access 서비스 토큰 — tester가 T076 O-8 블록 안에서만 읽는다 · `vault-platform`으로는 읽을 수 없다 — 위 표의 deny) · 와일드카드 · metadata 경로 0(모노레포 하네스 vt-16) |
 | `kv/platform/openfga/preshared` | OpenFGA 서버 `authn.preshared` (`vault-platform`, `identity` ns) |
 
 - 호출자 쪽 사본: identity-admin은 `kv/{env}/openfga/{store_id,preshared}`를 `<pod>-env`로 읽는다(`vault-{env}`). `preshared` 값은 `kv/platform/openfga/preshared`와 같아야 하며 회전 시 둘을 함께 바꾼다(런북 `secret-rotation.md`).

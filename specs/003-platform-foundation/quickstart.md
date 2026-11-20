@@ -11,10 +11,10 @@ US별로 "이 명령을 치면 이 결과가 나와야 한다"를 적는다. 구
 - 에이전트·tester·CI 클러스터 자격: SA `agent-view`(ns `kube-system`) = ClusterRole `view` 집계 + `applications.argoproj.io` get/list + **ClusterRole `agent-view-extra`**(get/list/watch: core `nodes`, `apiextensions.k8s.io customresourcedefinitions`, `argoproj.io appprojects`, `postgresql.cnpg.io clusters·backups·scheduledbackups·databases·databaseroles`, `kafka.strimzi.io *`, `external-secrets.io *` — Secret 제외) + **Role `pods/portforward`(`vault`·`data`·`identity`)**. Secret get·exec 없음. `kubectl auth whoami`가 `system:serviceaccount:kube-system:agent-view`여야 한다(T004 단언).
 - 자격이 필요한 데이터 검사(psql·kcat·redis-cli·fga)는 tester가 직접 실행하지 않는다. gitops `platform/policies/tests/`가 배포하는 Job `data-assert`·`kafka-assert`·`authz-assert`(ns `jt-dev`, dev scope ExternalSecret만 envFrom)가 클러스터 안에서 돌고, tester는 `kubectl -n jt-dev logs job/<이름>`만 읽는다. 그래도 `exec`·`run`이 필요한 예외 명령은 운영자가 admin kubeconfig로 실행하고 출력을 tester 보고에 첨부한다.
 - 터널 클라이언트: tester·운영자 워크스테이션의 cloudflared는 **2026.5.1 핀**(2026.6+는 `access tcp/ssh`에서 서비스 토큰을 무시하는 회귀 — plan A12). `k8s` Access 앱에는 `tester-k8s` 서비스 토큰 정책이 있어야 비대화형 `kubectl`이 가능하다. 세션이 끝나면 `cloudflared access logout`.
-- tester Access 서비스 토큰 2개(T011 `access.tf`가 생성, 회전은 T084 매트릭스): **`tester-k8s`**(`k8s` 앱 include — 비대화형 `kubectl`) · **`tester-m2m`**(dev·prod m2m 앱 include — 아래 `identity-m2m-*` 검증 curl의 `CF-Access-Client-Id/Secret` 헤더). 보관은 Vault `kv/platform/access/{tester-k8s,tester-m2m}`.
+- tester Access 서비스 토큰 2개(T011 `access.tf`가 생성, 회전은 T084 매트릭스): **`tester-k8s`**(`k8s` 앱 include — 비대화형 `kubectl`) · **`tester-m2m`**(dev·prod m2m 앱 include — 아래 §US6 배포 확인 ②의 O-8 블록이 보내는 `CF-Access-Client-Id/Secret` 헤더). 보관은 Vault `kv/platform/access/{tester-k8s,tester-m2m}` — `tester-m2m` 시드는 T076 W-7(운영자 · UD-15), `tester-k8s`는 T077. tester는 `tester-m2m`을 검토된 O-8 블록 안에서만 role `e2e-reader`로 읽는다 — 값은 블록 프로세스 메모리에만 · 손 `curl` · 손 `vault`에 자격 0(T076 보정 2026-11-20 · 이전 문구 「아래 `identity-m2m-*` 검증 curl의 `CF-Access-Client-Id/Secret` 헤더」).
 - OCI 읽기 자격: 사용자 `svc-verify`(그룹 `jt-verify` — `jt-backup`·`jt-backup-platform` inspect/read objects, read usage-reports·budgets·instance-family, manage 0). 세션 토큰으로만 쓴다 — `oci session authenticate --profile-name svc-verify --region ap-chuncheon-1`(1 h) 후 아래 `oci` 명령에 `--profile svc-verify`. 쓰기 권한이 있는 프로필로는 검증을 실행하지 않는다.
 - 읽기 전용 SaaS 토큰(운영자가 1회 발급, Vault 보관): Grafana Cloud **Viewer 서비스 계정 토큰**(대시보드·알림 조회) · Sentry **읽기 전용 auth token** · Cloudflare **`Account Analytics:Read`** 토큰(Workers 사용량). GitHub은 `gh` 읽기(공개 저장소)면 충분하다. `argocd --sso` 로그인과 Authentik 관리 API 확인은 비대화형으로 불가하므로 **운영자 수동 + 스크린샷**으로 대체한다.
-- E2E 신원: Authentik 로컬 사용자 `e2e@joshuatech.dev`. 비밀번호·TOTP 시드는 Vault **`kv/platform/authentik/e2e`** 한 경로에만 있고(tester도 같은 경로), tester는 K8s auth role `e2e-reader`(bound SA `kube-system/agent-view`, 정책 = 그 경로 read, ttl 1 h)로 `agent-view` 토큰을 그대로 써서 읽는다 — 새 시크릿을 만들지 않는다. e2e 사용자는 `platform-admin` 그룹에 넣지 않는다. GitHub 테스트 계정은 만들지 않으며, 소셜 로그인(US4 AC1)은 운영자가 브라우저로 1회 수동 검증하고 스크린샷을 tester 보고에 첨부한다. 운영자 개인 계정 자격은 어떤 환경변수·파일에도 넣지 않는다. Playwright storageState는 `e2e/.auth/`(gitignore, 실행 후 삭제), trace는 `mask`.
+- E2E 신원: Authentik 로컬 사용자 `e2e@joshuatech.dev`. 비밀번호·TOTP 시드는 Vault **`kv/platform/authentik/e2e`** 한 경로에만 있고(tester도 같은 경로), tester는 K8s auth role `e2e-reader`(bound SA `kube-system/agent-view`, audience `vault`, 정책 = 그 경로와 `kv/data/platform/access/tester-m2m` 두 경로 read(UD-15), ttl 1 h)로 읽는다. 로그인 토큰은 8h kubeconfig 토큰이 아니라 운영자가 라이브 창마다 1번 O-9 블록으로 발급하는 **vault 전용 1시간 JWT**다(`--audience vault --duration=1h` · 저장소 밖 DPAPI 파일 · 1시간 안 재사용 · 세션 끝에 운영자가 O-9를 다시 돌려 정지점에 `clear`(끝 줄 `o9 cleared` — O-9는 인자를 받지 않는다) — UD-16 · T076 보정 2026-11-20 · 이전 문구 「정책 = 그 경로 read, ttl 1 h)로 `agent-view` 토큰을 그대로 써서 읽는다」) — 새 시크릿을 만들지 않는다. e2e 사용자는 `platform-admin` 그룹에 넣지 않는다. GitHub 테스트 계정은 만들지 않으며, 소셜 로그인(US4 AC1)은 운영자가 브라우저로 1회 수동 검증하고 스크린샷을 tester 보고에 첨부한다. 운영자 개인 계정 자격은 어떤 환경변수·파일에도 넣지 않는다. Playwright storageState는 `e2e/.auth/`(gitignore, 실행 후 삭제), trace는 `mask`.
 - SP-1 CI에는 클러스터·OCI 자격을 주지 않는다(배포는 Argo pull, Cloudflare만 스코프 토큰).
 
 ## US1 — 결정 문서화
@@ -87,11 +87,11 @@ curl -s -X POST … -d audience=portfolio-core …                             #
 curl -s -H "Authorization: Bearer $ACCESS" https://identity-m2m-prod.joshuatech.dev/tenants/me   # 401 — Access 서비스 토큰 헤더(CF-Access-Client-Id/Secret) 없이는 네트워크 게이트에서 막힌다
 ```
    **VD-1(Authentik 호출자 식별)**: 기본 가정은 "impersonation 교환 + Access 서비스 토큰 `common_name`으로 호출자 식별"이고, pod의 `act.sub` 검증은 `AUTH_ACTOR_SUB`가 설정된 경우에만 켠다. **T081 착수 시 사용자와 함께 실측**한다 — OSS 인스턴스에서 Actor 생성을 시도한 뒤 BFF의 client-credentials 토큰을 `actor_token`으로 붙여 위 교환을 다시 호출해서, 응답 토큰에 `act` 클레임이 있으면 옵션 A(delegation + `act.sub == web-bff` 검증), `invalid_grant`(`actor_not_controlled`)면 옵션 B(impersonation 유지). 교환 응답 전문을 증거로 캡처한다. `audience`를 빼고 교환하면 발급 토큰의 `azp`가 web-bff client_id이므로 `iss`+`azp`로도 판별할 수 있으나 `audience` 지정과 양립하지 않는다 — 둘 중 하나만 쓴다.
-3. 폐기: `curl -X POST https://joshuatech.dev/api/auth/logout -H 'x-csrf-token: …' -b jt_session=…` → 1초 뒤 `curl -H "Authorization: Bearer $ACCESS" -H "CF-Access-Client-Id: …" https://identity-m2m-prod.joshuatech.dev/tenants/me` → 401 `session_revoked`. (교환 토큰에는 `sid`가 없어 이 401은 사용자 단위 폐기 — 전체 기기 로그아웃 — 에서만 난다. BFF의 기본 로그아웃 범위는 T089 전 사용자 결정. pod는 Access `common_name`이 web-bff Client ID인 호출만 받으므로 이 curl의 Access 헤더가 `tester-m2m`이면 401이 아니라 403 `access_required`다 — 측정 경로는 T079 설계가 정한다 · T073 보정 2026-11-12)
+3. 폐기: `curl -X POST https://joshuatech.dev/api/auth/logout -H 'x-csrf-token: …' -b jt_session=…` → 1초 뒤 `curl -H "Authorization: Bearer $ACCESS" -H "CF-Access-Client-Id: …" https://identity-m2m-prod.joshuatech.dev/tenants/me` → 401 `session_revoked`. (교환 토큰에는 `sid`가 없어 이 401은 사용자 단위 폐기 — 전체 기기 로그아웃 — 에서만 난다. BFF의 기본 로그아웃 범위는 T089 전 사용자 결정. pod는 Access `common_name`이 web-bff Client ID인 호출만 받으므로 이 curl의 Access 헤더가 `tester-m2m`이면 401이 아니라 403 `access_required`다 — 측정 경로는 T079 설계가 정한다 · T073 보정 2026-11-12) (T076 보정 2026-11-20 · 리뷰 RO-10: 자격 헤더 탐침은 검토된 블록으로만 한다(`.claude/agents/tester.md` 「Credentials」) — 이 손 `curl` 꼴은 T085가 O-8 꼴로 바꾼다)
 4. Authentik 관리자에서 세션 삭제 → identity-admin 로그에 `authentik_webhook` reason 기록 → 같은 401. 로그의 꼴은 이벤트 `session_revocation.recorded`(필드 `reason` = `authentik_webhook`)다. Authentik 2026.8은 세션 삭제에 이벤트를 만들지 않으므로 이 단계가 무엇으로 일어나는지(로그아웃 이벤트 웹훅 등)는 T081 전 사용자 결정이다(T073 보정 2026-11-12).
    폐기 3경로 E2E(T085)와 SC-003(≤ 2 s) 측정은 **prod 체인에서만** 한다 — dev의 Authentik 자격은 dev 전용 서비스 계정 `identity-admin-ro`(사용자 read만, `kv/dev/authentik/identity-admin.api_token`)이고 dev에서는 Authentik에 쓰는 호출(세션 삭제 위임 · 시드 쓰기)을 설정 플래그로 끄므로(시도하지 않고 로그만), dev 로그아웃 검증은 denylist 401·로컬 세션 삭제까지만 본다. 일 1회 대조는 읽기라 플래그와 무관하고 권한이 없으면 로그 한 줄 뒤 끝난다(응답 꼴에 따라 경고 한 줄이거나 `seen` 0 — contracts/identity-admin-api.md §주기 작업 · T073 보정 2026-11-12).
 5. OpenFGA: `fga tuple write --store-id $STORE user:<sub> member tenant:<uuid>` → `fga query check user:<sub> member tenant:<uuid>` → `{"allowed":true}`.
-6. Access: `curl -sI https://admin.joshuatech.dev/identity-admin/admin/` → 302(Access 로그인); `curl -sI https://auth.joshuatech.dev/if/admin/` → 302 또는 403(Access 앱 `auth-admin` = **`/if/admin/*`만**, GitHub IdP); `curl -sI https://auth.joshuatech.dev/api/v3/flows/executor/<login-slug>/` → **200**(무헤더 — 로그인 흐름 실행기는 공개여야 한다); `curl -sI https://auth.joshuatech.dev/api/v3/root/config/` → **200**(무헤더 — 사용자 UI가 쓴다); `curl -sI https://auth.joshuatech.dev/application/o/<app>/.well-known/openid-configuration` → 200(공개); 서비스 토큰 헤더로 `identity-m2m-prod…/health` → 200. `/api/v3` 전체를 Access 뒤에 두면 로그인 SPA가 깨지므로 관리 API 접두 보호는 SP-2에서 재검토하고, SP-1의 보상 통제는 `platform-admin` WebAuthn·서비스 계정 권한 한정·Reputation 정책·Rate Limiting이다.
+6. Access: `curl -sI https://admin.joshuatech.dev/identity-admin/admin/` → 302(Access 로그인); `curl -sI https://auth.joshuatech.dev/if/admin/` → 302 또는 403(Access 앱 `auth-admin` = **`/if/admin/*`만**, GitHub IdP); `curl -sI https://auth.joshuatech.dev/api/v3/flows/executor/<login-slug>/` → **200**(무헤더 — 로그인 흐름 실행기는 공개여야 한다); `curl -sI https://auth.joshuatech.dev/api/v3/root/config/` → **200**(무헤더 — 사용자 UI가 쓴다); `curl -sI https://auth.joshuatech.dev/application/o/<app>/.well-known/openid-configuration` → 200(공개); 서비스 토큰 헤더로 `identity-m2m-prod…/health` → 200(T076 보정 2026-11-20 · 리뷰 RO-10: 자격 헤더 탐침은 검토된 블록으로만 한다(`.claude/agents/tester.md` 「Credentials」) — T085가 O-8 꼴로 바꾼다). `/api/v3` 전체를 Access 뒤에 두면 로그인 SPA가 깨지므로 관리 API 접두 보호는 SP-2에서 재검토하고, SP-1의 보상 통제는 `platform-admin` WebAuthn·서비스 계정 권한 한정·Reputation 정책·Rate Limiting이다.
 
 ## US5 — 웹 hello·BFF 왕복
 
@@ -113,6 +113,7 @@ Workers 대시보드 → Analytics: `_next/static/*`는 "Static asset requests"�
 # Docker · kustomize · kubeconform이 PATH에 있어야 한다. JT_SAMPLE_POD_ROOT를 주면 생성 트리를 그 디렉터리에 남긴다
 # (상대 경로는 저장소 루트 기준 — tests/fixtures/generated/는 루트 .gitignore 경로; 하네스는 표식 파일이 있는 디렉터리만 비운다).
 JT_SAMPLE_POD_ROOT=tests/fixtures/generated uv run --directory templates/django-pod --locked pytest -q         # all passed
+# E2E 증거로 돌릴 때는 -q 대신 -v(사례별 PASS 줄 — gen-n이 증거다) + --junit-xml=<저장소 밖 경로> · 다른 하네스와 동시에 돌리지 않는다(T076 설계 D9 ① · T076 보정 2026-11-20)
 # 손으로 따라가기 — 같은 배치를 만든다: pod는 apps/<pod>, django-common은 두 단계 위 형제(템플릿의 path 의존성 ../../packages/django-common)
 mkdir -p tests/fixtures/generated/packages && cp -r packages/django-common tests/fixtures/generated/packages/
 copier copy --trust --defaults --data pod_name=sample-pod templates/django-pod tests/fixtures/generated/apps/sample-pod
@@ -123,17 +124,25 @@ uv run --directory apps/identity-admin --locked pytest -q                       
 ```
 기대 테스트: `test_tenant_rls`(A 등급 0행 2건 + owner bypass 전체 + B 등급 전역 테이블), `test_outbox`(발행·삭제·실패 attempts), `test_auth_middleware`(5 케이스 + Dragonfly 실패 503), `test_health`(`/healthz`·`/ready`·`/health`), `test_logging`, `test_openapi_snapshot`.
 
-**배포 확인(T075 — dev · prod · T075 보정 2026-11-17)**: 아래는 dev다. prod는 호스트 `identity-m2m-prod` · ns `jt-prod`만 다르다.
+**배포 확인(T075 — dev · prod · T075 보정 2026-11-17 · T076 보정 2026-11-20)**: ①은 dev 예시다 — prod는 호스트 `identity-m2m-prod`만 다르다. ②는 블록 한 번이 dev → prod 둘 다 판정한다. ③은 ns `jt-dev` · `jt-prod` 둘 다 돌린다(T075에서는 prod 키 이름이 기록되지 않았다). (이전 문구 「아래는 dev다. prod는 호스트 `identity-m2m-prod` · ns `jt-prod`만 다르다.」)
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' https://identity-m2m-dev.joshuatech.dev/health   # ① 무헤더 → Access 응답 코드(T075 실측값)
-# ② tester-m2m 자격은 env에서 stdin 헤더(-H @-)로만 넘긴다 — argv · 화면 · 파일에 0(printf는 셸 내장이다)
-#    응답 헤더는 통째로 내지 않는다(-D · -i · -v 금지 — Access가 실을 수 있는 Set-Cookie CF_Authorization은 24h 자격이다 · T075 보정 2026-11-17)
-printf 'CF-Access-Client-Id: %s\nCF-Access-Client-Secret: %s\n' "$TESTER_M2M_ID" "$TESTER_M2M_SECRET" \
-  | curl -s -H @- -w '\nhttp=%{http_code} x-request-id=%header{x-request-id}\n' https://identity-m2m-dev.joshuatech.dev/health
-#   → 본문 JSON(status ok · checks 셋(db · dragonfly · kafka_producer) 모두 ok · git_sha = 배포 이미지 revision — 비밀 아님) + 끝 줄 http=200 · x-request-id 값이 비지 않음(%header는 curl 7.84 이상)
-# ③ ES 2개가 만든 Secret의 키 이름만(관리자 kubeconfig — agent-view는 Secret을 읽지 못한다 · 값 0)
+curl -q -s -o /dev/null -w '%{http_code}\n' https://identity-m2m-dev.joshuatech.dev/health   # ① 무헤더 → 401(Access · text/html · redirect 없음 — 계약 hostnames-and-access.md 호스트 표 m2m 행 · 문면 「헤더 없이 403」과 다름 = report 편차 6 · T076 보정 2026-11-20 · 이전 「Access 응답 코드(T075 실측값)」)
+# ② tester-m2m 자격 탐침 = 검토된 O-8 블록만(T076 — 손 curl · 손 vault에 자격 0). tester가 Git Bash에서 파일로 실행한다 — 아래 꼴 그대로
+#    (Bash 도구 timeout 600000 · 블록 최악 ≈ 565 s — Forwarding 줄 기다림 ≤ 45 s 포함 · chcp.com 65001이 없으면 블록의 한글 판정 줄이 cp949 콘솔에서 깨진다 — 판정은 끝 줄과 exit=, 한글 줄은 증거 · T076 보정 2026-11-20 · 리뷰 RO-04 · RO2-01).
+#    선행: 운영자 O-9가 vault 전용 1시간 JWT를 발급해 둔다(없으면 블록이 「운영자 O-9 필요」로 멈춘다) · agent-view kubeconfig(~/.kube/agent-view.yaml) · 운영자 터널.
+#    블록이 Vault port-forward · e2e-reader 로그인 · 권한 판정(sys/capabilities-self) · 자격 읽기 · 탐침 · revoke를 혼자 한다
+#    (응답 헤더 위생은 T075 보정 2026-11-17 그대로 — curl -D · -i · -v 금지 · Set-Cookie를 읽지도 내지도 않는다).
+#    (T076 보정 2026-11-20 · 이전 문구 「tester-m2m 자격은 env에서 stdin 헤더(-H @-)로만 넘긴다」 + printf | curl 두 줄)
+chcp.com 65001 >/dev/null; pwsh -NoProfile -File '<저장소>\specs\003-platform-foundation\design\t076-blocks\o8-probe-identity-m2m.ps1' -ExpectedSha <40 hex>; echo "exit=$?"   # -ExpectedSha = 배포 이미지를 만든 모노레포 main 커밋
+#   → env마다 /health 200(status ok · checks 셋(db · dragonfly · kafka_producer) 모두 ok · git_sha = -ExpectedSha · cf-cache-status ≠ HIT)
+#     + /admin/ · /webhooks/authentik · /healthz · /ready → 404(Traefik 기본 404 — text/plain · 본문 한 줄 `404 page not found` · 19 B)
+#     → 끝 줄 o8=PASS 10/10 · exit=0(값 · 쿠키 · JWT · 토큰 출력 0)
+#   이어서 C-8이 그 404들의 Traefik 줄(OriginStatus 0 · RouterName 없음)과 pod 로그 0줄을 대조한다(T076 설계 §1)
+# ③ ES 2개가 만든 Secret의 키 이름만(관리자 kubeconfig — agent-view는 Secret을 읽지 못한다 · 값 0) — dev · prod 둘 다(T076 보정 2026-11-20)
 kubectl --kubeconfig <관리자 kubeconfig> -n jt-dev get secret identity-admin-env -o go-template='{{range $k, $v := .data}}{{$k}}{{"\n"}}{{end}}'       # 11줄
 kubectl --kubeconfig <관리자 kubeconfig> -n jt-dev get secret identity-admin-migrate -o go-template='{{range $k, $v := .data}}{{$k}}{{"\n"}}{{end}}'   # 1줄(DATABASE_OWNER_URL)
+kubectl --kubeconfig <관리자 kubeconfig> -n jt-prod get secret identity-admin-env -o go-template='{{range $k, $v := .data}}{{$k}}{{"\n"}}{{end}}'      # 11줄
+kubectl --kubeconfig <관리자 kubeconfig> -n jt-prod get secret identity-admin-migrate -o go-template='{{range $k, $v := .data}}{{$k}}{{"\n"}}{{end}}'  # 1줄(DATABASE_OWNER_URL)
 ```
 
 ## US7 — 관측·RAM
