@@ -2379,11 +2379,16 @@ try {
     Seed-Path (IaPath $ev 'webhook') ([ordered]@{ secret = $IAPW["$ev-wh"] }) 2
     Seed-Path (IaPath $ev 'django') ([ordered]@{ secret_key = $IAPW["$ev-sk"] })
     Seed-Path (IaPath $ev 'sentry') ([ordered]@{ dsn = '' }) }
-  # Cloudflare 출력(가짜): AUD = 소문자 hex 64 · Client ID = 소문자 hex 32 + .access · client_secret = 소문자 hex 64(비밀 — 바늘)
+  # Cloudflare 출력(가짜): AUD = 소문자 hex 64 · Client ID = 소문자 hex 32 + .access · client_secret = 54자 [A-Za-z0-9_-](hex 밖 글자 포함 · 비밀 — 바늘)
+  #   T075 보정 2026-11-19(L4 · d5 진단): client_secret 실측 꼴 = 토큰 넷 모두 54자 · 영숫자 · _ · -(hex 밖 글자 있음) — 64 hex 가 아니다(research.md R12 :4256 · :4633 —
+  #   2026-08 이후 신규 발급 = cfast_[40자][8자 checksum] = 54자 · 옛 64 hex 도 유효 — 설계 D11 이 이 기록과 대조하지 않았다). 옛 모의(Hex-Lower = 소문자 hex 64)는
+  #   블록과 같은 가정을 따라 하네스는 PASS · 라이브 O-5a 는 「자격을 꺼내지 못했다」였다 → 모의를 실측 꼴로 바꾼다('MOCK-' 5자 + SHA-512 base64url 49자 — 접두 cfast_ 는 재지 않았다)
   $AUDV = @{}
   foreach ($k in 'identity-m2m-dev', 'identity-m2m-prod', 'admin', 'argo', 'vault', 'traefik', 'preview', 'auth-admin', 'ssh', 'k8s') { $AUDV[$k] = Hex-Lower "aud-$k" }
+  function Cf-Secret { param([string]$s) ('MOCK-' + [Convert]::ToBase64String([System.Security.Cryptography.SHA512]::HashData([Text.Encoding]::UTF8.GetBytes($s))).Replace('+', '-').Replace('/', '_')).Substring(0, 54) }
   $TOKV = [ordered]@{}
-  foreach ($k in 'web-bff-dev', 'web-bff-prod', 'tester-m2m', 'tester-k8s') { $TOKV[$k] = [ordered]@{ client_id = ((Hex-Lower "cid-$k").Substring(0, 32) + '.access'); client_secret = (Hex-Lower "MOCK-secret-$k"); expires_at = '2027-09-03T00:00:00Z' } }
+  foreach ($k in 'web-bff-dev', 'web-bff-prod', 'tester-m2m', 'tester-k8s') { $TOKV[$k] = [ordered]@{ client_id = ((Hex-Lower "cid-$k").Substring(0, 32) + '.access'); client_secret = (Cf-Secret "secret-$k"); expires_at = '2027-09-03T00:00:00Z' } }
+  foreach ($k in @($TOKV.Keys)) { $sx = [string]$TOKV[$k]['client_secret']; if (-not [regex]::IsMatch($sx, '\A[0-9A-Za-z_-]{54}\z') -or [regex]::IsMatch($sx, '\A[0-9a-f]+\z')) { throw "하네스 결함: 가짜 client_secret 이 실측 꼴(54자 [A-Za-z0-9_-] · hex 밖 글자 포함)이 아니다($k)" } }
   function Seed-Tofu { param([hashtable]$aud = $AUDV, $tok = $TOKV)
     $global:TofuOut['access_app_aud'] = (ConvertTo-Json -InputObject $aud -Compress)
     $global:TofuOut['service_tokens'] = (ConvertTo-Json -InputObject $tok -Depth 5 -Compress)
@@ -2654,7 +2659,15 @@ try {
   $bad = [ordered]@{}; foreach ($k in @($TOKV.Keys)) { $bad[$k] = [ordered]@{ client_id = $TOKV[$k]['client_id']; client_secret = $TOKV[$k]['client_secret'] } }
   $bad['web-bff-dev']['client_id'] = $TOKV['web-bff-dev']['client_secret']
   $script:o1bad = $bad
-  Run-OCase 'O1-02' 'O-1 cn 자리에 64 hex(client_secret 꼴 — 속성을 잘못 고른 경우) → cn web-bff-dev FAIL · 값 미출력 · o1=FAIL 4/5' 'o1-cf-values.ps1' -Allow @{ tofu = $true } -Setup { Seed-Tofu -tok $script:o1bad } -Summary $O1S `
+  Run-OCase 'O1-02' 'O-1 cn 자리에 client_secret(54자 [A-Za-z0-9_-] — 속성을 잘못 고른 경우) → cn web-bff-dev FAIL · 값 미출력 · o1=FAIL 4/5' 'o1-cf-values.ps1' -Allow @{ tofu = $true } -Setup { Seed-Tofu -tok $script:o1bad } -Summary $O1S `
+    -Want @('cn web-bff-dev FAIL(꼴이 ^[0-9a-f]{32}\.access$ 가 아니다(값 미출력))', 'o1=FAIL 4/5') -NotWant @('cn web-bff-dev PASS')
+  # 리뷰 O5fix-r0 F2: 모의 client_secret 이 54자 꼴이 되자 O1-02 는 더는 cn 자리에 64 hex 를 넣지 않는다 — 옛 64 hex 꼴(research.md :4256 「기존 64자 hex도 유효」)을
+  #   cn 자리에 넣는 사례를 따로 둔다(cn 정규식을 64 hex 도 받는 공통 꼴로 넓히는 변이를 잡는다)
+  $hx = Hex-Lower 'MOCK-secret-hex64-o1'
+  $bad2 = [ordered]@{}; foreach ($k in @($TOKV.Keys)) { $bad2[$k] = [ordered]@{ client_id = $TOKV[$k]['client_id']; client_secret = $TOKV[$k]['client_secret'] } }
+  $bad2['web-bff-dev']['client_id'] = $hx
+  $script:o1bad2 = $bad2; $script:o1hx = $hx
+  Run-OCase 'O1-02b' 'O-1 cn 자리에 64 소문자 hex(옛 client_secret 꼴 — 속성을 잘못 고른 경우) → cn web-bff-dev FAIL · 값 미출력 · o1=FAIL 4/5' 'o1-cf-values.ps1' -Allow @{ tofu = $true } -Setup { Seed-Tofu -tok $script:o1bad2; [void]$global:ExtraSecrets.Add($script:o1hx) } -Summary $O1S `
     -Want @('cn web-bff-dev FAIL(꼴이 ^[0-9a-f]{32}\.access$ 가 아니다(값 미출력))', 'o1=FAIL 4/5') -NotWant @('cn web-bff-dev PASS')
   $aud2 = @{}; foreach ($k in @($AUDV.Keys)) { $aud2[$k] = $AUDV[$k] }; $aud2['admin'] = $AUDV['admin'].ToUpperInvariant()
   $script:o1aud = $aud2
@@ -2928,8 +2941,21 @@ try {
     -Post { Check 'tofu output 0 · curl GET 0' ($global:TofuCalls.Count -eq 0 -and $global:CurlCalls.Count -eq 0) }
   $b8 = [ordered]@{}; foreach ($k in @($TOKV.Keys)) { $b8[$k] = $TOKV[$k] }; $b8['tester-m2m'] = [ordered]@{ client_id = $TOKV['tester-m2m']['client_id']; client_secret = 'short' }
   $script:o5b8 = $b8
-  Run-OCase 'O5-09' 'O-5 자격 꼴이 아니다(tester-m2m client_secret 64 hex 아님) → 아무것도 보내지 않고 중단 · 값 미출력' 'o5-probe-identity-m2m.ps1' -Allow @{ tofu = $true; curl = $true } -Summary $O5S -Setup { Seed-Tofu -tok $script:o5b8 } -Inputs @('dev', 'a') -Expect '자격을 꺼내지 못했다' `
+  Run-OCase 'O5-09' 'O-5 자격 꼴이 아니다(tester-m2m client_secret 이 54자 [A-Za-z0-9_-] 아님 — short) → 아무것도 보내지 않고 중단 · 값 미출력' 'o5-probe-identity-m2m.ps1' -Allow @{ tofu = $true; curl = $true } -Summary $O5S -Setup { Seed-Tofu -tok $script:o5b8 } -Inputs @('dev', 'a') -Expect '자격을 꺼내지 못했다' `
     -Post { Check 'curl GET 0' ($global:CurlCalls.Count -eq 0) }
+  # T075 보정 2026-11-19(L4 d5 실측 — client_secret = 54자 [A-Za-z0-9_-] · research.md R12 :4256 cfast_[40자][8자 checksum] 꼴): 자격 꼴 판정의 성질 넷을 고정한다(리뷰 O5fix-r0 F1) —
+  #   09b 옛 64 소문자 hex(Cloudflare 에서는 아직 유효한 옛 꼴 — 이 프로젝트 토큰 넷은 전부 새 꼴이라 일부러 거부) · 09c 맞는 54자 + 끝 LF(\z 고정 — curl 은 끝 LF 를 버려 주입은 아니다) ·
+  #   09d 54자 안 가운데 CR(실해 주입 — curl -H @- 는 CR 에서 헤더를 나눈다 · 리뷰 루프백 탐침 · '\A.{54}\z' 변이를 잡는다) · 09e 맞는 53자 + U+212A(대소문자 무시 매치면 [A-Za-z]에 맞는다 — -c 고정)
+  $okS = Cf-Secret 'secret-shape'
+  foreach ($c in @(
+      @('O5-09b', '64 소문자 hex(옛 꼴 — 일부러 거부)', (Hex-Lower 'MOCK-secret-hex64'), @((Hex-Lower 'MOCK-secret-hex64'))),
+      @('O5-09c', '맞는 54자 + 끝 LF(\z 고정 — curl 은 끝 LF 를 버린다)', ($okS + "`n"), @($okS)),
+      @('O5-09d', '54자 가운데 CR(헤더 주입 — 유효 26 + CR + 유효 27)', ($okS.Substring(0, 26) + "`r" + $okS.Substring(26, 27)), @($okS.Substring(0, 26), $okS.Substring(26, 27))),
+      @('O5-09e', '맞는 53자 + U+212A(Kelvin — -c 고정)', ($okS.Substring(0, 53) + [string][char]0x212A), @($okS.Substring(0, 53))))) {
+    $bx = [ordered]@{}; foreach ($k in @($TOKV.Keys)) { $bx[$k] = $TOKV[$k] }; $bx['tester-m2m'] = [ordered]@{ client_id = $TOKV['tester-m2m']['client_id']; client_secret = $c[2] }
+    $script:o5bx = $bx; $script:o5bxs = @($c[3])
+    Run-OCase $c[0] "O-5 자격 꼴이 아니다(tester-m2m client_secret = $($c[1])) → 아무것도 보내지 않고 중단 · 값 미출력" 'o5-probe-identity-m2m.ps1' -Allow @{ tofu = $true; curl = $true } -Summary $O5S -Setup { Seed-Tofu -tok $script:o5bx; foreach ($x in $script:o5bxs) { [void]$global:ExtraSecrets.Add([string]$x) } } -Inputs @('dev', 'a') -Expect '자격을 꺼내지 못했다' `
+      -Post { Check 'curl GET 0' ($global:CurlCalls.Count -eq 0) } }
   Run-OCase 'O5-10' 'O-5 모드 입력이 a · b · c 밖 → 중단(tofu 0)' 'o5-probe-identity-m2m.ps1' -Allow @{ tofu = $true; curl = $true } -Summary $O5S -Setup { Seed-Tofu } -Inputs @('dev', 'd') -Expect '정지점에서 중단' -Post { Check 'tofu output 0' ($global:TofuCalls.Count -eq 0) }
   Run-OCase 'O5-11' 'O-5 b 기대 git_sha 가 40자 hex 아님 → 중단' 'o5-probe-identity-m2m.ps1' -Allow @{ tofu = $true; curl = $true } -Summary $O5S -Setup { Seed-Tofu } -Inputs @('dev', 'b', '9fd9f2c') -Expect 'git_sha 가 40자 소문자 hex 가 아니다'
   Run-OCase 'O5-12' 'O-5 curl 실패(이름 풀이 — exit 6) → FAIL(curl exit=6) · 자격 노출 0' 'o5-probe-identity-m2m.ps1' -Allow @{ tofu = $true; curl = $true } -Summary $O5S -Setup { Seed-Tofu; $global:F['curlFail'] = $true } -Inputs @('dev', 'a') `

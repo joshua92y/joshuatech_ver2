@@ -7,6 +7,8 @@
   #             (객체에 client_id 문자열이 있다). 나머지(client_secret · tester 둘)는 변수 밖으로 내지 않고 바로 버린다
   # 키별 정규식(-cmatch · \A…\z): AUD = ^[0-9a-f]{64}$ · Client ID = ^[0-9a-f]{32}\.access$ — 공통 정규식을 쓰지 않는다(service_tokens 의 client_secret 도 64 hex 꼴이라 속성을 잘못 고르면
   #   비밀이 「형식 PASS」로 보인다 — 75A-8 · 75B-6). 출력: PASS 일 때만 `<키> PASS <값>` · FAIL 이면 `<키> FAIL(사유 분류)`만(값 없음)
+  #   T075 보정 2026-11-19(L4 d5 실측): client_secret 실물은 54자 [A-Za-z0-9_-] 다(research.md R12 :4256 — 2026-08 이후 신규 발급 = cfast_[40자][8자 checksum] · 위 괄호의 64 hex 는
+  #   옛 꼴이다 — Cloudflare 에서는 아직 유효). 키별 정규식은 그대로 둔다(어느 꼴이든 속성 혼동을 막는다 — 하네스 O1-02(54자 꼴) · O1-02b(64 hex 꼴))
   # 사전: ① 창 시작 체크리스트(vault-unseal.md §0 — 모듈 로깅 정책 0: 켜져 있으면 service_tokens JSON 원문이 ConvertFrom-Json 의 이벤트 4103 에 남는다 · 블록도 첫 검사에서 본다)
   #   ② 이 창에서 tofu 상태를 읽을 수 있다(운영자 자격 — infra/cloudflare 백엔드) · 에이전트는 이 블록을 실행하지 않는다
   # 실행: pwsh -NoProfile -File '<이 파일의 절대 경로>'(파일로만 — 저장소 경로를 파일 위치에서 찾는다) · 정지점 없음(입력 0 · 쓰기 0)

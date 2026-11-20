@@ -145,9 +145,12 @@
     $cid = & $prop $t 'client_id'
     $csec = & $prop $t 'client_secret'
     $t = $null
-    if ($rc -ne 0 -or $cid -isnot [string] -or $csec -isnot [string] -or $cid -cnotmatch '\A[0-9a-f]{32}\.access\z' -or $csec -cnotmatch '\A[0-9a-f]{64}\z') {
+    # 자격 꼴(T075 보정 2026-11-19 · L4 d5 실측 — 토큰 넷 모두 같다): client_id = 소문자 hex 32 + .access · client_secret = 54자 [A-Za-z0-9_-](hex 밖 글자 있음).
+    #   옛 판정(client_secret 64 소문자 hex)은 설계 D11 이 research.md R12(:4256 · :4633 — 2026-08 이후 신규 발급 = cfast_[40자][8자 checksum] = 54자 · 옛 64 hex 도 유효)와
+    #   대조하지 않은 가정이었다(토큰 넷은 2026-09-03 발급 = 새 꼴) — 라이브 O-5a 가 그 판정에서 멈췄다(아무것도 보내지 않았다). 이 글자 집합에는 CR · LF · 공백 · : 이 없다(stdin 헤더 줄 하나 = 값 하나)
+    if ($rc -ne 0 -or $cid -isnot [string] -or $csec -isnot [string] -or $cid -cnotmatch '\A[0-9a-f]{32}\.access\z' -or $csec -cnotmatch '\A[0-9A-Za-z_-]{54}\z') {
       $cid = $null; $csec = $null
-      throw "자격을 꺼내지 못했다($tokName — tofu output exit=$rc · client_id ^[0-9a-f]{32}\.access$ · client_secret ^[0-9a-f]{64}$ 꼴 아님 — 값 미출력) · 아무것도 보내지 않았다" }
+      throw "자격을 꺼내지 못했다($tokName — tofu output exit=$rc · client_id ^[0-9a-f]{32}\.access$ · client_secret ^[0-9A-Za-z_-]{54}$ 꼴 아님 — 값 미출력) · 아무것도 보내지 않았다" }
     $hdr = @("CF-Access-Client-Id: $cid", "CF-Access-Client-Secret: $csec")
     $cid = $null; $csec = $null
     $base = "https://identity-m2m-$envSel.joshuatech.dev"
