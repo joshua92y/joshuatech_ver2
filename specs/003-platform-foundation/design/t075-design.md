@@ -324,6 +324,7 @@ patches:
 ### D5 ConfigMap 값과 패치 꼴 〔CD-25 · CD-28〕
 
 - **꼴**: overlay마다 키별 JSON6902 `replace`를 쓴다. 키가 base에서 사라지면 렌더가 실패하므로 base 드리프트를 잡는다. `JT_PLACEHOLDER_EXEMPT`만 `add`다(base에 없다).
+  - (정정 2026-11-20 — bn 「T075 결과」) 「키가 base에서 사라지면 렌더가 실패하므로 base 드리프트를 잡는다」는 틀렸다 — kustomize 5.8.1의 JSON6902 `replace`는 없는 map 키를 오류 없이 더한다(실측 — GP-2 리뷰 G2A-2: base에서 `ACCESS_EXPECTED_CN` 줄을 지워도 dev 렌더 exit 0 · 키 17 · 원인 = kustomize에 든 `gopkg.in/evanphx/json-patch.v4` / GP-3 리뷰 G3A-1: `ADMIN_HOST` 삭제 → prod 렌더 exit 0 · 키 17 · `ACCESS_AUD_M2M` 삭제 → dev · prod 렌더 exit 0 · 키 17). base 드리프트는 14.2 키 집합 정확 일치가 잡는다(추론 — 한 overlay만 replace하는 키의 삭제는 다른 env 렌더에서 키가 모자라 FAIL). 두 overlay가 모두 replace하는 키(`ACCESS_AUD_M2M` · `ACCESS_EXPECTED_CN` · `ALLOWED_HOSTS`)의 base 삭제는 렌더에서 가려진다. 렌더 시점 가드(`op: test`)는 Ingress host · ES `secretKey`에만 있다(그 변이는 렌더 실패 — 실측). overlay 파일은 그대로 두었다(G2A-2 (가) · G3A-1).
 - `키: 값` 한 줄 꼴(전략 병합 · configMapGenerator literals)은 쓰지 않는다 — AUD 줄을 gitleaks가 비밀로 잡는다(§2.4). `# gitleaks:allow` 억제 주석도 늘리지 않는다.
 - 이 꼴은 진짜 비밀도 지나간다. 그래서 대신 **값 꼴을 단언한다**: 14.2(`ACCESS_AUD_*` = `^$|^[0-9a-f]{64}$` · `ACCESS_EXPECTED_CN` = `^[0-9a-f]{32}\.access$` · 키 집합 정확 일치) · 14.4(pod · env별 정확한 값 · dev ≠ prod) · 14.7(앱 렌더 kind Secret 0) 〔CD-25〕.
 - 같은 값이 다른 길로 들어오는 것도 막는다: 14.1 ④(컨테이너 `envFrom` · `env[]`를 base 그대로 고정 — `env[]` 리터럴 · 둘째 ConfigMap · ES template 키가 이 표의 키를 덮지 못한다) · 3.9(ES store · `data[]`를 pod 표로 고정) 〔VR-10 · VR-11〕.
@@ -356,6 +357,7 @@ patches:
 - 14.3이 이 모양을 허용 목록으로 고정한다(D9) 〔CD-13〕. Ingress는 이름으로 나눈다(`<pod>` = m2m · `<pod>-admin` = admin(prod만) · 그 밖 이름 FAIL). `ingressClassName` · `router.entrypoints` · `router.tls` · backend · 금지 넷은 두 Ingress에 공통으로 걸고, host · 경로 · `router.middlewares`만 admin 고유다(C5와 같다) 〔VR-2〕.
 - T084 전에는 사람이 Access를 지나도 admin 페이지는 pod에서 403이다(GitHub IdP JWT에 `common_name`이 없다 — bn VD-T066-5). 정적 경로(`/static/…`)는 AdminHostMiddleware가 JwtAuth 앞에서 서빙한다(pt:19) — 그래서 운영자 브라우저의 정적 파일 GET 200이 router · stripPrefix · ADMIN_HOST를 함께 증명한다(VD-T075-12) 〔75A-13〕.
 - **T084 인계 조건**(CD-28): CN 요구를 푸는 것은 host = `ADMIN_HOST`이고 aud = `ACCESS_AUD_ADMIN`일 때만이다. m2m 호스트는 aud = `ACCESS_AUD_M2M`만 받는다(C23).
+- (정정 2026-11-20 — bn 「T075 결과」) `middleware-admin.yaml`에 `argocd.argoproj.io/sync-wave: "-1"`을 달았다(GP-3 리뷰 G3B-1 · G3A-3 · 컨트롤러 반영 r1 — 위 결정에 없던 어노테이션). 같은 wave면 Argo CD가 kind 순서로 Ingress를 Middleware보다 먼저 적용해 Traefik이 아직 없는 Middleware를 찾는 일시 오류를 낼 수 있다(gitops-engine 소스 판독 · 추론). L15 실측: Middleware가 wave -1로 Ingress(wave 0)보다 먼저 섰고 Traefik middleware 오류 · 첫 sync 일시 줄 0. 14.3은 Middleware 어노테이션을 보지 않는다(리뷰 B X1 변이 — vsh PASS 54).
 
 ### D7 Application 둘(GP-2) 〔CD-2 · CD-18 · CD-29〕
 
@@ -514,6 +516,7 @@ O-3 PASS 조건:
 - **AUD 셋**은 비민감 출력 `tofu -chdir=infra/cloudflare output -json access_app_aud`에서**만** 읽는다(키 `identity-m2m-dev` · `identity-m2m-prod` · `admin`).
 - **Client ID 둘**은 `output -json service_tokens`(sensitive)에서 `web-bff-dev` · `web-bff-prod`의 `.client_id`**만** 읽는다. 속성 이름을 단언한다(객체에 `client_id` 문자열이 있다). 나머지(`client_secret` · tester 둘)는 변수 밖으로 내지 않고 바로 버린다(`Remove-Variable`).
 - **키별 정규식**(`-cmatch`): AUD 셋 `^[0-9a-f]{64}$` · cn 둘 `^[0-9a-f]{32}\.access$`. 공통 정규식은 쓰지 않는다 — 서비스 토큰 `client_secret`도 64 hex 꼴이라 속성을 잘못 고르면 비밀이 「형식 PASS」로 보인다 〔75A-8 · 75B-6〕.
+  - (정정 2026-11-20 — bn 「T075 결과」) 「서비스 토큰 `client_secret`도 64 hex 꼴」은 측정 없는 가정이었다. 실측은 54자 `[A-Za-z0-9_-]`다(라이브 L4 진단 d5 — 토큰 넷 모두 같은 꼴 · 값 0 · 길이가 research.md R12 :4256 · :4633의 2026-08 이후 발급 꼴 `cfast_` + 40 + 8 = 54와 맞는다 · 접두는 재지 않았다). 이 문서는 그 조사(R12)와 대조하지 않았다. 키별 정규식이라는 결론은 그대로다 — 옛 64 hex 비밀도 Cloudflare에서 유효해(R12 :4256) 공통 꼴은 여전히 비밀을 「형식 PASS」로 볼 수 있다(리뷰 O5fix-r0 F2). 아래 하네스 사례 「cn 자리에 64 hex」는 O1-02(54자 꼴) · O1-02b(64 hex 꼴) 둘이 되었다. 이 가정을 옮긴 O-5 블록의 자격 꼴 판정이 라이브 O-5a를 판정 불가로 멈췄고(보낸 것 0), 판정 정정(`\A[0-9A-Za-z_-]{54}\z`)은 bn 「T075 O-5 탐침 자격 꼴 수정」에 있다.
 - **출력**: PASS일 때만 `<키> PASS <값>`, FAIL이면 `<키> FAIL`만(값 없음).
 - 하네스 사례: cn 자리에 64 hex → FAIL · 값 미출력 / AUD 자리에 대문자 hex → FAIL / 키 누락 → FAIL.
 - 출력 값은 비밀이 아니다(공개 저장소의 overlay에 들어간다). 운영자가 컨트롤러에 붙이고 bn에 적는다.
@@ -872,6 +875,8 @@ O-1 · O-5는 명령 후보를 두지 않는다 — 비밀 경계(4키 가드 ·
 | VD-T075-15 | O-5c 양성 탐침 · UD-10(dev · prod)〔CD-4〕 | L11 · L15 | 200 `{"active": true}` · `Cache-Control: no-store` · 400 표본 줄의 쿼리 유무 기록 | AUD · CN 값 · 팀 도메인 · ACL 원인별 |
 | VD-T075-16 | AppProject 허용 목록 라이브〔CD-16〕 | L5(agent-view) | dev/prod 허용 목록 8 · 금지 6 유지 · platform-argocd Synced/Healthy · root 정상 · argo-3(고친 단언) PASS | GP-1 revert(G/bootstrap/README.md ⑧ 비파괴 복구 — 복구 명령 :207 〔VR-13〕) |
 | VD-T075-17 | UD-9 최종 aclfile 로컬〔CD-22〕 | 조각 ③(운영 digest Dragonfly 컨테이너 · 가짜 비밀번호) | 기동 aclfile 오류 0 · 무인증 PING `-NOAUTH` · `ACL LOAD` OK · pod 사용자 `REPLICAOF NO ONE` · `SLAVEOF NO ONE` · `SAVE` · `CLIENT KILL` → NOPERM · 앱 경로 OK | W-6 정정 |
+
+- (정정 2026-11-20 — bn 「T075 결과」) VD-T075-12 판정 보정(L15 실측 · GP-3 리뷰 G3B-1 · G3B-2): ① admin 정적 GET 200은 응답의 `cf-cache-status`를 기록하고 HIT면 판정에 쓰지 않는다 — jt-prod web 로그의 `request_finished` 200(원점 도달)으로 본다(L15: 운영자 응답이 HIT → web 로그 code 200으로 PASS) ② Traefik 로그의 `Default TLS Options defined in multiple` · middleware 오류 0줄은 sync 뒤 창(`--since-time`)에서 보고, 첫 sync · Traefik 재시작 직후의 일시 줄은 시각과 함께 INFO로 남긴다(Middleware wave -1 뒤 L15 실측 일시 줄 0 — D6 정정) ③ 익명 → Access 리다이렉트는 운영자 시크릿 창 대신 무자격 `curl -q`로도 된다(같은 무자격 조건 — L15 302 · Location host = 팀 도메인 · 경로 `/cdn-cgi/access/login/…`).
 
 ### 라이브로 넘김
 

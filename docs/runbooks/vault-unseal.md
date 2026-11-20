@@ -307,6 +307,13 @@ tofu -chdir=D:/code/joshuatech_ver2/infra/vault plan          # 기대: No chang
 | `kv/dev/openfga/preshared` | `key` |
 | `kv/prod/openfga/preshared` | `key` |
 
+- **T075 덮어쓰기 기록**(T075 보정 2026-11-20 — 값 · 해시 0 · 실행 기록 정본은 `bootstrap.md` §4 T075 기록 칸 A · 블록 정본 `specs/003-platform-foundation/design/t075-blocks/`): W-2 dev 2026-11-19 · prod 2026-11-20.
+  - `kv/{env}/authentik/identity-admin` → `vault kv patch` v2: `jwks_url` · `issuer` = 계약 값 · `api_token` · `client_id` · `client_secret`은 sentinel 그대로 보존(되읽기 일치 — VD-T075-11 dev · prod).
+  - `kv/{env}/authentik/webhooks/identity-admin` → 덮어씀 v2(`secret` = CSPRNG 43자 base64url · 되읽기 해시 일치).
+  - 이 표 밖의 새 경로: `kv/{env}/django/identity-admin` 생성 v1(`secret_key`) · `kv/{env}/sentry/identity-admin` 생성 v1(`{"dsn": ""}`).
+  - `kv/{env}/openfga/store_id` · `kv/{env}/openfga/preshared` → v1 sentinel 그대로(면제 · 교체는 T082).
+  - 게이트 1 = O-3 dev `gate=PASS 21/21` · prod `gate=PASS 23/23`.
+  - 남은 sentinel 키(env마다 5) = 면제 셋(`api_token` · `openfga/store_id` · `openfga/preshared`) + 판정 밖 `client_id` · `client_secret` — 아래 불변식 그대로다.
 - **불변식: 면제 셋 밖 sentinel 0 = consumer 활성화 전제**(T075 보정 2026-11-17 — 이전 문구 「sentinel 잔존 0」). 면제 셋 = `api_token` · `openfga/store_id` · `openfga/preshared`다(게이트 2 면제 + overlay ConfigMap `JT_PLACEHOLDER_EXEMPT`). `client_id` · `client_secret`은 pod에 매핑하지 않아 판정 밖이다. `kv/{env}/openfga/preshared`를 `kv/platform/openfga/preshared`와 같은 값으로 바꾸는 것은 T082다(US6에서 바꾸지 않는다 — 이전 문구 「US6에서 … 교체」). 회전은 둘을 함께 한다.
 - 실값 투입 형식(T075 보정 2026-11-17 — 이전 문구 「키당 1회 호출 또는 JSON stdin」): 비밀은 JSON stdin으로만 넣는다(`… | vault kv put "-cas=<n>" <path> -`). `key=-` 다중 사용 금지(stdin은 한 키만 받는다 → 나머지가 빈 값). 실값을 명령줄 리터럴로 적지 않는다. 비밀이 아닌 계약 값(`jwks_url` · `issuer`)만 `vault kv patch "-cas=<n>" <path> issuer=<값> jwks_url=<값>`을 허용한다. 일부 키만 바꿀 때는 `kv patch`를 쓴다(`kv put`은 경로를 통째로 바꾼다).
 - **게이트 1(운영자 — 실값 주입 뒤·consumer 활성화 전, 실행은 T075·T081)**: 토큰 = T084 뒤 OIDC admin, 그 전 root(e2e-reader 정책은 `kv/data/platform/authentik/e2e` 1줄이라 8경로를 읽을 수 없다).

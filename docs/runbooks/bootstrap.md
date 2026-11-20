@@ -1032,9 +1032,9 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
 
 - **상시 점검 명령(읽기만 · 에이전트 가능)**: `pwsh -NoProfile -File tests/scripts/publish-pod.tests.ps1`(정적 + 실행 — 로컬은 Git Bash · yq v4.53.6 필요 · 없으면 그 사례만 SKIP) · `gh run list -R joshua92y/joshuatech_ver2 --workflow publish-pod.yml --limit 5` · `gh pr list -R joshua92y/platform-gitops --state open --json number,headRefName,author --jq '.[] | select(.headRefName | startswith("bump/")) | [.number, .headRefName, .author.login] | @tsv'`(pod마다 열린 봇 PR은 많아야 하나).
 
-### T075 — identity-admin dev · prod 첫 배포(gitops PR 넷 · UD-9 = B2 · 게이트) (2026-11-17 — 설계 · 블록 · 하네스 · 라이브 실행 전)
+### T075 — identity-admin dev · prod 첫 배포(gitops PR 넷 · UD-9 = B2 · 게이트) (2026-11-17 ~ 11-20)
 
-> **상태(2026-11-17)**: 설계(`specs/003-platform-foundation/design/t075-design.md` — D1–D24 · §5 라이브 절차 L0–L16) · 블록과 모의 하네스(`specs/003-platform-foundation/design/t075-blocks/`) · 이 절을 썼다 — **라이브 실행 전**. kv 시드 · 게이트 · Dragonfly ACL 재렌더 블록의 절차는 §4 T075. 실행 뒤 결과는 아래 「기록 칸」과 build-notes 「T075」에 남긴다.
+> **완료(2026-11-20).** 라이브 L0–L16(2026-11-19..20) — 값은 아래 「기록 칸」 · build-notes 「T075 라이브 결과」 · 「T075 결과」. 설계 = `specs/003-platform-foundation/design/t075-design.md`(D1–D24 · §5 라이브 절차 L0–L16) · 블록과 모의 하네스 = `specs/003-platform-foundation/design/t075-blocks/`. kv 시드 · 게이트 · Dragonfly ACL 재렌더 블록의 절차는 §4 T075.
 
 - **누가 무엇을**: O 블록 = 관찰(쓰기 0) · W 블록 = 변경 · 그 밖은 런북 명령 줄. gitops PR은 사람 PR이다 — 관문 승인과 머지는 운영자가 한다(`.claude/rules/infra.md` 「Credentials」). 컨트롤러(에이전트)는 agent-view kubeconfig · GitHub GET으로만 관찰하고, **머지 명령은 선행 조건 출력을 받은 뒤에만 낸다**(2026-10-19 T056 교훈). 한 블록에 관찰과 변경을 섞지 않고 변경 단계마다 다시 본다. 관리자 kubeconfig는 명령에 직접 적는다(`$kc = "$HOME\.kube\joshuatech-admin.yaml"` · `kubectl --kubeconfig $kc …` — `apps/identity-admin/README.md` :101–102).
 - **PR 넷 · 순서 · 관문 · 머지 선행**(설계 D1 · UD-14 — 관문 need = `prod-approval` 운영자 승인):
@@ -1148,26 +1148,28 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
     kubectl -n kube-system logs deploy/traefik --since=30m | Select-String -SimpleMatch 'Default TLS Options defined in multiple'
     kubectl -n kube-system logs deploy/traefik --since=30m | Select-String -SimpleMatch 'middleware' | Select-String -SimpleMatch 'error'
     ```
+
+    - (T075 보정 2026-11-20 — 근거 GP-3 리뷰 G3B-1 · G3B-2 · 실측 L15) **정적 GET 판정**: 응답 헤더 `cf-cache-status`가 `HIT`면 그 응답은 판정에 쓰지 않는다(edge 저장본이다 — `.css`는 Cloudflare 기본 캐시 대상이고 Traefik 액세스 로그는 400–599만 남겨 200의 원점 증거가 없다). 요청마다 새 쿼리 nonce(`?t=<임의 값>`)를 붙이고(같은 URL을 다시 읽으면 `HIT`다 — L15 실측) 첫 응답의 `cf-cache-status`를 기록한다. 원점 도달은 컨트롤러가 jt-prod web 로그의 `request_finished` code 200(`GET /static/admin/css/base.css` — stripPrefix 뒤 경로)으로 본다 — 실측: 운영자 보고 `HIT`(nonce를 붙인 URL을 다시 읽은 응답) · web 로그 12:38:18 KST(03:38:18.96Z) 200. **익명 확인**은 시크릿 창 대신 무자격 `curl -q`(302 · `Location` 호스트 = Access 팀 도메인 `joshua-tech.cloudflareaccess.com`)로 할 수 있다 — 실측 12:42:02 KST(03:42:02Z). **Traefik 로그 판정**은 그 sync operation이 끝난 뒤의 창(`kubectl logs --since-time=<operation 끝 시각>`)으로 보고, 그 전의 일시 줄(같은 wave에서 Ingress가 Middleware보다 먼저 적용될 때의 `middleware … does not exist`)은 시각과 함께 INFO로 남긴다(Traefik 재시작 직후의 일시 줄도 같다 — G3B-1). GP-3은 Middleware에 `argocd.argoproj.io/sync-wave: "-1"`을 달았고 일시 줄은 0이었다(그 효과와 맞다).
 - **기록 칸**(실행 뒤 컨트롤러가 채운다 — 날짜 · 시각(KST, Z 병기) · 값 · 토큰 · 쿠키는 적지 않는다):
 
   | 항목 | 값 |
   |---|---|
-  | L1 O-0 관찰(요약) | |
-  | L2 O-1 — 5행 · `o1=` 줄(값은 비밀이 아니다) | |
-  | L3 — §4 T075 기록 칸 A(O-2 · O-4) | |
-  | L4 O-5a dev · prod — `o5a` 줄 · 무헤더 응답 코드 | |
-  | GP-1 — PR 번호 · 관문 승인 · 머지 커밋 · 시각 · L5 결과(AppProject 허용 목록 · argo-3) | |
-  | L6 — §4 T075 기록 칸 B · GP-A 머지 커밋 · data-assert 7 id(`acl-list` = NOPERM) | |
-  | L7 · L8 — §4 T075 기록 칸 A(W-2 dev · `gate=` dev) | |
-  | GP-2 — PR 번호 · 관문 승인 · 머지 커밋 · 시각 · 메시지 첫 줄 | |
-  | L10 — Application 둘 생성 시각 · hook · ES · Job · pods · Synced/Healthy · prod 0 리소스 · `tlsoption` · `tlsstore` · Traefik 로그 | |
-  | L11 dev — `o5b dev=` · `o5c dev=` 줄 · UD-10 표본(보낸 시각 · x-request-id · 액세스 로그 400 줄에 쿼리가 실렸는가) · exec 탐침 0줄 · O-7 키 이름 | |
-  | L12 — §4 T075 기록 칸 A(W-2 prod · `gate=` prod) | |
-  | L13 — attestation verify(D4 플래그 그대로) exit · 출력 요약 · GP-3 PR 본문에 남긴 자리 · prod seed digest · GP-3 렌더 코멘트 | |
-  | GP-3 — PR 번호 · 관문 승인 · 머지 커밋 · 시각 | |
-  | L15 prod — `o5b prod=` · `o5c prod=` 줄 · admin 정적 200(`…/identity-admin/static/admin/css/base.css`) · 익명 리다이렉트 · `tlsoption` · `tlsstore` default 각 1 · Traefik 로그(`Default TLS Options defined in multiple` · middleware 오류 줄 수) | |
-  | L16 — 하네스 결과 | |
-  | 복구 · 실패 갈래를 썼다면(무엇 · 왜 · 사용자 확인 시각) | |
+  | L1 O-0 관찰(요약) | 2026-11-19 13:44–13:50 KST(04:44–04:50Z) · 모든 행 기대값 PASS — Applications root + 자식 22 Synced/Healthy · AppProject dev/prod 허용 목록 없음 · 금지 6 · CSS 5 Ready · jt-dev ES 4 · jt-prod ES 2 · NP 9 · RQ · LR · data DatabaseRole 6 · Database 4 · KafkaUser 2 · data-assert 옛 꼴 `SUMMARY: pass=13 fail=0` · 열린 봇 PR 0. 판 기록 = K3s v1.36.6+k3s1(SUC가 이미 올렸다) · Argo CD v3.5.2 · Traefik 3.7.15(`allowCrossNamespace` 없음 — T084 전제 ≥ 3.7.18 미충족은 UD-13) · Reloader v1.4.21(build-notes 「T075 라이브 결과」) |
+  | L2 O-1 — 5행 · `o1=` 줄(값은 비밀이 아니다) | 2026-11-19 13:55 KST 무렵(04:55Z 무렵) · OpenTofu v1.12.6 · `aud identity-m2m-dev PASS e808dc6ec9f65fb3929240d3f1bd4b29792706ff2d8adecb54eada4e848cedbc` · `aud identity-m2m-prod PASS 4b80c1ea43d4c160e16ec99b7bc4ae62830929785fb5dab5cd3d6d475cf4ba46` · `aud admin PASS bb921cd68bb6ba9dbf024d0ecf4fb190d560ae6fe6a3a5ed6000ec253bab0e0c` · `cn web-bff-dev PASS abc5c48a948bc0dc5d790bfa76780a73.access` · `cn web-bff-prod PASS 97be0d37995c77f88c01340994d56f33.access` · `o1=PASS 5/5` |
+  | L3 — §4 T075 기록 칸 A(O-2 · O-4) | 2026-11-19 15:44 KST(06:44Z) 이전 · `o2 W-2 전제: dev 10/10 · prod 10/10` · `o4=PASS 14/14` — 자세한 것은 §4 T075 기록 칸 A |
+  | L4 O-5a dev · prod — `o5a` 줄 · 무헤더 응답 코드 | 무헤더(컨트롤러 · 2026-11-19 15:44 KST(06:44Z) · 자격 0 · `curl -q`): dev · prod `GET /health` → **401**(`text/html` · redirect 없음 — C11). O-5a 1차(dev)는 판정 불가(자격 꼴 판정에서 중단 · 보낸 것 0 — 아래 「복구」 행) → 블록 수정 뒤 2차(2026-11-19 · 시각 기록 없음): `o5a dev=PASS 1/1` · `o5a prod=PASS 1/1`(tester-m2m `GET /health` → 404 Traefik · 헤더 없음 → 401 INFO) |
+  | GP-1 — PR 번호 · 관문 승인 · 머지 커밋 · 시각 · L5 결과(AppProject 허용 목록 · argo-3) | gitops PR #62(head b7fd0c8) · 관문 승인 deployment 7882205870(environment production) · `validate/validate` 18m3s ✓ · squash 머지 → main `14efe667b64cbe6f7f97e5f4a5c53e924ec9d2f7` · 2026-11-19 16:57:38 KST(07:57:38Z). L5: root · platform-argocd = 14efe66 Synced/Healthy 17:03:01 KST(08:03:01Z — 머지 뒤 ≈ 5분 23초) · AppProject dev/prod 허용 목록 8 · 금지 6 · argo-1 · 2 · 3 · 4 · 5 PASS(43 passed · 3 failed = backup-1..3 OCI `svc-verify` 세션 만료 · 9 skipped) → VD-T075-16 PASS |
+  | L6 — §4 T075 기록 칸 B · GP-A 머지 커밋 · data-assert 7 id(`acl-list` = NOPERM) | §4 T075 기록 칸 B · GP-A = gitops PR #61 → main `6729cf04f4b05017bdfc6278eeeb307b71c591e7` · 2026-11-19 18:43:44 KST(09:43:44Z) · 새 data-assert Job 18:45:33–18:45:38 KST(09:45:33–09:45:38Z) `SUMMARY: pass=13 fail=0`(Dragonfly 7 id — `acl-list` = identity-admin `ACL LIST` → NOPERM) → L6 완료 · VD-T075-13 PASS |
+  | L7 · L8 — §4 T075 기록 칸 A(W-2 dev · `gate=` dev) | §4 T075 기록 칸 A · W-2 dev `판정: dev 4경로 준비 완료`(authentik `patch v2` — VD-T075-11 PASS) · O-3 dev **`gate=PASS 21/21`**(2026-11-19 · GP-2 머지 전) |
+  | GP-2 — PR 번호 · 관문 승인 · 머지 커밋 · 시각 · 메시지 첫 줄 | gitops PR #63(head a42aceb — GP-A 머지 6729cf0 위로 rebase) · 관문 승인 deployment 7909824540(sha a42aceb) · checks gate 4s · prod-approval 3s · validate 1m12s · squash 머지 → main `ada06004d5893aebf70ead1453ceff07dbc29208` · 2026-11-19 19:10:47 KST(10:10:47Z) · 머지 명령 첫 줄 「선행 조건 충족 확인됨(O-3 dev PASS · L6 · data-assert 7 PASS)」 |
+  | L10 — Application 둘 생성 시각 · hook · ES · Job · pods · Synced/Healthy · prod 0 리소스 · `tlsoption` · `tlsstore` · Traefik 로그 | Application 둘 = 19:11:42 KST(10:11:42Z) 첫 조회에 있음 · dev Application은 operation 시작 19:11:19 KST(10:11:19Z) 전에 생성 — 생성 시각 기록 없음 · dev operation 19:11:19–19:11:45 KST(10:11:19Z → 10:11:45Z · 26초 — PreSync ES `identity-admin-migrate` Succeeded → PreSync Job Succeeded → Sync) → 19:12:05 KST(10:12:05Z) Synced/Healthy(머지 뒤 ≈ 78초) · ES 2 SecretSynced · Job Complete 1/1 · Deployment 2개 1/1 · 재시작 0 · web · relay · celery 오류 0 · prod 리소스 0 Synced/Healthy · Applications 25 · `tlsoption` · `tlsstore` default 각 1 · Middleware 0(L11 O-7 — 운영자) · Traefik 10분 identity 관련 오류 0(build-notes 「T075 라이브 결과」) |
+  | L11 dev — `o5b dev=` · `o5c dev=` 줄 · UD-10 표본(보낸 시각 · x-request-id · 액세스 로그 400 줄에 쿼리가 실렸는가) · exec 탐침 0줄 · O-7 키 이름 | 2026-11-20 · `o5b dev=PASS 8/8`(git_sha 9fd9f2c…) · `o5c dev=PASS 5/5` · UD-10 표본 10:21:32 KST(01:21:32Z) · x-request-id 665e1fb9-1e3e-4252-8fb8-21702b40af0f → Traefik 액세스 로그 400 줄 1개의 RequestPath에 쿼리(가짜 sub · sid 원문)가 **실렸다**(앱 로그는 쿼리 없음 — UD-10 결정은 T098 전) · exec 탐침 = web 로그 `--since=10m` 307줄 중 0줄 · O-7 `identity-admin-env` 11키(AUTHENTIK_API_TOKEN · AUTHENTIK_ISSUER · AUTHENTIK_JWKS_URL · AUTHENTIK_WEBHOOK_SECRET · DATABASE_URL · DRAGONFLY_URL · KAFKA_PASSWORD · OPENFGA_PRESHARED_KEY · OPENFGA_STORE_ID · SECRET_KEY · SENTRY_DSN) · `identity-admin-migrate` 1키(DATABASE_OWNER_URL) — 이름만 · 값 0(build-notes 「T075 라이브 결과」) |
+  | L12 — §4 T075 기록 칸 A(W-2 prod · `gate=` prod) | §4 T075 기록 칸 A · W-2 prod `판정: prod 4경로 준비 완료`(VD-T075-11 prod 몫 PASS) · O-3 prod **`gate=PASS 23/23`**(2026-11-20 · L13 뒤) |
+  | L13 — attestation verify(D4 플래그 그대로) exit · 출력 요약 · GP-3 PR 본문에 남긴 자리 · prod seed digest · GP-3 렌더 코멘트 | 2026-11-20 10:26:45–10:26:52 KST(01:26:45–01:26:52Z) · gh 2.93.0 · 런북 글자 그대로 → **exit 0**(비 TTY라 출력 0줄) · `--format json` 요약 = attestation 1 · SLSA provenance v1 · signer `…/publish-pod.yml@refs/heads/main` · source `9fd9f2c766059f1f4f0ab87718156ff3a6c0964d` · github-hosted · run 44010688210 → GP-3 PR #64 본문 「attestation 확인(L13 — 사람 seed는 promote ③을 거치지 않는다)」 절에 남겼다(명령 글자 · exit 0 · json 요약 — 2026-11-20 `gh pr view 64 --json body`로 확인) · prod seed digest `sha256:faf55a5752533dffb3b5e93e3b8d8857890d4a0690945de70c526de50be057dd`(dev 확인을 통과한 digest) · 렌더 코멘트 12:26:32 KST(03:26:32Z) main ada0600 ↔ head 741e405 · 바뀐 디렉터리 2 · 렌더 실패 0 · prod overlay 추가 10 |
+  | GP-3 — PR 번호 · 관문 승인 · 머지 커밋 · 시각 | gitops PR #64(head 741e405 · base ada0600 · CI run 44667517651) · 관문 승인 deployment 7932433255(sha 741e405) · squash 머지 → main `9a234b89f45ce6aa4c1302d8030509bbc9119f00` · 2026-11-20 12:33:46 KST(03:33:46Z) · 머지 명령 첫 줄 「선행 조건 충족 확인됨(dev L10·L11 PASS · W-2 prod · O-3 prod gate=PASS 23/23 · attestation exit 0)」 |
+  | L15 prod — `o5b prod=` · `o5c prod=` 줄 · admin 정적 200(`…/identity-admin/static/admin/css/base.css`) · 익명 리다이렉트 · `tlsoption` · `tlsstore` default 각 1 · Traefik 로그(`Default TLS Options defined in multiple` · middleware 오류 줄 수) | identity-admin-prod operation 12:33:55–12:34:07 KST(03:33:55Z → 03:34:07Z · 12초) → 12:34:29 KST(03:34:29Z) Synced/Healthy(머지 뒤 ≈ 43초 · ES 2 SecretSynced = vault-prod 첫 사용) · `o5b prod=PASS 8/8` · `o5c prod=PASS 5/5`(UD-10 표본 12:38:02 KST(03:38:02Z) · x-request-id ab5d5515-f989-4def-afe0-61cdaaa218ca · 액세스 로그 400 줄에 쿼리 원문 — dev와 같다) · admin 정적 = 운영자 보고 `cf-cache-status: HIT`(판정 밖) → web 로그 `GET /static/admin/css/base.css` code 200 12:38:18 KST(03:38:18.96Z · request_id c19d3c47-782f-4df7-92b2-3abc06c06630) PASS · 익명 = 컨트롤러 무자격 curl 12:42:02 KST(03:42:02Z) 302 → `joshua-tech.cloudflareaccess.com` 로그인(시크릿 창 대신 — 편차) · Middleware · `tlsoption` · `tlsstore` default 각 1 · Traefik(12:33:00 KST · 03:33:00Z 뒤) TLS multiple 0줄 · middleware 오류 0줄 → VD-T075-12 PASS |
+  | L16 — 하네스 결과 | 2026-11-20 12:43–12:47 KST(03:43–03:47Z · 한 번에 하나) · cluster 45 / 3 / 7(argo-1 25 Synced/Healthy · argo-3 · argo-5 · limits-1 · limits-2 PASS) · data 14 / 2 / 0(env-1 SKIP → PASS) · kafka 17 / 0 / 0(job-d-2 PASS) · FAIL 5 = backup-1..3 · bucket-1/2(OCI `svc-verify` 세션 만료 — 환경) · 동기화 하네스 `sync-identity-admin` PASS(모노레포 origin/main 9fd9f2c ↔ gitops origin/main 9a234b8 · 9항목) → 대상 단언 전부 PASS |
+  | 복구 · 실패 갈래를 썼다면(무엇 · 왜 · 사용자 확인 시각) | 복구 갈래(늦은 시드 · force-sync · 수동 Sync · terminate · `rollout restart`) 0. 예정 밖 사건 둘: ① GP-A 머지 뒤 platform-tests sync Unknown — ComparisonError(서버 측 diff — 예정된 8단계 Job 삭제로 풀림). Argo CD v3.5.2 서버 측 diff가 Job 템플릿 불변을 비교 오류로 낸다(새 operation 0 · gitops `platform/policies/tests/README.md` §재실행 모델의 「재시도 창」 글과 다르다) → §4 T075 B 8단계에 예정된 명령 그대로(운영자 · 18:45 KST 무렵(09:45Z 무렵)) `delete job data-assert` → 자동 sync가 새 Job 생성(18:45:33 KST(09:45:33Z)). ② O-5a 1차(dev) 판정 불가(자격 꼴 가정 · 보낸 것 0) — 블록의 `client_secret` 꼴 가정(64 hex)이 실물(54자 `[A-Za-z0-9_-]`)과 달랐다 → 읽기 전용 진단(d5 · 값 0) → 블록 수정(TDD · 하네스 B부 PASS 5522/5522 · 독립 리뷰 승인) → 2차 PASS |
 
 ## §4 Vault init·시크릿 시드
 
@@ -1816,7 +1818,7 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
 
 ### T075 — identity-admin kv 시드(O-2 · W-2 · 게이트 1 O-3 · O-4) · Dragonfly ACL 재렌더(UD-9 = B2 — O-6 · W-6 · `ACL LOAD`)
 
-> **상태(2026-11-17)**: 블록 · 모의 하네스 · 이 절을 썼다(T075 조각 ③ · ④) — **라이브 실행 전**. 실행 순서 · PR 관계 · 복구는 §3 T075, 결정 정본은 `specs/003-platform-foundation/design/t075-design.md`(D10 · D20), 블록 정본 · 결정 대응 · 하네스 결과 · 남은 위험은 `specs/003-platform-foundation/design/t075-blocks/README.md`다. 이 절의 블록은 전부 창 D(`vault-unseal.md` §0)에서 돈다 — O-1(Cloudflare 값) · O-5(HTTP 탐침)는 §3 T075.
+> **완료(2026-11-20).** 라이브 L0–L16(2026-11-19..20) — 값은 아래 기록 칸 A · B · build-notes 「T075 라이브 결과」 · 「T075 결과」. 블록 · 모의 하네스 · 이 절은 T075 조각 ③ · ④에서 썼다. 실행 순서 · PR 관계 · 복구는 §3 T075, 결정 정본은 `specs/003-platform-foundation/design/t075-design.md`(D10 · D20), 블록 정본 · 결정 대응 · 하네스 결과 · 남은 위험은 `specs/003-platform-foundation/design/t075-blocks/README.md`다. 이 절의 블록은 전부 창 D(`vault-unseal.md` §0)에서 돈다 — O-1(Cloudflare 값) · O-5(HTTP 탐침)는 §3 T075.
 
 - **블록**(디렉터리 `D:\code\joshuatech_ver2\specs\003-platform-foundation\design\t075-blocks\` — 실행은 전부 `pwsh -NoProfile -File <절대 경로>`(권장 — 새 프로세스: env · 변수가 프로세스와 함께 사라진다) 또는 `pwsh -NoProfile`로 새로 연 창에 파일 전문 붙여넣기(`& { … }` 한 문 · 빈 줄 0) · O = 관찰(쓰기 0) · W = 변경 · 입력은 전부 가려진다):
 
@@ -1936,12 +1938,12 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
 
   | 항목 | 값 |
   |---|---|
-  | O-2 — `INFO vault CLI` 줄 · `o2 W-2 전제:` 줄 · 판정 줄 | |
-  | O-4 — 14행 · `o4=` 줄 | |
-  | W-2 dev — 요약 4행 · 집계 줄 · 판정 줄 · 경고(클립보드) 유무 | |
-  | O-3 dev — `gate=` 줄 | |
-  | W-2 prod — 요약 4행 · 집계 줄 · 판정 줄 | |
-  | O-3 prod — `gate=` 줄 | |
+  | O-2 — `INFO vault CLI` 줄 · `o2 W-2 전제:` 줄 · 판정 줄 | 2026-11-19 15:44 KST(06:44Z) 이전(L3) · `INFO vault CLI: Vault v2.1.0 (cb6a54f…), built 2026-08-31 · Application ~\AppData\Local\Microsoft\WinGet\Links\vault.exe` · `OK Vault 도달 · 초기화됨 · unsealed(seal type=ocikms · server 2.0.4)` · JUDGE 20줄 = 위 「경로 · 값」 표 「지금(기록)」 열과 행마다 일치 · `o2 W-2 전제: dev 10/10 · prod 10/10` · `판정: W-2 전제 충족(dev · prod)` |
+  | O-4 — 14행 · `o4=` 줄 | O-2와 같은 창(L3) · PASS 14줄(bound_service_account_names [eso-prod] · namespaces [external-secrets] · token_policies [eso-prod] · audience vault · ttl 3600 · max_ttl 14400 · type service · period 0 · explicit_max_ttl 0 · num_uses 0 · bound_cidrs [] · no_default_policy False · namespace_selector "" · policy eso-prod = `kv/data/prod/*` · `kv/metadata/prod/*` read) · `o4=PASS 14/14` |
+  | W-2 dev — 요약 4행 · 집계 줄 · 판정 줄 · 경고(클립보드) 유무 | 2026-11-19 · L6 끝(18:45:38 KST · 09:45:38Z) 뒤 · GP-2 머지(19:10:47 KST · 10:10:47Z) 전(블록이 시각을 찍지 않아 정확한 시각은 기록 없음) · 사용자 「진행」 뒤 PLAN 4 → `seed` · authentik `patch v2 · 되읽기 일치(jwks_url·issuer = 계약 값 · 보존 client_id·client_secret·api_token)`(VD-T075-11 PASS — kv patch 꼴 첫 실측) · webhooks `덮어씀 v2 · 되읽기 해시 일치(secret)` · django `생성 v1 · 되읽기 해시 일치(secret_key)` · sentry `생성 v1 · 되읽기 해시 일치(dsn)` · `이 실행이 kv 에 쓴 경로: 4건(검증 완료 4 · …) · 결과 미확인 0 · 건너뜀 0 · 중단 0 · 미실행 0` · `판정: dev 4경로 준비 완료` · 클립보드 경고 유무는 기록 없음 |
+  | O-3 dev — `gate=` 줄 | **`gate=PASS 21/21`**(2026-11-19 · GP-2 머지 전 — PASS 21줄 = 「실행 · 기대 출력」 4의 목록 그대로 · 면제 밖 `PLACEHOLDER-` 0(10경로)) |
+  | W-2 prod — 요약 4행 · 집계 줄 · 판정 줄 | 2026-11-20 · L13(10:26:52 KST · 01:26:52Z) 뒤 · GP-3 머지(12:33:46 KST · 03:33:46Z) 전(정확한 시각은 기록 없음) · 사용자 「진행」 뒤 `OK 대상 env = prod — 쓸 수 있는 경로 4` · PLAN 4 → `seed` · 요약 4행 = dev와 같은 꼴(authentik `patch v2` · webhooks `덮어씀 v2` · django `생성 v1` · sentry `생성 v1` — 모두 되읽기 일치) · `이 실행이 kv 에 쓴 경로: 4건(검증 완료 4 · …) · 결과 미확인 0 · 건너뜀 0 · 중단 0 · 미실행 0` · `판정: prod 4경로 준비 완료`(VD-T075-11 prod 몫 PASS) |
+  | O-3 prod — `gate=` 줄 | **`gate=PASS 23/23`** — dev와 같은 21줄(경로만 prod) + `PASS webhooks secret: dev 해시 ≠ prod 해시` · `PASS django secret_key: dev 해시 ≠ prod 해시` |
 
 #### B. Dragonfly ACL 재렌더 — UD-9 = B2(L6 · GP-2 전)
 
@@ -2004,7 +2006,7 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
      kubectl --kubeconfig $kc -n data exec deploy/dragonfly-dev -c dragonfly -- ls -la /etc/dragonfly
      ```
 
-     → `..data -> ..<YYYY_MM_DD_HH_MM_SS.…>` 링크 대상 이름의 시각(UTC)이 4단계 `REFRESH`보다 뒤. 명령이 실패하면(이미지에 `ls`가 없다) `REFRESH` 뒤 2분 이상 기다린다. 볼륨은 `items`(subPath 아님)라 kubelet이 파일을 바꾼다 — 실행 중인 Dragonfly는 6단계 전까지 옛 규칙 그대로다.
+     → `..data -> ..<YYYY_MM_DD_HH_MM_SS.…>` 링크 대상 이름의 시각(UTC)이 **데이터가 바뀐 동기화**(그 env의 acl을 W-6이 쓴 직후의 첫 `SecretSynced`)보다 뒤(T075 보정 2026-11-20 — 이전 문구 「4단계 `REFRESH`보다 뒤」). 기준은 가장 최근 `REFRESH`가 아니다 — 데이터가 바뀌지 않은 동기화는 새 `..data`를 만들지 않는다: 2026-11-19 prod에서 데이터가 바뀐 동기화 08:13:28Z(추론 — `..data` 08:13:47Z로 확인 · 17:13:28 KST · 근거 = 그 시각의 `SecretSynced` 성공 · W-6 prod 쓰기 직후 — 3단계 끝으로 적은 08:13:32Z(17:13:32 KST)보다 4초 앞) 뒤에 `..data` 08:13:47Z(17:13:47 KST)가 생겼고, 그 뒤 데이터 변화 없는 `REFRESH` 08:18:28Z(17:18:28 KST) 뒤에는 새 `..data`가 없었다(build-notes 「T075 라이브 결과」 발견 「ESO 데이터 변화 동기화 ≠ REFRESH」). 그래서 `..data`가 가장 최근 `REFRESH`보다 앞이어도 데이터가 바뀐 동기화보다 뒤면 반영된 것이다. 명령이 실패하면(이미지에 `ls`가 없다) `REFRESH` 뒤 2분 이상 기다린다. 볼륨은 `items`(subPath 아님)라 kubelet이 파일을 바꾼다 — 실행 중인 Dragonfly는 6단계 전까지 옛 규칙 그대로다.
   6. **admin `ACL LOAD`**(dev — **먼저 · 재시작 아님**): `…\w6-acl-load.ps1` → ① `dev` ② root 토큰 ③ 보낼 명령을 본 뒤 `load-dev`. admin 비밀번호는 블록이 kv에서 읽어 `kubectl exec -i`의 stdin으로만 `redis-cli --askpass`에 준다(argv · 화면 · 파일 · 클립보드 0 — 사람이 칠 수 없는 값이라 블록이다). 기대:
 
      ```text
@@ -2058,14 +2060,14 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
 
   | 항목 | 값 |
   |---|---|
-  | L6 전 — SUC 다음 창 · 노드 작업 일정(겹침 없음 확인 · 「규칙」 재시작 요인 보류) | |
-  | 1 O-6 사전(전) — `o6-pre` 줄 | |
-  | 2 acl 삭제(`w6-acl-delete.ps1`) — `acl-delete <경로> =` 줄 2개(dev · prod) | |
-  | 3 W-6 — 요약 7행 · 집계 줄 · 판정 줄 · `INFO vault CLI` 줄 · **끝 시각(UTC)** | |
-  | 4–5 dev — ES STATUS · `refreshTime` · `syncedResourceVersion` · `..data` 시각 | |
-  | 6–7 dev — `acl-load dev =` 줄 · `o6-post dev=` 줄 | |
-  | 8 prod — `o6-pre` 줄 · ES · `..data` · `acl-load prod =` · `o6-post prod=` | |
-  | GP-A 머지(커밋 · 시각) · Job 삭제 시각(8단계 명령) · 다시 만든 Job COMPLETIONS · data-assert 7 id 결과(`acl-list` = NOPERM) | |
+  | L6 전 — SUC 다음 창 · 노드 작업 일정(겹침 없음 확인 · 「규칙」 재시작 요인 보류) | 2026-11-19 17:07 KST(08:07Z) · SUC 다음 창 = 2026-11-22(일) 03:00 KST(11-21 18:00Z) — gitops main plan 창 일요일 03:00–05:00 KST(agent-view는 plans 조회 Forbidden) · 오늘 L6와 겹치지 않음 · 두 노드 v1.36.6 + plan 해시 라벨(대기 업그레이드 없음) · 노드 작업 일정은 운영자에게 물었다(회신 내용은 기록 없음) · Dragonfly 기준선 dev · prod pod Running · 재시작 0(노드 joshtech-cache) · 재시작 요인 보류 = 2단계 ~ prod O-6 사후 PASS(아래 8 행) |
+  | 1 O-6 사전(전) — `o6-pre` 줄 | `o6-pre dev=FAIL(옛 규칙 — UD-9 적용 전이면 기대한 FAIL · 적용 뒤면 회귀) prod=FAIL(옛 규칙 — …)` — 기대한 FAIL(dev 4줄 · prod 3줄 · pod 사용자 꼬리 = `+@all`) · 다른 결함 0 · Vault v2.1.0 |
+  | 2 acl 삭제(`w6-acl-delete.ps1`) — `acl-delete <경로> =` 줄 2개(dev · prod) | 사용자 「진행」 확인 뒤 · `acl-delete kv/dev/dragonfly/acl = OK(모든 버전 · 메타데이터 삭제 — No value found 확인 · 삭제) · 다음 = W-6` · `acl-delete kv/prod/dragonfly/acl = OK(…) · 다음 = W-6` |
+  | 3 W-6 — 요약 7행 · 집계 줄 · 판정 줄 · `INFO vault CLI` 줄 · **끝 시각(UTC)** | SKIP 5(live-ok — dev admin · identity-admin · sample-pod · prod admin · identity-admin) · `OK kv/dev/dragonfly/acl v1 — 생성 · 되읽기 해시 일치(users.acl)` · `OK kv/prod/dragonfly/acl v1 — 생성 · 되읽기 해시 일치(users.acl)` · `이 실행이 kv 에 새로 쓴 경로: 2건(생성·검증 완료 2 · …) · 결과 미확인 0 · 건너뜀 5 · 중단 0 · 미실행 0` · `판정: kv 7경로 준비 완료(생성 또는 live-ok · acl = B2 렌더)` · `INFO vault CLI` 줄은 기록 없음 · **끝 시각 2026-11-19T08:13:32Z(17:13:32 KST)** |
+  | 4–5 dev — ES STATUS · `refreshTime` · `syncedResourceVersion` · `..data` 시각 | 기다리는 길(force-sync 없음) · `dragonfly-dev-acl` SecretSynced True · REFRESH 2026-11-19T08:15:35Z(17:15:35 KST — 3단계 끝 뒤) · SYNCED_RV `1-c60f6262…`(ES 객체 기준 — 데이터와 무관하게 같다) · `..data -> ..2026_11_19_08_15_45.…`(17:15:45 KST · 08:15:45Z — REFRESH 10초 뒤) |
+  | 6–7 dev — `acl-load dev =` 줄 · `o6-post dev=` 줄 | 사용자 「진행」 확인 뒤 · kubectl = Docker Desktop 동봉판(`Application` · `kubectl.exe`) · `acl-load dev = OK(admin ACL LOAD — 마운트 aclfile 을 다시 읽었다 · 모든 연결이 끊겼다)` · `o6-post dev=PASS 7/7` · 17:22:31 KST(08:22:31Z) Dragonfly 두 pod 재시작 0 · 두 ES `lastTransitionTime` 2026-10-22 그대로(삭제 · 재렌더 사이 SecretSyncedError 전이 0) |
+  | 8 prod — `o6-pre` 줄 · ES · `..data` · `acl-load prod =` · `o6-post prod=` | `o6-pre dev=PASS(B2) prod=PASS(B2)` · `dragonfly-prod-acl` 데이터가 바뀐 동기화 = 08:13:28Z(17:13:28 KST — W-6 prod 쓰기 직후의 첫 SecretSynced · 3단계 끝 기록보다 4초 앞) · 그 뒤 REFRESH 17:18:28 KST(08:18:28Z)는 데이터 변화 없음 · `..data -> ..2026_11_19_08_13_47.…`(17:13:47 KST · 08:13:47Z — 데이터가 바뀐 동기화 19초 뒤 · 5단계 보정 참조) · 사용자 「진행」 확인 뒤 `acl-load prod = OK(…)` · `o6-post prod=PASS 5/5` → UD-9 B2 두 env 적용 끝 · 재시작 요인 보류 해제 |
+  | GP-A 머지(커밋 · 시각) · Job 삭제 시각(8단계 명령) · 다시 만든 Job COMPLETIONS · data-assert 7 id 결과(`acl-list` = NOPERM) | gitops PR #61(head d76a5d980195bf5d0a61e71385de136e83e46d5d — `gh pr update-branch`로 갱신 · CI 17:50:15 KST(08:50:15Z) CLEAN) · 사용자 「머지」 뒤 squash → main `6729cf04f4b05017bdfc6278eeeb307b71c591e7` · 2026-11-19 18:43:44 KST(09:43:44Z) · platform-tests sync Unknown(ComparisonError — 서버 측 diff · 예정된 8단계 Job 삭제로 풀림 — §3 T075 기록 칸 「복구」 행) · Job 삭제 = §4 T075 B 8단계에 예정된 명령 그대로(운영자 · 18:45 KST 무렵(09:45Z 무렵)) → 새 Job 18:45:33 KST(09:45:33Z) 생성 · 18:45:38 KST(09:45:38Z) 끝 · succeeded 1 · `SUMMARY: pass=13 fail=0` — Dragonfly 7 id(`noauth` · **`acl-list` = NOPERM** · `writer-set` · `reader-get` · `reader-set-denied` · `reader-cross-denied` · `noperm`) PASS |
 
 ## §5 v1 삭제 기록
 

@@ -135,7 +135,7 @@ spec:
       remoteRef: { key: prod/db/identity_admin/app, property: password }
 ```
 
-위 예는 prod overlay를 렌더한 꼴이다(T072 보정 2026-11-07 — 앞 예시의 kv `url` 직접 매핑을 바꿨다). 모노레포 템플릿 base는 dev 값(store `vault-dev` · 키 `dev/…`)이고 prod overlay가 store와 `data[i].remoteRef.key`를 JSON6902로 바꾼다 — 인덱스 replace마다 앞에 `op: test` · `path: /spec/data/N/secretKey` · `value: <이름>`을 두어 base 순번이 바뀌면 렌더가 실패하게 한다(validate 3.2는 키 접두 · store만 본다). DB URL을 Secret 템플릿에서 조립하는 이유: TLS 매개변수(`sslmode=verify-full` · `sslrootcert`)를 kv 값이 아니라 매니페스트가 보장하고 렌더 검사가 볼 수 있게 한다(템플릿 하네스 가정 ③). DB 이름은 role 이름(`<db>_app`)에서 파생해 prod overlay가 URL 문자열을 패치하지 않는다(ESO v2 `trimSuffix` — T075 라이브 확인).
+위 예는 prod overlay를 렌더한 꼴이다(T072 보정 2026-11-07 — 앞 예시의 kv `url` 직접 매핑을 바꿨다). 모노레포 템플릿 base는 dev 값(store `vault-dev` · 키 `dev/…`)이고 prod overlay가 store와 `data[i].remoteRef.key`를 JSON6902로 바꾼다 — 인덱스 replace마다 앞에 `op: test` · `path: /spec/data/N/secretKey` · `value: <이름>`을 두어 base 순번이 바뀌면 렌더가 실패하게 한다(validate 3.2는 키 접두 · store만 본다). DB URL을 Secret 템플릿에서 조립하는 이유: TLS 매개변수(`sslmode=verify-full` · `sslrootcert`)를 kv 값이 아니라 매니페스트가 보장하고 렌더 검사가 볼 수 있게 한다(템플릿 하네스 가정 ③). DB 이름은 role 이름(`<db>_app`)에서 파생해 prod overlay가 URL 문자열을 패치하지 않는다(ESO v2 `trimSuffix` — T075 보정 2026-11-20 · 이전 문구 「T075 라이브 확인」: 확인했다(VD-T075-6) — dev(기동 2026-11-19 · O-5b 2026-11-20) · prod(2026-11-20) 모두 ES 2개 SecretSynced · migrate Job 성공 · init `startup_check: OK` · `/health` `checks.db` ok(O-5b) — 템플릿의 `trimSuffix "_app"`가 두 env에서 맞는 DB 이름(dev `dev_identity_admin` · prod `identity_admin`)을 만든다).
 
 ### ClusterSecretStore 5개
 
