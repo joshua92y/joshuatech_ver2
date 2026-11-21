@@ -1,4 +1,4 @@
-# tests/platform/cluster.tests.ps1 하네스 단위 테스트(T049 — argo-4 범위 분리 · 배포 게이트 · 조회 오류 사유 · np-2 문구 · T059 — argo-5).
+# tests/platform/cluster.tests.ps1 하네스 단위 테스트(T049 — argo-4 범위 분리 · 배포 게이트 · 조회 오류 사유 · np-2 문구 · T059 — argo-5 · T075 — argo-3 허용 목록).
 # Run: pwsh -NoProfile -File tests/scripts/cluster-tests.tests.ps1
 # Exit 0 = all pass, 1 = failures. 외부 테스트 프레임워크 없음(tests/scripts/reboot-tests.tests.ps1과 같은 구조).
 # 배치 이유: 러너 tests/platform/run-platform-tests.ps1은 자기 폴더의 *.tests.ps1을 발견·실행하므로 이 파일은 tests/scripts/에 둔다
@@ -41,9 +41,13 @@
 #   "모든 호출이 --kubeconfig로 픽스처를 명시" · "게이트가 SKIP한 항목은 US3 객체를 조회하지 않음"을 단언하는 데 쓴다.
 #   응답표 기본값(New-Responses) = 라이브에서 예상되는 US2 상태: US2 객체는 맞고, US3 Application 넷은 자원 0으로 있고,
 #   US3 CRD는 설치 전이라 Cluster · Kafka · KafkaNodePool 조회는 "리소스 타입 없음"으로 실패한다. 케이스가 필요한 줄만 바꾼다.
-# 방식 2 — 함수 케이스(F*): 하네스 파일을 AST로 읽어 최상위 함수 정의와 허용 목록 상수($argo4Allowlist)만 동적 모듈 안에 정의한다
-#   (최상위 문장은 실행하지 않는다). 게이트 함수 Resolve-Argo4Gate에 허용 목록을 넘겨 시험하고(설계 D2 "허용 목록에 없는 ID"),
-#   Get-TaskLineState의 과제 줄 판정을 표로 시험한다. 조회는 주입한다(호출 횟수를 센다).
+# 방식 2 — 함수 케이스(F*): 하네스 파일을 AST로 읽어 최상위 함수 정의와 상수 넷($argo4Allowlist · argo-3의 $whitelistPairs ·
+#   $blacklistKinds · $blacklistGroups)만 동적 모듈 안에 정의한다(최상위 문장은 실행하지 않는다). 게이트 함수 Resolve-Argo4Gate에 허용 목록을
+#   넘겨 시험하고(설계 D2 "허용 목록에 없는 ID"), Get-TaskLineState의 과제 줄 판정을 표로 시험한다. 조회는 주입한다(호출 횟수를 센다).
+#   F07(T075 — 설계 design/t075-design.md D8 · 계약 gitops-repo.md §Application 규약 AppProject 행): argo-3 판정 Get-AppProjectKindProblems를
+#   JSON을 거친 AppProject 표로 시험한다 — 허용 목록 정확히 8쌍(group까지 · 빠짐 · 목록 밖 · 와일드카드 · 중복 · 대소문자 · 목록 없음 · 빈 배열 ·
+#   group 글자 그대로 '""' = 문제 · group 키 없음 · null = core) + 금지 목록 ⊇ 6(둘째 겹) · 상수 셋이 계약 값 그대로 · Format-GroupKind는 표시
+#   전용(비교 키는 group 원문 + kind — 수정 라운드 1 RB-2). 라이브 argo-3은 gitops GP-1 머지 전까지 FAIL이 정상이다.
 #
 # 환경 변수:
 #   CLUSTER_HARNESS_SCRIPT      시험할 하네스(기본 tests/platform/cluster.tests.ps1) — 변이 시험에서 사본을 가리킨다. 설정되면 요약 줄 끝에
@@ -496,9 +500,11 @@ function Import-HarnessModule([string]$path) {
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors)
     if (@($errors).Count -gt 0) { throw "harness does not parse: $(@($errors)[0].Message)" }
     $funcs = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $false))
+    # 상수: argo-4 허용 목록 + argo-3 판정 표 셋(T075 — F07이 함수에 넘긴다). 이름 대조는 ordinal([Array]::IndexOf = String.Equals).
+    $constNames = [string[]]@('argo4Allowlist', 'whitelistPairs', 'blacklistKinds', 'blacklistGroups')
     $consts = @($ast.EndBlock.Statements | Where-Object {
             $_ -is [System.Management.Automation.Language.AssignmentStatementAst] -and $_.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
-            (Test-Same $_.Left.VariablePath.UserPath 'argo4Allowlist') })
+            [Array]::IndexOf($constNames, [string]$_.Left.VariablePath.UserPath) -ge 0 })
     $text = ((@($consts | ForEach-Object { $_.Extent.Text }) + @($funcs | ForEach-Object { $_.Extent.Text })) -join "`n") + "`nExport-ModuleMember -Function @()`n"
     return (New-Module -Name ('clusterharness-' + [guid]::NewGuid().ToString('N')) -ScriptBlock ([scriptblock]::Create($text)))
 }
@@ -987,6 +993,70 @@ try {
             Assert 'F06-2: control -- the real Application argocd/platform-cnpg with 0 resources still skips with the allowlist text' ((Test-Same ([string]$g.decision) 'skip') -and (Test-Same ([string]$g.reason) $skipText['argo-4-cnpg-crd'])) "got $($g.decision): $($g.reason)"
             $g = Get-Gate 'argo-4-cnpg-crd' $fullAllowlist (New-GateApp 'platform-cnpg' 'argocd' @([pscustomobject]@{ kind = 'CustomResourceDefinition'; name = 'clusters.postgresql.cnpg.io' })) '' @('- [ ] T052 x') ''
             Assert 'F06-3: control -- the real Application with 1 resource -> check (tasks.md not read)' ((Test-Same ([string]$g.decision) 'check') -and $script:taskCalls -eq 0) "got $($g.decision): $($g.reason) taskCalls=$script:taskCalls"
+        }
+    }
+    # argo-3(T075 보정 2026-11-17 — 설계 design/t075-design.md D8 · 계약 gitops-repo.md §Application 규약 AppProject 행): AppProject dev/prod의
+    #   namespaceResourceWhitelist = 정확히 8쌍(group까지 · 빠짐 · 목록 밖 · 와일드카드 · 중복 · 대소문자 · 목록 없음 · 빈 배열 = 문제) +
+    #   namespaceResourceBlacklist ⊇ 6(둘째 겹). 객체는 라이브처럼 JSON을 거친다(kubectl -o json → ConvertFrom-Json). 비교 키는 group 원문 + kind라
+    #   group 글자 그대로 '""'(따옴표 두 글자)는 core("")와 다른 항목이다(수정 라운드 1 RB-2 — 표시용 Format-GroupKind로 접으면 거짓 PASS).
+    Test-Case 'F07' 'Get-AppProjectKindProblems (argo-3, T075): namespaceResourceWhitelist exactly the 8 contract pairs (group exact) + namespaceResourceBlacklist covers the 6 kinds -- missing / outside / wildcard / duplicate / case / absent / empty / literal-quote group / second-layer gaps are problems' {
+        $ok = ($null -ne $script:mod) -and (Test-ModuleHas $script:mod 'Get-AppProjectKindProblems') -and (Test-ModuleHas $script:mod 'Format-GroupKind')
+        $pairs = if ($ok) { (@(& $script:mod { $whitelistPairs | ForEach-Object { Format-GroupKind ([string]$_.group) ([string]$_.kind) } }) -join ', ') } else { '' }
+        $blackKinds = if ($ok) { (@(& $script:mod { $blacklistKinds }) -join ', ') } else { '' }
+        $blackGroups = if ($ok) { (@(& $script:mod { foreach ($k in @($blacklistKinds)) { "$k=$($blacklistGroups[$k])" } }) -join ', ') } else { '' }
+        $wantPairs = '""/ConfigMap, ""/Service, apps/Deployment, batch/Job, batch/CronJob, networking.k8s.io/Ingress, external-secrets.io/ExternalSecret, traefik.io/Middleware'
+        $wantBlackGroups = 'NetworkPolicy=networking.k8s.io, ResourceQuota=, LimitRange=, Role=rbac.authorization.k8s.io, RoleBinding=rbac.authorization.k8s.io, ServiceAccount='
+        Assert 'F07-0: the harness defines Get-AppProjectKindProblems and Format-GroupKind; $whitelistPairs = the contract 8 pairs in order; $blacklistKinds/$blacklistGroups = the 6 kinds with their groups' (
+            $ok -and (Test-Same $pairs $wantPairs) -and (Test-Same $blackKinds 'NetworkPolicy, ResourceQuota, LimitRange, Role, RoleBinding, ServiceAccount') -and (Test-Same $blackGroups $wantBlackGroups)
+        ) "module: $script:modError; pairs [$pairs]; blacklist [$blackKinds]; groups [$blackGroups]"
+        if ($ok) {
+            function Gk($g, [string]$k) { $o = [ordered]@{}; if ($g -isnot [bool]) { $o['group'] = $g }; $o['kind'] = $k; return $o }   # $g = $false → group 키 없음
+            $w8 = @((Gk '' 'ConfigMap'), (Gk '' 'Service'), (Gk 'apps' 'Deployment'), (Gk 'batch' 'Job'), (Gk 'batch' 'CronJob'), (Gk 'networking.k8s.io' 'Ingress'), (Gk 'external-secrets.io' 'ExternalSecret'), (Gk 'traefik.io' 'Middleware'))
+            $b6 = @((Gk 'networking.k8s.io' 'NetworkPolicy'), (Gk '' 'ResourceQuota'), (Gk '' 'LimitRange'), (Gk '' 'ServiceAccount'), (Gk 'rbac.authorization.k8s.io' 'Role'), (Gk 'rbac.authorization.k8s.io' 'RoleBinding'))
+            function Swap($list, [string]$kind, $with) { return @(@($list | Where-Object { -not (Test-Same ([string]$_['kind']) $kind) }) + @($with)) }
+            # 행: white/black = 목록(키 'absent'면 그 키 자체가 없다) · want = 문제 수 · has = 문제 문장에 있어야 할 조각 · hasNot = 없어야 할 조각
+            $rows = @(
+                @{ name = 'exact 8 + 6'; white = $w8; black = $b6; want = 0 },
+                @{ name = 'core group without a group key'; white = @($w8 | ForEach-Object { if ([string]::IsNullOrEmpty([string]$_['group'])) { Gk $false $_['kind'] } else { $_ } }); black = $b6; want = 0 },
+                @{ name = 'core group as JSON null'; white = @($w8 | ForEach-Object { if ([string]::IsNullOrEmpty([string]$_['group'])) { Gk $null $_['kind'] } else { $_ } }); black = $b6; want = 0 },
+                @{ name = 'no namespaceResourceWhitelist key (live before GP-1)'; white = 'absent'; black = $b6; want = 1; has = @('AppProject dev: namespaceResourceWhitelist is not exactly the 8 contract kinds', 'missing ""/ConfigMap, ""/Service, apps/Deployment', 'traefik.io/Middleware') },
+                @{ name = 'empty namespaceResourceWhitelist'; white = @(); black = $b6; want = 1; has = @('missing ""/ConfigMap', 'traefik.io/Middleware') },
+                @{ name = 'Middleware missing'; white = @($w8 | Where-Object { -not (Test-Same ([string]$_['kind']) 'Middleware') }); black = $b6; want = 1; has = @('missing traefik.io/Middleware'); hasNot = @('outside the list', 'duplicated') },
+                @{ name = 'extra traefik.io/TLSOption'; white = @($w8 + @(Gk 'traefik.io' 'TLSOption')); black = $b6; want = 1; has = @('outside the list traefik.io/TLSOption'); hasNot = @('missing', 'duplicated') },
+                @{ name = 'wildcard */*'; white = @($w8 + @(Gk '*' '*')); black = $b6; want = 1; has = @('outside the list */*') },
+                @{ name = 'apps/Deployment twice'; white = @($w8 + @(Gk 'apps' 'Deployment')); black = $b6; want = 1; has = @('duplicated apps/Deployment'); hasNot = @('missing', 'outside the list') },
+                @{ name = 'kind case apps/deployment'; white = (Swap $w8 'Deployment' (Gk 'apps' 'deployment')); black = $b6; want = 1; has = @('missing apps/Deployment', 'outside the list apps/deployment') },
+                @{ name = 'group case Batch/Job'; white = (Swap $w8 'Job' (Gk 'Batch' 'Job')); black = $b6; want = 1; has = @('missing batch/Job', 'outside the list Batch/Job') },
+                @{ name = 'Middleware under traefik.containo.us'; white = (Swap $w8 'Middleware' (Gk 'traefik.containo.us' 'Middleware')); black = $b6; want = 1; has = @('missing traefik.io/Middleware', 'outside the list traefik.containo.us/Middleware') },
+                @{ name = 'ConfigMap under group v1'; white = (Swap $w8 'ConfigMap' (Gk 'v1' 'ConfigMap')); black = $b6; want = 1; has = @('missing ""/ConfigMap', 'outside the list v1/ConfigMap') },
+                @{ name = 'ConfigMap under the literal two-character group ""'; white = (Swap $w8 'ConfigMap' (Gk '""' 'ConfigMap')); black = $b6; want = 1; has = @('missing ""/ConfigMap', 'outside the list ''""''/ConfigMap') },
+                @{ name = 'entry without kind'; white = @($w8 + @([ordered]@{ group = 'apps' })); black = $b6; want = 1; has = @('outside the list apps/') },
+                @{ name = 'blacklist without ServiceAccount'; white = $w8; black = @($b6 | Where-Object { -not (Test-Same ([string]$_['kind']) 'ServiceAccount') }); want = 1; has = @('AppProject dev: namespaceResourceBlacklist missing ServiceAccount(group '''' or ''*'')'); hasNot = @('namespaceResourceWhitelist') },
+                @{ name = 'blacklist Role with group *'; white = $w8; black = (Swap $b6 'Role' (Gk '*' 'Role')); want = 0 },
+                @{ name = 'no namespaceResourceBlacklist key'; white = $w8; black = 'absent'; want = 1; has = @('namespaceResourceBlacklist missing NetworkPolicy', 'RoleBinding', 'ServiceAccount') },
+                @{ name = 'both lists broken'; white = @($w8 + @(Gk 'traefik.io' 'IngressRoute')); black = @(); want = 2; has = @('outside the list traefik.io/IngressRoute', 'namespaceResourceBlacklist missing') }
+            )
+            $bad = @()
+            foreach ($row in $rows) {
+                $spec = [ordered]@{ sourceRepos = @('https://github.com/joshua92y/platform-gitops.git'); clusterResourceWhitelist = @() }
+                if (-not ($row.white -is [string])) { $spec['namespaceResourceWhitelist'] = @($row.white) }
+                if (-not ($row.black -is [string])) { $spec['namespaceResourceBlacklist'] = @($row.black) }
+                $proj = [ordered]@{ apiVersion = 'argoproj.io/v1alpha1'; kind = 'AppProject'; metadata = [ordered]@{ name = 'dev'; namespace = 'argocd' }; spec = $spec } | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+                $problems = @(& $script:mod { param($p) Get-AppProjectKindProblems $p 'dev' $whitelistPairs $blacklistKinds $blacklistGroups } $proj)
+                $text = $problems -join ' || '
+                $miss = @(@($row.has) | Where-Object { $null -ne $_ -and -not (Has-Text $text $_) })
+                $extra = @(@($row.hasNot) | Where-Object { $null -ne $_ -and (Has-Text $text $_) })
+                if ($problems.Count -ne [int]$row.want -or $miss.Count -gt 0 -or $extra.Count -gt 0) { $bad += "$($row.name): $($problems.Count) problem(s) (want $($row.want)) [$text] lacks [$($miss -join ' | ')] has [$($extra -join ' | ')]" }
+            }
+            Assert "F07-1: the judgment table ($($rows.Count) rows: exact, core spelled three ways, absent, empty, missing, outside, wildcard, duplicate, kind/group case, wrong group, literal-quote group, no kind, blacklist gaps)" ($bad.Count -eq 0) ($bad -join '; ')
+            $display = @(
+                @{ g = ''; k = 'ConfigMap'; want = '""/ConfigMap' },
+                @{ g = 'apps'; k = 'Deployment'; want = 'apps/Deployment' },
+                @{ g = '*'; k = '*'; want = '*/*' },
+                @{ g = '""'; k = 'ConfigMap'; want = '''""''/ConfigMap' }
+            )
+            $badShow = @(foreach ($d in $display) { $s = & $script:mod { param($a, $b) Format-GroupKind $a $b } $d.g $d.k; if (-not (Test-Same ([string]$s) $d.want)) { "[$($d.g)]/[$($d.k)] -> [$s] (want [$($d.want)])" } })
+            Assert 'F07-2: Format-GroupKind is display only -- core shows as "", a group outside [A-Za-z0-9.*-] shows quoted (the literal "" group cannot look like core)' ($badShow.Count -eq 0) ($badShow -join '; ')
         }
     }
 

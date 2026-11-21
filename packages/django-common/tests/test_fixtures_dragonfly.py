@@ -3,9 +3,11 @@
 testcontainers Dragonfly(v1.40.1 · digest 핀)와 런타임 `ACL SETUSER` 사용자들이 계약(contracts/denylist.md §ACL 표)
 대로 서는지를 먼저 고정한다. tests/test_auth.py의 거부 목록 단언(auth-14..21)은 이 인프라 위에서 돈다.
 
-- writer = `identity-admin`(`~revoked:* ~identity-admin:* +@all` — 거부 목록 쓰기)
-- reader = `test-pod`(`%R~revoked:* ~test-pod:* +@all` — 템플릿 `<pod>` 규칙 · 거부 목록 읽기 전용)
-- noperm = `noperm-pod`(`~noperm-pod:* +@all` — `revoked:*` 패턴이 없어 조회가 NOPERM · auth-19의 실패 모드)
+- writer = `identity-admin`(`~revoked:* ~identity-admin:* +@all -@admin -@dangerous -client` — 거부 목록 쓰기)
+- reader = `test-pod`(`%R~revoked:* ~test-pod:* +@all -@admin -@dangerous -client` — 템플릿 `<pod>` 규칙 · 거부 목록 읽기 전용)
+- noperm = `noperm-pod`(`~noperm-pod:* +@all -@admin -@dangerous -client` — `revoked:*` 패턴이 없어 조회가 NOPERM · auth-19의 실패
+  모드)
+- 세 pod 사용자의 꼬리 `-@admin -@dangerous -client`는 T075 UD-9(B2 — contracts/denylist.md §ACL)다. admin은 `~* +@all` 그대로다.
 - default 사용자는 끈다(`ACL SETUSER default off`) → 자격 없는 접속은 인증 오류다.
 """
 

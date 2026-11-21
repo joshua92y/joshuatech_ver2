@@ -1,7 +1,8 @@
 # infra/vault/roles.tf — Kubernetes auth role 6개 (T044) = eso 4 + vault-backup + e2e-reader (tasks T044 "auth role 합계 6")
 #
-# 계약(contracts/gitops-repo.md :108-110): role 이름 = bound SA 이름 · audiences [vault] · token_ttl 1h · token_max_ttl 4h.
-#   예외 1건: `e2e-reader`의 bound SA는 `kube-system/agent-view`(hostnames-and-access.md :79).
+# 계약(contracts/gitops-repo.md §이름·인증 규약): role 이름 = bound SA 이름 · audiences [vault] · token_ttl 1h · token_max_ttl 4h.
+#   예외 1건: `e2e-reader`의 bound SA는 `kube-system/agent-view`(contracts/hostnames-and-access.md §클라우드·SaaS 읽기 자격 「Vault」 항목).
+#   (T076: 줄 번호 참조를 절 이름 앵커로 바꿨다 — 이전 「gitops-repo.md :108-110」 · 「hostnames-and-access.md :79」)
 # 필드 주의:
 #   - provider 필드 이름은 **`audience`(단수 문자열)**. 계약 문면의 "audiences: [vault]"는 개념 표기.
 #   - token_ttl/token_max_ttl은 **초 단위 정수**(1h=3600, 4h=14400). 기본 32일 금지.

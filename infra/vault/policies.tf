@@ -3,12 +3,14 @@
 # 정책 본문은 heredoc 인라인이다(설계 확정). 별도 `policies/*.hcl` + `file()`을 쓰지 않는 이유: tests/infra/tofu.tests.ps1의
 #   New-TfValidateCopy가 최상위 *.tf(backend.tf 제외)·.terraform.lock.hcl·.terraform/providers만 복사하고 하위 디렉터리는 복사하지 않으므로 무자격 validate가
 #   "no file exists at ./policies/…"로 깨진다(oci·cloudflare 공유 함수를 고치지 않는다).
-# ⚠ tofu.tests.ps1:24의 heredoc 금지는 **infra/oci 한정**(중괄호 파서 대상)이다. infra/vault 단언은 정규식 텍스트 검사만 쓰므로
+# ⚠ tofu.tests.ps1 머리 주석 「게이트/전제」 [tf-text] 항목의 heredoc 금지는 **infra/oci 한정**(중괄호 파서 대상)이다. infra/vault 단언은 정규식 텍스트 검사만 쓰므로
 #   이 디렉터리에 중괄호 파서 기반 단언을 추가하지 않는다(스위트 헤더에 명시).
 #
 # 공통 규칙:
-#   - eso-*·e2e-reader·vault-backup 정책의 capabilities는 정확히 ["read"]다(계약 gitops-repo.md:98-101 — metadata도 read;
-#     list는 비밀 이름 전수 열거라 주지 않는다. ESO가 dataFrom.find를 쓰게 되면 계약을 먼저 고친다).
+#   - eso-*·e2e-reader·vault-backup 정책의 capabilities는 정확히 ["read"]다(계약 contracts/gitops-repo.md §ClusterSecretStore 5개 표 —
+#     metadata도 read; list는 비밀 이름 전수 열거라 주지 않는다. ESO가 dataFrom.find를 쓰게 되면 계약을 먼저 고친다).
+#     예외는 정확히 하나 — eso-platform의 `kv/data/platform/access/*` · `kv/metadata/platform/access/*` ["deny"] 두 줄(UD-15 · T076 —
+#     아래 eso-platform 주석). 하네스 vt-14 · vt-14b가 이 예외의 모양(정책 · 경로 · 줄 수)을 고정한다.
 #   - `token_no_default_policy`는 **어떤 role에도 걸지 않는다**(roles.tf): ESO는 로그인 후 auth/token/lookup-self, 종료 시 revoke-self를
 #     부르고 platform-backup.sh도 `vault token revoke -self`를 쓴다 — 둘 다 내장 `default` 정책에만 있다(default는 kv 권한 0).
 #   - 최소권한 토큰(e2e-reader)의 읽기 명령은 `vault read kv/data/...`(정책 exact path와 동일) 또는 HTTP API로 고정한다.
@@ -18,9 +20,15 @@
 locals {
   policies = {
     # --- ESO store 4개 (다섯 번째 store k8s-data-ca는 kubernetes provider라 Vault role이 없다 — T045) ---
+    # eso-platform deny 두 줄(UD-15 · T076): tester Access 서비스 토큰(`kv/platform/access/*`)은 「ESO 밖」이다(data-model §8) — 그것을 관례가
+    #   아니라 Vault ACL로 강제한다. store `vault-platform`은 플랫폼 ns 12곳에 열려 있어, 이 deny가 없으면 ExternalSecret 하나로 tester-m2m이
+    #   K8s Secret이 될 수 있다. 더 긴 경로 규칙이 이긴다(Vault 정책 우선순위 — 첫 glob이 더 뒤에 있는 패턴이 우선)라 나머지 `platform/*`
+    #   읽기는 그대로다. 지금 `platform/access/*`를 읽는 ExternalSecret은 0이다.
     "eso-platform" = <<-EOT
       path "kv/data/platform/*" { capabilities = ["read"] }
       path "kv/metadata/platform/*" { capabilities = ["read"] }
+      path "kv/data/platform/access/*" { capabilities = ["deny"] }
+      path "kv/metadata/platform/access/*" { capabilities = ["deny"] }
     EOT
 
     "eso-dev" = <<-EOT
@@ -65,9 +73,12 @@ locals {
       path "sys/storage/raft/snapshot" { capabilities = ["read"] }
     EOT
 
-    # --- E2E(tester, T077) --- 와일드카드 없이 정확히 한 경로.
+    # --- E2E(tester) --- 와일드카드 · metadata 경로 없이 정확히 두 경로(UD-15 · T076 — 이전 「정확히 한 경로」):
+    #   authentik/e2e = E2E 사용자 비밀번호 · TOTP 시드(T077 Playwright) · access/tester-m2m = Access 서비스 토큰(T076 O-8 블록 안에서만).
+    #   `tester-k8s`는 넣지 않는다(정책 밖 = deny).
     "e2e-reader" = <<-EOT
       path "kv/data/platform/authentik/e2e" { capabilities = ["read"] }
+      path "kv/data/platform/access/tester-m2m" { capabilities = ["read"] }
     EOT
   }
 }

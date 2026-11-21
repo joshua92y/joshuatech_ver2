@@ -136,6 +136,23 @@ Check 'ci-publish-pod' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$')
 $m = [regex]::Match($o, '(?m)^(\d+) skipped\b')
 if ($m.Success -and [int]$m.Groups[1].Value -gt 0) { Write-Host "NOTE ci-publish-pod -- $($m.Groups[1].Value) execution cases skipped (see SKIP lines above)" }
 
+# 1b7. gitops-base-sync (T075) — tests/scripts/gitops-base-sync.tests.ps1: 모노레포 refs/remotes/origin/main의 apps/<pod>/deploy/base ↔ 형제 클론
+#       ../platform-gitops(주 체크아웃의 형제 · remote.origin.url = github.com의 joshua92y/platform-gitops · 부분 클론 아님)
+#       refs/remotes/origin/main의 apps/<pod>/base 대조(항목 1개 이상 + 이름 집합 · blob id · mode 정확 일치 · 동기화 표의 pod마다 · fetch
+#       없음 · 대조한 두 커밋 출력) + 대조 함수의 자기 시험(gbs-* — 가짜 git 저장소 · 네트워크 불필요 · 약 2분). 모노레포 작업 트리 ≠
+#       모노레포 origin/main은 INFO 「발행 대기」 줄뿐이다(FAIL 아님).
+#       두 클론이 낡았으면 이 슬롯 전에 fetch한다(하네스는 fetch하지 않는다).
+#       판정은 1b6과 같은 양성 증거 규율: exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 · 크래시 = FAIL). 선택 실행
+#       (GITOPS_BASE_SYNC_TESTS_ONLY)이면 요약 줄 끝에 접미가 붙어 이 판정을 통과하지 못한다. 형제 클론이 없을 때만 그 pod 행이 SKIP이고
+#       하네스가 'N skipped' 줄을 찍는다 — 판정 줄과 별도로 NOTE 한 줄을 찍는다(1b6과 같은 꼴). 모노레포 PR CI에는 두지 않는다 — 순서가
+#       이미지 → 매니페스트라서 과제 마감의 이 슬롯이 강제한다(설계 design/t075-design.md D2).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/gitops-base-sync.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'gitops-base-sync' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see gitops-base-sync harness output above"
+$m = [regex]::Match($o, '(?m)^(\d+) skipped\b')
+if ($m.Success -and [int]$m.Groups[1].Value -gt 0) { Write-Host "NOTE gitops-base-sync -- $($m.Groups[1].Value) pod(s) skipped: sibling clone ../platform-gitops not found (see SKIP lines above)" }
+
 # 1c. specs index freshness — 이 검사는 낡은 인덱스를 발견하면 specs/README.md를 갱신하는 부작용이 있다(FAIL이면 diff를 검토하고 커밋한다)
 $o = pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/update-specs-index.ps1 2>&1 | Out-String
 Check 'specs-index-fresh' ($LASTEXITCODE -eq 0 -and $o -match '\(unchanged\)') ("exit=$LASTEXITCODE; $($o.Trim()) -- if stale: README was regenerated now, review and commit specs/README.md; if error: fix the spec header and rerun")

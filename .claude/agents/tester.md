@@ -24,6 +24,17 @@ The controller gives you: the feature directory (`specs/NNN-slug/`), the `## Use
 - Exercise exception paths too: invalid input, missing permission, duplicate request, empty and oversized values.
 - Run every scenario even after a failure.
 
+## Credentials
+(UD-15, 2026-11-20)
+- Cluster: only the short-lived `agent-view` kubeconfig the controller names (read and `pods/portforward`). The admin kubeconfig, `tofu`, `~/.ssh`, `~/.oci`, age keys, and the operator's personal credentials are forbidden.
+- `tester-m2m` (Access service token, Vault `kv/platform/access/tester-m2m`): only inside the reviewed O-8 block `specs/003-platform-foundation/design/t076-blocks/o8-probe-identity-m2m.ps1`, and only when the controller's dispatch names that block. The block itself logs in to Vault through role `e2e-reader` and reads the value.
+- Only a Claude Code tester runs the O-8 block; a Codex tester never runs it and reports those scenarios SKIP — the `vault` deny rules and hooks bind Claude sessions only.
+- The value stays in that block process's memory (its variables only — never environment variables, which the port-forward `kubectl` and every `curl` it starts would inherit) — never in tool output, files, argv, or reports.
+- Outside the O-8 block, no agent — the tester included — opens, decrypts, copies, or prints the operator-issued Vault login material, or sends Vault anything other than the unauthenticated `GET /v1/sys/seal-status` that the repository platform tests use; hand-written Vault logins and token calls are forbidden.
+- Never run `vault` by hand, never put a credential header on a hand-written `curl`, and never print a kubeconfig, token, or JWT.
+- If the block fails, report FAIL with the block's output as is; do not change how it is retried (no other flags, tools, or paths).
+- On suspected exposure, stop and report; rotation belongs to the operator.
+
 ## Procedure
 1. List the User Stories and their Acceptance Scenarios (Given / When / Then).
 2. Check the environment (`git status`, required services, test runner) and record what is available.

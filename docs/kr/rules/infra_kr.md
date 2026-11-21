@@ -37,6 +37,8 @@ paths:
 
 - 운영자의 개인 계정 자격 증명, admin kubeconfig, `jt-ops` SSH 개인 키를 에이전트 환경 변수, 파일, 저장소에 절대 넣지 않는다 — "일시적으로"를 포함해 어떤 형태로도.
 - 에이전트 신원은 고정되어 있다: E2E 흐름은 `e2e@joshuatech.dev`를 쓴다; 클러스터 접근은 단기 `agent-view` 토큰을 쓴다; OCI 접근은 `svc-verify` 세션 토큰만 쓴다. 작업에 그 이상이 필요해 보이면 멈추고 사용자에게 묻는다 — 스스로 권한을 올리지 않는다.
+- tester 에이전트만, 그것도 검토된 `design/t076-blocks` O-8 블록 안에서만 role `e2e-reader`로 `kv/platform/access/tester-m2m`을 읽는다; 다른 에이전트(컨트롤러, 빌더, 리뷰어, Codex 세션 — Codex tester 포함)는 Vault에 로그인하지 않고 그 경로를 읽지 않는다; 값은 블록 프로세스의 메모리에만 둔다 — 도구 출력, 파일, argv, 보고서에는 절대 두지 않는다; 노출이 의심되면 멈추고 보고한다; 그 밖의 Vault 경로나 role이 필요해 보이면 멈추고 묻는다(UD-15, 2026-11-20).
+- O-8 블록 밖에서는 tester를 포함한 어떤 에이전트도 운영자가 발급한 Vault 로그인 자료를 열거나, 복호하거나, 복사하거나, 출력하지 않고, 저장소 플랫폼 시험이 쓰는 무자격 `GET /v1/sys/seal-status` 말고는 Vault에 아무것도 보내지 않는다; 손으로 하는 Vault 로그인과 토큰 호출은 금지다(UD-15, 2026-11-20).
 - **머지를 결정하는 GitHub 동작은 운영자 전용이다(T047, 2026-09-30):** `gh pr merge`, auto-merge 걸기, 워크플로 실행 승인(`POST …/actions/runs/{id}/approve`), Environment 배포의 승인·거절(`POST …/actions/runs/{id}/pending_deployments`). gitops의 승인 관문 `prod-approval`은 사람이 그 승인을 하라고 있는 것이다. 에이전트의 `gh` 세션은 운영자 계정의 자격을 쓰므로 이 호출은 성공한다 — 바로 그래서 금지한다. ruleset · 저장소 설정 · 시크릿 · Environment도 운영자가 쓴다. 에이전트는 JSON과 명령을 준비하고 결과를 조회로 대조한다.
 - **하네스 예외(사용자 결정 C, 2026-09-07):** `tests/infra/tofu.tests.ps1` — 따라서 `tests/run-all.ps1`도 — 는 운영자의 기본 OCI 프로파일과 `joshuatech-tfstate` 상태 프로파일로 `infra/oci`에 대해 읽기 전용 `tofu plan -lock=false`를 실행한다. 이것이 에이전트가 호출하는 명령 중 운영자 자격 증명에 닿아도 되는 유일한 것이다: 절대 apply 하지 않고, 상태를 쓰지 않으며, "destroy 0"을 증명하기 위해 존재한다. 에이전트는 이를 넓히지 않는다 — 다른 하네스·스크립트·즉석 명령은 그 프로파일을 쓸 수 없고, 쓰기 경로를 추가하는 하네스 변경은 규칙 위반이다.
 

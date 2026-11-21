@@ -112,8 +112,9 @@ apps/identity-admin --locked pytest -q`(pyproject addopts 그대로 · pytest-dj
 구현이 없는 동안의 빨강은 수집 오류가 아니라 테스트별 "구현 없음"이다.
 
 인프라: 템플릿에서 받는 것은 DB 설정 · `dragonfly`(admin URL) · `jwks_server` · 헬퍼 3모듈(T072 가정 ① ② ③)뿐이다. T066 소유는
-이 파일의 `ia_dragonfly`(운영 identity-admin 규칙 `~revoked:* ~identity-admin:* +@all`의 ACL 사용자) · `webhook_secret` ·
-`fake_authentik` · `fake_openfga`(+ `_reset_fakes` · 시드 전제 `_seed_fakes` — 정답보다 앞에 미끼) · `ia_settings` ·
+이 파일의 `ia_dragonfly`(운영 identity-admin 규칙 `~revoked:* ~identity-admin:* +@all -@admin -@dangerous -client`의 ACL
+사용자 — 꼬리는 T075 UD-9) · `webhook_secret` · `fake_authentik` · `fake_openfga`(+ `_reset_fakes` · 시드 전제 `_seed_fakes` —
+정답보다 앞에 미끼) · `ia_settings` ·
 `ia_flush` · `dns_guard`(프록시 env를 끈다) · 자격·요청 헬퍼 · `_timed` · `_db_down` · `_boot`와 tests/_identity_fakes.py
 (가짜 서버 · DNS 가드(socket `getaddrinfo` · `gethostbyname` · `gethostbyname_ex` · `gethostbyaddr`를 감싼다) · 닫힌 포트 ·
 블랙홀 포트 — 자기검사 tests/test_identity_fakes.py)다.
@@ -238,7 +239,8 @@ TENANT_A = TENANT_ID  # tests._jwt 테넌트 A(UUID 문자열)
 TENANT_B = "00000000-0000-4000-8000-00000000000b"
 TENANT_SLUGS = {TENANT_A: "tenant-a", TENANT_B: "tenant-b"}
 IA_DRAGONFLY_USER = "identity-admin-test"
-IA_DRAGONFLY_RULES = ("~revoked:*", "~identity-admin:*", "+@all")  # contracts/denylist.md §ACL identity-admin 행 그대로
+# contracts/denylist.md §ACL identity-admin 행 그대로 — 꼬리 `-@admin -@dangerous -client`는 T075 UD-9(B2)
+IA_DRAGONFLY_RULES = ("~revoked:*", "~identity-admin:*", "+@all", "-@admin", "-@dangerous", "-client")
 CHECK_PATH = "/session/check"
 REVOKE_PATH = "/sessions/revoke"
 WEBHOOK_PATH = "/webhooks/authentik"
@@ -993,10 +995,12 @@ def _types(spec: dict[str, Any], node: Any) -> set[str]:
 
 @pytest.fixture(scope="session")
 def ia_dragonfly(dragonfly: DragonflyFixture) -> Secret:
-    """identity-admin 규칙(`~revoked:* ~identity-admin:* +@all`)의 ACL 사용자 identity-admin-test를 만들고 그 URL(Secret)을 준다.
+    """identity-admin 규칙(`~revoked:* ~identity-admin:* +@all -@admin -@dangerous -client`)의 ACL 사용자 identity-admin-test를
+    만들고 그 URL(Secret)을 준다.
 
-    운영 identity-admin 사용자와 같은 규칙이다(거부 목록 읽기·쓰기 + 자기 접두). 템플릿 conftest의 사용자 이름과 무관하게
-    admin 연결로 직접 만든다(D4). 비밀번호는 세션 랜덤이고 규칙 토큰도 Secret으로 넘긴다(redis-py 프레임 인자 가림).
+    운영 identity-admin 사용자와 같은 규칙이다(거부 목록 읽기·쓰기 + 자기 접두 · 관리 · 위험 명령과 CLIENT 금지 — T075 UD-9).
+    템플릿 conftest의 사용자 이름과 무관하게 admin 연결로 직접 만든다(D4). 비밀번호는 세션 랜덤이고 규칙 토큰도 Secret으로
+    넘긴다(redis-py 프레임 인자 가림).
     """
     password = Secret(secrets.token_urlsafe(24))
     admin = redis.Redis.from_url(dragonfly.admin_url)

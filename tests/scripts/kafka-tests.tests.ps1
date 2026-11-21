@@ -11,16 +11,21 @@
 #     (격리 — "unhandled" 0, "CRD … not installed (T055)" · "(T057)" · "not deployed yet" 문구), Job이 없으면 logs를 부르지 않는다(C03).
 #   - 변이 하나 = 해당 ID 하나만 FAIL이고 문구 정확, 나머지 16개는 PASS(C04–C32 — 요구 원문의 변이 목록 + 역할 부분집합 · 중복 id · T041 Job 모양).
 #   - 2라운드(리뷰 반영 2026-10-08): 중복 조건 양쪽 순서(C04b · C04c) · CrashLoopBackOff pod(C14b) · scale-to-zero · availableReplicas 0(C21b · C21c) ·
-#     env/envFrom 비밀번호(C22b) · latency 토큰 초과/없음(C26 · C26b) · SUMMARY ↔ RESULT 수 불일치(C27b · C29b) · 다른 사용자 행의 패턴(C31b) ·
+#     env/envFrom 비밀번호(C22b) · latency 토큰 초과/없음(C26 · C26b) · SUMMARY ↔ RESULT 수 불일치(C27b · C29b) · 다른 계정의 NOPERM(C31b — T075 UD-9) ·
 #     살아남은 변이를 죽이는 X01–X16(listener port · tls · status.secret · aclfile · SUMMARY 유일성 · 마스킹 · topic replicas · user auth · pool replicas ·
 #     컨테이너 수 · topic 중복 선언 · 다른 클러스터 라벨 · auto.create 문자열 · topic Ready · Available · gate-2 경로 목록/미설정) ·
 #     stderr 안내문 + 비밀번호 값 부재(X17) · 인증 없는 listener(X18) · superUsers(X19).
 #   - 3라운드(재검토 반영 2026-10-08): 2라운드 규칙을 구속하는 K01–K12(변이 R01–R12를 죽인다 — latency 경계 · 토큰 2개 · pod Ready ordinal/ContainersReady ·
-#     availableReplicas 정확히 1 · env 이름 대소문자 · sample-pod 행 경로/정규식 · RESULT FAIL 줄의 latency · roundtrip 줄 2개 · Available ordinal · listener tls 문자열) ·
-#     absl --flagfile(K13) · 괄호 안 latency 토큰(K14) · role 라벨 없는 노드 role=<absent>(K15). 자식 출력은 UTF-8로 디코딩한다(하네스가 리다이렉트 시 UTF-8로 쓴다 — 콘솔 코드 페이지 무관).
+#     availableReplicas 정확히 1 · env 이름 대소문자 · EVIDENCE 블록 무시 · NOPERM 표지 끝 공백(K07 · K08 — T075 UD-9) · RESULT FAIL 줄의 latency · roundtrip 줄 2개 ·
+#     Available ordinal · listener tls 문자열) · absl --flagfile(K13) · 괄호 안 latency 토큰(K14) · role 라벨 없는 노드 role=<absent>(K15). 자식 출력은 UTF-8로
+#     디코딩한다(하네스가 리다이렉트 시 UTF-8로 쓴다 — 콘솔 코드 페이지 무관).
+#   - 4라운드(T075 UD-9 B2 · 2026-11-17 — 설계 design/t075-design.md D20): job-d-2의 acl-list = identity-admin `ACL LIST` → NOPERM(PASS 근거에
+#     'NOPERM identity-admin ' — B2 꼬리 `-@admin -@dangerous -client`의 회귀 탐지기) · VD-4 = reader-get · reader-set-denied PASS(행동 단언) ·
+#     EVIDENCE 블록(ACL LIST 행)은 보지 않는다. 픽스처 기본 로그가 UD-9 뒤 꼴(EVIDENCE 없음)이 되었고 C31(UD-9 전 Job 꼴 → FAIL) · C31b · K07 · K08을
+#     새 뜻으로 바꿨다 · S01이 머리 주석의 UD-9 문구를 본다.
 #   - 모든 실행: 마지막 줄이 요약 · 읽기 전용 동사만 · 응답표 밖 호출 0 · 모든 호출이 --kubeconfig로 픽스처를 명시 · 픽스처 TEMP에 잔존 파일 0.
 #   - 순수 함수(F*): 로그 파서 · 벽시계 초 추출 · ACL 접두 판정(교차 fail-closed 포함) · 플래그 토큰 판정 · latency 토큰 · 조건 중복 · superUser 표기 ·
-#     SUMMARY 대조를 표로 시험한다. 정적(S01): 머리 주석이 단언 ID 전부와 T057 몫을 적는다.
+#     SUMMARY 대조를 표로 시험한다. 정적(S01): 머리 주석이 단언 ID 전부와 T057 몫 · UD-9의 acl-list 뜻을 적는다.
 #
 # 방식 1 — E2E 케이스(C*): 케이스마다 임시 픽스처(%TEMP%/kafkatest-<guid>)에
 #     하네스 사본  repo/tests/platform/kafka.tests.ps1  (KAFKA_HARNESS_SCRIPT가 있으면 그 파일의 사본)
@@ -351,8 +356,13 @@ function KafkaLog([hashtable]$o = @{}) {
 }
 $dataIds7 = @('acl-list', 'noperm', 'noauth', 'writer-set', 'reader-get', 'reader-set-denied', 'reader-cross-denied')
 $dataNew5 = @('noauth', 'writer-set', 'reader-get', 'reader-set-denied', 'reader-cross-denied')
+# acl-list 근거 두 꼴(T075 UD-9): UD-9 뒤 Job(gitops GP-A) = identity-admin `ACL LIST` → NOPERM(B2 꼬리 `-@admin -@dangerous -client`의 회귀
+#   탐지기 — 근거 끝은 다른 NOPERM 검사처럼 응답 첫 줄) · UD-9 전 Job = ACL LIST의 sample-pod 행에 %R~revoked:*(옛 VD-4 근거)
+$aclNopermText = 'identity-admin으로 ACL LIST -> NOPERM identity-admin has no ACL permissions'
+$aclPreUd9Text = 'user sample-pod 행에 %R~revoked:*(읽기 전용 revoked 패턴)이 있다'
+$aclLacksNoperm = "1 problem(s): acl-list PASS evidence lacks 'NOPERM identity-admin ' (identity-admin ACL LIST must be refused by the UD-9 B2 tail -- a Job that still reads ACL LIST predates T075 GP-A, or the tail is missing)"
 $dataPassText = @{
-    'acl-list'            = 'user sample-pod 행에 %R~revoked:*(읽기 전용 revoked 패턴)이 있다'
+    'acl-list'            = $aclNopermText
     'noperm'              = 'DEL revoked:sub:assert-probe -> NOPERM: User sample-pod has no permissions to run the ''del'' command'
     'noauth'              = 'unauthenticated PING -> NOAUTH Authentication required.'
     'writer-set'          = 'identity-admin SET revoked:sub:x -> OK'
@@ -361,13 +371,12 @@ $dataPassText = @{
     'reader-cross-denied' = 'sample-pod SET identity-admin:x -> NOPERM'
 }
 # data-assert 로그(pg 4검사 PASS + Dragonfly 절). o.ids = 포함할 Dragonfly id(기본 7 전부) · o.fail = FAIL로 찍을 id · o.dup = 두 번 찍을 id ·
-#   o.evidence = EVIDENCE 블록 포함(기본 $true) · o.aclPattern = acl-list 근거 · sample-pod EVIDENCE 행에 %R~revoked:* 포함(기본 $true) ·
-#   o.patternRow = 'sample-pod'(기본) | 'identity-admin'(패턴을 identity-admin 행에만 싣고 acl-list 근거 · sample-pod 행에는 없음 — 하네스는 FAIL해야 한다) ·
+#   o.acl = acl-list PASS 근거(기본 = UD-9 뒤 꼴 $aclNopermText) · o.evidence = UD-9 전 Job의 EVIDENCE 블록(ACL LIST 행 — sample-pod 행에
+#   %R~revoked:*)을 넣는다(기본 $false — UD-9 뒤 identity-admin은 ACL LIST를 읽지 못해 이 블록이 없다) ·
 #   o.summary = 요약 줄 덮어쓰기(기본 = 줄 수에서 계산; '' = 없음)
 function DataLog([hashtable]$o = @{}) {
-    $ids = @(Opt $o 'ids' $dataIds7); $failIds = @(Opt $o 'fail' @()); $dup = [string](Opt $o 'dup' ''); $withEvidence = [bool](Opt $o 'evidence' $true); $aclPattern = [bool](Opt $o 'aclPattern' $true)
-    $patternRow = [string](Opt $o 'patternRow' 'sample-pod')
-    if (-not (Test-Same $patternRow 'sample-pod')) { $aclPattern = $false }
+    $ids = @(Opt $o 'ids' $dataIds7); $failIds = @(Opt $o 'fail' @()); $dup = [string](Opt $o 'dup' ''); $withEvidence = [bool](Opt $o 'evidence' $false)
+    $aclText = [string](Opt $o 'acl' $aclNopermText)
     $lines = @(
         'RESULT: PASS pg-cross-db-denied dev_identity_admin_app -> identity_admin authentik openfga: 전부 permission denied for database',
         'RESULT: PASS catalog-connect-false has_database_privilege(identity_admin_app, {dev_identity_admin authentik openfga}, CONNECT) = false false false',
@@ -375,13 +384,11 @@ function DataLog([hashtable]$o = @{}) {
         'RESULT: PASS ssl-verify-full pg_stat_ssl(self) = true TLSv1.3 TLS_AES_256_GCM_SHA384 (DATABASE_URL sslmode=verify-full, CA /etc/pg/ca.crt)'
     )
     if ($withEvidence) {
-        $sample = if ($aclPattern) { 'EVIDENCE:   user sample-pod on #<redacted> %R~revoked:* ~sample-pod:* +@all' } else { 'EVIDENCE:   user sample-pod on #<redacted> ~sample-pod:* +@all' }
-        $admin = if (Test-Same $patternRow 'identity-admin') { 'EVIDENCE:   user identity-admin on #<redacted> %R~revoked:* ~identity-admin:* +@all' } else { 'EVIDENCE:   user identity-admin on #<redacted> ~revoked:* ~identity-admin:* +@all' }
-        $lines += @('EVIDENCE: ACL LIST (dev, 비밀번호 해시 제거)', 'EVIDENCE:   user default off resetchannels -@all', 'EVIDENCE:   user admin on #<redacted> ~* &* +@all', $admin, $sample)
+        $lines += @('EVIDENCE: ACL LIST (dev, 비밀번호 해시 제거)', 'EVIDENCE:   user default off resetchannels -@all', 'EVIDENCE:   user admin on #<redacted> ~* &* +@all',
+            'EVIDENCE:   user identity-admin on #<redacted> ~revoked:* ~identity-admin:* +@all', 'EVIDENCE:   user sample-pod on #<redacted> %R~revoked:* ~sample-pod:* +@all')
     }
     foreach ($id in $ids) {
-        $text = [string]$dataPassText[$id]
-        if ((Test-Same $id 'acl-list') -and -not $aclPattern) { $text = 'user sample-pod 행이 있다(패턴 검사 생략 — 픽스처)' }
+        $text = if (Test-Same $id 'acl-list') { $aclText } else { [string]$dataPassText[$id] }
         $status = if (In-List $failIds $id) { 'FAIL' } else { 'PASS' }
         if (Test-Same $status 'FAIL') { $text = "fixture failure for $id" }
         $lines += "RESULT: $status $id $text"
@@ -461,7 +468,7 @@ $passText = @{
     'job-k-2' = 'roundtrip PASS, cross-env-denied PASS, SUMMARY pass=2 fail=0 matches 2 RESULT line(s) (last 50 log lines)'
     'job-k-3' = "roundtrip latency 120ms <= 5000ms (message path, spec US3 AC3; the Job's wall clock 23s spans produce start to marker receipt, including producer JVM startup)"
     'job-d-1' = 'Job jt-dev/data-assert succeeded=1'
-    'job-d-2' = 'acl-list, noperm, noauth, writer-set, reader-get, reader-set-denied, reader-cross-denied PASS; pattern %R~revoked:* present on the sample-pod row (VD-4); SUMMARY pass=11 fail=0 matches 11 RESULT line(s)'
+    'job-d-2' = 'acl-list, noperm, noauth, writer-set, reader-get, reader-set-denied, reader-cross-denied PASS; acl-list evidence carries ''NOPERM identity-admin '' (identity-admin ACL LIST refused -- UD-9 B2 tail); VD-4 = reader-get, reader-set-denied PASS; SUMMARY pass=11 fail=0 matches 11 RESULT line(s)'
 }
 
 # ---------- 픽스처(출처: cluster-tests.tests.ps1 New-Fixture / Remove-Fixture — tasks.md 픽스처만 없다) ----------
@@ -755,8 +762,8 @@ try {
     Test-Case 'C29' 'job-d-2: the current (T041) Job shape emits only acl-list and noperm -> only job-d-2 FAILs naming the five ids T057 adds' { Test-Mutation 'C29' 'job-d-2' @('Job jt-dev/data-assert log (Dragonfly section): 1 problem(s): no RESULT line for noauth, writer-set, reader-get, reader-set-denied, reader-cross-denied (the Job does not emit these check ids yet; T057 adds them)') { param($resp) $resp[(LogsKey 'data-assert')] = R-Raw (DataLog @{ ids = @('acl-list', 'noperm') }) } }
     Test-Case 'C29b' 'job-d-2: SUMMARY pass=12 fail=0 while 11 RESULT lines are visible (truncated log) -> only job-d-2 FAILs' { Test-Mutation 'C29b' 'job-d-2' @('Job jt-dev/data-assert log (Dragonfly section): 1 problem(s): SUMMARY pass=12 fail=0 does not match the RESULT lines seen (11 PASS, 0 FAIL) -- log truncated by --tail=50 or inconsistent Job output') { param($resp) $resp[(LogsKey 'data-assert')] = R-Raw (DataLog @{ summary = 'SUMMARY: pass=12 fail=0' }) } }
     Test-Case 'C30' 'job-d-2: reader-get missing + noperm RESULT FAIL -> only job-d-2 FAILs with both reasons' { Test-Mutation 'C30' 'job-d-2' @('2 problem(s)', 'no RESULT line for reader-get (the Job does not emit these check ids yet; T057 adds them)', 'noperm: RESULT FAIL -- fixture failure for noperm') { param($resp) $resp[(LogsKey 'data-assert')] = R-Raw (DataLog @{ ids = @('acl-list', 'noperm', 'noauth', 'writer-set', 'reader-set-denied', 'reader-cross-denied'); fail = @('noperm') }) } }
-    Test-Case 'C31' 'job-d-2: acl-list evidence and EVIDENCE lines lack %R~revoked:* -> only job-d-2 FAILs (pattern absent, VD-4)' { Test-Mutation 'C31' 'job-d-2' @("1 problem(s): pattern %R~revoked:* absent from the acl-list evidence and from the EVIDENCE: lines on the sample-pod row (5 EVIDENCE: line(s); other users' rows do not count) (VD-4)") { param($resp) $resp[(LogsKey 'data-assert')] = R-Raw (DataLog @{ aclPattern = $false }) } }
-    Test-Case 'C31b' 'job-d-2: %R~revoked:* only on the identity-admin EVIDENCE row (not on sample-pod, not in the acl-list evidence) -> only job-d-2 FAILs' { Test-Mutation 'C31b' 'job-d-2' @("1 problem(s): pattern %R~revoked:* absent from the acl-list evidence and from the EVIDENCE: lines on the sample-pod row (5 EVIDENCE: line(s); other users' rows do not count) (VD-4)") { param($resp) $resp[(LogsKey 'data-assert')] = R-Raw (DataLog @{ patternRow = 'identity-admin' }) } }
+    Test-Case 'C31' 'job-d-2: the pre-UD-9 Job shape (acl-list PASS = the %R~revoked:* row read through ACL LIST, plus its EVIDENCE block) -> only job-d-2 FAILs: the acl-list evidence lacks NOPERM identity-admin (UD-9 B2 regression detector), the evidence is not echoed' { Test-Mutation 'C31' 'job-d-2' @($aclLacksNoperm) { param($resp) $resp[(LogsKey 'data-assert')] = R-Raw (DataLog @{ acl = $aclPreUd9Text; evidence = $true }) } -hasNot @('%R~revoked:*', 'user sample-pod') }
+    Test-Case 'C31b' 'job-d-2: acl-list PASS evidence carries the NOPERM of another account (sample-pod) -> only job-d-2 FAILs (the refused account must be identity-admin)' { Test-Mutation 'C31b' 'job-d-2' @($aclLacksNoperm) { param($resp) $resp[(LogsKey 'data-assert')] = R-Raw (DataLog @{ acl = 'sample-pod로 ACL LIST -> NOPERM sample-pod has no ACL permissions' }) } }
     Test-Case 'C32' 'job-d-2: noperm printed twice + acl-list RESULT FAIL (evidence hidden) -> only job-d-2 FAILs' { Test-Mutation 'C32' 'job-d-2' @('2 problem(s)', 'acl-list: RESULT FAIL', '2 RESULT lines for noperm (expected exactly 1)') { param($resp) $resp[(LogsKey 'data-assert')] = R-Raw (DataLog @{ dup = 'noperm'; fail = @('acl-list') }) } -hasNot @('fixture failure for acl-list') }
 
     # ================= 조회 오류 격리 =================
@@ -865,14 +872,14 @@ try {
         Assert-IdExact 'K06-1 df-1: PASS (an uppercase name is not a Dragonfly password path)' $r 'df-1' 'PASS' $passText['df-1']
         $s = Get-Summary $r; Assert 'K06-2: summary 17 passed, 0 failed and exit 0' ($s.ok -and $s.pass -eq 17 -and $s.fail -eq 0 -and $r.code -eq 0) (Format-Result $r)
     }
-    Test-Case 'K07' 'job-d-2: the pattern only on the sample-pod EVIDENCE row (acl-list evidence without it) -> all 17 PASS through the EVIDENCE path' {
+    Test-Case 'K07' 'job-d-2: the UD-9 acl-list evidence next to a leftover EVIDENCE block (ACL LIST rows with %R~revoked:*) -> all 17 PASS (EVIDENCE lines are neither required nor counted)' {
         $resp = New-GoodResponses
-        $resp[(LogsKey 'data-assert')] = R-Raw ((DataLog @{ aclPattern = $false }).Replace('EVIDENCE:   user sample-pod on #<redacted> ~sample-pod:* +@all', 'EVIDENCE:   user sample-pod on #<redacted> %R~revoked:* ~sample-pod:* +@all'))
+        $resp[(LogsKey 'data-assert')] = R-Raw (DataLog @{ evidence = $true })
         $d = New-Fixture $resp; $r = Invoke-Harness $d; Assert-Run 'K07' $r $d
-        Assert-IdExact 'K07-1 job-d-2: PASS (the sample-pod row carries the pattern)' $r 'job-d-2' 'PASS' $passText['job-d-2']
+        Assert-IdExact 'K07-1 job-d-2: PASS with the exact text (the EVIDENCE block changes nothing)' $r 'job-d-2' 'PASS' $passText['job-d-2']
         $s = Get-Summary $r; Assert 'K07-2: summary 17 passed, 0 failed and exit 0' ($s.ok -and $s.pass -eq 17 -and $s.fail -eq 0 -and $r.code -eq 0) (Format-Result $r)
     }
-    Test-Case 'K08' 'job-d-2: the pattern only on a "user sample-pod-admin" row -> only job-d-2 FAILs (the row must be exactly user sample-pod)' { Test-Mutation 'K08' 'job-d-2' @("1 problem(s): pattern %R~revoked:* absent from the acl-list evidence and from the EVIDENCE: lines on the sample-pod row (6 EVIDENCE: line(s); other users' rows do not count) (VD-4)") { param($resp) $resp[(LogsKey 'data-assert')] = R-Raw ((DataLog @{ aclPattern = $false }).Replace('EVIDENCE:   user sample-pod on #<redacted> ~sample-pod:* +@all', "EVIDENCE:   user sample-pod on #<redacted> ~sample-pod:* +@all`nEVIDENCE:   user sample-pod-admin on #<redacted> %R~revoked:* +@all")) } }
+    Test-Case 'K08' 'job-d-2: acl-list evidence "NOPERM identity-admin-test ..." (another account whose name starts with identity-admin) -> only job-d-2 FAILs (the mark ends with a space)' { Test-Mutation 'K08' 'job-d-2' @($aclLacksNoperm) { param($resp) $resp[(LogsKey 'data-assert')] = R-Raw (DataLog @{ acl = 'identity-admin-test로 ACL LIST -> NOPERM identity-admin-test has no ACL permissions' }) } }
     Test-Case 'K09' 'job-k-3: a roundtrip RESULT FAIL line that still carries latency=100ms -> job-k-2 and job-k-3 both FAIL (a FAIL line is never a latency source)' {
         $resp = New-GoodResponses
         $resp[(LogsKey 'kafka-assert')] = R-Raw ((KafkaLog @{ roundtrip = 'FAIL' }).Replace('> 상한 30s', '> 상한 30s latency=100ms'))
@@ -907,8 +914,8 @@ try {
         $hdr = [Collections.Generic.List[string]]::new()
         foreach ($l in @($src -split "`r?`n")) { if ($l.StartsWith('#', [StringComparison]::Ordinal)) { $hdr.Add($l) } else { break } }
         $header = $hdr -join "`n"
-        $missing = @(@($checkIds + @('T057', 'noauth', 'writer-set', 'reader-get', 'reader-set-denied', 'reader-cross-denied', 'FAIL', 'SKIP')) | Where-Object { -not (Has-Text $header $_) })
-        Assert 'S01-1: the header comment names the 14 check ids, the five T057 ids and the FAIL/SKIP policy' ($src.Length -gt 0 -and $missing.Count -eq 0) "missing in header: $($missing -join ', ')"
+        $missing = @(@($checkIds + @('T057', 'noauth', 'writer-set', 'reader-get', 'reader-set-denied', 'reader-cross-denied', 'FAIL', 'SKIP', 'UD-9', 'NOPERM identity-admin')) | Where-Object { -not (Has-Text $header $_) })
+        Assert 'S01-1: the header comment names the 14 check ids, the five T057 ids, the FAIL/SKIP policy and the UD-9 meaning of acl-list (NOPERM identity-admin)' ($src.Length -gt 0 -and $missing.Count -eq 0) "missing in header: $($missing -join ', ')"
         Assert 'S01-2: the harness source has no SKIP call path (no Skip function definition)' ($src.Length -gt 0 -and -not [regex]::IsMatch($src, '(?m)^function Skip\b')) 'found a Skip function'
     }
 

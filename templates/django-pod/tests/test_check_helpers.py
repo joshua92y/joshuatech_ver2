@@ -34,6 +34,12 @@ Cmd · Entrypoint · 변이 셋은 기존 매개변수 끝에) · gen-35 argv의
 과 비밀 이름 꼴 · 탐침의 소문자 판정 · 대문자 감시 파일(N6 — DOCKERIGNORE_REEXCLUDE_LINES는 기존 키(= 시험 ID)의 값만 바꾸고 키를 더했다 ·
 감시 파일 이름 대조 · 재제외 짝 시험은 본문만) · 실제 생성 트리 최상위 이름(N7) · pid_alive의 UTF-8 모드(N14 — tasklist를 바이트로 읽는다).
 
+T075(UD-9 B2 · 수정 라운드 1 RB-7 — 파일 끝 절): gen-39 판정 check_aclfile_tokens · check_aclfile_matches_conftest의 골든(템플릿 렌더 꼴)과
+변이 스물(렌더 aclfile의 `-client` 빠짐 · `-client|kill` · reset · Redis 카테고리 이름 · 다른 카테고리 · 명령 · 비밀번호 토큰 · pod 줄 없음 ·
+둘 · OFF · 키 패턴 넓힘 · 읽기 전용 뺌 · 주석 · CRLF와 conftest 쪽 꼬리 빠짐 · resetchannels 없음 · 다른 POD_NAME · 사전 없음 · 구문 오류 ·
+리터럴 아닌 규칙). 수정 라운드 2 RB2-1: 파일 전체 세 줄 판정 check_aclfile_exact를 골든과 변이 합에 더하고 변이 아홉(default 줄 지움 · 켬 ·
+슈퍼유저 줄 더함 · admin 줄 지움 · 채널 &* 뺌 · default ↔ admin 순서 · 끝 LF 없음 · 빈 줄 더함 · BOM)을 ACLFILE_MUTATIONS 끝에 덧붙였다.
+
 T072 마감 라운드(마지막 리뷰 A-2 · B-1 — Z2 · Z3): gen-35 프로필 펼침 탐침 파일의 꼴과 그 판정(check_compose_profile_probe — 골든 · 변이 ·
 실제 Compose 실측은 gen-35 본문) · dockerignore 이름 꼴 다섯의 대소문자 무관 꼴(DOCKERIGNORE_REEXCLUDE_LINES는 기존 키의 값만 바꿨다 ·
 DOCKERIGNORE_MUTATIONS · 탐침 이름 표는 끝에 덧붙였다 · 비밀 후보 꼴 열하나 전부의 대소문자 무관 판정 bare_letters와 그 자기검사) · 이름 꼴
@@ -107,6 +113,9 @@ from tests._tree import (
     T072_CRONJOB_FILES,
     T072_FILE_PATTERNS,
     T072_FILES,
+    check_aclfile_exact,
+    check_aclfile_matches_conftest,
+    check_aclfile_tokens,
     check_base_kustomization,
     check_copier_settings,
     check_dockerfile_text,
@@ -3368,3 +3377,86 @@ def test_allowlist_env_keeps_only_allowed_names(monkeypatch: pytest.MonkeyPatch,
     script = "import os, sys; sys.stdout.write(','.join(sorted(n for n in os.environ if n.upper().startswith(('JT_', 'COMPOSE_')))))"
     seen = run([sys.executable, "-c", script], cwd=tmp_path, timeout=60, env=overlay)
     assert seen.ok and seen.stdout == ""
+
+
+# ---------- T075 compose aclfile ↔ 생성 conftest · aclfile 허용 토큰(gen-39 — UD-9 B2 · 수정 라운드 1 RB-7) ----------
+
+# 렌더 꼴 그대로(sample-pod) — 템플릿 compose/dragonfly-dev.acl.jinja · tests/conftest.py.jinja의 DRAGONFLY_USERS
+GOLDEN_POD_ACL_LINE = "USER sample-pod ON nopass %R~revoked:* ~sample-pod:* +@all -@admin -@dangerous -client"
+GOLDEN_ACLFILE = f"USER default OFF +auth +hello\nUSER admin ON nopass ~* &* +@all\n{GOLDEN_POD_ACL_LINE}\n"
+GOLDEN_POD_CONFTEST = (
+    'POD_NAME = "sample-pod"\n'
+    "DRAGONFLY_USERS: dict[str, tuple[str, ...]] = {\n"
+    '    "admin": ("~*", "+@all"),\n'
+    '    POD_NAME: ("resetchannels", "%R~revoked:*", f"~{POD_NAME}:*", "+@all", "-@admin", "-@dangerous", "-client"),\n'
+    "}\n"
+)
+# (이름, aclfile, conftest, 위반 문장에 있어야 할 조각) — 하나만 바꾼 꼴마다 위반 ≥ 1
+ACLFILE_MUTATIONS = [
+    ("pod-tail-client-removed", GOLDEN_ACLFILE.replace(" -client\n", "\n"), GOLDEN_POD_CONFTEST, "-client"),
+    ("pod-client-subcommand-added", GOLDEN_ACLFILE.replace(" -client\n", " -client -client|kill\n"), GOLDEN_POD_CONFTEST, "|"),
+    ("pod-reset-token", GOLDEN_ACLFILE.replace(" -client\n", " -client reset\n"), GOLDEN_POD_CONFTEST, "reset"),
+    ("pod-redis-category-name", GOLDEN_ACLFILE.replace(" -@dangerous", " -@dangerous -@hyperloglog"), GOLDEN_POD_CONFTEST, "@hyperloglog"),
+    ("pod-other-category", GOLDEN_ACLFILE.replace(" -@dangerous", " -@dangerous -@keyspace"), GOLDEN_POD_CONFTEST, "@keyspace"),
+    ("pod-other-command-removed", GOLDEN_ACLFILE.replace(" -client\n", " -client -flushall\n"), GOLDEN_POD_CONFTEST, "-flushall"),
+    ("pod-password-token", GOLDEN_ACLFILE.replace("sample-pod ON nopass", "sample-pod ON >fake-password"), GOLDEN_POD_CONFTEST, "nopass"),
+    ("pod-line-missing", GOLDEN_ACLFILE.replace(GOLDEN_POD_ACL_LINE + "\n", ""), GOLDEN_POD_CONFTEST, "sample-pod"),
+    ("pod-line-twice", GOLDEN_ACLFILE + GOLDEN_POD_ACL_LINE + "\n", GOLDEN_POD_CONFTEST, "sample-pod"),
+    ("pod-line-off", GOLDEN_ACLFILE.replace("sample-pod ON nopass", "sample-pod OFF nopass"), GOLDEN_POD_CONFTEST, "ON nopass"),
+    ("pod-key-pattern-widened", GOLDEN_ACLFILE.replace("~sample-pod:*", "~*"), GOLDEN_POD_CONFTEST, "conftest"),
+    ("pod-read-only-dropped", GOLDEN_ACLFILE.replace("%R~revoked:*", "~revoked:*"), GOLDEN_POD_CONFTEST, "conftest"),
+    ("comment-line", "# local compose users\n" + GOLDEN_ACLFILE, GOLDEN_POD_CONFTEST, "#"),
+    ("crlf-line-ends", GOLDEN_ACLFILE.replace("\n", "\r\n"), GOLDEN_POD_CONFTEST, "\\r"),
+    ("conftest-tail-client-removed", GOLDEN_ACLFILE, GOLDEN_POD_CONFTEST.replace(', "-client")', ")"), "conftest"),
+    ("conftest-resetchannels-missing", GOLDEN_ACLFILE, GOLDEN_POD_CONFTEST.replace('"resetchannels", ', ""), "resetchannels"),
+    ("conftest-pod-name-other", GOLDEN_ACLFILE, GOLDEN_POD_CONFTEST.replace('POD_NAME = "sample-pod"', 'POD_NAME = "other-pod"'), "POD_NAME"),
+    ("conftest-users-missing", GOLDEN_ACLFILE, 'POD_NAME = "sample-pod"\n', "DRAGONFLY_USERS"),
+    ("conftest-unparsable", GOLDEN_ACLFILE, "DRAGONFLY_USERS = {\n", "conftest"),
+    ("conftest-rule-not-literal", GOLDEN_ACLFILE, GOLDEN_POD_CONFTEST.replace('f"~{POD_NAME}:*"', '"~" + POD_NAME + ":*"'), "conftest"),
+    # 수정 라운드 2 RB2-1 — 파일 전체 세 줄 대조(check_aclfile_exact): 토큰 허용 목록 · pod 줄 대조로는 안 잡히던 default · admin 줄 · 다른
+    # USER 줄 · 줄 순서 · 끝 줄바꿈(default 줄을 지우거나 켜거나 슈퍼유저 줄을 더하면 인증 없이 모든 명령이 열린다)
+    ("default-line-removed", GOLDEN_ACLFILE.replace("USER default OFF +auth +hello\n", ""), GOLDEN_POD_CONFTEST, "default 줄"),
+    (
+        "default-line-opened",
+        GOLDEN_ACLFILE.replace("USER default OFF +auth +hello", "USER default ON nopass ~* &* +@all"),
+        GOLDEN_POD_CONFTEST,
+        "default 줄",
+    ),
+    ("extra-superuser-line", GOLDEN_ACLFILE + "USER backdoor ON nopass ~* &* +@all\n", GOLDEN_POD_CONFTEST, "세 줄 밖"),
+    ("admin-line-removed", GOLDEN_ACLFILE.replace("USER admin ON nopass ~* &* +@all\n", ""), GOLDEN_POD_CONFTEST, "admin 줄"),
+    ("admin-channels-dropped", GOLDEN_ACLFILE.replace("~* &* +@all\n", "~* +@all\n", 1), GOLDEN_POD_CONFTEST, "admin 줄"),
+    (
+        "default-admin-swapped",
+        GOLDEN_ACLFILE.replace(
+            "USER default OFF +auth +hello\nUSER admin ON nopass ~* &* +@all\n", "USER admin ON nopass ~* &* +@all\nUSER default OFF +auth +hello\n"
+        ),
+        GOLDEN_POD_CONFTEST,
+        "default 줄",
+    ),
+    ("no-final-newline", GOLDEN_ACLFILE.rstrip("\n"), GOLDEN_POD_CONFTEST, "끝 줄바꿈"),
+    ("extra-final-newline", GOLDEN_ACLFILE + "\n", GOLDEN_POD_CONFTEST, "끝 줄바꿈"),
+    ("bom-at-start", chr(0xFEFF) + GOLDEN_ACLFILE, GOLDEN_POD_CONFTEST, "default 줄"),
+]
+
+
+def test_check_aclfile_golden() -> None:
+    """골든(템플릿의 렌더 꼴) — 허용 토큰만 · pod 줄 하나가 conftest 규칙(resetchannels 뺀 것)과 같고 B2 꼬리로 끝난다 · 파일 전체가 정확히
+    세 줄(default · admin · pod — 끝 LF 하나) → 위반 0."""
+    assert check_aclfile_tokens(GOLDEN_ACLFILE) == []
+    assert check_aclfile_matches_conftest(GOLDEN_ACLFILE, GOLDEN_POD_CONFTEST, "sample-pod") == []
+    assert check_aclfile_exact(GOLDEN_ACLFILE, GOLDEN_POD_CONFTEST, "sample-pod") == []
+
+
+@pytest.mark.parametrize(("name", "acl", "conftest_text", "word"), ACLFILE_MUTATIONS, ids=[name for name, _, _, _ in ACLFILE_MUTATIONS])
+def test_check_aclfile_mutation_caught(name: str, acl: str, conftest_text: str, word: str) -> None:
+    """변이 하나마다 위반 ≥ 1이고 그 까닭 조각이 문장에 있다 — `-client` 빠짐 · `-client|kill` · reset · Redis 카테고리 이름 · 다른 카테고리 ·
+    다른 명령 빼기 · 비밀번호 토큰 · pod 줄 없음 · 둘 · OFF · 키 패턴 넓힘 · 읽기 전용 뺌 · 주석 · CRLF · conftest 쪽 꼬리 빠짐 ·
+    resetchannels 없음 · 다른 POD_NAME · DRAGONFLY_USERS 없음 · 읽지 못함 · 리터럴이 아닌 규칙 · (라운드 2) default 줄 지움 · 켬 · 슈퍼유저 줄
+    더함 · admin 줄 지움 · 채널 &* 뺌 · default ↔ admin 순서 · 끝 LF 없음 · 빈 줄 더함 · BOM."""
+    violations = (
+        check_aclfile_tokens(acl)
+        + check_aclfile_matches_conftest(acl, conftest_text, "sample-pod")
+        + check_aclfile_exact(acl, conftest_text, "sample-pod")
+    )
+    assert violations, name
+    assert any(word in item for item in violations), f"{name}: {violations}"

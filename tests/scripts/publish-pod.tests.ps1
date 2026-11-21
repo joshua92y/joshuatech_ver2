@@ -76,10 +76,10 @@ $K = @{
     Paths      = @('apps/identity-admin/**', 'packages/django-common/**', '.github/workflows/publish-pod.yml', 'scripts/ci/publish-pod-*.sh')
     PrIf       = "github.event_name == 'pull_request'"
     PubIf      = "github.event_name != 'pull_request' && github.ref == 'refs/heads/main'"
-    BotSlug    = 'joshuatech-gitapp-1'   # gitops tests/validate.sh:232 VALIDATE_BOT_AUTHORS 기본값의 App 이름(…[bot]에서 옮김)
-    BotId      = '323873425'             # gitops tests/validate.sh:233 VALIDATE_BOT_IDS 기본값
+    BotSlug    = 'joshuatech-gitapp-1'   # gitops tests/validate.sh 변수 BOT_AUTHORS(VALIDATE_BOT_AUTHORS 기본값)의 App 이름(…[bot]에서 옮김 · T076 보정 2026-11-20 — 줄 번호 대신 앵커)
+    BotId      = '323873425'             # gitops tests/validate.sh 변수 BOT_IDS(VALIDATE_BOT_IDS 기본값 · T076 보정 2026-11-20 — 줄 번호 대신 앵커)
     YqVersion  = 'v4.53.6'
-    YqSha256   = '88a1016bc1d657375a35864e4f44b6f333df8ff97b559f51bba0adcb2169df09'   # gitops promote.yml:91(yq_linux_arm64)과 같은 값
+    YqSha256   = '88a1016bc1d657375a35864e4f44b6f333df8ff97b559f51bba0adcb2169df09'   # gitops promote.yml 스텝 「2 도구 설치 — yq」의 YQ_SHA256(yq_linux_arm64)과 같은 값(T076 보정 2026-11-20 — 줄 번호 대신 앵커)
     AsCall     = 'bash scripts/ci/publish-pod-assert-image.sh'
     # bump 스크립트는 exec로 부른다 — 러너의 취소 신호(스텝 셸 PID에만 — actions/runner ProcessInvoker.cs)를 스크립트가 직접 받는다(라운드 1b)
     BsCall     = 'exec bash scripts/ci/publish-pod-bump.sh'
@@ -856,7 +856,7 @@ Test-Group 'pp-21' {
     $bs = @(Find-Steps $jobs 'bs')
     $je = Get-JobSubMap $jobs['bump'] 'env'
     $se = if ($bs.Count -eq 1) { $bs[0].step.env } else { @{ map = [ordered]@{}; bad = [string[]]@('missing') } }
-    Assert 'pp-21: one bump script call (bump) whose run: is exactly "exec bash scripts/ci/publish-pod-bump.sh" (exec — the runner sends cancel signals to the step shell PID only), step env exactly {GH_TOKEN (App token), MONOREPO_TOKEN (github.token), DIGEST, APP_SLUG, GITOPS_DIR} with no unparsed line, bump job env exactly BOT_SLUG joshuatech-gitapp-1 · BOT_ID 323873425 (harness constants from gitops validate.sh:232-233)' (
+    Assert 'pp-21: one bump script call (bump) whose run: is exactly "exec bash scripts/ci/publish-pod-bump.sh" (exec — the runner sends cancel signals to the step shell PID only), step env exactly {GH_TOKEN (App token), MONOREPO_TOKEN (github.token), DIGEST, APP_SLUG, GITOPS_DIR} with no unparsed line, bump job env exactly BOT_SLUG joshuatech-gitapp-1 · BOT_ID 323873425 (harness constants from gitops tests/validate.sh BOT_AUTHORS / BOT_IDS)' (
         $bs.Count -eq 1 -and (Test-Same $bs[0].job 'bump') -and
         (Test-MapExact $se @{ GH_TOKEN = '${{ steps.app.outputs.token }}'; MONOREPO_TOKEN = '${{ github.token }}'; DIGEST = '${{ needs.publish.outputs.digest }}'; APP_SLUG = '${{ steps.app.outputs.app-slug }}'; GITOPS_DIR = 'gitops' }) -and
         $je.found -and (Test-MapExact $je @{ BOT_SLUG = $K.BotSlug; BOT_ID = $K.BotId })

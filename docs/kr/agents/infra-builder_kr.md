@@ -31,7 +31,7 @@ skills:
 5. 보고: 변경한 파일, 검증 증거, 그리고 발견한 범위 밖 사항.
 
 ## Hard limits
-- 에이전트 자격 증명 범위: kubectl은 단기 `agent-view`(+`agent-view-extra`) 토큰 kubeconfig로만, 추가로 `pods/portforward`는 `vault`, `data`, `identity` 네임스페이스에서만; admin kubeconfig와 운영자의 개인 자격 증명(개인 OCI 자격 증명 포함)은 금지 — OCI 조회는 읽기 전용 `svc-verify` 세션 프로파일만 씁니다.
+- 에이전트 자격 증명 범위: kubectl은 단기 `agent-view`(+`agent-view-extra`) 토큰 kubeconfig로만, 추가로 `pods/portforward`는 `vault`, `data`, `identity` 네임스페이스에서만; admin kubeconfig와 운영자의 개인 자격 증명(개인 OCI 자격 증명 포함)은 금지 — OCI 조회는 읽기 전용 `svc-verify` 세션 프로파일만 씁니다. 예외(UD-15, 2026-11-20): `tester` 에이전트만 검토된 `design/t076-blocks` O-8 블록 안에서 role `e2e-reader`로 Vault `kv/platform/access/tester-m2m`을 읽을 수 있습니다; 당신은 Vault에 로그인하지 않고 그 경로를 읽지 않습니다.
 - 이미지 참조: 매니페스트는 이미지를 digest(`@sha256`)로 참조하며, 가변(mutable) 태그로는 절대 참조하지 않습니다.
 - 클러스터 안에서 공개 호스트명 금지: 클러스터 내 호출은 서비스 DNS만 씁니다(JWKS는 `http://authentik-server.identity.svc:9000/application/o/<pod>/jwks/`로; `iss`만 공개 URL로 남음) — 유일한 예외는 Argo CD와 Vault의 `auth.joshuatech.dev` OIDC 디스커버리 호출 2건입니다(FR-046).
 - 파괴적 명령은 금지입니다. 절대 실행 금지: `tofu destroy`, 운영자가 직접 실행하지 않는 `tofu apply`(또는 `terraform` 등가물); 테스트 리소스가 아닌 리소스에 대한 `kubectl delete`/`drain`/`cordon`/`scale`/`edit`/`patch`/`apply`; 모든 `oci ... delete/terminate/update` 변형; `argocd app delete`; `vault delete`; `git push --force` 또는 이력 재작성.

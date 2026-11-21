@@ -115,7 +115,7 @@
 - **실행**: plan `1 import / 38 add / 1 change / 0 destroy` → apply(1차: 정책 403으로 23 add) → 토큰 편집 → 재apply **15 added**(정책 5 + 앱 10) → 총 import 1·add 38·change 1(traefik in-place)·destroy 0.
 - **VD-3 실측 → 옵션 A 확정**: `-var=ratelimit_use_host_condition=true` plan(1 change in-place) → apply 성공 — Free 플랜 Rate Limiting 표현식에 `http.host eq "joshuatech.dev" and starts_with(http.request.uri.path, "/api/")` 수락. 코드 기본값을 true로 고정(후속 커밋). 호스트 조건 없는 부분(`/api/auth/*`·`/if/flow/*`)은 US8 전까지 v1 `api.`·`mainapi.`에도 적용됨을 report.md에 기록.
 - **Outputs(비밀 아님)**: zone `69559544da12932b3c73e745f3946d0e`, account `91738ffff95834c5972f1a92aac416a6`, tunnel `d0cf3291-f55a-415d-b305-5548c0ebd5bf`, ratelimit 룰셋 `5026b8498eca4013a8b9a93c2b1533a5`, WAF entrypoint `ccbe2a0b69a84ba99c7e3c1b307448af`, IdP `097c94b9-1236-415f-9875-db9618c852d7`, Access AUD: admin `bb921cd6…`, argo `b3ba3e78…`, auth-admin `6f28a967…`, identity-m2m-dev `e808dc6e…`, identity-m2m-prod `4b80c1ea…`, k8s `89363369…`, preview `3e2dcf18…`, ssh `5e939d3c…`, traefik `9bdcf6b1…`, vault `5a667983…`(전체 값은 `tofu -chdir=infra/cloudflare output access_app_aud`).
-- **sensitive 출력 보관(운영자 확인 2026-09-03)**: `service_tokens`(web-bff-dev·web-bff-prod·tester-m2m·tester-k8s client_id/secret) + `tunnel_token` → 비밀번호 관리자. ~~Vault 투입은 T043(`kv/platform/access/*`)~~ → **정정(2026-09-22)**: Vault 투입은 **T045**다 — 터널 토큰은 `kv/platform/cloudflare/tunnel`(필드 `token`)에 시드됐고(2026-09-21) G4에서 ExternalSecret이 라이브 Secret을 인수했다(2026-09-22 — §3 T045). **`service_tokens`의 Vault 투입은 이연**: `kv/{env}/access/web-bff`는 Workers Secrets 전용 경로라 T092가 복사하고, tester용 2종은 T077에서 다룬다(T045 이연 범위 D10). 비밀번호 관리자 사본은 백업으로 유지한다. 터널 토큰은 T039 cloudflared 설치 때 처음 사용했다.
+- **sensitive 출력 보관(운영자 확인 2026-09-03)**: `service_tokens`(web-bff-dev·web-bff-prod·tester-m2m·tester-k8s client_id/secret) + `tunnel_token` → 비밀번호 관리자. ~~Vault 투입은 T043(`kv/platform/access/*`)~~ → **정정(2026-09-22)**: Vault 투입은 **T045**다 — 터널 토큰은 `kv/platform/cloudflare/tunnel`(필드 `token`)에 시드됐고(2026-09-21) G4에서 ExternalSecret이 라이브 Secret을 인수했다(2026-09-22 — §3 T045). **`service_tokens`의 Vault 투입은 이연**: `kv/{env}/access/web-bff`는 Workers Secrets 전용 경로라 T092가 복사하고, tester용 2종 중 `tester-m2m`은 **T076 W-7**이 `kv/platform/access/tester-m2m`에 시드하며(UD-15 — §4 T076 · T076 보정 2026-11-20 · 이전 문구 「tester용 2종은 T077에서 다룬다」) `tester-k8s`는 T077에서 다룬다(T045 이연 범위 D10). 비밀번호 관리자 사본은 백업으로 유지한다. 터널 토큰은 T039 cloudflared 설치 때 처음 사용했다.
 - **효과**: `argo`·`vault`·`traefik`·`admin`·`preview`·`k8s`·`ssh-a/b`·`auth./if/admin`은 Access(GitHub `joshua92y@gmail.com`) 뒤. SSL strict·HTTPS 강제·TLS 1.2·AOP 존 설정 코드 고정. 터널 CNAME `ssh-a`·`ssh-b`·`k8s` 준비(cloudflared는 T014에서 기동).
 
 ### T012 — v1 배포 차단 (2026-09-04)
@@ -402,7 +402,7 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
   - **단계 14(백업 연결)**: `/etc/platform-backup/env` 삭제 · `platform-backup.sh --components vault` **OK** → 오브젝트 `vault/vault-20260917T022021Z.snap.age` **36,642B** · textfile `platform_backup_last_success_timestamp{component="vault"} 1789611628`(02:20:28Z) · `--pre-upgrade` gate **PASS**(k3s 16.8MB + vault) exit 0 · 타이머 다음 실행 2026-09-18 02:30 KST · VD-22 버킷 확인 = 첫 시도는 OCI CLI `svc-verify` 세션 키 passphrase 오류 → 세션 재인증 뒤 cluster.tests **`backup-1` PASS**(k3s/ 24h 내 2건, 총 9) · **`backup-2` PASS**(vault/ **2건**: `…022021Z` 수동 · `…022039Z` pre-upgrade) · **`backup-3` PASS**(비-`.age` 0, 11 객체) → cluster **31/6/11**(남은 FAIL = argo-4·eso-1~3·ca-1·reloader-1, T045/T046+).
   - **단계 15(하네스, agent-view kubeconfig)**: infra **61/0** · cluster **28/9/11**(**vault-1/2·argo-1·np-4 PASS**; FAIL argo-4·eso-1~3·ca-1·reloader-1 = T045/T046+ 전 상태, backup-1~3 = OCI 세션 — 단계 14 VD-22에서 재측정 PASS) · ingress **11/1**(FAIL vault-2 = G2 대기) · reboot 3/0/4.
   - **단계 16(G2 · VD-21)**: #22 머지 `7a83884` → refresh 뒤 `Synced Healthy` · Ingress `vault/vault` HOSTS `vault.joshuatech.dev` ADDRESS `10.0.7.78` · edge **302**(Access) · **러너 ingress.tests 12/0 — `vault-2` PASS `ingress=[vault/vault]`**(vault-1 302 · aop-1 PASS) · **브라우저**: Access 통과 → `/ui/vault/auth` "Sign in to Vault"(Method Token) 렌더 ✔(합격선; 로그인 안 함). **노드 A 내부 `--resolve` 무인증서 프로브는 `000`** — T043 AOP `RequireAndVerifyClientCert` 하의 정상 거절이며 설계 VD-21의 "노드 내부 200/307" 기대값은 T043 이전 기준이라 폐기. AOP 양성: 액세스 로그는 4xx/5xx만 남으므로 `cloudflared access curl …/__probe-404` = 307(Vault가 `/ui/`로 리다이렉트, 미기록) → `…/v1/__probe-404` = **403** → 로그 1줄(02:54:07Z): router `vault-vault-vault-joshuatech-dev@kubernetes` · svc `vault-vault-http@kubernetes` · TLS 1.3 · `TLSClientSubject=CN=origin-pull.cloudflare.net,O=Cloudflare Inc.,L=San Francisco,ST=CA,C=US`.
-- **git 밖 라이브 상태(재부트스트랩 시 재현 필요)**: Vault **초기화됨**(2026-09-17 11:09:13 KST, cluster `vault-cluster-d3b29227`; 1차 init `vault-cluster-832ae26d`의 산출물은 존재하지 않는다) · recovery 3/2 + root 토큰 = 운영자 PM 항목 4개(`T044 vault recovery 1/3…3/3 (threshold 2)` · `T044 vault root token (revoke: T084 OIDC admin + break-glass 드릴 뒤, D4)`) — 값은 어디에도 없음 · 감사 장치 `file/`(stdout, tofu 밖) · `/etc/platform-backup/env` 삭제(기본 `k3s,vault`) · kv sentinel 8경로(`PLACEHOLDER-T044-SENTINEL`) · **불변식** "sentinel 잔존 0 = consumer 활성화 전제" + `kv/{env}/openfga/preshared` = `kv/platform/openfga/preshared`(US6) · 옛 PV(PVC uid `65c4d83d`) 소멸, 현재 PVC uid `671c6607` · Argo 고아 경고 `vault/PersistentVolumeClaim data-vault-0` 1건 정상 · agent-view kubeconfig `$HOME\.kube\agent-view.yaml`(8h 토큰 — 컨트롤러·하네스용, 만료 시 재조립).
+- **git 밖 라이브 상태(재부트스트랩 시 재현 필요)**: Vault **초기화됨**(2026-09-17 11:09:13 KST, cluster `vault-cluster-d3b29227`; 1차 init `vault-cluster-832ae26d`의 산출물은 존재하지 않는다) · recovery 3/2 + root 토큰 = 운영자 PM 항목 4개(`T044 vault recovery 1/3…3/3 (threshold 2)` · `T044 vault root token (revoke: T084 OIDC admin + break-glass 드릴 뒤, D4)`) — 값은 어디에도 없음 · 감사 장치 `file/`(stdout, tofu 밖) · `/etc/platform-backup/env` 삭제(기본 `k3s,vault`) · kv sentinel 8경로(`PLACEHOLDER-T044-SENTINEL`) · **불변식** "sentinel 잔존 0 = consumer 활성화 전제" + `kv/{env}/openfga/preshared` = `kv/platform/openfga/preshared`(US6)(**T075 보정 2026-11-17** — 지금 불변식은 vault-unseal §US6(면제 셋 밖 sentinel 0) · `preshared` 교체는 T082 · 게이트 1은 키 단위 — §4 T075 O-3) · 옛 PV(PVC uid `65c4d83d`) 소멸, 현재 PVC uid `671c6607` · Argo 고아 경고 `vault/PersistentVolumeClaim data-vault-0` 1건 정상 · agent-view kubeconfig `$HOME\.kube\agent-view.yaml`(8h 토큰 — 컨트롤러·하네스용, 만료 시 재조립).
 - **절차 메모(다음 사람이 반드시 읽을 것)**:
   1. **블록 통째 실행 사고** — 사람 동작(PM 저장)이 있는 블록은 `Read-Host`로 강제 정지하고, 소거는 검증(되가져오기 해시 4/4 + PM 사본 lookup)에 **조건부**로만 건다(런북 §4 안전 블록). "주석으로 멈추라"는 지시는 멈추지 않는다.
   2. **PowerShell `-flag=value`는 따옴표** — `vault operator init "-status"` · `tofu plan "-out=t044.tfplan"`(`-out=`가 분리되면 다른 동작).
@@ -882,15 +882,17 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
 
 (T059 이후 기록은 이하에 추가)
 
-### T074 — publish-pod · VD-5 · GHCR 공개 (2026-11-16 ~)
+### T074 — publish-pod · VD-5 · GHCR 공개 (2026-11-16 ~ 11-17)
 
-> **진행 중(2026-11-16 ~).** 코드(워크플로 `publish-pod.yml` · 스크립트 둘 · 하네스)는 기능 브랜치에 있고, 통합 · 실측(설계 조각 ⑦)은 사용자 동석 세션이다. 세션이 끝나면 이 머리를 「완료」로 바꾸고 아래 「기록 칸」을 채운다(C12). 사용자 결정 **UD-1 = 단계 통합(T074 한정 · 2026-11-16)** — 머지 커밋은 U1b 뒤 기록 칸에 적는다.
+> **완료(2026-11-17).** 통합(PR #1 merge commit `9fd9f2c`) → 첫 main 실행 → **VD-5 옵션 A 확정**(사람 행동 0) — 값은 아래 「기록 칸」. 사용자 결정 **UD-1 = 단계 통합(T074 한정 · 2026-11-16)**: 이후 main 발행이 필요한 지점(US5 Worker 배포 · T115 dev bump 실연 · identity-admin 변경의 dev 반영)은 그때마다 사용자에게 다시 묻는다. 아래 블록은 같은 절차를 다시 돌 때(재통합 · 다른 pod)의 정본으로 남긴다.
 
 - **설계 · 계약**: `specs/003-platform-foundation/design/t074-design.md`(결정 D1–D19 · §5 조각 ⑦ 블록 표 · §6 VD) · `design/build-notes.md` 「T074」. 계약 `contracts/gitops-repo.md` §이미지·승격 「dev bump」 · `contracts/pod-template.md` 이미지 행(표식 「T074 보정 2026-11-16」).
 - **코드(모노레포)**: `.github/workflows/publish-pod.yml`(job 셋 — `build-check`(PR · 빌드와 단언만) · `publish`(main · 단언 → push → registry 단언 → attest → 자기 검증) · `bump`(Environment `production` · App 토큰)) · `scripts/ci/publish-pod-assert-image.sh`(이미지 단언) · `scripts/ci/publish-pod-bump.sh`(낡은 실행 가드 → 제자리 hex 교체 → PR → auto-merge → 15분 기다림 · 머지 결과 대조 → 실패 · 취소 때 자기 PR · 브랜치 정리) · 하네스 `tests/scripts/publish-pod.tests.ps1`(정적 pp-* · 실행 px-* — `tests/run-all.ps1` 1b6 `ci-publish-pod`). 단계 · 까닭 코드의 정본은 두 스크립트의 머리 주석이다.
 - **지금까지의 실측**:
   - **VD-T074-6(Environment `production` 보호 규칙의 거부 쪽 · 음성 탐침)**: 2026-11-16 **PASS** — 실행 `43837898464`(main이 아닌 ref의 `environment: production` job이 거부됨).
-  - **seed PR(gitops #59 — dev overlay의 첫 `images` 항목 · 사람 PR)**: 검사 초록. 머지는 운영자(squash · U1b보다 먼저).
+  - **seed PR(gitops #59 — dev overlay의 첫 `images` 항목 · 사람 PR)**: 검사 초록 → 운영자 squash 머지 2026-11-17 12:09:49 KST(gitops main `2f6f396` · main push validate 성공).
+  - **VD-T074-1(PR build-check — arm64 · 캐시 없는 적재 빌드 + 이미지 단언)**: 2026-11-17 **PASS** — job 46초(빌드 21초 · 단언 5초).
+  - **통합 · VD-5**: 2026-11-17 **옵션 A** — 아래 「기록 칸」.
 - **누가 무엇을**: O 블록 = 관찰(컨트롤러 · 에이전트가 GET · 읽기 query · 익명 요청만). J 블록 = 판단(사용자와 함께). U 블록 = 변경(사용자 UI 또는 **운영자** 명령 — 에이전트는 실행하지 않는다). 머지를 결정하는 GitHub 동작(머지 · auto-merge 걸기 · 실행 승인 · 배포 승인)은 운영자 전용이다(`.claude/rules/infra.md` 「Credentials」). 한 블록에 관찰과 변경을 섞지 않는다. **세션 약속**: 측정하는 동안 gitops에 다른 머지를 하지 않는다(strict 정책 — main이 움직이면 bump PR이 BEHIND가 되어 시간 초과로 정리된다).
 
 #### 전제(통합 전 — 모두 끝나야 O1로 간다)
@@ -1009,23 +1011,258 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
 
 | 항목 | 값 |
 |---|---|
-| 통합 머지 커밋(UD-1 · U1b 시각 KST) | |
-| publish-pod 실행 ID · 시작/끝 · 결론(VD-T074-3 — paths 필터가 불렀는가) | |
-| 발행 digest · 패키지 첫 가시성 · 연결 저장소(VD-T074-2) | |
-| bump PR 번호 · 생성 · 머지 시각 · 경과 초(요약) | |
-| validate 실행 ID · `run_attempt` · `action_required` 여부(c) | |
-| auto-merge actor(d) · merged_by(e) · 브랜치 자동 삭제(e) | |
-| 발신자 `actor` · `triggering_actor` · 검사 6 판정(f) · 규칙 g 관찰 | |
-| gitops 머지 커밋 · main push validate 결론 | |
-| **VD-5 판정**(A / B-merge / B-run) · 원인 · 쓴 U 블록 | |
-| GHCR 공개(확인 · 전환 시각 — U3) · 익명 pull(VD-T074-4) | |
-| (선택) promote ③ 검증(VD-T074-5) | |
+| 통합 머지 커밋(UD-1 · U1b 시각 KST) | `9fd9f2c`(PR #1 merge commit · 부모 `93c7469` · `85b3c81` · 본문 「T074 단계 통합(UD-1)」) · 2026-11-17 12:30:17 KST. 사용자의 1회 예외 결정으로 컨트롤러가 실행했다(`gh pr merge --merge --match-head-commit` — infra.md 「Credentials」의 운영자 전용 규칙은 그대로다) |
+| publish-pod 실행 ID · 시작/끝 · 결론(VD-T074-3 — paths 필터가 불렀는가) | `44010688210` · push · 12:30:26–12:33:41 KST(195초) · success — paths 필터가 불렀다(U-d 안 씀). publish 67초 · bump 116초 |
+| 발행 digest · 패키지 첫 가시성 · 연결 저장소(VD-T074-2) | `sha256:faf55a5752533dffb3b5e93e3b8d8857890d4a0690945de70c526de50be057dd`(태그 `sha-9fd9f2c…` · 단일 OCI 매니페스트 · linux/arm64 · 적재 빌드와 push 빌드의 digest 같음) · 생성 즉시 **Public**(사용자 UI) · 연결 저장소 `joshua92y/joshuatech_ver2` |
+| bump PR 번호 · 생성 · 머지 시각 · 경과 초(요약) | gitops #60 · 생성 12:31:57 · 머지 12:33:30 KST · 생성 → 머지 93초(auto-merge를 건 뒤 90초 · 마지막 required check 성공 뒤 10초) |
+| validate 실행 ID · `run_attempt` · `action_required` 여부(c) | `44010878946` · attempt 1 · action_required 없음(생성 = 시작 12:32:01) · `validate` · `prod-approval` success(classify 판정 skip · gate skipped) |
+| auto-merge actor(d) · merged_by(e) · 브랜치 자동 삭제(e) | `joshuatech-gitapp-1`(AutoSquashEnabledEvent 12:32:00) · `joshuatech-gitapp-1[bot]` · 자동 삭제됨(12:33:31 · `ls-remote` 빈 출력) |
+| 발신자 `actor` · `triggering_actor` · 검사 6 판정(f) · 규칙 g 관찰 | 봇 · 봇(이벤트 `sender`도 봇) · 검사 6 PASS(봇 PR — dev digest 한 줄 제자리 교체) · ruleset main: squash만 · `require_extra_approval_for_unattributed_changes: true` · 승인 0 · strict · bypass 없음 — auto-merge를 막지 않았다 |
+| gitops 머지 커밋 · main push validate 결론 | `f920df6`(squash · 부모 `2f6f396` · dev kustomization +1/−1) · `44011058907` success(398초 · PASS 39 · FAIL 0 · WARN 4 — 이번 변경과 무관한 기존 경고) |
+| **VD-5 판정**(A / B-merge / B-run) · 원인 · 쓴 U 블록 | **A**(2026-11-17 사용자 확정 · 증거 수집 · 사람 행동 반증 · 무결성 반증 세 렌즈 일치) · 사람 행동 0 · U 블록 안 씀(U-a · U-b · U-c · U-d · U3) |
+| GHCR 공개(확인 · 전환 시각 — U3) · 익명 pull(VD-T074-4) | 확인(생성 즉시 Public) · 익명 토큰 200 · 매니페스트 HEAD 200(12:41:36 KST) |
+| (선택) promote ③ 검증(VD-T074-5) | 하지 않음 → T115 |
+
+- **관찰(판정과 무관 — 인계는 build-notes 「T074 결과」)**:
+  - 패키지 화면의 「Latest」는 attestation 태그 `sha256-<digest>`(attest `push-to-registry`)이고, 화면의 `docker pull` 예시가 그 태그를 쓴다 — 이미지가 아니다. 배포는 digest 고정이라 무해하다.
+  - bump 요약(Summary 탭)의 두 줄(「auto-merge(첫 조회)」 · 「**머지 확인**」)은 API로 읽을 수 없다 — 같은 사실은 REST · GraphQL과 로그의 「결과: 통과」로 확인했다.
+  - 자기 검증 스텝(`gh attestation verify`)은 로그에 출력 줄을 남기지 않는다(exit 0만).
+  - build-push의 「Metadata」 로그 그룹에 GitHub 이벤트 본문이 찍힌다(이미 공개된 값).
+  - 배포 · 배포 상태 · 실행의 actor가 운영자 계정으로 보이는 것은 U1b(통합 머지)의 귀속이다 — 승인 기록은 0이다.
 
 - **상시 점검 명령(읽기만 · 에이전트 가능)**: `pwsh -NoProfile -File tests/scripts/publish-pod.tests.ps1`(정적 + 실행 — 로컬은 Git Bash · yq v4.53.6 필요 · 없으면 그 사례만 SKIP) · `gh run list -R joshua92y/joshuatech_ver2 --workflow publish-pod.yml --limit 5` · `gh pr list -R joshua92y/platform-gitops --state open --json number,headRefName,author --jq '.[] | select(.headRefName | startswith("bump/")) | [.number, .headRefName, .author.login] | @tsv'`(pod마다 열린 봇 PR은 많아야 하나).
 
+### T075 — identity-admin dev · prod 첫 배포(gitops PR 넷 · UD-9 = B2 · 게이트) (2026-11-17 ~ 11-20)
+
+> **완료(2026-11-20).** 라이브 L0–L16(2026-11-19..20) — 값은 아래 「기록 칸」 · build-notes 「T075 라이브 결과」 · 「T075 결과」. 설계 = `specs/003-platform-foundation/design/t075-design.md`(D1–D24 · §5 라이브 절차 L0–L16) · 블록과 모의 하네스 = `specs/003-platform-foundation/design/t075-blocks/`. kv 시드 · 게이트 · Dragonfly ACL 재렌더 블록의 절차는 §4 T075.
+
+- **누가 무엇을**: O 블록 = 관찰(쓰기 0) · W 블록 = 변경 · 그 밖은 런북 명령 줄. gitops PR은 사람 PR이다 — 관문 승인과 머지는 운영자가 한다(`.claude/rules/infra.md` 「Credentials」). 컨트롤러(에이전트)는 agent-view kubeconfig · GitHub GET으로만 관찰하고, **머지 명령은 선행 조건 출력을 받은 뒤에만 낸다**(2026-10-19 T056 교훈). 한 블록에 관찰과 변경을 섞지 않고 변경 단계마다 다시 본다. 관리자 kubeconfig는 명령에 직접 적는다(`$kc = "$HOME\.kube\joshuatech-admin.yaml"` · `kubectl --kubeconfig $kc …` — `apps/identity-admin/README.md` :101–102).
+- **PR 넷 · 순서 · 관문 · 머지 선행**(설계 D1 · UD-14 — 관문 need = `prod-approval` 운영자 승인):
+
+  | PR | 내용 | 관문 | 머지 선행 |
+  |---|---|---|---|
+  | GP-1 검사 · 경계 | validate.sh 검사(3.9 · 7.1 · 7.5 · 13.7 · 14.0–14.9 · 11.6 · 11.7 — 14.9 · 11.6 · 11.7과 네트워크 없는 렌더는 GP-1 리뷰에서 더함 · 2026-11-18 · gitops PR #62) · AppProject dev/prod 허용 목록 · classify 넓힘(+ `clusters/oci-k3s/apps`의 yaml/README 밖 경로) · 렌더와 무관한 문서 | need(`clusters/oci-k3s/projects/**`) | 없음 — dev/prod 프로젝트 소비자 0 · CI 자기검사 전체 초록 |
+  | GP-A UD-9 | data-assert `acl-list` 새 뜻(identity-admin `ACL LIST` → NOPERM) · 문서 | skip | **L6 끝** — dev · prod W-6 + `ACL LOAD` + O-6 사후 PASS(§4 T075 B) |
+  | GP-2 dev | base 사본 · overlays/dev · Application 둘(`identity-admin-dev` · `identity-admin-prod` — prod는 빈 overlay) · README 행 | need(`apps/*/base/**` · `*-prod.yaml`) | GP-1 · GP-A 머지 · **L6 완료 · data-assert 7 id PASS(`acl-list` = NOPERM)** · W-2 dev · **O-3 dev `gate=PASS`**(§4 T075 A) |
+  | GP-3 prod | overlays/prod(kustomization · `ingress-admin.yaml` · `middleware-admin.yaml`) | need | dev 확인(아래 L10 · L11) 통과 · W-2 prod · **O-3 prod `gate=PASS`** · attestation 확인(L13) |
+
+  - 순서의 까닭: ① GP-1이 먼저여야 GP-2 · GP-3의 렌더가 새 검사를 받고 AppProject 허용 목록이 첫 앱 Application보다 먼저 선다. ② GP-A는 L6 뒤에만 — 새 `acl-list`는 NOPERM을 기대하므로 먼저 머지하면 다음 data-assert가 FAIL한다. ③ prod Application을 GP-2에서 빈 overlay로 만든다 — GP-3의 관문 diff가 prod 객체뿐이 되고 빈 Application의 Synced/Healthy를 먼저 본다. ④ prod seed digest는 dev 확인 뒤에 고른다.
+  - **GP-2 머지 명령의 첫 줄**: 「선행 조건 충족 확인됨(O-3 dev PASS · L6 · data-assert 7 PASS)」 — 세 출력을 컨트롤러에게 붙인 뒤에만 나온다(설계 D10 순서 2).
+  - 작업 자리: 공유 클론의 브랜치를 바꾸지 않는다 — 모노레포 무시 폴더의 worktree(`.superpowers/t075/gitops-<PR>`)에서 `origin/main`으로부터 브랜치를 만든다. push와 PR 생성은 사용자 확인 뒤에 한다.
+- **라이브 단계**(설계 §5 — 「변경」 단계 말고는 쓰지 않는다):
+
+  | 단계 | 종류 | 주체(자격) | 내용 | 다음 조건 |
+  |---|---|---|---|---|
+  | L0 | 준비 | 운영자 | 터널 · agent-view 토큰 · 창 규약(`vault-unseal.md` §0 — 모듈 로깅 · 클립보드 · 전사) | — |
+  | L1 | 관찰 O-0 | 컨트롤러(agent-view · GitHub GET) | Applications 22 Synced/Healthy · AppProject dev/prod · CSS 5 · jt-dev/jt-prod의 ES · NP · RQ · LR · data의 DatabaseRole · Database · KafkaUser · 라이브 판(K3s · Argo CD · Traefik 인자 · Reloader 인자) · data-assert 최근 로그(7 PASS — 옛 꼴) · 열린 gitops 봇 PR 0 | 기대값 |
+  | L2 | 관찰 O-1 | 운영자(tofu 상태 자격) | CF 값 5(아래 「확인」) | `o1=PASS 5/5` |
+  | L3 | 관찰 O-2 · O-4 | 운영자(Vault root · port-forward) | §4 T075 A 1 · 2 | 기록과 일치 · `o4=PASS 14/14` |
+  | L4 | 관찰 O-5a | 운영자(tester-m2m) · 컨트롤러(무헤더) | 배포 전 404 · 무헤더 응답 코드 | 기록 |
+  | L5 | 변경 → 관찰 | 운영자 → 컨트롤러 | GP-1 관문 승인 · 머지 → AppProject 허용 목록 라이브 · platform-argocd · root · argo-3(VD-T075-16) | PASS |
+  | L6 | 관찰 → 변경 → 관찰(dev → prod) | 운영자 · 컨트롤러 | 시작 전 SUC 다음 창 · 노드 작업 일정 확인(§4 T075 B 「규칙」 — 2단계부터 prod O-6 사후 PASS까지 두 env 재시작 요인 보류) → §4 T075 B 1–8(UD-9) → GP-A 머지 · Job 삭제(명령 = §4 T075 B 8단계) → data-assert | 7 id PASS(VD-T075-13) |
+  | L7 | 변경 W-2 dev | 운영자 | §4 T075 A 3 | 되읽기 일치 |
+  | L8 | 관찰 O-3 dev | 운영자 | §4 T075 A 4 | `gate=PASS 21/21`을 붙인다 |
+  | L9 | 변경 | 운영자 | GP-2 관문 승인 · 머지(L6 · L8 출력 확인 뒤에 명령) | — |
+  | L10 | 관찰 | 컨트롤러(agent-view) · 운영자(traefik.io) | 아래 「확인」 L10 | VD 표 |
+  | L11 | 관찰 O-5b · O-5c · O-7 | 운영자 · 컨트롤러 | `/health` 게이트 · 양성 탐침 · UD-10 표본 · exec 탐침 · Secret 키 이름(값 0) — 설계의 선택 항목 둘은 이 과제에서 하지 않는다(블록 · 명령이 없다): m2m 호스트 404 넷은 **T076**이 정식으로 단언하고(설계 D18 「관측 측정 셋」 — T076 보정 2026-11-20 · 이전 「설계 :585」 · 줄 번호 대신 절 이름), 신선도 키 35 s 간격 관찰은 신선도 경보와 함께 **T098**로 넘긴다(설계 D13 「celery 생존 프로브」의 인계 — T075 보정 2026-11-17 · 리뷰 KA-10 · 소유는 컨트롤러 결정 · T076 보정 2026-11-20 · 이전 「설계 :536」 · 줄 번호 대신 절 이름) | 게이트 |
+  | L12 | 변경 → 관찰 | 운영자 | §4 T075 A 5(W-2 prod → O-3 prod) | `gate=PASS 23/23` |
+  | L13 | 관찰 | 컨트롤러 | attestation verify(GET — 설계 D4 플래그 그대로 · 결과는 GP-3 PR 본문에 · 아래 「확인」 L13) · GP-3 렌더 코멘트 | 통과 |
+  | L14 | 변경 | 운영자 | GP-3 관문 승인 → 머지 | — |
+  | L15 | 관찰 | 컨트롤러 · 운영자 | prod VD · O-5b · O-5c prod · admin 정적 파일 200(운영자 브라우저 — URL · 로그 문구는 아래 「확인」 L15) · 익명 → Access 리다이렉트 · `tlsoption` · `tlsstore` · Traefik 로그 | 게이트 |
+  | L16 | 관찰 | 컨트롤러 | 하네스(env-1 · limits · argo-1/3 · job-d-2) · 동기화 하네스(fetch 뒤) | PASS |
+
+- **기동 사슬**(GP-2 머지 뒤 — L10에서 본다): root 폴링(≤ 180 s) → Application 둘 생성 → PreSync ES `identity-admin-migrate`(wave −1) `SecretSynced` → migrate Job(wave 0) 성공 → Sync ConfigMap `identity-admin-config` · ES `identity-admin-env`(wave −1) → Deployment `identity-admin`(init `startup-check` → `web` · `relay`) · `identity-admin-celery`. prod는 리소스 0개로 Synced/Healthy.
+- **hook ES 운영 성질 넷**(`apps/identity-admin/README.md` :455–461 요약 — Argo CD v3.5.2):
+  1. hook 리소스(PreSync ES · Job `identity-admin-migrate`)는 Argo 추적 밖이다 — hook만 바뀐 변경은 **전체 수동 Sync**(리소스 선택 없음)로만 다시 돈다.
+  2. `identity-admin-migrate` ES 상태는 Application health 밖이다 — `kubectl -n jt-<env> get externalsecret identity-admin-migrate`로 직접 본다.
+  3. 전체 sync마다 owner Secret이 지워졌다 다시 생긴다(BeforeHookCreation + Owner) — 모든 배포가 Vault · ESO 가용성에 걸린다.
+  4. hook ES가 Healthy가 되지 않을 때 두 갈래(ExternalSecret health: Ready=False = Degraded · 상태 없음 = Progressing): ⓐ **ES Degraded**(kv 누락 · Vault · store 오류 — Ready=False 메시지로 판정) → operation Failed → 자동 재시도(기본 창 ≈ 5분)가 다하면 같은 리비전은 다시 자동 sync되지 않는다 → 원인을 고친 뒤 전체 수동 Sync. ⓑ **ES 상태 없음**(ESO 컨트롤러 중단) → operation이 무기한 Running → operation terminate → ESO 복구 → 전체 수동 Sync.
+- **복구**(실패 갈래에서만 · **사용자 확인 뒤에** 쓴다 — `force-sync` · 수동 Sync · terminate · `rollout restart`):
+  - **늦은 시드**(GP-2 · GP-3가 W-2 · O-3보다 먼저 머지돼 hook ES가 Degraded): §4 T056 「늦은 시드」 · §4 T054 「늦은 시드」와 같은 꼴이다.
+    1. §4 T075 A의 W-2 → O-3 `gate=PASS`(출력을 컨트롤러에게).
+    2. 창 B에서 ES 둘에 `force-sync`(관리자 kubeconfig — `--kubeconfig` 직접):
+
+       ```powershell
+       $kc = "$HOME\.kube\joshuatech-admin.yaml"
+       $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+       kubectl --kubeconfig $kc -n jt-dev annotate externalsecret identity-admin-migrate identity-admin-env "force-sync=$ts" --overwrite
+       ```
+
+    3. agent-view로 `kubectl -n jt-dev get externalsecret identity-admin-migrate identity-admin-env` → 2행 `SecretSynced` · `True`(값은 보지 않는다).
+    4. operation 상태(`kubectl -n argocd get app identity-admin-dev -o jsonpath='{.status.operationState.phase} retry={.status.operationState.retryCount} {.status.operationState.message}'`): 재시도 대기(Running · `Retrying attempt #n`)면 기다린다(`.operation`에 손대지 않는다) · 재시도 소진(Failed)이면 **전체 수동 Sync** — Argo CD UI(리소스 전부 · PRUNE 끔 · Apply Out of Sync Only 끔 · Retry 끔 · Sync options는 미리 채워진 값 그대로) → 안 되면 `argocd app sync identity-admin-dev`(옵션 플래그 없이) → 관리자 kubeconfig만 있으면 §4 T056 「늦은 시드」 4 ⓑ 3의 JSON patch 블록(Application 이름 · `initiatedBy.username` `operator-t075-late-seed` · revision = 머지 sha 40자 · 옛 `status.operationState` 제거 포함 · `--dry-run=server` 먼저). **금지**: `.operation`만 넣는 `--type merge` patch. prod는 `jt-prod` · `identity-admin-prod`로 같다.
+  - **operation 무기한 Running**(성질 4 ⓑ): Argo CD UI의 Terminate(또는 `argocd app terminate-op identity-admin-<env>`) → ESO 복구(`kubectl -n external-secrets get pods` — agent-view로 상태 확인) → 전체 수동 Sync.
+  - **hook만 바뀐 변경**(성질 1): 전체 수동 Sync(리소스 선택 없음).
+- **prod 노출 축소 규칙**(설계 D24): prod Application은 `prune: false`다 — Git에서 지운 객체(admin Ingress · Middleware 등)는 OutOfSync(requires pruning)로 남고 **계속 서비스된다**. 그래서 prod의 노출 축소는 **객체 수정**으로 한다(경로 줄 삭제 등 — SSA로 반영된다). 객체 삭제가 꼭 필요하면 PR 머지 뒤 운영자가 그 객체만 수동 prune하고(Argo CD UI에서 그 리소스 하나만 골라 Sync · PRUNE 켬) `kubectl --kubeconfig $kc -n jt-prod get ingress,middlewares.traefik.io`로 사라졌는지 본다. prune 정책은 바꾸지 않는다.
+- **확인**(설계 D16 · D18 — 블록 디렉터리 `D:\code\joshuatech_ver2\specs\003-platform-foundation\design\t075-blocks\` · 실행은 `pwsh -NoProfile -File <절대 경로>` · 두 블록 모두 첫 단계가 모듈 로깅 4키 가드와 실효 상태 확인이다 — 블록의 값이 지나가는 cmdlet이 사는 넷(Core 스냅인 · Utility · Security · Management)의 `LogPipelineExecutionDetails`(이 프로세스의 실효 값 — `pwsh -SettingsFile`로 준 파일은 블록이 읽을 수 없어도 이 값이 잡는다) · `powershell.config.json` 두 곳(`$PSHOME` · 사용자 문서 폴더)은 값과 무관하게 텍스트에 낱말 `ModuleLogging`(대소문자 무관)이나 역슬래시-u 이스케이프가 보이면 멈춘다. 정책 키가 비어도 켜질 수 있다 — T075 보정 2026-11-17 · 리뷰 KB-2 · 라운드 2 KB2-1 · `vault-unseal.md` §0 체크리스트 같은 줄):
+  - **O-1(L2 · 운영자 — tofu 상태 자격)**: `…\o1-cf-values.ps1`(정지점 없음 · `tofu -chdir=<저장소>\infra\cloudflare output -json access_app_aud` · `… service_tokens` 두 번만 · 쓰기 0). tofu 동작을 바꾸는 환경 변수(`TF_LOG*` · `TF_CLI_ARGS*` · `TF_WORKSPACE` · `TF_DATA_DIR`)가 창에 있으면 tofu를 부르기 전에 그 이름만 내고 멈춘다(값은 내지 않는다 — `Remove-Item Env:<이름>` 뒤 새 창 · T075 보정 2026-11-17 · 리뷰 KB-8). 기대:
+
+    ```text
+    INFO tofu CLI: OpenTofu v… · Application ~\…\tofu.exe — infra/cloudflare 출력 읽기 전용(쓰기 0)
+
+    --- T075 O-1 Cloudflare 값(비밀 아님 — PASS 줄만 값이 있다 · 컨트롤러에게 붙이고 build-notes 에 적는다) ---
+    aud identity-m2m-dev PASS <64자 소문자 hex>
+    aud identity-m2m-prod PASS <64자 소문자 hex>
+    aud admin PASS <64자 소문자 hex>
+    cn web-bff-dev PASS <32자 소문자 hex>.access
+    cn web-bff-prod PASS <32자 소문자 hex>.access
+    o1=PASS 5/5
+    ```
+
+    AUD 셋은 비민감 출력에서만, Client ID 둘은 `service_tokens`의 `.client_id`만 꺼낸다(속성 이름 단언 · 키별 정규식 — `client_secret`은 변수 밖으로 내지 않는다). 값은 비밀이 아니다(공개 저장소의 overlay에 들어간다). FAIL 줄은 값 없이 사유만 낸다(`꼴이 … 가 아니다(값 미출력)` · `키 없음` · `tofu output exit=…`). 첫 `INFO` 줄의 tofu 종류 · 경로(사용자 홈은 `~`)가 예상한 `tofu.exe`인지 본다(T075 보정 2026-11-17 · 라운드 2 KB2-2).
+  - **O-5(L4 · L11 · L15 · 운영자)**: `…\o5-probe-identity-m2m.ps1` → ① env(`dev`/`prod`) ② 모드(`a` · `b` · `c`) ③(b만) 기대 git_sha — 그 env에 배포된 이미지 digest를 만든 모노레포 main 커밋 40자 소문자 hex. 출처: 컨트롤러가 build-notes 「T074 결과」 · publish-pod 요약(dev bump PR 본문)에서 찾아 운영자에게 준다(지금 dev = `9fd9f2c7…` — prod는 GP-3의 prod seed digest를 만든 커밋 · T075 보정 2026-11-17 · 리뷰 KA-12). 자격(tester-m2m · web-bff-<env>)은 tofu `service_tokens`에서 변수로만 받아 stdin 헤더(`curl.exe -H @-`)로 보낸다(argv · 화면 0). 응답 헤더는 `-w`의 `x-request-id` · `Cache-Control`만 읽는다 — `Set-Cookie: CF_Authorization`(앱 범위 JWT = 자격)은 읽지도 내지도 않는다(VR-12). curl 7.84 이상(`%header{}`)이 필요하다(없으면 아무것도 보내기 전에 멈춘다). curl은 첫 인자 `-q`로 `.curlrc`를 읽지 않는다(사용자 curlrc의 `--trace-ascii` · `--cookie-jar`가 자격 · 쿠키를 파일에 남기는 길을 막는다). 창에 `SSL_CERT_FILE` · `SSL_CERT_DIR`(라운드 2 KB2-2 — curl 신뢰 앵커를 바꾼다) · `CURL_CA_BUNDLE` · `SSLKEYLOGFILE` · `HTTP_PROXY` · `HTTPS_PROXY` · `ALL_PROXY`(소문자 이름 포함) · `TF_LOG*` · `TF_CLI_ARGS*` · `TF_WORKSPACE` · `TF_DATA_DIR`가 있으면 아무것도 읽거나 보내기 전에 그 이름만 내고 멈춘다(T075 보정 2026-11-17 · 리뷰 KB-1 · KB-8). `INFO curl …` 줄은 curl · tofu의 종류와 경로(사용자 홈은 `~`)를 함께 낸다 — 자격을 보내기 전에 예상한 실행 파일인지 본다(라운드 2 KB2-2). 응답에서 온 문자열(`x-request-id` · 오류 문구 등)은 제어 문자를 `?`로 바꾼 뒤 낸다(터미널 제어열 · OSC 52 클립보드 쓰기 차단 · 리뷰 KB-7 — 모든 블록 공통).
+    - **a(배포 전 · L4)**: `PASS o5a <env> tester-m2m GET /health → 404(Traefik — 라우터 없음 · 토큰 · DNS · AOP 정상)` · `INFO o5a <env> 헤더 없음 GET /health → <코드>(기록 — 합격선 없음 · C11)` · `o5a <env>=PASS 1/1`.
+    - **b(배포 뒤 게이트 · dev L11 · prod L15)**: 합격 = 200 · `status` = ok · `checks` = 정확히 {db, dragonfly, kafka_producer} · 셋 모두 ok · `git_sha` = 입력 · 응답 헤더 `x-request-id` 있음 → `o5b <env>=PASS 8/8` + `INFO o5b <env> 기록: version = … · Cache-Control = … · x-request-id = …`. `/health` 200은 ACCESS_AUD_M2M · ACCESS_EXPECTED_CN · ACCESS_TEAM_DOMAIN을 증명하지 않는다(pod에서 Access 단계 면제) — c가 증명한다.
+    - **c(양성 탐침 + UD-10 표본 · dev L11 · prod L15)**: 자격 web-bff-<env>로 `GET /session/check?sub=<고정 가짜 uuid>&iat=<지금 epoch 초>&sid=<고정 가짜 64 hex>` → 200 · 본문 정확히 `{"active": true}`(`nbf` 없음) · `Cache-Control`에 `no-store`. 같은 자격 · 같은 가짜 값으로 `iat=x` 하나를 더 보내 400 · `type` = `https://joshuatech.dev/problems/validation-error` → `o5c <env>=PASS 5/5` + `INFO o5c <env> UD-10 표본: 보낸 시각(UTC) … · x-request-id = … · 경로 /session/check · 가짜 sub = … · 가짜 sid = 7075c0de×8 — …`. 컨트롤러가 그 시각 근처 Traefik 액세스 로그의 400 줄에 쿼리(가짜 sub · sid)가 실리는지 기록한다(액세스 로그는 400–599만 남긴다 — 200 양성 요청은 남지 않는다):
+
+      ```powershell
+      kubectl -n kube-system logs deploy/traefik --since=15m | Select-String -SimpleMatch '/session/check'
+      ```
+
+  - **exec 탐침(L11 · C16)**: 운영자 `kubectl --kubeconfig $kc -n jt-dev exec deploy/identity-admin -c web -- python -c "print('t075-exec-probe')"` → 컨트롤러가 `kubectl -n jt-dev logs deploy/identity-admin -c web --since=10m | Select-String -SimpleMatch 't075-exec-probe'` 0줄인지 본다.
+  - **O-7(L11 · 운영자 — 키 이름만 · 값 0)**:
+
+    ```powershell
+    kubectl --kubeconfig $kc -n jt-dev get secret identity-admin-env identity-admin-migrate -o go-template='{{range .items}}{{.metadata.name}}:{{range $k,$v := .data}} {{$k}}{{end}}{{"\n"}}{{end}}'
+    kubectl --kubeconfig $kc get middlewares.traefik.io,tlsoptions.traefik.io,tlsstores.traefik.io -A
+    ```
+
+  - **L10(컨트롤러 — agent-view)**: root 폴링(≤ 180 s) 뒤 Application 둘 · dev operation · hook 결과 · ES 2개 Ready · Job 성공 · pods Ready · 로그 · Synced/Healthy · prod 리소스 0개로 Synced/Healthy:
+
+    ```powershell
+    kubectl -n argocd get applications.argoproj.io identity-admin-dev identity-admin-prod -o custom-columns='NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,OP:.status.operationState.phase'
+    kubectl -n jt-dev get externalsecret identity-admin-migrate identity-admin-env
+    kubectl -n jt-dev get job identity-admin-migrate
+    kubectl -n jt-dev get deploy identity-admin identity-admin-celery
+    kubectl -n jt-dev get pods
+    ```
+
+  - **L13(컨트롤러 — GET)**: 사람 seed(GP-3 images 첫 항목)는 promote ③(attestation 검증)을 거치지 않는다 — 그래서 컨트롤러가 T115 목표 플래그(설계 D4 · gr:89)로 다음을 **글자 그대로** 돌리고(`<digest>` = `sha256:<prod seed digest>`), 결과(exit · 출력 요약)를 **GP-3 PR 본문에 남긴다**(T075 보정 2026-11-17 · 리뷰 KA-4 — 아래 기록 칸 L13):
+
+    ```powershell
+    gh attestation verify oci://ghcr.io/joshua92y/identity-admin@<digest> --repo joshua92y/joshuatech_ver2 --signer-workflow joshua92y/joshuatech_ver2/.github/workflows/publish-pod.yml --source-ref refs/heads/main --deny-self-hosted-runners
+    ```
+
+  - **L15(prod — 운영자 브라우저 · 컨트롤러 agent-view)**: admin 라우터 양성 = 운영자가 GitHub IdP로 로그인한 브라우저에서 `https://admin.joshuatech.dev/identity-admin/static/admin/css/base.css` → 200(설계 VD-T075-12 · CD-13) · 익명(시크릿 창)으로 같은 URL → Access 로그인 리다이렉트. `tlsoption` · `tlsstore`의 `default`가 각각 정확히 1개(운영자 — `kubectl --kubeconfig $kc get tlsoptions.traefik.io,tlsstores.traefik.io -A`). 컨트롤러는 Traefik 로그에서 `Default TLS Options defined in multiple` 0줄 · middleware 오류 0줄을 본다(CD-16 — T075 보정 2026-11-17 · 리뷰 KA-10):
+
+    ```powershell
+    kubectl -n kube-system logs deploy/traefik --since=30m | Select-String -SimpleMatch 'Default TLS Options defined in multiple'
+    kubectl -n kube-system logs deploy/traefik --since=30m | Select-String -SimpleMatch 'middleware' | Select-String -SimpleMatch 'error'
+    ```
+
+    - (T075 보정 2026-11-20 — 근거 GP-3 리뷰 G3B-1 · G3B-2 · 실측 L15) **정적 GET 판정**: 응답 헤더 `cf-cache-status`가 `HIT`면 그 응답은 판정에 쓰지 않는다(edge 저장본이다 — `.css`는 Cloudflare 기본 캐시 대상이고 Traefik 액세스 로그는 400–599만 남겨 200의 원점 증거가 없다). 요청마다 새 쿼리 nonce(`?t=<임의 값>`)를 붙이고(같은 URL을 다시 읽으면 `HIT`다 — L15 실측) 첫 응답의 `cf-cache-status`를 기록한다. 원점 도달은 컨트롤러가 jt-prod web 로그의 `request_finished` code 200(`GET /static/admin/css/base.css` — stripPrefix 뒤 경로)으로 본다 — 실측: 운영자 보고 `HIT`(nonce를 붙인 URL을 다시 읽은 응답) · web 로그 12:38:18 KST(03:38:18.96Z) 200. **익명 확인**은 시크릿 창 대신 무자격 `curl -q`(302 · `Location` 호스트 = Access 팀 도메인 `joshua-tech.cloudflareaccess.com`)로 할 수 있다 — 실측 12:42:02 KST(03:42:02Z). **Traefik 로그 판정**은 그 sync operation이 끝난 뒤의 창(`kubectl logs --since-time=<operation 끝 시각>`)으로 보고, 그 전의 일시 줄(같은 wave에서 Ingress가 Middleware보다 먼저 적용될 때의 `middleware … does not exist`)은 시각과 함께 INFO로 남긴다(Traefik 재시작 직후의 일시 줄도 같다 — G3B-1). GP-3은 Middleware에 `argocd.argoproj.io/sync-wave: "-1"`을 달았고 일시 줄은 0이었다(그 효과와 맞다).
+- **기록 칸**(실행 뒤 컨트롤러가 채운다 — 날짜 · 시각(KST, Z 병기) · 값 · 토큰 · 쿠키는 적지 않는다):
+
+  | 항목 | 값 |
+  |---|---|
+  | L1 O-0 관찰(요약) | 2026-11-19 13:44–13:50 KST(04:44–04:50Z) · 모든 행 기대값 PASS — Applications root + 자식 22 Synced/Healthy · AppProject dev/prod 허용 목록 없음 · 금지 6 · CSS 5 Ready · jt-dev ES 4 · jt-prod ES 2 · NP 9 · RQ · LR · data DatabaseRole 6 · Database 4 · KafkaUser 2 · data-assert 옛 꼴 `SUMMARY: pass=13 fail=0` · 열린 봇 PR 0. 판 기록 = K3s v1.36.6+k3s1(SUC가 이미 올렸다) · Argo CD v3.5.2 · Traefik 3.7.15(`allowCrossNamespace` 없음 — T084 전제 ≥ 3.7.18 미충족은 UD-13) · Reloader v1.4.21(build-notes 「T075 라이브 결과」) |
+  | L2 O-1 — 5행 · `o1=` 줄(값은 비밀이 아니다) | 2026-11-19 13:55 KST 무렵(04:55Z 무렵) · OpenTofu v1.12.6 · `aud identity-m2m-dev PASS e808dc6ec9f65fb3929240d3f1bd4b29792706ff2d8adecb54eada4e848cedbc` · `aud identity-m2m-prod PASS 4b80c1ea43d4c160e16ec99b7bc4ae62830929785fb5dab5cd3d6d475cf4ba46` · `aud admin PASS bb921cd68bb6ba9dbf024d0ecf4fb190d560ae6fe6a3a5ed6000ec253bab0e0c` · `cn web-bff-dev PASS abc5c48a948bc0dc5d790bfa76780a73.access` · `cn web-bff-prod PASS 97be0d37995c77f88c01340994d56f33.access` · `o1=PASS 5/5` |
+  | L3 — §4 T075 기록 칸 A(O-2 · O-4) | 2026-11-19 15:44 KST(06:44Z) 이전 · `o2 W-2 전제: dev 10/10 · prod 10/10` · `o4=PASS 14/14` — 자세한 것은 §4 T075 기록 칸 A |
+  | L4 O-5a dev · prod — `o5a` 줄 · 무헤더 응답 코드 | 무헤더(컨트롤러 · 2026-11-19 15:44 KST(06:44Z) · 자격 0 · `curl -q`): dev · prod `GET /health` → **401**(`text/html` · redirect 없음 — C11). O-5a 1차(dev)는 판정 불가(자격 꼴 판정에서 중단 · 보낸 것 0 — 아래 「복구」 행) → 블록 수정 뒤 2차(2026-11-19 · 시각 기록 없음): `o5a dev=PASS 1/1` · `o5a prod=PASS 1/1`(tester-m2m `GET /health` → 404 Traefik · 헤더 없음 → 401 INFO) |
+  | GP-1 — PR 번호 · 관문 승인 · 머지 커밋 · 시각 · L5 결과(AppProject 허용 목록 · argo-3) | gitops PR #62(head b7fd0c8) · 관문 승인 deployment 7882205870(environment production) · `validate/validate` 18m3s ✓ · squash 머지 → main `14efe667b64cbe6f7f97e5f4a5c53e924ec9d2f7` · 2026-11-19 16:57:38 KST(07:57:38Z). L5: root · platform-argocd = 14efe66 Synced/Healthy 17:03:01 KST(08:03:01Z — 머지 뒤 ≈ 5분 23초) · AppProject dev/prod 허용 목록 8 · 금지 6 · argo-1 · 2 · 3 · 4 · 5 PASS(43 passed · 3 failed = backup-1..3 OCI `svc-verify` 세션 만료 · 9 skipped) → VD-T075-16 PASS |
+  | L6 — §4 T075 기록 칸 B · GP-A 머지 커밋 · data-assert 7 id(`acl-list` = NOPERM) | §4 T075 기록 칸 B · GP-A = gitops PR #61 → main `6729cf04f4b05017bdfc6278eeeb307b71c591e7` · 2026-11-19 18:43:44 KST(09:43:44Z) · 새 data-assert Job 18:45:33–18:45:38 KST(09:45:33–09:45:38Z) `SUMMARY: pass=13 fail=0`(Dragonfly 7 id — `acl-list` = identity-admin `ACL LIST` → NOPERM) → L6 완료 · VD-T075-13 PASS |
+  | L7 · L8 — §4 T075 기록 칸 A(W-2 dev · `gate=` dev) | §4 T075 기록 칸 A · W-2 dev `판정: dev 4경로 준비 완료`(authentik `patch v2` — VD-T075-11 PASS) · O-3 dev **`gate=PASS 21/21`**(2026-11-19 · GP-2 머지 전) |
+  | GP-2 — PR 번호 · 관문 승인 · 머지 커밋 · 시각 · 메시지 첫 줄 | gitops PR #63(head a42aceb — GP-A 머지 6729cf0 위로 rebase) · 관문 승인 deployment 7909824540(sha a42aceb) · checks gate 4s · prod-approval 3s · validate 1m12s · squash 머지 → main `ada06004d5893aebf70ead1453ceff07dbc29208` · 2026-11-19 19:10:47 KST(10:10:47Z) · 머지 명령 첫 줄 「선행 조건 충족 확인됨(O-3 dev PASS · L6 · data-assert 7 PASS)」 |
+  | L10 — Application 둘 생성 시각 · hook · ES · Job · pods · Synced/Healthy · prod 0 리소스 · `tlsoption` · `tlsstore` · Traefik 로그 | Application 둘 = 19:11:42 KST(10:11:42Z) 첫 조회에 있음 · dev Application은 operation 시작 19:11:19 KST(10:11:19Z) 전에 생성 — 생성 시각 기록 없음 · dev operation 19:11:19–19:11:45 KST(10:11:19Z → 10:11:45Z · 26초 — PreSync ES `identity-admin-migrate` Succeeded → PreSync Job Succeeded → Sync) → 19:12:05 KST(10:12:05Z) Synced/Healthy(머지 뒤 ≈ 78초) · ES 2 SecretSynced · Job Complete 1/1 · Deployment 2개 1/1 · 재시작 0 · web · relay · celery 오류 0 · prod 리소스 0 Synced/Healthy · Applications 25 · `tlsoption` · `tlsstore` default 각 1 · Middleware 0(L11 O-7 — 운영자) · Traefik 10분 identity 관련 오류 0(build-notes 「T075 라이브 결과」) |
+  | L11 dev — `o5b dev=` · `o5c dev=` 줄 · UD-10 표본(보낸 시각 · x-request-id · 액세스 로그 400 줄에 쿼리가 실렸는가) · exec 탐침 0줄 · O-7 키 이름 | 2026-11-20 · `o5b dev=PASS 8/8`(git_sha 9fd9f2c…) · `o5c dev=PASS 5/5` · UD-10 표본 10:21:32 KST(01:21:32Z) · x-request-id 665e1fb9-1e3e-4252-8fb8-21702b40af0f → Traefik 액세스 로그 400 줄 1개의 RequestPath에 쿼리(가짜 sub · sid 원문)가 **실렸다**(앱 로그는 쿼리 없음 — UD-10 결정은 T098 전) · exec 탐침 = web 로그 `--since=10m` 307줄 중 0줄 · O-7 `identity-admin-env` 11키(AUTHENTIK_API_TOKEN · AUTHENTIK_ISSUER · AUTHENTIK_JWKS_URL · AUTHENTIK_WEBHOOK_SECRET · DATABASE_URL · DRAGONFLY_URL · KAFKA_PASSWORD · OPENFGA_PRESHARED_KEY · OPENFGA_STORE_ID · SECRET_KEY · SENTRY_DSN) · `identity-admin-migrate` 1키(DATABASE_OWNER_URL) — 이름만 · 값 0(build-notes 「T075 라이브 결과」) |
+  | L12 — §4 T075 기록 칸 A(W-2 prod · `gate=` prod) | §4 T075 기록 칸 A · W-2 prod `판정: prod 4경로 준비 완료`(VD-T075-11 prod 몫 PASS) · O-3 prod **`gate=PASS 23/23`**(2026-11-20 · L13 뒤) |
+  | L13 — attestation verify(D4 플래그 그대로) exit · 출력 요약 · GP-3 PR 본문에 남긴 자리 · prod seed digest · GP-3 렌더 코멘트 | 2026-11-20 10:26:45–10:26:52 KST(01:26:45–01:26:52Z) · gh 2.93.0 · 런북 글자 그대로 → **exit 0**(비 TTY라 출력 0줄) · `--format json` 요약 = attestation 1 · SLSA provenance v1 · signer `…/publish-pod.yml@refs/heads/main` · source `9fd9f2c766059f1f4f0ab87718156ff3a6c0964d` · github-hosted · run 44010688210 → GP-3 PR #64 본문 「attestation 확인(L13 — 사람 seed는 promote ③을 거치지 않는다)」 절에 남겼다(명령 글자 · exit 0 · json 요약 — 2026-11-20 `gh pr view 64 --json body`로 확인) · prod seed digest `sha256:faf55a5752533dffb3b5e93e3b8d8857890d4a0690945de70c526de50be057dd`(dev 확인을 통과한 digest) · 렌더 코멘트 12:26:32 KST(03:26:32Z) main ada0600 ↔ head 741e405 · 바뀐 디렉터리 2 · 렌더 실패 0 · prod overlay 추가 10 |
+  | GP-3 — PR 번호 · 관문 승인 · 머지 커밋 · 시각 | gitops PR #64(head 741e405 · base ada0600 · CI run 44667517651) · 관문 승인 deployment 7932433255(sha 741e405) · squash 머지 → main `9a234b89f45ce6aa4c1302d8030509bbc9119f00` · 2026-11-20 12:33:46 KST(03:33:46Z) · 머지 명령 첫 줄 「선행 조건 충족 확인됨(dev L10·L11 PASS · W-2 prod · O-3 prod gate=PASS 23/23 · attestation exit 0)」 |
+  | L15 prod — `o5b prod=` · `o5c prod=` 줄 · admin 정적 200(`…/identity-admin/static/admin/css/base.css`) · 익명 리다이렉트 · `tlsoption` · `tlsstore` default 각 1 · Traefik 로그(`Default TLS Options defined in multiple` · middleware 오류 줄 수) | identity-admin-prod operation 12:33:55–12:34:07 KST(03:33:55Z → 03:34:07Z · 12초) → 12:34:29 KST(03:34:29Z) Synced/Healthy(머지 뒤 ≈ 43초 · ES 2 SecretSynced = vault-prod 첫 사용) · `o5b prod=PASS 8/8` · `o5c prod=PASS 5/5`(UD-10 표본 12:38:02 KST(03:38:02Z) · x-request-id ab5d5515-f989-4def-afe0-61cdaaa218ca · 액세스 로그 400 줄에 쿼리 원문 — dev와 같다) · admin 정적 = 운영자 보고 `cf-cache-status: HIT`(판정 밖) → web 로그 `GET /static/admin/css/base.css` code 200 12:38:18 KST(03:38:18.96Z · request_id c19d3c47-782f-4df7-92b2-3abc06c06630) PASS · 익명 = 컨트롤러 무자격 curl 12:42:02 KST(03:42:02Z) 302 → `joshua-tech.cloudflareaccess.com` 로그인(시크릿 창 대신 — 편차) · Middleware · `tlsoption` · `tlsstore` default 각 1 · Traefik(12:33:00 KST · 03:33:00Z 뒤) TLS multiple 0줄 · middleware 오류 0줄 → VD-T075-12 PASS |
+  | L16 — 하네스 결과 | 2026-11-20 12:43–12:47 KST(03:43–03:47Z · 한 번에 하나) · cluster 45 / 3 / 7(argo-1 25 Synced/Healthy · argo-3 · argo-5 · limits-1 · limits-2 PASS) · data 14 / 2 / 0(env-1 SKIP → PASS) · kafka 17 / 0 / 0(job-d-2 PASS) · FAIL 5 = backup-1..3 · bucket-1/2(OCI `svc-verify` 세션 만료 — 환경) · 동기화 하네스 `sync-identity-admin` PASS(모노레포 origin/main 9fd9f2c ↔ gitops origin/main 9a234b8 · 9항목) → 대상 단언 전부 PASS |
+  | 복구 · 실패 갈래를 썼다면(무엇 · 왜 · 사용자 확인 시각) | 복구 갈래(늦은 시드 · force-sync · 수동 Sync · terminate · `rollout restart`) 0. 예정 밖 사건 둘: ① GP-A 머지 뒤 platform-tests sync Unknown — ComparisonError(서버 측 diff — 예정된 8단계 Job 삭제로 풀림). Argo CD v3.5.2 서버 측 diff가 Job 템플릿 불변을 비교 오류로 낸다(새 operation 0 · gitops `platform/policies/tests/README.md` §재실행 모델의 「재시도 창」 글과 다르다) → §4 T075 B 8단계에 예정된 명령 그대로(운영자 · 18:45 KST 무렵(09:45Z 무렵)) `delete job data-assert` → 자동 sync가 새 Job 생성(18:45:33 KST(09:45:33Z)). ② O-5a 1차(dev) 판정 불가(자격 꼴 가정 · 보낸 것 0) — 블록의 `client_secret` 꼴 가정(64 hex)이 실물(54자 `[A-Za-z0-9_-]`)과 달랐다 → 읽기 전용 진단(d5 · 값 0) → 블록 수정(TDD · 하네스 B부 PASS 5522/5522 · 독립 리뷰 승인) → 2차 PASS |
+
+### T076 — US6 E2E(템플릿 로컬 경로 + identity-admin 라이브) · tester-m2m 자격 경로(UD-15 · UD-16) (2026-11-20 ~ )
+
+> **라이브 전(T076 보정 2026-11-20 — 새 절).** 설계 = `specs/003-platform-foundation/design/t076-design.md`(D1–D16 · VD-T076-1–9 + 정정 노트 13의 VD-T076-10 · 실행 순서 D14 · 끝 「정정 노트」) · 블록과 모의 하네스 = `specs/003-platform-foundation/design/t076-blocks/`(README — 파일 표 · 실행 꼴 · 하네스 사례 · 남은 위험). Vault 쪽 세 단계(O-10 · 정책 plan/apply · W-7)의 실행 꼴 · 실패 표 · 기록 칸은 §4 T076이다. 이 절은 창 순서 · 관찰 준비 · tester 디스패치 두 번 · O-9 · 세션 끝 정리 · 기록 칸이다.
+
+- **누가 무엇을**: 운영자 블록(O-10 · W-7 · O-9)은 **사람 행동이 관문**이다 — 가려진 `Read-Host` 정지점(타자 단어)에서 멈춘다. 읽기 판정과 변경을 한 블록에 섞지 않는다(O-10은 판정만 · W-7은 상태 판정 뒤 정지점을 거쳐 쓴다 · O-9는 발급 · 파일 쓰기만). 블록은 **붙여 넣지 않고 파일로만**, 인자 없이 실행한다 — `pwsh -NoProfile -File <절대 경로>`(새 프로세스 — 변수 · env가 프로세스와 함께 사라진다 · 남는 인자가 있으면 블록이 외부 호출 0으로 멈춘다 · 모드는 정지점에서 고른다). tester 블록(L-8 · O-8 · C-8)은 tester가 컨트롤러 지시문대로만 돌린다(`Read-Host` 0 · 입력은 `param()`뿐). 실행 꼴(Git Bash · T076 보정 2026-11-20 · 리뷰 RO-04 · RO-08 · RO2-01): `chcp.com 65001 >/dev/null; pwsh -NoProfile -File '<절대 경로>' <파라미터>; echo "exit=$?"` — Bash 도구 timeout 600000(블록 최악 ≈ 565 s — O-8 · Forwarding 줄 기다림 ≤ 45 s 포함(터널 경유 port-forward 수립 10–23 s 실측 — T048 F19 · reboot-1 15.7 s) · 추론 · 기본 120 s에서 끊기면 `finally`의 revoke · port-forward 정리가 돌지 않는다) · 판정은 끝 줄과 종료 코드, 한글 줄은 증거(코드 페이지 65001이 아니면 cp949 콘솔에서 한글이 깨진다). **컨트롤러는 Vault에 로그인하지 않는다** — 정책이 설계대로인지는 O-8이 읽기 전에 `sys/capabilities-self`로 판정한다(설계 D2-6). tofu apply는 운영자만, 컨트롤러가 plan 요약을 확인한 뒤에만 한다(`.claude/rules/infra.md` 「OpenTofu」 — never apply an unreviewed plan). 에이전트 쪽 경계는 `.claude/rules/infra.md` 「Credentials」 · `.claude/agents/tester.md` 「Credentials」(UD-15).
+- **블록**(디렉터리 `D:\code\joshuatech_ver2\specs\003-platform-foundation\design\t076-blocks\` — 끝 줄 · 정지점 글자의 정본은 블록과 README다. 아래는 설계 D3 · D4 · D6 · D7 요약과 블록의 끝 줄 전체 — `…`는 블록이 채운다 · T076 보정 2026-11-20 · 리뷰 C-07 · RO-06 · S-07):
+
+  | 파일(이름) | 누가 · 단계 | 자격 | 하는 일 | 정지점(입력 순서) | 끝 줄(전체) |
+  |---|---|---|---|---|---|
+  | `o10-vault-audience-negative.ps1`(O-10) | 운영자 · ①-2 | 관리자 kubeconfig · 창 C port-forward | audience 없는 agent-view 토큰(`--duration=10m`)으로 e2e-reader 로그인 → **거부돼야 PASS**(VD-T076-1) | `probe`(토큰 발급 · 로그인 시도 확인 — 가려진 입력) | `o10=PASS 로그인 거부(코드 · errors 첫 줄) …` · `o10=FAIL 로그인 통과(코드 · 정책 · lease) … revoke-self <결과> …`(받은 토큰을 그 자리에서 revoke) · `o10=FAIL 판정 불가(…)` · 남는 인자 → `o10=FAIL 판정 불가(인자 <n>개 — …)`(외부 호출 0 — 정확한 글자는 블록 README · T076 보정 2026-11-20 · 리뷰 RO2-03) |
+  | `w7-seed-tester-m2m.ps1`(W-7) | 운영자 · ①-5 | tofu 상태 자격(`infra/cloudflare` 출력) → Vault root 토큰 | `kv/platform/access/tester-m2m` 시드(absent → `-cas=0` · live 같음 → 건너뜀 · live 다름 · dead → 멈춤) | root 토큰(가려진 입력) → `seed`(absent일 때만) | `w7=OK absent→v1` · `w7=OK absent→v1 · 응답 유실 뒤 재판정(…)` · `w7=SKIP live-same`(재실행 기대) · `w7=STOP <요약 행>` · 남는 인자 → STOP(외부 호출 0 — 정확한 글자는 블록 README) · `cluster_name` 다름 → STOP(root 토큰을 묻기 전 · 쓰기 0 — 정확한 글자는 블록 README). 끝 줄 다음에 창 정리 안내 한 줄 — `w7=OK …` · `w7=SKIP live-same`이면 창 C 종료 · 그 밖(`w7=STOP …` · 중단)이면 창 C 유지(①-5 · T076 보정 2026-11-20 · 리뷰 RO2-02) |
+  | `o9-issue-vault-jwt.ps1`(O-9) | 운영자 · ④-1(`issue`) · ④-3(`clear`) | 관리자 kubeconfig | `issue` = vault 전용 1시간 JWT 발급 · 클레임 판정 → DPAPI 파일(UD-16) · `clear` = 그 파일 삭제 | `issue` 또는 `clear`(모드 — 가려진 입력 · 인자로 고르지 않는다) | `o9 issued exp=<UTC> file=~\AppData\Local\jt-e2e\vault-e2e-reader.jwt` · `o9 cleared` · `o9 nothing-to-clear`(파일이 이미 없다 — 정상) · `o9=STOP <사유>` · 남는 인자 → STOP(외부 호출 0 — 정확한 글자는 블록 README) |
+  | `l8-live-identity-admin.ps1`(L-8) | tester 1차 · ③-2 | agent-view · 무자격 curl | 증거 사다리 ⓪–⑤ dev · prod(Application revision · ES Ready · ES 스펙 · 워크로드 · `startup_check: OK` · 무헤더 401 · admin 302) | 없음(`param` — `-ExpectedRevision`) | `l8=PASS 24/24`(아니면 `l8=FAIL <k>/24` · exit 1) |
+  | `o8-probe-identity-m2m.ps1`(O-8) | tester 2차 · ④-2 | agent-view(port-forward) · O-9 JWT → role `e2e-reader` | dev → prod `/health` 200 · 404 넷(`/admin/` · `/webhooks/authentik` · `/healthz` · `/ready`) | 없음(`param` — `-ExpectedSha`) | `o8=PASS 10/10`(아니면 `o8=FAIL <k>/10` · exit 1) — 앞쪽 `INFO o8 start=<UTC> nonce=<nonce>` 줄이 C-8 입력 |
+  | `c8-correlate-logs.ps1`(C-8) | tester 2차 · ④-2 | agent-view(로그 읽기) | O-8 요청의 Traefik 줄 · pod 로그 대조 | 없음(`param` — `-Since` · `-Nonce`) | `c8=PASS 10/10`(아니면 `c8=FAIL <k>/10` · exit 1) |
+
+  모의 하네스: `harness-op.ps1`(W-7 · O-9 · O-10) · `harness-tester.ps1`(L-8 · O-8 · C-8) → 전부 PASS(블록을 고치면 다시 돈다 — 실물 Vault · 클러스터 · Cloudflare에 닿지 않는다).
+- **라이브 단계**(설계 D14 — 창은 UD-13 정비(Traefik 재시작 = 액세스 로그 소실)와 SUC 창(일요일 03:00–05:00 KST) 전에 연다 · C-8은 agent-view 토큰이 8h 안이고 운영자 터널이 붙어 있을 때만 돈다 · 창 A–D는 `vault-unseal.md` §0 표기).
+  **기한(T076 보정 2026-11-20 · 리뷰 C-08 · RO-05)**: L-8 ③(Job · 프로브 · `-migrate` 분리 — env마다 3줄)이 읽는 migrate Job `identity-admin-migrate`는 끝난 뒤 `ttlSecondsAfterFinished` 604800 s(7일 — gitops `apps/identity-admin/base/migrate-job.yaml`)가 지나면 지워진다 — **dev ≈ 2026-11-26 19:1x KST(10:1xZ) · prod ≈ 2026-11-27 12:3x KST(03:3xZ)**(추론 — 마지막 PreSync = GP-2 · GP-3 머지 뒤 sync. 그 사이 sync가 hook을 다시 만들면 늦춰진다 · 정본은 ③-1 사전 확인). 그 뒤에 돌면 L-8이 env마다 3줄 FAIL(둘 다 지나면 `l8=FAIL 18/24` — tick 금지 · 설계 D15)이므로 라이브 창은 그 전에 연다:
+
+  | 단계 | 창 · 주체(자격) | 실행 꼴 | 판정 · 다음 조건 |
+  |---|---|---|---|
+  | ①-1 준비 | 라이브 창 ① · 운영자 | 창 A 터널(`cloudflared access tcp --hostname k8s.joshuatech.dev --url 127.0.0.1:6443`) · 창 B · C · D 창 시작 체크리스트 · 창 C = 관리자 kubeconfig로 `kubectl -n vault port-forward svc/vault 18200:8200` | 창 C에 `127.0.0.1` · `[::1]` 두 줄 |
+  | ①-2 O-10(관찰 — 음성 대조) | 라이브 창 ① · 운영자(창 D) | §4 T076 1 — 정지점 `probe` | 끝 줄(`o10=` 줄)을 컨트롤러에게 붙인다 — 컨트롤러는 그 줄을 본 뒤에만 plan(①-3 · ①-4)을 확인한다(T076 보정 2026-11-20 · 리뷰 RO-07). `o10=PASS 로그인 거부(…) …` → ①-3. 단 O-10 PASS는 4xx · auth 없음만 본다 — 컨트롤러는 끝 줄의 errors 첫 줄이 audience 거부인지 본다(다른 4xx 사유면 VD-T076-1 미판정 · 멈춤 — T076 보정 2026-11-20 · 블록 README §8). 그 밖이면 **여기서 멈춘다** — 정책 · 시드로 가지 않는다(§4 T076 실패 표) |
+  | ①-3 정책 plan | 라이브 창 ① · 운영자(창 D) | §4 T076 2 — `tofu -chdir=D:/code/joshuatech_ver2/infra/vault plan "-out=t076.tfplan"` | 요약(리소스 주소 · 개수)을 컨트롤러에게 붙인다 |
+  | ①-4 확인 → apply → plan 파일 삭제 | 컨트롤러 → 운영자(창 D) | §4 T076 2 — `tofu -chdir=D:/code/joshuatech_ver2/infra/vault apply t076.tfplan` → plan 파일 삭제 → `Env:VAULT_*` 제거 | 컨트롤러의 「plan 확인됨(in-place update 2 · 그 밖 0)」 줄 **뒤에만** apply · 기대 `0 added, 2 changed, 0 destroyed` |
+  | ①-5 W-7 | 라이브 창 ① · 운영자(창 D) | §4 T076 3 — 정지점 root 토큰 → `seed` | `w7=OK absent→v1`(재실행이면 `w7=SKIP live-same` — 그 밖은 §4 T076 실패 표). 그다음 창 정리는 끝 줄로 가른다(T076 보정 2026-11-20 · 리뷰 C-07 · RO-03 · RO2-02): `w7=OK …` · `w7=SKIP live-same`이면 끝 줄의 창 정리 안내(`창 정리(T076 — 런북 bootstrap.md §3 T076 ①-5): …` — 창 C만 닫는다)를 따른다 — 창 A 터널 · 창 D는 유지(②-3 · ④-1 · ④-3 · ⑤에 쓴다) · `w7=STOP …`이면 창 C를 닫지 않는다(블록도 그 안내 `창 정리(T076 — 런북 bootstrap.md §4 T076 실패 표): …`를 낸다 — 실패 표 조치(재실행 · 버전 이력 · `cluster_name` 조사)에 18200이 필요하다) |
+  | ②-1 agent-view 재발급 | 라이브 창 ② · 운영자 → 컨트롤러 | 평소 꼴 그대로 — `kubectl create token agent-view -n kube-system --duration=8h` → `$HOME\.kube\agent-view.yaml`. **`--audience`를 붙이지 않는다**(UD-16 · 비판 B-01 — 8h 토큰은 Vault 자격이 아니다) | 컨트롤러 `kubectl auth whoami` = `system:serviceaccount:kube-system:agent-view` · 만료(UTC) 기록 |
+  | ②-2 svc-verify 세션 | 라이브 창 ② · 운영자 | `oci session authenticate --profile-name svc-verify --region ap-chuncheon-1`(1 h — 플랫폼 하네스의 OCI 행) | 세션 유효(만료 시각 기록) |
+  | ②-3 O-7(키 이름 — 값 0) | 라이브 창 ② · 운영자(창 B · 관리자 kubeconfig) | 아래 「O-7」 — dev · prod 둘 다 | env마다 2줄(`identity-admin-env` 11키 · `identity-admin-migrate` 1키) → 출력을 컨트롤러에게(컨트롤러가 tester 1차에 넘긴다 — 설계 D12 ⑥) |
+  | ③-1 디스패치 준비 | 컨트롤러 | arm64 binfmt 등록(설계 D9 선행 — 근거 줄 「installing: arm64 OK」 + emulators의 `qemu-aarch64`) · `git -C D:/code/platform-gitops fetch` → `rev-parse origin/main` = `-ExpectedRevision` · 배포 이미지를 만든 모노레포 main 커밋 = `-ExpectedSha` · **사전 확인 둘**(T076 보정 2026-11-20): ⓐ migrate Job(리뷰 C-08 · RO-05) — agent-view로 `kubectl --kubeconfig ~/.kube/agent-view.yaml -n jt-dev get job identity-admin-migrate -o jsonpath='{.status.completionTime}'` · 같은 명령 `-n jt-prod` → 완료 시각 둘 기록 ⓑ 같은 이미지(리뷰 RO-07) — `git -C D:/code/platform-gitops show origin/main:apps/identity-admin/overlays/dev/kustomization.yaml` · `…/overlays/prod/kustomization.yaml`의 `images:` digest 대조(`-ExpectedSha` 하나로 dev · prod 둘을 판정한다) | 값 둘 확정 · ⓐ 둘 다 있음 · ⓑ 같음. ⓐ Job이 없으면(NotFound — TTL이 지났다) **디스패치 전에 사용자 결정**: 운영자 수동 Sync로 PreSync 재실행(= migrate 재실행 · 라이브 변경) 또는 L-8 ③ Job 줄을 편차로 적고 gitops 렌더로 대신. ⓑ digest가 다르면 사용자 결정. 라이브 창 동안 gitops main 머지 0(머지가 끼면 ③-1을 다시 — `-ExpectedRevision` · 이미지가 바뀐다 · T076 보정 2026-11-20 · 리뷰 RO2-04) |
+  | ③-2 tester 1차(Vault 능력 0) | 컨트롤러 → tester | 설계 §7 지시문 골격. 순서(T076 보정 2026-11-20 · 리뷰 RO-09 — ②-2 svc-verify 세션 1 h 안에 OCI 행이 돌게): ⓐ `tests/platform/run-platform-tests.ps1`(cluster · ingress · data · kafka — 맨 먼저) → ⓑ L-8(`-ExpectedRevision` · ⑤ 무헤더 포함 — 실행 꼴은 위 「누가 무엇을」: `chcp.com 65001` 접두 · `echo "exit=$?"` · 판정은 끝 줄과 종료 코드 · 리뷰 RO-04) → ⓒ D9 ①–④(템플릿 하네스 `-v` — 10분을 넘을 수 있어 배경 실행(설계 D9 ①) · 보존 트리 pytest · arm64 이미지 · identity-admin 스위트) · O-7 출력 확인. Bash 도구 timeout 600000(블록 최악 ≈ 565 s — O-8 · Forwarding 줄 기다림 ≤ 45 s 포함 · 리뷰 RO-08 · RO2-01) | 보고(글)를 컨트롤러가 `specs/003-platform-foundation/research/<라이브 날짜>-e2e-us6-t076.md`에 저장. FAIL이 있으면 아래 「실패 갈래」 ③-2로 먼저 가른다(환경 원인 / 제품 · 구성) |
+  | ④-1 O-9 `issue` | 운영자(창 D) | `pwsh -NoProfile -File D:\code\joshuatech_ver2\specs\003-platform-foundation\design\t076-blocks\o9-issue-vault-jwt.ps1`(인자 없이) → 정지점에 `issue` | `o9 issued exp=<UTC> file=~\AppData\Local\jt-e2e\vault-e2e-reader.jwt` — `exp`를 컨트롤러에게(1시간 창이 열린다). `o9=STOP …`이면 아래 「실패 갈래」 |
+  | ④-2 tester 2차(`exp` 전) | 컨트롤러 → tester(Claude Code tester만 — Codex tester는 O-8을 SKIP으로 보고한다 · `.claude/agents/tester.md` 「Credentials」) | O-8(`-ExpectedSha`) → C-8(`-Since` · `-Nonce` = O-8 출력 `INFO o8 start=<UTC> nonce=<nonce>`) — 실행 꼴은 위 「누가 무엇을」(`chcp.com 65001` 접두 · `echo "exit=$?"`) · Bash 도구 timeout 600000(O-8 최악 ≈ 565 s — Forwarding 줄 기다림 ≤ 45 s 포함 · T076 보정 2026-11-20 · 리뷰 RO-04 · RO-08 · RO2-01 · rv2C-05) | `o8=PASS 10/10` · `c8=PASS 10/10` · 둘 다 exit 0. 실패면 블록 출력 그대로 FAIL — 컨트롤러가 원인을 본 뒤 같은 1시간 안에서 다시 디스패치(설계 D13 · 재시도 방식은 바꾸지 않는다 · C-8 원인 후보는 아래 「실패 갈래」) |
+  | ④-3 O-9 `clear` | 운영자(창 D) | ④-1과 같은 명령(인자 없이) → 정지점에 `clear` | `o9 cleared`(파일이 이미 없으면 `o9 nothing-to-clear` — 정상). `o9=STOP …`이면 아래 「실패 갈래」 ④-3(T076 보정 2026-11-20 · 리뷰 RO2-03) |
+  | ⑤ 기록 · 세션 끝 정리 | 컨트롤러 · 운영자 | 아래 「세션 끝 정리」 · 「기록 칸」 · build-notes 「## T076」 · 학습 로그 `content/tmp/003-t076/` | 정리 확인 줄 · tick 조건(설계 D15 — §1 합격선 전부 PASS · SKIP · 편차가 §1 표 그대로) |
+
+- **O-7(②-3 · 운영자 — 키 이름만 · 값 0 · §3 T075 O-7과 같은 명령을 dev · prod 둘 다 — T075에서는 prod가 기록되지 않았다)**:
+
+  ```powershell
+  $kc = "$HOME\.kube\joshuatech-admin.yaml"
+  kubectl --kubeconfig $kc -n jt-dev get secret identity-admin-env identity-admin-migrate -o go-template='{{range .items}}{{.metadata.name}}:{{range $k,$v := .data}} {{$k}}{{end}}{{"\n"}}{{end}}'
+  kubectl --kubeconfig $kc -n jt-prod get secret identity-admin-env identity-admin-migrate -o go-template='{{range .items}}{{.metadata.name}}:{{range $k,$v := .data}} {{$k}}{{end}}{{"\n"}}{{end}}'
+  ```
+
+  기대(env마다 — T075 L11 dev 기록과 같은 이름): `identity-admin-env:` 11키(`AUTHENTIK_API_TOKEN` · `AUTHENTIK_ISSUER` · `AUTHENTIK_JWKS_URL` · `AUTHENTIK_WEBHOOK_SECRET` · `DATABASE_URL` · `DRAGONFLY_URL` · `KAFKA_PASSWORD` · `OPENFGA_PRESHARED_KEY` · `OPENFGA_STORE_ID` · `SECRET_KEY` · `SENTRY_DSN`) · `identity-admin-migrate:` 1키(`DATABASE_OWNER_URL`).
+- **세션 끝 정리**(⑤ · 운영자 — `.claude/rules/infra.md` 「`jt-ops` key rules」 · `vault-unseal.md` §0 창 종료 체크리스트). 창 C(18200)가 아직 열려 있으면(①-5 전에 멈춤 — ①-2 `o10=PASS` 아님 · ①-3 plan 다름 / `w7=STOP …` 실패 표 조치 — §4 T076 실패 표 / ④-2 capabilities-self 뒤 plan) 지금 닫는다(Ctrl+C) — 정상 흐름에서는 ①-5 W-7(`w7=OK …` · `w7=SKIP live-same`) 뒤 창 정리 안내로 이미 닫혔다(T076 보정 2026-11-20 · 리뷰 RO2-02 · 2026-11-21 · 리뷰 r2 V2-02). JWT 파일을 지워도(④-3 clear) 이미 복사된 JWT 사본은 exp까지 유효하다 — 실제 노출 창은 발급 `--duration`(지금 1시간 · UD-16)이다(「1회용」 정의는 아래 기록 칸 UD-16 행 · T076 보정 2026-11-20 · 리뷰 S-03):
+
+  ```powershell
+  Test-Path "$env:LOCALAPPDATA\jt-e2e\vault-e2e-reader.jwt"     # False — ④-3 뒤(True면 O-9를 인자 없이 다시 돌려 정지점에 clear · 그래도 True면 아래 실패 갈래 ④-3의 직접 삭제(-Force) · 그래도 True면 멈추고 보고)
+  Test-Path D:\code\joshuatech_ver2\infra\vault\t076.tfplan      # False
+  Test-Path "$env:USERPROFILE\.vault-token"                       # False
+  Remove-Item Env:VAULT_TOKEN, Env:VAULT_ADDR -ErrorAction SilentlyContinue
+  Get-Process kubectl -ErrorAction SilentlyContinue | Select-Object Id, StartTime, CommandLine   # 0줄 — 남았으면 시작 시각 · 명령 줄로 무엇인지 본 뒤 Stop-Process -Id <Id>(끊긴 tester 블록의 port-forward 등 · 리뷰 RO-08)
+  # 창 A 터널 리스너 종료 뒤 캐시 토큰 삭제
+  Remove-Item "$env:USERPROFILE\.cloudflared\*-token*" -ErrorAction SilentlyContinue
+  ```
+
+- **실패 갈래**(값 · 쿠키 · JWT · 토큰은 어디에도 붙이지 않는다 — Vault 쪽 세 단계의 실패 표는 §4 T076):
+  - **①-2 O-10이 PASS가 아니다**: 정책 · 시드로 가지 않는다(§4 T076 실패 표). 로그인 통과(FAIL)면 사용자에게 보고한다 — 8h kubeconfig 토큰이 이미 Vault 자격이라는 뜻이다(VD-T076-1). `o10=PASS`여도 errors 첫 줄이 audience 거부가 아니면(다른 4xx 사유) 같다 — VD-T076-1 미판정 · 멈추고 사용자 판정(①-2 판정 칸 · T076 보정 2026-11-20).
+  - **①-3 plan 요약이 기대와 다르다**: apply하지 않고 plan 파일을 지운 뒤 컨트롤러 · 사용자 판정(§4 T076 실패 표).
+  - **①-5 W-7이 멈췄다(`w7=STOP …` — live 다름 · dead · 판정 불가 · 꼴 판정 FAIL · `cluster_name` 다름 · 남는 인자 — 행마다 조치는 §4 T076 실패 표)**: 덮어쓰지 않는다 — 사용자 판정(회전 = T084). 창 C는 닫지 않는다 — 실패 표 조치(재실행 · 버전 이력 · `cluster_name` 조사)가 18200을 쓴다(블록의 창 정리 안내도 같다 · T076 보정 2026-11-20 · 리뷰 RO2-02). tester 2차는 W-7이 끝날 때까지 디스패치하지 않는다(1차는 Vault와 무관하므로 돌 수 있다).
+  - **③-2 tester 1차 FAIL — FAIL 사유로 먼저 가른다(블록 이름으로 가르지 않는다 · T076 보정 2026-11-20 · 리뷰 RO-07 · RO2-04)**: ⓐ 환경 원인 — svc-verify 세션 만료 · agent-view 만료 · Bash 도구 시간 초과 · 터널 · API 일시 오류(FAIL 사유가 `kubectl get … 실패(exit=… · <오류 첫 줄>)`이고 오류 첫 줄이 `TLS handshake timeout` · `i/o timeout` · `Unable to connect to the server` 꼴 — T048 예행: 이 경로의 kubectl 호출은 6–8번에 한 번꼴로 10 s 근처 TLS 핸드셰이크 시간 초과) · ③-1 뒤 gitops main 이동(L-8 ⓪ 줄이 revision만 다르고 나머지 PASS — 컨트롤러가 ③-1을 다시(`fetch` · `rev-parse origin/main` · overlays digest 대조) 한 뒤 L-8만 다시) — 이면 원인을 걷어낸 뒤(운영자가 세션 · 토큰 갱신 · 창 A 터널 확인) 그 줄만 다시 돌리고 2차(④)로 간다 ⓑ 제품 · 구성 FAIL — L-8 · D9 ①–④가 응답을 받았는데 값이 기대와 다르다 — 이면 보고 그대로 두고 O-9(④-1 — 자격 발급)로 가지 않는다 — 컨트롤러가 원인을 본 뒤 사용자 결정(설계 D15 — tick 금지). 템플릿 하네스는 고치지 않는다(T072 닫힘) — 저장소 안 루트에서 돌지 않으면 루트를 저장소 밖으로 옮겨 다시 돌고 편차로 적는다(VD-T076-7). uv 숙성 창 표류로 빨강이면 FAIL로 보고하고 판 차이(uv.lock)를 기록한다(설계 D9).
+  - **④-1 O-9가 `o9=STOP …`으로 끝났다**: 대개 파일 쓰기 0(기존 파일 그대로 — 되읽기 불일치면 블록이 지웠다). 단 `o9=STOP 파일 쓰기 도중 중단(파일이 바뀌었을 수 있다 — 다시 issue 또는 clear)`이면 파일이 바뀌었을 수 있다 → 인자 없이 다시 돌려 정지점에 `issue`(또는 `clear`)(T076 보정 2026-11-20 · 리뷰 RO2-03 · rv2C-01). 출력을 컨트롤러에게 붙이고 사람이 판정한다(클레임 · kubectl 발급 오류 — 정확한 글자는 블록 README). 남는 인자 → STOP(외부 호출 0)이면 인자 없이 다시 돌린다(T076 보정 2026-11-20 · 리뷰 S-07).
+  - **④-2 O-8이 「운영자 O-9 필요」 · JWT 만료로 멈췄다**: 운영자가 ④-1을 다시 돌린 뒤 같은 지시문으로 다시 디스패치한다.
+  - **④-2 O-8이 `STOP Vault port-forward 의 Forwarding 줄(정확히 한 줄 127.0.0.1:<포트> -> 8200)을 45 s 안에 얻지 못했다(작업 Running · 출력 없음) — JWT 를 보내지 않았다`로 멈췄다**(다음 줄 `o8=FAIL 0/10` · exit=1): 터널 경유 port-forward 수립 지연(환경 — T048 F19 10–23 s) · JWT 전송 0 · Vault 토큰 0 → 운영자가 창 A 터널을 확인한 뒤 같은 1시간 안에서 다시 디스패치한다. 괄호가 `작업 Running · 출력 없음`이 아니면(작업이 끝났다 · 마지막 줄이 오류 · Forwarding 줄 꼴 아님) 지연이 아니다 — 출력 그대로 컨트롤러가 원인을 본다(T076 보정 2026-11-20 · 리뷰 RO2-01).
+  - **④-2 O-8이 권한 판정(`sys/capabilities-self`)에서 멈췄다**: 블록은 자격을 읽지 않았다 — 정책이 설계와 다르다(VD-T076-9). ①-3과 같은 plan으로 drift를 본 뒤 사용자 판정(창 C가 이미 닫혔으면 ①-1의 창 C 명령으로 다시 열어 `127.0.0.1` · `[::1]` 두 줄을 본 뒤 창 D에서 plan — T076 보정 2026-11-20 · 리뷰 RO2-02).
+  - **④-2 O-8 판정 FAIL(404 꼴 · `/health` 판정)**: 블록 출력 그대로 FAIL — tick 금지. 컨트롤러가 원인(VD-T076-2 · 6 — Ingress · 라우터 · 기준값)을 본 뒤 같은 1시간 안에서 다시 디스패치하거나 사용자 결정.
+  - **④-2 C-8 FAIL(대조)**: 블록 출력 그대로 FAIL — tick 금지. 원인 후보(T076 보정 2026-11-20 · 리뷰 C-03 · RO-07): ⓐ VD-T076-4 어긋남 — 상류 `X-Request-ID`가 pod 로그 `request_id`로 전달되지 않으면 health 대조 키 줄(`<nonce>-<env>-health`)이 없어 c8 FAIL이다(C-8 pod 판정은 request_id 대조 · 대조 키 필수 — 설계 VD 표의 「기록만」보다 강하다) → 다시 돌려도 같다 · 사용자 결정 ⓑ O-8과 C-8 사이 identity-admin pod 교체(그 요청을 받은 pod의 로그가 사라진다) ⓒ Traefik 재시작(액세스 로그 소실 — UD-13 정비 · 창 조건) ⓓ VD-T076-2(404 넷이 「라우터 없음」이 아니다 — Ingress · 라우터 조사). ⓑ · ⓒ면 같은 1시간 안에서 O-8부터 다시 디스패치한다.
+  - **④-3 O-9가 `o9=STOP clear 도중 중단(파일이 남았을 수 있다 — 직접 확인)` · `o9=STOP clear 실패(파일이 남아 있다 — 직접 지운다)`로 끝났다**: 창 D에서 `Test-Path "$env:LOCALAPPDATA\jt-e2e\vault-e2e-reader.jwt"` → True면 O-9를 인자 없이 다시 돌려 정지점에 `clear`를 한 번 더 → 그래도 True면 `Remove-Item -LiteralPath "$env:LOCALAPPDATA\jt-e2e\vault-e2e-reader.jwt" -Force`(읽기 전용 · 숨김 속성도 지운다 — 내용은 열지 않는다 — 읽기 · 복사 · 복호 0) → `Test-Path`가 False인지 확인한다 → 그래도 True면 멈추고 컨트롤러 · 사용자에게 보고한다(사본은 exp까지 유효 — 아래 노출 의심 갈래와 같은 판단). 끝 줄 · 직접 삭제 여부 · False 확인은 기록 칸 ⑤에 적는다(T076 보정 2026-11-20 · 리뷰 RO2-03 · rv2C-01 · 2026-11-21 · 리뷰 r2 V2-03).
+  - **노출 의심**(자격 · JWT · Vault 토큰이 출력 · 파일 · 보고에 보인다): 즉시 멈추고 O-9를 인자 없이 돌려 정지점에 `clear`(④-3)를 입력한 뒤 사용자에게 보고한다. 회전은 운영자다(`tester-m2m` = T084 회전 매트릭스). JWT는 vault audience 전용(K8s API 불가)이지만 파일을 지워도 이미 복사된 사본은 exp(발급 뒤 1시간)까지 유효하다 — 더 빨리 무효로 하는 수단(Vault 쪽 — role `e2e-reader` 일시 제거 또는 bound SA 변경 → 사본 JWT 로그인 차단(agent-view에 묶인 Vault role은 `e2e-reader` 하나 — `infra/vault/roles.tf`) · 이미 나간 Vault 토큰은 운영자 revoke(`token_ttl` 3600 s지만 갱신하면 `token_max_ttl` 14400 s(4h)까지 산다 — `infra/vault/roles.tf`) / K8s 쪽 — agent-view SA 재생성(컨트롤러 · tester가 쓰는 agent-view 토큰도 모두 죽는다) · 둘 다 추론 · 운영자 변경)은 사용자 판정(T076 보정 2026-11-20 · 리뷰 S-03 · S2-03).
+- **기록 칸**(실행 뒤 컨트롤러가 채운다 — 날짜 · 시각(KST, Z 병기) · 값 · 토큰 · JWT · 쿠키 · IP · client_id는 적지 않는다):
+
+  | 항목 | 값 |
+  |---|---|
+  | ①-1 — 터널 · 창 C 수립 시각 |  |
+  | ①-2 – ①-5 — §4 T076 기록 칸(O-10 · plan/apply · W-7) |  |
+  | ②-1 — agent-view 재발급 시각 · 만료(UTC) · `auth whoami` |  |
+  | ②-2 — svc-verify 세션 시각 · 만료 |  |
+  | ②-3 O-7 dev · prod — 키 이름(값 0) |  |
+  | ③-1 — binfmt 근거 줄 · `-ExpectedRevision` · `-ExpectedSha` · migrate Job 완료 시각(dev · prod) · overlays digest 같음 |  |
+  | ③-2 tester 1차 — 시각 · 결과 요약 · 보고 파일 |  |
+  | ④-1 O-9 `issue` — `o9 issued exp=` 줄 · `INFO aud 꼴=` 줄(VD-T076-10 — K3s TokenRequest 단일 audience 직렬화: 문자열 · 배열) |  |
+  | ④-2 tester 2차 — `INFO o8 start=` 줄 · `o8=` 줄 · `c8=` 줄 · exit 코드 · 재디스패치 횟수 |  |
+  | ④-3 O-9 `clear` — `o9 cleared` 또는 `o9 nothing-to-clear` 줄 |  |
+  | ⑤ 세션 끝 정리 — JWT 파일(④-3이 `o9=STOP clear …`였으면 그 끝 줄 · 직접 삭제 여부) · plan 파일 · `.vault-token` 없음 · 창 C(①-5에서 닫지 않았으면 닫은 시각) · 남은 `kubectl` 0 · 터널 · 캐시 토큰(T076 보정 2026-11-20 · 리뷰 RO2-02 · RO2-03) |  |
+  | UD-16 마무리 결정(1회용 전환 여부 — `/finish` 전 · 사용자): 「1회용」 = 짧은 `--duration`(예: 10–15분 · tester 2차 직전 발급) + 사용 뒤 운영자 clear — JWT 사본은 exp까지 유효하므로 파일 삭제만으로는 1회용이 아니다(리뷰 S-03). 바꾸면 ④-2 재디스패치 갈래(같은 1시간 안 재시도)와 O-9 발급 횟수도 바뀐다(T076 보정 2026-11-20 · 리뷰 RO-11) |  |
+  | 실패 갈래 · 재시도를 썼다면(무엇 · 왜 · 사용자 확인 시각) |  |
+
 ## §4 Vault init·시크릿 시드
 
-**T044 실행 요약(2026-09-17 — 상세·시각·사고 기록은 §3 T044 절, 절차 정본은 `docs/runbooks/vault-unseal.md`)**: Vault 초기화 11:09:13 KST(재초기화 1회 포함 — 1차 init 산출물 유실 사고는 §3) · 감사 장치 `file/`(stdout) 11:11 KST · `infra/vault` apply 15(kv v2 `kv` · auth `kubernetes` · 정책 6 · role 6) · **US6 플레이스홀더 8경로** 투입 **11:19:26 KST**: `kv/dev/authentik/identity-admin` · `kv/prod/authentik/identity-admin`(client_id·client_secret·jwks_url·issuer·api_token) · `kv/dev/authentik/webhooks/identity-admin` · `kv/prod/authentik/webhooks/identity-admin`(secret) · `kv/dev/openfga/store_id` · `kv/prod/openfga/store_id`(store_id) · `kv/dev/openfga/preshared` · `kv/prod/openfga/preshared`(key) — 값은 전부 단일 sentinel **`PLACEHOLDER-T044-SENTINEL`**(credential 아님, 설계 D8′; `kv/{env}/authentik/web-bff`·`kv/{env}/access/web-bff`는 Workers 전용이라 제외). **불변식**: sentinel 잔존 0 = consumer 활성화 전제(게이트 1 = 런북 §4 블록 `vault kv get` × 8 → `PLACEHOLDER-` 0행, 실행은 T075·T081; 게이트 2 = django-pod 설정 검증기 fail-closed + T077 단언) · `kv/{env}/openfga/preshared`는 US6에서 `kv/platform/openfga/preshared`와 같은 값으로 교체하고 회전은 둘을 함께. **root 토큰 revoke 보류**(D4): T045 시드도 root로 하되 revoke하지 않는다 — revoke = T084 OIDC `admin` 실증 + `vault-break-glass` quorum 드릴 **뒤**(§0 토큰 표 ⑥ "부트스트랩 직후 revoke"는 이 결정으로 정정 대상, ADR 0011 예정). 실값 시드(T045)는 이하에 추가.
+**T044 실행 요약(2026-09-17 — 상세·시각·사고 기록은 §3 T044 절, 절차 정본은 `docs/runbooks/vault-unseal.md`)**: Vault 초기화 11:09:13 KST(재초기화 1회 포함 — 1차 init 산출물 유실 사고는 §3) · 감사 장치 `file/`(stdout) 11:11 KST · `infra/vault` apply 15(kv v2 `kv` · auth `kubernetes` · 정책 6 · role 6) · **US6 플레이스홀더 8경로** 투입 **11:19:26 KST**: `kv/dev/authentik/identity-admin` · `kv/prod/authentik/identity-admin`(client_id·client_secret·jwks_url·issuer·api_token) · `kv/dev/authentik/webhooks/identity-admin` · `kv/prod/authentik/webhooks/identity-admin`(secret) · `kv/dev/openfga/store_id` · `kv/prod/openfga/store_id`(store_id) · `kv/dev/openfga/preshared` · `kv/prod/openfga/preshared`(key) — 값은 전부 단일 sentinel **`PLACEHOLDER-T044-SENTINEL`**(credential 아님, 설계 D8′; `kv/{env}/authentik/web-bff`·`kv/{env}/access/web-bff`는 Workers 전용이라 제외). **불변식**: sentinel 잔존 0 = consumer 활성화 전제(게이트 1 = 런북 §4 블록 `vault kv get` × 8 → `PLACEHOLDER-` 0행, 실행은 T075·T081; 게이트 2 = django-pod 설정 검증기 fail-closed + T077 단언) · `kv/{env}/openfga/preshared`는 US6에서 `kv/platform/openfga/preshared`와 같은 값으로 교체하고 회전은 둘을 함께. (**T075 보정 2026-11-17** — 지금 불변식은 vault-unseal §US6(면제 셋 · 판정 밖 키 말고는 sentinel 0). 두 묶음은 다르다(리뷰 KA-13): **면제 셋**(`JT_PLACEHOLDER_EXEMPT` — sentinel 그대로가 기대값) = `authentik/identity-admin`의 `api_token` · `openfga/store_id`의 `store_id` · `openfga/preshared`의 `key` · **판정 밖**(소비 매핑 없음 — 면제 셋에 넣지 않는다 · T075 시점은 sentinel 그대로) = `authentik/identity-admin`의 `client_id` · `client_secret`. 게이트 1은 키 단위(§4 T075 O-3 — `gate=PASS n/n`) · `preshared` 교체는 US6이 아니라 T082.) **root 토큰 revoke 보류**(D4): T045 시드도 root로 하되 revoke하지 않는다 — revoke = T084 OIDC `admin` 실증 + `vault-break-glass` quorum 드릴 **뒤**(§0 토큰 표 ⑥ "부트스트랩 직후 revoke"는 이 결정으로 정정 대상, ADR 0011 예정). 실값 시드(T045)는 이하에 추가.
 
 **T045 실값 시드(2026-09-21 — 상세·판정은 §3 T045 절, 블록 정본은 `specs/003-platform-foundation/design/t045-blocks/op1-seed.ps1`)**: `kv/platform/cloudflare/dns-token`{`token`} · `kv/platform/cloudflare/tunnel`{`token`} · `kv/platform/oci/s3`{`access_key`,`secret_key`} 세 경로 version 1(03:20:12Z · 03:20:19Z · 03:25:45Z). **dns-token·tunnel 값은 라이브 K8s Secret에서 파이프로 복사하고, oci/s3는 비밀번호 관리자의 키 쌍을 보안 입력으로 받았다. 셋 다 되읽기 SHA-256으로만 대조했다** — 화면·파일·argv·클립보드에 평문이 남지 않는다. 시드 주체는 root 토큰(§3 T044의 D4 — revoke는 T084 뒤). 미룬 범위: `kv/{env}/access/*` 4경로(T077/T092) · grafana-cloud(T098). oci/s3는 **키 쌍이 맞는지 아직 증명되지 않았다**(첫 증명은 T053 백업 복원). 회전 규칙은 §3 T045 절과 gitops `platform/secrets/README.md` §5 — **인수된 Secret은 kv를 먼저 바꾼다**.
 
@@ -1439,6 +1676,8 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
   USER sample-pod ON #<H(sample-pod)> %R~revoked:* ~sample-pod:* +@all
   ```
 
+  > **T075 보정 2026-11-17 — 지금 규칙(UD-9 = B2)**: 위 코드 펜스는 T057 시드 당시(옛 규칙)의 꼴이다. 지금은 pod 사용자 줄(`identity-admin` · `sample-pod`) 끝에 B2 꼬리 `-@admin -@dangerous -client`가 붙는다 — `USER identity-admin ON #<H(identity-admin)> ~revoked:* ~identity-admin:* +@all -@admin -@dangerous -client` · `USER sample-pod ON #<H(sample-pod)> %R~revoked:* ~sample-pod:* +@all -@admin -@dangerous -client`(default · admin 줄은 그대로). 렌더 정본은 T075 W-6 블록(`specs/003-platform-foundation/design/t075-blocks/w6-render-dragonfly-acl.ps1`)이고 절차는 §4 T075다.
+
   첫 줄(default)은 `OFF`(비인증 명령은 `-NOAUTH`) + `+auth +hello`뿐이다 — Dragonfly v1.40.1은 NOAUTH 관문을 지난 `AUTH` · `HELLO`를 **연결의 현재 사용자(default)의 ACL**로 검사하므로(`main_service.cc` :1403–1407 → `IsUserAllowedToInvokeCommand` · `kAuth`/`kHello` = FAST|CONNECTION) default가 `-@all`이면 파일은 적재돼도 **아무도 인증하지 못한다**(2026-10-22 VD-4 1차 실측 `AUTH failed: NOPERM default has no ACL permissions` · 로컬 v1.40.1 재현 · build-notes 「T057」 F12 — 그 전에 렌더한 acl은 아래 「ACL 파일 갱신」으로 다시 렌더한다). `+auth +hello`가 최소 권한이다(비인증 연결의 다른 명령은 NOAUTH 관문이 먼저 막는다 · `ACL LIST`의 default 행 = `user default off resetchannels -@all +auth +hello $all`). 마지막 `sample-pod` 줄은 dev에만 있다(prod는 앞 3줄). `<H(u)>` = 그 env 사용자 `u`의 `password`(UTF-8) SHA-256 **소문자 hex 64자** — ns `data`의 Secret에는 평문 비밀번호가 실리지 않고 `ACL LIST`에는 15자 축약만 보인다. 블록은 env마다 사용자 경로를 먼저 쓰고 그 비밀번호(이미 있던 사용자 경로는 판정 단계에서 읽은 live 값)로 acl을 렌더해 쓴다(순서 = 위 표 순서 · dev → prod). 사용자 비밀번호 5개는 서로 달라야 한다(블록이 SHA-256으로 비교한다 — dev 값은 `jt-dev`의 `assert-env`로도 복사되고 `admin`은 전권이다). 또 jt-dev pod는 `dragonfly-prod.data.svc:6379`에도 L4로 닿는다(NetworkPolicy 매트릭스의 jt-dev → data 규칙이 podSelector `{}`라 두 인스턴스를 모두 연다 — pg-main과 같은 기존 설계 · 정책 변경 0) — env 격리는 **ACL만**이다: 비밀번호 5개 상이 · prod aclfile에 `sample-pod` 없음 · 공유 이름 `identity-admin`은 env마다 다른 비밀번호(리뷰 r1 K2).
 - **사전**(블록 밖 — 창 표기는 `docs/runbooks/vault-unseal.md` §0, 이 블록은 창 D · §4 T054 · T056 「사전」 1–5와 같다):
   1. 창 C·D에서 `vault-unseal.md` §0 **창 시작 체크리스트**(`SaveNothing` · 전사 없음 — 전사 정책은 그 체크리스트가 PowerShellCore 키(+ `UseWindowsPowerShellPolicySetting` 분기)로 본다 · **클립보드 기록 0** — 켜져 있으면 블록이 첫 검사에서 멈춘다). PowerShell **모듈 로깅 정책**(`HKLM`/`HKCU:\SOFTWARE\Policies\Microsoft\PowerShellCore\ModuleLogging`의 `EnableModuleLogging` — 그 키의 `UseWindowsPowerShellPolicySetting`이 1이면 Windows PowerShell 쪽 키도)이 켜져 있어도 블록이 첫 검사에서 멈춘다(켜진 채로는 kv · 토큰 조회 응답 원문 — 비밀번호 · url · acl · root 토큰 — 이 이벤트 4103에 남는다). 창 D에서는 체크리스트의 마지막 줄(`$env:KUBECONFIG` 설정 · `kubectl config current-context`)을 건너뛴다 — 이 블록과 아래 「정리 판단」 두 블록은 kubectl을 쓰지 않는다.
@@ -1447,6 +1686,8 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
   4. 비밀번호 관리자(PM)의 root 토큰 항목(§0 토큰 표 ⑥ — T044 D4: 시드는 root로, revoke 보류).
   5. 붙여넣기로 실행할 때만: 창 D를 `pwsh -NoProfile`로 **새로 연 창**으로 쓴다(프로필이 `vault`·`Read-Host`·`ConvertFrom-Json`을 함수·별칭으로 가리거나 `Set-PSDebug -Trace`·중단점을 켜 두는 경로가 없는 창) + PSReadLine 로드 확인 1줄(블록 머리 주석 ⑤).
 - **실행**(창 D — 둘 중 하나):
+
+  > **T075 보정 2026-11-17 — op1 = 옛 판(`+@all`) — 실행하지 않는다(되돌림 갈래 제외 · 사용자 확인 뒤).** 이 블록은 옛 규칙(pod 사용자 줄 꼬리 `+@all`)을 렌더한다. UD-9 뒤의 시드 · 재렌더 · 회전은 T075 W-6 블록이 한다(§4 T075). 평시에는 실행하지 않는다 — UD-9 되돌림 갈래(§4 T075 「실패 갈래」 ②)에서만, 사용자 확인 뒤에 쓴다.
 
   ```powershell
   pwsh -NoProfile -File D:\code\joshuatech_ver2\specs\003-platform-foundation\design\t057-blocks\op1-seed-dragonfly.ps1   # 권장: 새 프로세스 — env·변수가 프로세스와 함께 사라진다
@@ -1514,7 +1755,7 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
   | `STOP <사용자 경로> — live-mismatch: url 스킴 · 사용자 불일치(…)` · `url 호스트 · 포트 · db 불일치(…)` · `url 비밀번호 불일치(…)` | `url`이 정확히 `redis://` + 사용자 + `:` + 같은 경로 `password` + `@dragonfly-<env>.data.svc:6379/0`이 아니다(사용자 이름 · 스킴 · env 호스트 · 포트 · db · 끝 개행 · 다른 비밀번호 — 분류만 보이고 값은 출력하지 않는다) — 쓰기 0 | ① 점검 블록으로 키 이름 · 버전 이력만 본다 → 「정리 판단」으로 **그 사용자 경로와 같은 env의 acl 경로**를 지운 뒤 재실행(acl이 남아 있으면 재실행이 아래 「absent 인데 acl 이 이미 있다」로 멈춘다) |
   | `STOP <acl 경로> — live-mismatch: acl 내용 불일치(…)` · acl 경로의 `키 집합 불일치(…)` · `users.acl 값이 문자열이 아니다` | acl이 그 env의 live 사용자 비밀번호로 렌더한 결과와 1바이트라도 다르다(CR · 대문자 hex · 끝 줄바꿈 · BOM · 낡은 비밀번호 — 회전 반쪽 · 줄 누락 · prod에 `sample-pod` 줄 — 내용 · 모양은 출력하지 않는다) — 쓰기 0 · 덮어쓰지 않는다 | 사용자 경로들은 live-ok다(위 SKIP 줄). 머지 전이면 ① 점검 블록으로 acl 경로의 버전 이력을 보고(그 acl이 이 블록의 실패한 실행이나 블록 밖에서 들어간 것인지) → ② 삭제 블록으로 **acl 경로만** 지운다 → 재실행하면 live 사용자 비밀번호로 다시 렌더해 acl만 쓴다(사용자 경로 put 0) |
   | `STOP <acl 경로> — live-mismatch: 같은 env 의 사용자 경로 <경로> 가 absent 인데 acl 이 이미 있다 — 이 acl 은 이 실행이 모르는 비밀번호를 가리킨다(…)` | 그 env의 사용자 경로가 하나라도 없는데 acl이 남아 있다(결정 B4 — 예: 사용자 경로만 정리하고 acl을 남겼다) · 그 acl은 이 실행이 만들 새 비밀번호와 맞지 않는다 — acl 값은 읽지도 않았다 · 쓰기 0 | 머지 전이면 ② 삭제 블록으로 그 acl 경로를 지운다(남은 사용자 경로는 그대로 두면 재실행이 live-ok로 건너뛰고 그 값으로 다시 렌더한다) → 재실행 |
-  | 사용자 경로 전부 `SKIP <경로> — live-ok(…)` + acl 경로만 `PLAN <acl 경로> — absent → 생성 예정` · `판정 결과: 생성 예정 <acl 수> · 건너뜀(live-ok) <나머지> · 중단 0`(STOP 아님) | **정상이다** — 사용자 경로는 live-ok로 건너뛰고(값 불변) acl만 그 live 비밀번호로 다시 렌더해 쓴다(결정 B4ⓑ · 하네스 S35a · S35b). 아래 「ACL 파일 갱신」(acl 2경로 삭제 뒤 — 생성 예정 2 · 건너뜀 5)이나 acl만 지운 「정리 판단」 뒤의 재실행에서 나온다 | 조치 없음 — 쓸 경로 목록이 acl 경로뿐인지 보고 `seed`. 「ACL 파일 갱신」 중인데 사용자 경로가 `PLAN`(생성 예정)으로 나오면 `seed`를 입력하지 않는다(Ctrl+C = 쓰기 0 — 사용자 경로가 없어졌다 = 새 비밀번호 = 회전이 된다 · 컨트롤러에게 보고) |
+  | 사용자 경로 전부 `SKIP <경로> — live-ok(…)` + acl 경로만 `PLAN <acl 경로> — absent → 생성 예정` · `판정 결과: 생성 예정 <acl 수> · 건너뜀(live-ok) <나머지> · 중단 0`(STOP 아님) | **정상이다** — 사용자 경로는 live-ok로 건너뛰고(값 불변) acl만 그 live 비밀번호로 다시 렌더해 쓴다(결정 B4ⓑ · 하네스 S35a · S35b). 아래 「ACL 파일 갱신」(acl 2경로 삭제 뒤 — 생성 예정 2 · 건너뜀 5)이나 acl만 지운 「정리 판단」 뒤의 재실행에서 나온다. (T075 보정 2026-11-17) UD-9 재렌더(§4 T075 적용 순서 3단계)에서 같은 꼴은 T075 W-6 블록에서 나온다 — 이 블록(op1)으로 재렌더하지 않는다 | 조치 없음 — 쓸 경로 목록이 acl 경로뿐인지 보고 `seed`. 「ACL 파일 갱신」 중인데 사용자 경로가 `PLAN`(생성 예정)으로 나오면 `seed`를 입력하지 않는다(Ctrl+C = 쓰기 0 — 사용자 경로가 없어졌다 = 새 비밀번호 = 회전이 된다 · 컨트롤러에게 보고) |
   | `STOP <경로> — password 가 <다른 경로> 의 것과 같다 — 사용자 비밀번호 5개는 전부 달라야 한다(…) · 값 미출력 · 쓰기 0`(같은 값 경로 전부 — 경로별 `SKIP … live-ok` 줄 뒤) · 요약 `중단(다른 사용자 경로와 password 가 같다 — 값 미출력 · 쓰기 0)` | live-ok 모양인 사용자 경로끼리 `password`가 같다(블록이 SHA-256을 Ordinal로 비교 — 값 · 해시 미출력 · 결정 B5). 이 블록은 경로마다 독립 RNG로 만들므로 같은 값은 블록 밖에서 들어간 것이다. dev 값은 `assert-env`로도 복사되고 `admin`은 전권이라 한쪽 노출이 다른 쪽 노출이 된다 — 판정 단계라 쓰기 0 | 어느 쪽이 블록 밖에서 들어갔는지 확인해 실행 기록에 남긴다(① 점검 블록 — 버전 이력 · 키 이름만) → **같은 값을 가진 경로 모두 + 그 env의 acl 경로**를 ② 삭제 블록으로 지운다(한 번에 한 경로 · 남기는 쪽도 블록 밖을 거친 값이라 노출로 본다 — T056 리뷰 r2 R3) → 재실행(새 독립 값 + acl 다시 렌더). 머지 뒤에는 ② 삭제를 쓰지 않는다 — 회전(T084) |
   | `STOP <경로> — 생성한 password 가 다른 사용자 경로의 password 와 같다(값 · 해시 미출력) — 쓰지 않았다` · 요약 `중단(생성한 password 가 다른 사용자 경로의 것과 같다 — put 전 · …)` | 쓰기 단계에서 새로 만든 값이 이미 아는 사용자 비밀번호와 같았다(B5의 생성 몫 — 32바이트 RNG에서는 일어나지 않는다 · 생성기 이상 신호) — 그 경로는 put 전이라 쓰지 않았다 · 앞 경로는 쓴 상태 | 더 시도하지 않고 멈춘 뒤 컨트롤러에게 보고한다(생성기 · 블록 변경 확인) |
   | `STOP <경로> — put 거부(exit=…) · 재판정 absent` · 요약 `중단(put 거부 … — 재판정 absent · 쓰지 않았다)` | `-cas=0` put이 비 0으로 끝났고 **값 없이 다시 판정해도 경로가 없다 = 쓰지 않았다**(권한 · 연결 · CLI 오류) · 뒤 경로 미실행. acl 경로에서 났다면 그 env의 사용자 경로는 이미 v1이다(하네스 S08f) | 토큰 정책(`root`) · 창 C port-forward · `INFO vault CLI` 줄을 확인한 뒤 재실행 — 재실행은 쓴 사용자 경로를 live-ok로 건너뛰고 그 값으로 acl을 렌더해 쓴다(S08g). 같은 STOP이 반복되면 더 시도하지 않고 멈춘다 |
@@ -1613,10 +1854,13 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
   4. operation 상태를 본다(`kubectl -n argocd get app platform-dragonfly -o jsonpath='{.status.operationState.phase} retry={.status.operationState.retryCount} {.status.operationState.message}'`): **ⓐ 재시도 대기**(phase `Running` · message `… Retrying attempt #n at …`) → 기다린다(대기 10·20·40·80·160 s · `.operation`에 손대지 않는다) · **ⓑ 재시도 소진**(phase `Failed` · `(retried 5 times).`) → **수동 전체 Sync**: Argo CD UI(리소스 전부 · PRUNE 끔 · Apply Out of Sync Only 끔 · Retry 끔 · Sync options는 미리 채워진 값 그대로) → 안 되면 CLI `argocd app sync platform-dragonfly`(**옵션 플래그 없이**) → 관리자 kubeconfig만 있을 때는 §4 T056 「늦은 시드」 4 ⓑ 3의 JSON patch 블록을 Application 이름 `platform-dragonfly` · `initiatedBy.username` `operator-t057-late-seed` · revision = 머지 sha 40자로 바꿔 쓴다(옛 `status.operationState` 제거 포함 · `--dry-run=server` 먼저 · `--kubeconfig` 직접). **금지**: `.operation`만 넣는 `--type merge` patch(옛 실패 기록이 새 기록에 섞인다 — §3 T056 관찰자 판정).
   5. agent-view로 「머지 뒤 확인」의 둘째 명령을 돌려 Deployment 2행 READY `1/1`을 보고, 위 「머지 뒤 확인」의 실림 판정(로그 grep · `noauth`)까지 한다. 걸린 시간을 실행 기록에 남긴다.
 - **ACL 파일 갱신(acl 2경로 재렌더 — 2026-10-22 사고 복구 · 회전과 다르다)**: kv의 사용자 비밀번호 5경로는 **그대로** 두고 acl 2경로(`kv/dev/dragonfly/acl` · `kv/prod/dragonfly/acl`)만 고친 블록으로 다시 렌더해 쓴 뒤 Dragonfly pod를 다시 띄운다. **언제**: aclfile의 줄 형식(블록의 렌더 규칙)이 바뀌었을 때만 — 이번에는 default 줄 `USER default OFF -@all` → `USER default OFF +auth +hello`(F12: 옛 줄로 렌더한 acl은 파일은 적재됐지만 AUTH · HELLO까지 NOPERM이라 아무도 인증하지 못했다 — VD-4 1차 실측 2026-10-22 06:39:50Z · build-notes 「T057」 「VD-4 1차 실측」). 비밀번호는 바뀌지 않는다(회전이 아니다 — 회전은 아래 문단 · T084). 위 「정리 판단」의 "머지 뒤에는 지우지 않는다"에 대한 **이 절만의 예외**다 — acl은 블록이 사용자 비밀번호에서 다시 만드는 파생값이고(결정 B4ⓑ), 옛 aclfile 아래에서는 어차피 아무도 인증하지 못해 잃을 것이 없다. **사용자 5경로는 지우지 않는다**(지우면 재실행이 새 비밀번호를 만든다 = 회전 — `assert-env` · `<pod>-env` 소비자와 어긋난다).
-  1. **블록 확인**(창 D): F12 정정판(default 줄 `USER default OFF +auth +hello` · 하네스 PASS 판)인지 본다 — 옛 줄이 0줄이어야 한다:
+
+  > **T075 보정 2026-11-17**: 이 절의 블록은 이제 T075 W-6(`specs/003-platform-foundation/design/t075-blocks/w6-render-dragonfly-acl.ps1`)이다 — op1은 옛 규칙(`+@all`)을 렌더한다. 아래 1–7은 2026-10-22 F12 복구의 기록으로 남긴다. 다음 줄 형식 변경(UD-9 B2 꼬리 — 지금 할 일)은 §4 T075 「적용 순서」로 한다: 3단계 블록 = W-6 · 5단계 pod 삭제 대신 admin `ACL LOAD`(재시작 금지). **5단계 pod 삭제는 F12처럼 옛 aclfile 아래에서 아무도 AUTH하지 못할 때만 쓴다** — admin이 AUTH할 수 있는 규칙 변경은 admin `ACL LOAD`가 먼저이고 재시작하지 않는다(§4 T075).
+
+  1. **블록 확인**(창 D): 판별 줄 — **op1 = 옛 판(`+@all`) — 실행하지 않는다(되돌림 갈래 제외 · 사용자 확인 뒤)**(T075 보정 2026-11-17 — 재렌더 블록은 T075 W-6 · §4 T075). 되돌림 갈래에서 op1을 쓸 때만, 그 op1이 F12 정정판(default 줄 `USER default OFF +auth +hello` · 하네스 PASS 판)인지 본다 — 옛 default 줄이 0줄이어야 한다:
 
      ```powershell
-     @(Select-String -LiteralPath 'D:\code\joshuatech_ver2\specs\003-platform-foundation\design\t057-blocks\op1-seed-dragonfly.ps1' -SimpleMatch 'USER default OFF -@all').Count   # 0 = F12 정정판 · 1 이상 = 옛 판(실행하지 않는다)
+     @(Select-String -LiteralPath 'D:\code\joshuatech_ver2\specs\003-platform-foundation\design\t057-blocks\op1-seed-dragonfly.ps1' -SimpleMatch 'USER default OFF -@all').Count   # 0 = F12 정정판 · 1 이상 = F12 전 판(실행하지 않는다) — 어느 쪽이든 op1 은 옛 규칙 판이다(위 판별 줄)
      ```
 
   2. **acl 2경로 삭제**(창 D — 위 「사전」 1–4 · `vault-unseal.md` §0 절대 규칙 1로 `VAULT_ADDR` · `VAULT_TOKEN`을 넣은 상태): 위 ① 점검 블록으로 두 경로가 `current_version=1`(아래 실행 기록 2026-10-22 14:15–14:40 KST의 시드)이고 키 이름이 `users.acl`뿐인지 본 뒤, ② 삭제 블록(표식 `[t057-cleanup-delete]`)으로 `kv/dev/dragonfly/acl` → `kv/prod/dragonfly/acl`을 **한 번에 한 경로씩** 지운다(경로를 다시 그대로 타자 · 블록이 삭제 뒤 `No value found`를 확인하고 `OK   <경로> — 모든 버전 · 메타데이터 삭제(No value found 확인)…`을 낸다 · 그 OK 줄의 "사용자 경로를 지웠다면 …" 안내는 이 절에 해당하지 않는다). 사용자 경로는 입력하지 않는다. 끝나면 `Remove-Item Env:VAULT_TOKEN, Env:VAULT_ADDR`(시드 블록은 시작 전 `VAULT_TOKEN`이 있으면 멈춘다). 지우지 않고 3단계로 가면 블록은 acl 2경로를 `live-mismatch: acl 내용 불일치(…)`로 멈춘다(쓰기 0 · 옛 acl을 덮어쓰지 않는다 — 하네스 S37a).
@@ -1637,7 +1881,7 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
      ```
 
      2행 전부 STATUS `SecretSynced` · READY `True` · `REFRESH`(`status.refreshTime`)가 3단계 시드 끝 시각보다 뒤면 Secret에 새 acl이 실린 것이다. `SYNCED_RV`(`status.syncedResourceVersion` = `<generation>-<라벨·어노테이션 해시>`)는 force-sync 어노테이션을 걸었을 때만 바뀐다 — 기다리는 길에서는 그대로이고 `refreshTime`만 바뀐다(ESO v2.10.0 `pkg/controllers/externalsecret/externalsecret_controller.go` :787–788 · `pkg/controllers/util/util.go` :30–31). 2단계와 3단계 사이에 ESO 주기가 끼었다면 ES는 잠시 `SecretSyncedError`(kv 경로 없음)였을 수 있다 — Secret은 옛 내용 그대로 남고(ES `deletionPolicy` 기본 `Retain` — 같은 소스 `externalsecret_controller_secret.go` :111–118 · `externalsecret_controller.go` :417–420) 돌고 있는 pod에는 영향이 없다 · 재시드 뒤의 어노테이션이 되돌린다.
-  5. **pod 삭제**(창 B · 관리자 kubeconfig — `--kubeconfig` 직접):
+  5. **pod 삭제**(창 B · 관리자 kubeconfig — `--kubeconfig` 직접 · T075 보정 2026-11-17 — F12처럼 옛 aclfile 아래에서 아무도 AUTH하지 못할 때만 쓴다. admin이 AUTH할 수 있는 규칙 변경(UD-9 등)은 admin `ACL LOAD`가 먼저이고 재시작하지 않는다 — §4 T075 적용 순서 6단계 · 「실패 갈래」):
 
      ```powershell
      $kc = '<관리자 kubeconfig 경로>'
@@ -1655,11 +1899,331 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
 
      2 pod 전부 READY `1/1` · RESTARTS `0` · AGE가 5단계 뒤 · 로그에 `Load snapshot: Searching for snapshot in directory: "/data"` 다음 `Loading /data/dump-summary.dfs` · `Load finished, num keys read: …`(옛 pod가 5분마다 저장한 스냅샷 — 쓴 사람이 없어 키 0 기대) 또는 `Load snapshot: No snapshot found` · aclfile 오류 문구 4개 0줄(로그 문구 0은 적재 증거가 아니다 — 판정은 7단계 VD-4). RESTARTS가 1 이상이면 gitops `platform/dragonfly/README.md` §1 증상표(스냅샷 손상 CrashLoop 행)를 본다.
   7. **VD-4 재실측**: 컨트롤러가 VD-4 Job을 다시 돌린다(gitops F13 `wait_ready` PR 머지 뒤 `render-vd4.sh` 재생성 → 옛 Job 삭제 → `apply -f` — build-notes 「T057」 「VD-4 1차 실측」의 라이브 적용 절차 ③). 인증 경로는 `writer-set` · `reader-get` PASS가 증명한다(위 「머지 뒤 확인」 — 1차 실측의 `reader-set-denied` · `reader-cross-denied` · `noperm` PASS는 AUTH 실패 문구로 생긴 거짓 PASS였다). 시각 · 결과를 아래 실행 기록 2차에 남긴다.
-- **회전은 이 소절 범위 밖**(build-notes 「T057」 D9): kv `<user>`(`password` · `url`)와 **같은 env의 `acl`을 함께** 갱신한다(acl은 새 password의 SHA-256으로 다시 렌더 — 한쪽만 바꾸면 Dragonfly는 옛 비밀번호를 계속 받고, 이 블록의 재실행은 acl live-mismatch로 멈춘다 · 사용자 비밀번호 5개는 서로 다른 값 · 같은 형식(base64url 43자 · 앞뒤 공백 · 개행 없음)) → ESO `refreshInterval` 5m 안에 Secret 갱신 → kubelet이 마운트 파일을 갱신(≤ 약 2분) → 운영자가 `admin`으로 `ACL LOAD`(무중단 — aclfile을 다시 읽는다) 또는 `kubectl rollout restart deployment/dragonfly-<env>`(Recreate — 그동안 소비자는 fail-closed 503 · Git 밖 템플릿 어노테이션 `restartedAt`이 남는다 — pod 삭제와의 선택은 T084 secret-rotation.md에서 확정 · 위 「ACL 파일 갱신」 5단계는 pod 삭제를 쓴다). ns `data`는 Reloader 감시 밖이다(D9 — 어노테이션 0 · 자동 재기동 없음). 소비자(`assert-env` · `<pod>-env`)는 같은 kv 경로의 `url`을 5m 안에 다시 읽는다. 절차 정본은 `docs/runbooks/secret-rotation.md`(T084에서 작성 — 아직 없다). 이 블록의 재실행은 회전이 아니다(live-ok는 건너뛴다).
+- **회전은 이 소절 범위 밖**(build-notes 「T057」 D9 · T075 보정 2026-11-17 — acl 재렌더는 T075 W-6 블록으로 한다 · 반영은 admin `ACL LOAD`가 먼저(§4 T075 적용 순서 6단계) · 절차 정본은 T084 secret-rotation.md): kv `<user>`(`password` · `url`)와 **같은 env의 `acl`을 함께** 갱신한다(acl은 새 password의 SHA-256으로 다시 렌더 — 한쪽만 바꾸면 Dragonfly는 옛 비밀번호를 계속 받고, 이 블록의 재실행은 acl live-mismatch로 멈춘다 · 사용자 비밀번호 5개는 서로 다른 값 · 같은 형식(base64url 43자 · 앞뒤 공백 · 개행 없음)) → ESO `refreshInterval` 5m 안에 Secret 갱신 → kubelet이 마운트 파일을 갱신(≤ 약 2분) → 운영자가 `admin`으로 `ACL LOAD`(무중단 — aclfile을 다시 읽는다) 또는 `kubectl rollout restart deployment/dragonfly-<env>`(Recreate — 그동안 소비자는 fail-closed 503 · Git 밖 템플릿 어노테이션 `restartedAt`이 남는다 — pod 삭제와의 선택은 T084 secret-rotation.md에서 확정 · 위 「ACL 파일 갱신」 5단계는 pod 삭제를 쓴다). ns `data`는 Reloader 감시 밖이다(D9 — 어노테이션 0 · 자동 재기동 없음). 소비자(`assert-env` · `<pod>-env`)는 같은 kv 경로의 `url`을 5m 안에 다시 읽는다. 절차 정본은 `docs/runbooks/secret-rotation.md`(T084에서 작성 — 아직 없다). 이 블록의 재실행은 회전이 아니다(live-ok는 건너뛴다).
 - **실행 기록**: (운영자 실행 뒤 이 줄 아래에 추가 — 컨트롤러가 채운다: 날짜·시각(KST, Z 병기) · 요약 7행 · `INFO vault CLI` 줄 · 머지 뒤 ExternalSecret 2장 `SecretSynced` · Deployment 2 Available · aclfile 실림 판정 시각. 값·해시·acl 내용·토큰은 적지 않는다)
   - **2026-10-22 14:15–14:40 KST(05:15–05:40Z) — 시드 완료(3회차 실행 · 머지 전 · 값 없음).** 1·2회차는 `OK Vault 도달` 전 `Vault 도달 실패 또는 status 응답 해석 실패(status exit=1 · Error checking seal status: context deadline exceeded)`로 중단(root 토큰 미입력 · kv 쓰기 0 · 요약 7행 전부 `미실행`). 원인 = 로컬 `127.0.0.1:18200`을 다른 앱(IDE 프로세스)이 점유 → 창 C의 `kubectl port-forward`가 `Forwarding from [::1]:18200 -> 8200` **한 줄만** 내고(IPv4 bind 실패는 조용히 지나간다) 블록·`vault status`는 IPv4로 그 앱에 붙어 응답 없이 시간 초과. 조치 = `Get-NetTCPConnection -LocalPort 18200 -State Listen`으로 점유 프로세스 확인 → 종료 → port-forward 재기동 시 **`127.0.0.1`과 `[::1]` 두 줄**을 확인 → `vault status -address=http://127.0.0.1:18200`(`Sealed false`) 뒤 재실행. 3회차: `INFO vault CLI: Vault v2.1.0 (cb6a54face072e372480d7cc2e64a3110b84756f), built 2026-08-31T13:29:27Z · Application ~\AppData\Local\Microsoft\WinGet\Links\vault.exe` · `OK Vault 도달 · 초기화됨 · unsealed(seal type=ocikms · server 2.0.4)` · 토큰 정책 root · PLAN 7 = absent → 생성 예정(건너뜀 0 · 중단 0) · `seed` → 요약 7행 전부 `생성 v1 · 되읽기 해시 일치` — `kv/dev/dragonfly/admin`(password) · `kv/dev/dragonfly/identity-admin`(password·url) · `kv/dev/dragonfly/sample-pod`(password·url) · `kv/dev/dragonfly/acl`(users.acl) · `kv/prod/dragonfly/admin`(password) · `kv/prod/dragonfly/identity-admin`(password·url) · `kv/prod/dragonfly/acl`(users.acl) · 집계 `새로 쓴 경로 7건(생성·검증 완료 7 · 응답 유실 뒤 재판정 0 · 기록 후 검증 실패 0) · 결과 미확인 0 · 건너뜀 0 · 중단 0 · 미실행 0` · `판정: kv 7경로 준비 완료` — **LF가 든 값(users.acl)의 JSON stdin 왕복이 되읽기 해시 일치로 처음 확인됐다**(CLI v2.1.0). 경고(클립보드) 0. 머지 뒤 확인(ES 2 SecretSynced · Deployment 2 Available · 실림 판정)은 §3 T057 절에 이어 적는다.
   - **2026-10-22 17:1x–17:5x KST(08:1x–08:5xZ) — 「ACL 파일 갱신」 실행(F12 · VD-4 1차 실측 사고 복구 · 값 없음).** 그 전 재실행 1회는 2단계를 건너뛰어 acl 2경로가 `live-mismatch: acl 내용 불일치` STOP(쓰기 0 — 설계대로 · 하네스 S37a) · 점검 블록 1회는 `VAULT_ADDR`·`VAULT_TOKEN` 없이 돌려 `metadata 조회 실패(exit=2)`(블록은 창의 환경 변수를 쓴다 — §0 절대 규칙 1). 본 실행: 1단계 정정판 확인(옛 줄 0) → ① 점검 `kv/dev/dragonfly/acl` · `kv/prod/dragonfly/acl` 각 `current_version=1 · 키 users.acl`(v1 05:48:50Z · 05:49:01Z) → ② 삭제 두 경로 각 `OK … 모든 버전 · 메타데이터 삭제(No value found 확인)` → `Remove-Item Env:VAULT_TOKEN, Env:VAULT_ADDR` → 3단계 재시드(`INFO vault CLI` 줄 1차와 동일 · Vault 도달 OK · 토큰 root): 사용자 5경로 `SKIP … live-ok(… url 구성(사용자 · 같은 password · 호스트 · 포트 · db) 확인 …)` · `PLAN kv/dev/dragonfly/acl — absent → 생성 예정` · `PLAN kv/prod/dragonfly/acl — absent → 생성 예정` · `판정 결과: 생성 예정 2 · 건너뜀(live-ok) 5 · 중단 0` → `seed` → `OK kv/dev/dragonfly/acl v1 — 생성 · 되읽기 해시 일치(users.acl)` · `OK kv/prod/dragonfly/acl v1 — …` · 집계 `새로 쓴 경로 2건(생성·검증 완료 2) · 건너뜀 5 · 중단 0 · 미실행 0` · `판정: kv 7경로 준비 완료` → 4단계 ESO 주기 갱신 대기(annotate 미사용) refreshTime prod 08:32:38Z · dev 08:34:45Z → 5단계 pod 삭제 08:47Z(`pod "dragonfly-dev-88dbfdb6d-rtr5n" deleted` · `pod "dragonfly-prod-5c9f9f8588-w5qgk" deleted`) → 6단계 새 pod `dragonfly-dev-88dbfdb6d-qgjsl` · `dragonfly-prod-5c9f9f8588-fkwlj` Ready 08:47:53/54Z · 재시작 0 · `Loading /data/dump-summary.dfs` · `Load finished, num keys read: 0` · aclfile 오류 문구 0 → 7단계 VD-4 재실측(PR #55 머지 뒤 `render-vd4.sh` 재생성 → 옛 Job 삭제 → apply) `SUMMARY: pass=13 fail=0` 08:51:04Z(§3 T057 — 옵션 A).
   - **(2차 자리 — 위 「ACL 파일 갱신」 · F12 · 컨트롤러가 채운다)**: 날짜·시각(KST, Z 병기) · 1단계 옛 줄 0줄 · 2단계 ① 점검(acl 2경로 `current_version` · 키 이름) · ② 삭제 `OK … No value found 확인` 2회 · 3단계 요약 7행(`건너뜀(live-ok …)` 5 · `생성 v1 · 되읽기 해시 일치(users.acl)` 2) · 집계 줄 · `INFO vault CLI` 줄 · 4단계 ES 2장 STATUS · `refreshTime` · `syncedResourceVersion` · 5단계 pod 삭제 시각 → 6단계 새 pod READY · RESTARTS · `Load snapshot` 줄 · aclfile 오류 문구 0 · 7단계 VD-4 재실측 판정. 바로 위 시드(2026-10-22 14:15–14:40 KST)의 acl 2경로는 옛 default 줄(`-@all`)로 렌더됐다 — VD-4 1차 실측에서 AUTH 전부 NOPERM. 값·해시·acl 내용·토큰은 적지 않는다.
+
+### T075 — identity-admin kv 시드(O-2 · W-2 · 게이트 1 O-3 · O-4) · Dragonfly ACL 재렌더(UD-9 = B2 — O-6 · W-6 · `ACL LOAD`)
+
+> **완료(2026-11-20).** 라이브 L0–L16(2026-11-19..20) — 값은 아래 기록 칸 A · B · build-notes 「T075 라이브 결과」 · 「T075 결과」. 블록 · 모의 하네스 · 이 절은 T075 조각 ③ · ④에서 썼다. 실행 순서 · PR 관계 · 복구는 §3 T075, 결정 정본은 `specs/003-platform-foundation/design/t075-design.md`(D10 · D20), 블록 정본 · 결정 대응 · 하네스 결과 · 남은 위험은 `specs/003-platform-foundation/design/t075-blocks/README.md`다. 이 절의 블록은 전부 창 D(`vault-unseal.md` §0)에서 돈다 — O-1(Cloudflare 값) · O-5(HTTP 탐침)는 §3 T075.
+
+- **블록**(디렉터리 `D:\code\joshuatech_ver2\specs\003-platform-foundation\design\t075-blocks\` — 실행은 전부 `pwsh -NoProfile -File <절대 경로>`(권장 — 새 프로세스: env · 변수가 프로세스와 함께 사라진다) 또는 `pwsh -NoProfile`로 새로 연 창에 파일 전문 붙여넣기(`& { … }` 한 문 · 빈 줄 0) · O = 관찰(쓰기 0) · W = 변경 · 입력은 전부 가려진다):
+
+  | 파일(이름) | 종류 · 단계 | 하는 일 | 정지점(입력 순서) | 바꾸는 것 |
+  |---|---|---|---|---|
+  | `o2-kv-judge.ps1`(O-2) | O · L3 | identity-admin 10경로 × dev · prod — 존재 · 버전 · 키 집합 · 키별 sentinel 여부 · W-2 전제 | root 토큰 | 없음 |
+  | `o4-eso-prod-role.ps1`(O-4) | O · L3 | `auth/kubernetes/role/eso-prod` 투영 · `vault policy read eso-prod`(vault-prod 첫 로그인 전 점검) | root 토큰 | 없음 |
+  | `w2-kv-seed.ps1`(W-2) | W · L7(dev) · L12(prod) | env 하나의 4경로(아래 A 표) | env · root 토큰 · `seed` | kv 4경로 |
+  | `o3-kv-gate.ps1`(O-3) | O · L8(dev) · L12(prod) | 게이트 1(키 단위 — `vault-unseal.md` §US6) | env · root 토큰 | 없음 |
+  | `o6-pre-dragonfly-acl.ps1`(O-6 사전) | O · L6 | kv acl 2경로의 줄 꼴 · pod 사용자 줄 꼬리 분류(해시 · 내용 0) | root 토큰 | 없음 |
+  | `w6-acl-delete.ps1`(W-6 acl 삭제) | W · L6 | kv acl 한 경로의 모든 버전 · 메타데이터 삭제 — 허용 목록 = `kv/dev/dragonfly/acl` · `kv/prod/dragonfly/acl` 둘뿐 · 삭제 전 live · 키 집합 = {`users.acl`}(값 0) · 삭제 뒤 `No value found` 확인(T075 보정 2026-11-17 · 리뷰 KB-3 · KA-5) | 경로(가려진다) · root 토큰 · 같은 경로 재타자(Ordinal) | kv acl 1경로(삭제) |
+  | `w6-render-dragonfly-acl.ps1`(W-6) | W · L6 | Dragonfly 7경로 — 사용자 경로는 live-ok면 건너뛰고 acl을 live 비밀번호로 B2 렌더(T057 op1 파생 · 시드 · 재렌더 · 회전의 정본) | root 토큰 · `seed` | kv acl(없는 경로만) |
+  | `w6-acl-load.ps1`(W-6 LOAD) | W · L6 | admin `ACL LOAD` 1회(재시작 0) | env · root 토큰 · `load-<env>` | Dragonfly 메모리의 규칙 |
+  | `o6-post-dragonfly-dryrun.ps1`(O-6 사후) | O · L6 | admin `ACL DRYRUN` 표(dev 7행 · prod 5행 — 명령 실행 0) | env · root 토큰 | 없음 |
+
+  모의 하네스: `pwsh -NoProfile -File D:\code\joshuatech_ver2\specs\003-platform-foundation\design\t075-blocks\harness.ps1` → `PASS n / n`(블록을 고치면 다시 돌린다 — 실물 Vault · 클러스터 · Cloudflare에 닿지 않는다).
+- **사전**(모든 블록 공통 — §4 T057 「사전」 1–5와 같다):
+  1. 창 D: `vault-unseal.md` §0 창 시작 체크리스트(`SaveNothing` · 전사 없음 · **클립보드 기록 0** · **모듈 로깅 정책 0 · 실효 상태 0**(Utility · Security · Management · Core 스냅인 `LogPipelineExecutionDetails` = False 4줄 · `powershell.config.json` 「정책 있음」 줄 0 — 설정 파일은 값과 무관 · T075 보정 2026-11-17 · 리뷰 KB-2 · 라운드 2 KB2-1) — 켜져 있거나 확인하지 못하면 블록이 아무것도 묻기 전에 멈춘다). 체크리스트의 마지막 줄(`$env:KUBECONFIG` 설정 · `kubectl config current-context`)은 건너뛴다 — O-6 사후 · LOAD 블록은 관리자 kubeconfig를 `--kubeconfig "$HOME\.kube\joshuatech-admin.yaml"`로 명령에 직접 적고 `$env:KUBECONFIG`를 쓰지 않는다.
+  2. 창 C: 관리자 kubeconfig로 `kubectl -n vault port-forward svc/vault 18200:8200`(`127.0.0.1`과 `[::1]` 두 줄을 본다 — §4 T057 실행 기록 2026-10-22).
+  3. 창 D: `Get-ChildItem Env:VAULT_*` 결과 없음 · `~/.vault-token` 없음(블록이 만들고 지운다 — 미리 있으면 건드리지 않고 멈춘다).
+  4. PM의 root 토큰 항목(§0 토큰 표 ⑥ — T044 D4). **root 토큰을 붙이기 전에** 첫 줄 `INFO vault CLI`에서 명령 종류가 `Application`이고 경로가 `vault.exe`로 끝나는지 본다(§4 T057 「실행」과 같다).
+  5. O-6 사후 · LOAD만: `$HOME\.kube\joshuatech-admin.yaml`이 있다(블록은 있는지만 본다 — 내용은 읽지 않는다).
+  6. 블록이 끝에 내는 「창 종료 체크리스트」를 한다. 다음 블록도 새 프로세스로 돌린다.
+
+#### A. kv 시드 — O-2 → W-2 dev → O-3 dev → (GP-2) → W-2 prod → O-3 prod
+
+- **언제**(설계 D10 순서): ① L3 — O-2(두 env 한 번)와 O-4. ② L7 — W-2 dev → L8 O-3 dev. ③ GP-2 머지 명령은 **O-3 dev `gate=PASS` 줄 · L6(아래 B) 완료 · data-assert 7 id PASS를 컨트롤러에게 붙인 뒤에만** 나온다(§3 T075). ④ L12 — W-2 prod → O-3 prod → GP-3. 머지가 먼저 되면 §3 T075 「복구」.
+- **경로 · 값**(env마다 — 값은 W-2가 만든다 · 이 표에는 값이 없다):
+
+  | kv 경로(`<role>` = dev `dev_identity_admin` · prod `identity_admin`) | 지금(기록) | T075가 할 일 | 쓰기 꼴 |
+  |---|---|---|---|
+  | `kv/<env>/db/<role>/app` · `…/owner` · `kv/<env>/kafka/identity-admin` · `kv/<env>/dragonfly/identity-admin` | 있음(T054 · T056 · T057) | 없음 — O-2 · O-3가 키 집합만 본다 | — |
+  | `kv/<env>/authentik/identity-admin` | sentinel 5키 | `jwks_url` · `issuer`만 계약 값으로(`http://authentik-server.identity.svc:9000/application/o/identity-admin/jwks/` · `https://auth.joshuatech.dev/application/o/identity-admin/`). `client_id` · `client_secret` · `api_token`은 sentinel 그대로 | `vault kv patch "-cas=<n>" <경로> issuer=<값> jwks_url=<값>`(비밀 아님 — argv 허용 · 나머지 3키 보존 · VD-T075-11) |
+  | `kv/<env>/authentik/webhooks/identity-admin` | sentinel | `secret` = CSPRNG 32바이트 → base64url 43자로 덮어쓴다 · HMAC 키 = 그 43자 문자열의 ASCII 바이트(디코드하지 않는다 · 끝 줄바꿈 없음) · dev ≠ prod · US4(T081)에서도 바꾸지 않는다 | `vault kv put "-cas=<n>" <경로> -`(JSON stdin) |
+  | `kv/<env>/django/identity-admin` | 없음 | `secret_key` = CSPRNG 48바이트 → base64url 64자(W009) · dev ≠ prod | `-cas=0` JSON stdin |
+  | `kv/<env>/sentry/identity-admin` | 없음 | `{"dsn": ""}` — Sentry 끔(경로가 없으면 `identity-admin-env`가 `SecretSyncedError`) · 실값은 T100 | `-cas=0` JSON stdin |
+  | `kv/<env>/openfga/store_id` · `…/preshared` | sentinel | 그대로(면제 셋 · 교체는 T082) | — |
+
+- **실행 · 기대 출력**(값 · 해시 · 토큰은 어디에도 나오지 않는다 — 하네스 화면 출력에서 `INFO` · `OK Vault` 줄만 실물 모양으로 바꿨다):
+  1. **O-2**(L3): `pwsh -NoProfile -File D:\code\joshuatech_ver2\specs\003-platform-foundation\design\t075-blocks\o2-kv-judge.ps1` → 정지점 root 토큰. 기대(W-2 전):
+
+     ```text
+     INFO vault CLI: Vault v… · Application ~\…\vault.exe — 판정 전용(쓰기 0)
+     OK   Vault 도달 · 초기화됨 · unsealed(seal type=ocikms · server 2.0.4)
+     OK   토큰 정책에 root 포함 — 판정(읽기 전용)을 시작한다
+     JUDGE kv/dev/db/dev_identity_admin/app — live v1 · 키 집합 일치 · username=값 있음 · password=값 있음 · url=값 있음 → W-2 전제 OK(기존 경로 — 그대로 둔다)
+     …
+     JUDGE kv/dev/authentik/identity-admin — live v1 · 키 집합 일치 · client_id=sentinel · client_secret=sentinel · jwks_url=sentinel · issuer=sentinel · api_token=sentinel → W-2 전제 OK(jwks_url · issuer = sentinel → W-2 가 계약 값으로 patch)
+     JUDGE kv/dev/authentik/webhooks/identity-admin — live v1 · 키 집합 일치 · secret=sentinel → W-2 전제 OK(sentinel → W-2 가 CSPRNG 43자로 덮어쓴다)
+     JUDGE kv/dev/django/identity-admin — absent(경로 없음) → W-2 전제 OK(absent — W-2 가 만든다)
+     JUDGE kv/dev/sentry/identity-admin — absent(경로 없음) → W-2 전제 OK(absent — W-2 가 만든다)
+     JUDGE kv/dev/openfga/store_id — live v1 · 키 집합 일치 · store_id=sentinel → W-2 전제 OK(sentinel 그대로 — 면제 · T082)
+     …(JUDGE 20줄 — dev 10 · prod 10)
+
+     --- T075 O-2 kv 판정 요약(값 없음 · 쓰기 0 — 런북 bootstrap.md §4 T075 기록 칸에 그대로 기록) ---
+     …(20행)
+     o2 W-2 전제: dev 10/10 · prod 10/10
+     판정: W-2 전제 충족(dev · prod) — 이 출력을 컨트롤러에게 붙인 뒤 W-2 dev 를 실행한다
+     ```
+
+  2. **O-4**(L3): `…\o4-eso-prod-role.ps1` → root 토큰. 기대: `PASS bound_service_account_names = [eso-prod]` · `PASS bound_service_account_namespaces = [external-secrets]` · `PASS token_policies = [eso-prod]` · `PASS audience = vault` · `PASS token_ttl = 3600` · `PASS token_max_ttl = 14400` · `PASS policy eso-prod = path "kv/data/prod/*" { capabilities = ["read"] } / path "kv/metadata/prod/*" { capabilities = ["read"] }` · 그 밖의 토큰 필드 7(T075 보정 2026-11-17 · 리뷰 KB-6 — `roles.tf`는 `token_type`만 정하고 나머지는 기본값이다) `PASS token_type = service` · `PASS token_period = 0` · `PASS token_explicit_max_ttl = 0` · `PASS token_num_uses = 0` · `PASS token_bound_cidrs = []` · `PASS token_no_default_policy = False` · `PASS bound_service_account_namespace_selector = ""` · `o4=PASS 14/14`(값은 비밀이 아니다).
+  3. **W-2 dev**(L7): `…\w2-kv-seed.ps1` → ① `dev` ② root 토큰 ③ 쓸 경로 목록을 본 뒤 `seed`(그 밖의 입력 · 대문자 = 쓰기 0으로 중단). 기대(첫 실행):
+
+     ```text
+     INFO vault CLI: Vault v… · Application ~\…\vault.exe — JSON stdin 형식은 T045 · T054 · T056 · T057 블록의 되읽기 해시 일치로 CLI v2.1.0 에서 확인했다 · kv patch 꼴은 이 블록이 처음이다(VD-T075-11 — 되읽기가 잡는다)
+     OK   Vault 도달 · 초기화됨 · unsealed(seal type=ocikms · server 2.0.4)
+     OK   대상 env = dev — 쓸 수 있는 경로 4(아래 판정이 정한다)
+     OK   토큰 정책에 root 포함 — 쓰기 보호 판정(읽기 전용)을 시작한다
+     PLAN kv/dev/authentik/identity-admin — jwks_url · issuer = sentinel → 계약 값 patch 예정(나머지 3키 보존) · 지금 v1
+     PLAN kv/dev/authentik/webhooks/identity-admin — secret = sentinel → CSPRNG 43자로 덮어쓰기 예정 · 지금 v1
+     PLAN kv/dev/django/identity-admin — absent → 생성 예정 · 지금 v0
+     PLAN kv/dev/sentry/identity-admin — absent → 생성 예정 · 지금 v0
+     판정 결과: 쓰기 예정 4 · 건너뜀 0 · 중단 0
+
+     쓸 경로 4개(이 순서로 쓴다 — 값은 이 블록이 만든다 · 화면에 나오지 않는다):
+       - kv/dev/authentik/identity-admin  (patch · -cas=1 · …)
+       - kv/dev/authentik/webhooks/identity-admin  (덮어씀 · -cas=1 · …)
+       - kv/dev/django/identity-admin  (생성 · -cas=0 · …)
+       - kv/dev/sentry/identity-admin  (생성 · -cas=0 · …)
+     OK   kv/dev/authentik/identity-admin v2 — patch · 되읽기 일치(jwks_url·issuer = 계약 값 · 보존 client_id·client_secret·api_token)
+     OK   kv/dev/authentik/webhooks/identity-admin v2 — 덮어씀 · 되읽기 해시 일치(secret)
+     OK   kv/dev/django/identity-admin v1 — 생성 · 되읽기 해시 일치(secret_key)
+     OK   kv/dev/sentry/identity-admin v1 — 생성 · 되읽기 해시 일치(dsn)
+
+     --- T075 W-2 kv 쓰기 결과 요약(env=dev · 값 없음 — 런북 bootstrap.md §4 T075 기록 칸에 그대로 기록) ---
+     …(4행)
+     이 실행이 kv 에 쓴 경로: 4건(검증 완료 4 · 응답 유실 뒤 재판정으로 검증 완료 0 · 기록 후 검증 실패 0) · 결과 미확인 0 · 건너뜀 0 · 중단 0 · 미실행 0
+     판정: dev 4경로 준비 완료(쓰기 또는 이미 씀) — 다음 = O-3 dev(게이트 · gate=PASS n/n 한 줄을 컨트롤러에게)
+     ```
+
+     재실행이면 4경로가 `SKIP …`(이미 썼다 — 회전이 아니다)로 나오고 `INFO 쓸 경로 없음 — dev 4경로 모두 이미 쓴 상태` 뒤 쓰기 확인 정지점이 없다.
+  4. **O-3 dev**(L8): `…\o3-kv-gate.ps1` → ① `dev` ② root 토큰. 기대: `PASS <검사>` 21줄(authentik 키 집합 · `jwks_url` · `issuer` = 계약 값 · `api_token` · `client_id` · `client_secret` = sentinel · webhooks 키 집합 · `secret` 43자 · 서로 다른 글자 16 이상(T075 보정 2026-11-17 · 리뷰 KB-9 — 32바이트 CSPRNG 값이 16 미만일 확률 2.2×10⁻¹³ 이하 · 근거 = `t075-blocks/README.md`) · django 키 집합 · `secret_key` W009 · sentry 키 집합 · `dsn` 빈 값 · openfga 둘의 키 집합 · sentinel · db app · owner · kafka · dragonfly 키 집합 · 면제 밖 `PLACEHOLDER-` 0) · **`gate=PASS 21/21`** — 이 줄을 컨트롤러에게 붙인다. O-3은 **US6(T075) 시점의 게이트**다 — 면제 셋 · 판정 밖 키가 sentinel이어야 PASS라 T081(Authentik 실값) · T082(OpenFGA 실값) 뒤에는 구조적으로 FAIL한다. 그때는 기대를 바꾼 판(T081 · T082가 만든다)을 쓰고 이 블록을 고쳐 돌리지 않는다(리뷰 KA-8).
+  5. **W-2 prod → O-3 prod**(L12): 3 · 4를 `prod`로. W-2 prod는 dev의 웹훅 `secret` · `secret_key`가 W-2 꼴로 있어야 진행한다(dev 먼저 — 쌍 판정 dev ≠ prod). O-3 prod 기대 = 위 21줄 + `PASS webhooks secret: dev 해시 ≠ prod 해시` · `PASS django secret_key: dev 해시 ≠ prod 해시` · **`gate=PASS 23/23`**.
+- **판정**: W-2 요약 4행이 `patch v2 · 되읽기 일치(…)` · `덮어씀 v2 · 되읽기 해시 일치(secret)` · `생성 v1 · 되읽기 해시 일치(…)` · `기록됨(응답 유실 — 이 실행의 값 …) · …`(응답 유실 뒤 재판정으로 검증 — 정상 완료와 같다) 또는 `건너뜀(…)`이고 `판정: <env> 4경로 준비 완료` 줄이 나오면 그 env의 쓰기가 끝났다. 게이트는 O-3의 `gate=PASS n/n` 한 줄이다(dev 21 · prod 23) — **`gate=PASS`가 아니면 GP-2 · GP-3 머지 명령은 나오지 않는다.**
+- **실패 시**(값 · 해시는 어디에도 나오지 않는다 · 수동 확인은 값을 출력하지 않는 명령만 — §4 T057 실패 표의 창 전제 · 모듈 로깅 · Vault 도달 · 토큰 행은 그대로 적용된다):
+
+  | 출력 | 뜻 | 조치 |
+  |---|---|---|
+  | `JUDGE <경로> — … → W-2 전제 어긋남(…)` · `판정: W-2 전제 미충족`(O-2) | 기록과 다른 상태(키 집합 · sentinel이어야 할 값 · 비지 않은 `dsn` · 실값 `store_id` · 판정 불가) — 쓰기 0 | `error — …` · `kv get 응답을 해석하지 못했다`(일시 오류)면 재실행. 그 밖은 W-2를 돌리지 않고 출력을 컨트롤러에게 붙인다(사람 판정) |
+  | `STOP <경로> — live-mismatch: jwks_url · issuer 가 둘 다 sentinel 도 둘 다 계약 값도 아니다(…)` | authentik 경로가 반쯤 바뀌었거나 다른 값이다 — 쓰기 0 · 덮어쓰지 않는다 | §4 T057 ① 점검 블록의 방법(버전 이력 · 키 이름 — 값 없음)으로 누가 바꿨는지 본 뒤 사람 판정 |
+  | `STOP <경로> — absent — T044 sentinel 경로가 없다(…)` | 웹훅 · authentik 경로가 없다(T044 투입 기록과 다르다) — 쓰기 0 | 컨트롤러에게 보고(§3 T044 단계 13 기록과 대조) |
+  | `STOP <경로> — live-mismatch: secret 이 sentinel 도 43자 base64url 도 아니다(…)` · `secret 의 서로 다른 글자가 16 미만이다(CSPRNG 값이 아니다 …)` · `secret_key 가 이 블록의 꼴(64자 base64url · W009)이 아니다(…)` · `dsn 이 빈 값이 아니다(…)` | 이미 값이 있는데 W-2 꼴이 아니다(줄바꿈 · 길이 · 문자 · 글자 종류가 너무 적다(KB-9 — 손으로 만든 값 신호) · `django-insecure-` 등 — 분류만) — 쓰기 0 · 덮어쓰지 않는다 | 누가 넣었는지 확인한 뒤 사람 판정(이 블록은 정정하지 않는다) |
+  | `STOP <경로> — secret 이 prod 의 것과 같다 — dev ≠ prod 이어야 한다(…)`(또는 `secret_key` · dev의 것) | 다른 env와 같은 값 — 블록 밖에서 들어간 값이다(블록은 경로마다 독립 RNG) — 쓰기 0 | 사람 판정 — 어느 쪽이 블록 밖 값인지 버전 이력으로 본다(머지 뒤면 회전 — T084) |
+  | `STOP kv/dev/… — prod 차례인데 dev 의 <키> 값이 W-2 꼴로 있지 않다(…) — dev 먼저(…)` | prod를 dev보다 먼저 돌렸다 — 쓰기 0 | W-2 dev → O-3 dev를 끝낸 뒤 prod |
+  | `STOP <경로> — error — metadata 조회 exit=…` | 일시 오류(권한 403 · 500 · 연결) — 판정 단계라 쓰기 0 | 창 C · 토큰 확인 뒤 재실행 |
+  | `STOP <경로> — 쓰기 거부(exit=…) · 재판정 current_version 그대로 = 쓰지 않았다(…)` · 요약 `중단(쓰기 거부 … 쓰지 않았다)` | 쓰기가 거부됐고 다시 판정해도 버전이 그대로다 — 그 경로는 쓰지 않았다 · 뒤 경로 미실행 | 토큰 정책 · 창 C를 확인한 뒤 재실행(쓴 경로는 건너뛴다). 반복되면 멈춘다 |
+  | `OK   <경로> v… — 기록됨(응답 유실 — 이 실행의 값 · 쓰기 exit=… 뒤 재판정) · …` · 집계 `응답 유실 뒤 재판정으로 검증 완료 1`(STOP 아님) | 응답이 유실됐지만 kv의 새 버전이 이 실행의 값임을 되읽기로 확인했다 — 정상 완료와 같다 | 조치 없음 · 실행 기록에 그 줄을 옮긴다(창 C 순단 신호) |
+  | `STOP <경로> — 쓰기 거부(exit=…) · CAS 충돌(다른 값 — … · 값 · 해시는 출력하지 않는다): kv 의 v<n> 은 다른 기록자의 값이다` | 판정 뒤 다른 기록자가 그 경로를 썼다(응답 유실과 같은 CLI 문구 — 되읽기 값으로 가른다) — 덮어쓰지 않았다 | 같은 시각에 그 경로를 쓴 창 · 작업자를 확인한다 → 재실행(그 값을 판정한다 — 꼴이 맞으면 건너뜀 · 아니면 STOP) |
+  | `STOP <경로> — 쓰기 거부(exit=…) · 재판정 <종류>(…): 이 실행의 값이 기록됐는지 확인하지 못했다(…)` · 요약 `결과 미확인(…)` | 재판정 자체가 일시 오류 · 다른 버전 | 지우지 말고 O-2로 본 뒤 재실행 |
+  | `STOP <경로> — 되읽기 실패(exit=…)` · `되읽기 응답을 해석하지 못했다(…)` | 쓰기는 됐다 — 되읽기만 실패 | 재실행이 복구다(O-2로 먼저 본다 — 꼴이 맞으면 건너뛴다) |
+  | `STOP <경로> — 되읽기 불일치(키 집합 불일치(…) · 해시 불일치(<키>) …)` | 저장 값이 블록이 보낸 값과 다르다 — patch면 보존 키(`client_id` 등)가 바뀌었을 수 있다(CLI 동작 변화 — patch 꼴은 이 블록이 처음이다 · VD-T075-11) | 더 시도하지 않고 컨트롤러에게 보고(블록 결함 후보) |
+  | `STOP <경로> — 쓰기 뒤 메타데이터가 current_version=<n> · 삭제 없음이 아니다(…)` | 값 대조는 끝났고 metadata만 어긋났다 | §4 T057 실패 표의 같은 행과 같다 |
+  | 요약 `결과 미확인(쓰기 진행 중 중단 …)` | 쓰기 도중 중지(Ctrl+C) | 지우지 말고 O-2로 본 뒤 재실행(그 실행의 값이 있으면 건너뛴다) |
+  | `FAIL <검사> — FAIL(<사유>)` · `gate=FAIL k/n`(O-3) | 게이트 미충족 — 사유는 키 이름 · 분류뿐(값 0) | `sentinel 그대로(W-2 미실행)` → 그 env의 W-2 · `dev 와 prod 가 같다` · `서로 다른 글자 16 미만(CSPRNG 값이 아니다 …)` → 사람 판정(이 블록으로 다시 쓰지 않는다) · `읽지 못했다 — error …` · `판정 불가` → 재실행 · 그 밖 → 컨트롤러에게 보고 |
+  | `FAIL <필드> = <값>(기대 …)` · `o4=FAIL k/14`(O-4) | `eso-prod` role · 정책이 선언(`infra/vault`)과 다르다(TTL · 바인딩 · 줄 추가) | 값은 비밀이 아니다 — 출력을 컨트롤러에게 붙인다 · 정례 `tofu -chdir=infra/vault plan`으로 drift를 보고 고치는 apply는 운영자가 한다 |
+- **기록 칸 A**(실행 뒤 컨트롤러가 채운다 — 날짜 · 시각(KST, Z 병기) · 값 · 해시 · 토큰은 적지 않는다):
+
+  | 항목 | 값 |
+  |---|---|
+  | O-2 — `INFO vault CLI` 줄 · `o2 W-2 전제:` 줄 · 판정 줄 | 2026-11-19 15:44 KST(06:44Z) 이전(L3) · `INFO vault CLI: Vault v2.1.0 (cb6a54f…), built 2026-08-31 · Application ~\AppData\Local\Microsoft\WinGet\Links\vault.exe` · `OK Vault 도달 · 초기화됨 · unsealed(seal type=ocikms · server 2.0.4)` · JUDGE 20줄 = 위 「경로 · 값」 표 「지금(기록)」 열과 행마다 일치 · `o2 W-2 전제: dev 10/10 · prod 10/10` · `판정: W-2 전제 충족(dev · prod)` |
+  | O-4 — 14행 · `o4=` 줄 | O-2와 같은 창(L3) · PASS 14줄(bound_service_account_names [eso-prod] · namespaces [external-secrets] · token_policies [eso-prod] · audience vault · ttl 3600 · max_ttl 14400 · type service · period 0 · explicit_max_ttl 0 · num_uses 0 · bound_cidrs [] · no_default_policy False · namespace_selector "" · policy eso-prod = `kv/data/prod/*` · `kv/metadata/prod/*` read) · `o4=PASS 14/14` |
+  | W-2 dev — 요약 4행 · 집계 줄 · 판정 줄 · 경고(클립보드) 유무 | 2026-11-19 · L6 끝(18:45:38 KST · 09:45:38Z) 뒤 · GP-2 머지(19:10:47 KST · 10:10:47Z) 전(블록이 시각을 찍지 않아 정확한 시각은 기록 없음) · 사용자 「진행」 뒤 PLAN 4 → `seed` · authentik `patch v2 · 되읽기 일치(jwks_url·issuer = 계약 값 · 보존 client_id·client_secret·api_token)`(VD-T075-11 PASS — kv patch 꼴 첫 실측) · webhooks `덮어씀 v2 · 되읽기 해시 일치(secret)` · django `생성 v1 · 되읽기 해시 일치(secret_key)` · sentry `생성 v1 · 되읽기 해시 일치(dsn)` · `이 실행이 kv 에 쓴 경로: 4건(검증 완료 4 · …) · 결과 미확인 0 · 건너뜀 0 · 중단 0 · 미실행 0` · `판정: dev 4경로 준비 완료` · 클립보드 경고 유무는 기록 없음 |
+  | O-3 dev — `gate=` 줄 | **`gate=PASS 21/21`**(2026-11-19 · GP-2 머지 전 — PASS 21줄 = 「실행 · 기대 출력」 4의 목록 그대로 · 면제 밖 `PLACEHOLDER-` 0(10경로)) |
+  | W-2 prod — 요약 4행 · 집계 줄 · 판정 줄 | 2026-11-20 · L13(10:26:52 KST · 01:26:52Z) 뒤 · GP-3 머지(12:33:46 KST · 03:33:46Z) 전(정확한 시각은 기록 없음) · 사용자 「진행」 뒤 `OK 대상 env = prod — 쓸 수 있는 경로 4` · PLAN 4 → `seed` · 요약 4행 = dev와 같은 꼴(authentik `patch v2` · webhooks `덮어씀 v2` · django `생성 v1` · sentry `생성 v1` — 모두 되읽기 일치) · `이 실행이 kv 에 쓴 경로: 4건(검증 완료 4 · …) · 결과 미확인 0 · 건너뜀 0 · 중단 0 · 미실행 0` · `판정: prod 4경로 준비 완료`(VD-T075-11 prod 몫 PASS) |
+  | O-3 prod — `gate=` 줄 | **`gate=PASS 23/23`** — dev와 같은 21줄(경로만 prod) + `PASS webhooks secret: dev 해시 ≠ prod 해시` · `PASS django secret_key: dev 해시 ≠ prod 해시` |
+
+#### B. Dragonfly ACL 재렌더 — UD-9 = B2(L6 · GP-2 전)
+
+- **무엇**: pod 사용자 줄에 B2 꼬리를 붙인다(UD-9 · 설계 D20) — identity-admin `~revoked:* ~identity-admin:* +@all -@admin -@dangerous -client` · sample-pod `%R~revoked:* ~sample-pod:* +@all -@admin -@dangerous -client` · admin `~* &* +@all` · default `USER default OFF +auth +hello`는 그대로. 사용자 비밀번호 5경로는 그대로 두고 acl 2경로만 W-6으로 다시 렌더한다(회전이 아니다). W-6은 렌더한 pod 사용자 줄마다 B2 꼬리를 단언하고 허용 토큰과 글자 단위로 대조한다(`cmd|sub` · `reset` · 허용 밖 카테고리 = 기동 무인증 꼴 — 쓰기 전 STOP). 렌더 꼴은 운영 digest Dragonfly 로컬 컨테이너로 기동 · `ACL LOAD` · NOPERM · 앱 경로까지 확인했다(VD-T075-17 — `t075-blocks/README.md`).
+- **언제**: L5(GP-1 머지) 뒤 · **GP-2 머지 전**. 지금 Dragonfly 소비자는 data-assert Job뿐이라 성공한 `ACL LOAD`가 모든 연결을 끊어도 영향이 0이다.
+- **규칙**: **재시작하지 않는다** — 실행 중 `ACL LOAD`가 실패하면 옛 규칙이 메모리에 남지만(안전) 같은 파일로 기동하면 무인증이다(aclfile 토큰 오류 → default nopass — UD-9 실측). pod 삭제 · `kubectl rollout restart`는 이 절에서 쓰지 않는다(§4 T057 「ACL 파일 갱신」 5단계는 아무도 AUTH하지 못했던 F12 전용). 단계마다 다시 보고 다음으로 간다.
+  - **재시작 요인 보류**(T075 보정 2026-11-17 · 리뷰 KA-7): **2단계부터 8단계의 prod O-6 사후 PASS까지 두 env 모두** Dragonfly 재시작 요인을 보류한다 — SUC 창(§6 — 일요일 03:00–05:00 KST) · 노드 B 작업 · pod 삭제 · rollout. 3단계가 두 env의 acl을 한 번에 B2로 쓰므로 그 뒤 마운트 파일은 그 env의 `ACL LOAD`(6단계 · prod는 8단계)로 아직 라이브 검증되지 않은 상태다 — 그 사이 재시작은 검증 전 파일로 기동한다. **L6 시작 전**에 SUC 다음 창과 노드 작업 일정을 보고(컨트롤러 agent-view `kubectl -n system-upgrade get plans` · 운영자 일정), 창과 겹치면 L6을 미룬다.
+  - **기대된 일시 상태**: dev `ACL LOAD`(6단계) 뒤 GP-A 머지 전에 data-assert가 다시 돌면(Job 재실행 · selfHeal) `acl-list`는 FAIL이다 — 옛 `acl-list`(identity-admin `ACL LIST` 허용 기대)가 B2(NOPERM)를 만난 것이다. 회귀가 아니다 — GP-A 머지 뒤의 재실행(8단계)이 판정한다.
+- **적용 순서**(설계 D20 · env마다 dev 먼저 — **2 · 3단계만 두 env를 한 번에 한다**: W-6은 T057 op1처럼 7경로를 함께 판정하므로 한 env의 acl만 지우면 다른 env의 옛 규칙 acl에서 STOP(쓰기 0)한다. prod의 메모리 규칙은 8단계의 prod `ACL LOAD` 전까지 바뀌지 않는다):
+  1. **O-6 사전**(`o6-pre-dragonfly-acl.ps1` · 두 env): 기대 = 두 행이 `… 4줄 · default 줄 정확 · admin 줄 꼴 정확 · identity-admin 꼬리 = 옛 규칙(+@all) · sample-pod 꼬리 = 옛 규칙(+@all) → FAIL(옛 규칙 — UD-9 적용 전이면 기대한 FAIL · 적용 뒤면 회귀)`(prod는 `3줄 · … · sample-pod 줄 없음(prod — 계약)`) · 요약 `o6-pre dev=FAIL(옛 규칙 …) prod=FAIL(옛 규칙 …)`. 다른 FAIL(`바이트: …` · `금지 꼴: …` · `줄 수 …` · `판정 불가 …` · `옛 규칙 꼬리 밖의 결함 — …` — 옛 꼬리를 B2로 바꿔도 남는 결함이 있다 · T075 보정 2026-11-17 · 리뷰 KA-3)이면 멈추고 컨트롤러에게 보고한다.
+  2. **acl 2경로 삭제**(`w6-acl-delete.ps1` — 새 프로세스로 두 번 · `kv/dev/dragonfly/acl` → `kv/prod/dragonfly/acl` · **한 번에 한 경로**): 정지점 ① 지울 경로(허용 목록 = 그 두 경로뿐 — 밖이면 root 토큰을 묻기 전에 멈춘다 · 사용자 · admin 경로는 이 블록으로 지울 수 없다) ② root 토큰 ③ 같은 경로 재타자(Ordinal — 다르면 지우지 않는다). 블록이 지우기 전에 live · 키 집합 = {`users.acl`}(값 미출력)을 보고, 지운 뒤 `No value found`로 확인한다. 기대(경로마다):
+
+     ```text
+     OK   kv/dev/dragonfly/acl — 모든 버전 · 메타데이터 삭제(No value found 확인 · 삭제) · 다음 = W-6(w6-render-dragonfly-acl.ps1 — 두 env 의 acl 을 지운 뒤 한 번 · 사용자 경로는 그대로)
+     acl-delete kv/dev/dragonfly/acl = OK(모든 버전 · 메타데이터 삭제 — No value found 확인 · 삭제) · 다음 = W-6
+     ```
+
+     이미 없으면 `acl-delete <경로> = 이미 없음(absent — 지울 것이 없다) · 다음 = W-6(…)`(성공). **T057 ② 삭제 블록(`[t057-cleanup-delete]`)은 쓰지 않는다**(T075 보정 2026-11-17 · 리뷰 KB-3 · KA-5 — 그 허용 목록은 사용자 · admin 경로까지라 잘못 치면 영구 삭제되고, 그 OK 줄은 op1(옛 판) 재실행을 안내한다). 「머지 전에만 지운다」(§4 T057 「정리 판단」)의 예외인 까닭: acl은 그 env 사용자 비밀번호(kv 사용자 경로 — 그대로 둔다)의 SHA-256으로 만든 파생값이라 3단계 W-6이 같은 비밀번호로 다시 렌더한다 — 잃는 값이 없다. 삭제와 재렌더 사이에 ESO 주기가 끼면 ES가 잠시 `SecretSyncedError`다(Secret은 `Retain` — 돌고 있는 pod 영향 0).
+  3. **W-6**(`w6-render-dragonfly-acl.ps1`): 정지점 ① root 토큰 ② 쓸 경로 목록이 acl 2경로뿐인지 본 뒤 `seed`. 기대(하네스 S37b · CH-02 — 2단계 삭제 블록 두 번 뒤):
+
+     ```text
+     INFO vault CLI: Vault v… · Application ~\…\vault.exe — JSON stdin 형식은 T045 · T054 · T056 블록, 줄바꿈(LF)이 든 값(users.acl)의 왕복은 T057 블록(2026-10-22 시드 · 「ACL 파일 갱신」)의 되읽기 해시 일치로 CLI v2.1.0 에서 확인했다(…)
+     OK   Vault 도달 · 초기화됨 · unsealed(seal type=ocikms · server 2.0.4)
+     OK   토큰 정책에 root 포함 — 판정(읽기 전용)을 시작한다
+     SKIP kv/dev/dragonfly/admin — live-ok(…)
+     SKIP kv/dev/dragonfly/identity-admin — live-ok(…)
+     SKIP kv/dev/dragonfly/sample-pod — live-ok(…)
+     PLAN kv/dev/dragonfly/acl — absent → 생성 예정
+     SKIP kv/prod/dragonfly/admin — live-ok(…)
+     SKIP kv/prod/dragonfly/identity-admin — live-ok(…)
+     PLAN kv/prod/dragonfly/acl — absent → 생성 예정
+     판정 결과: 생성 예정 2 · 건너뜀(live-ok) 5 · 중단 0
+
+     쓸 경로 2개(이 순서로 쓴다) — …:
+       - kv/dev/dragonfly/acl  (키 users.acl · dev 사용자 비밀번호의 SHA-256 으로 렌더(pod 사용자 줄 = B2 꼬리) — …)
+       - kv/prod/dragonfly/acl  (키 users.acl · prod 사용자 비밀번호의 SHA-256 으로 렌더(pod 사용자 줄 = B2 꼬리 · sample-pod 없음) — …)
+     OK   kv/dev/dragonfly/acl v1 — 생성 · 되읽기 해시 일치(users.acl)
+     OK   kv/prod/dragonfly/acl v1 — 생성 · 되읽기 해시 일치(users.acl)
+
+     --- T075 W-6 Dragonfly ACL 렌더(B2) 결과 요약(값 없음 — 런북 bootstrap.md §4 T075 기록 칸에 그대로 기록) ---
+     …(7행 — 건너뜀(live-ok …) 5 · 생성 v1 · 되읽기 해시 일치(users.acl) 2)
+     이 실행이 kv 에 새로 쓴 경로: 2건(생성·검증 완료 2 · …) · 결과 미확인 0 · 건너뜀 5 · 중단 0 · 미실행 0
+     판정: kv 7경로 준비 완료(생성 또는 live-ok · acl = B2 렌더) — 이 출력을 컨트롤러에게 붙인다 · 다음 = 런북 bootstrap.md §4 T075 적용 순서 4단계(…)
+     ```
+
+     사용자 경로가 `PLAN`(생성 예정)으로 나오면 `seed`를 입력하지 않는다(Ctrl+C = 쓰기 0 — 사용자 경로가 없어졌다 = 새 비밀번호 = 회전이 된다 · 컨트롤러에게 보고). 직후 O-6 사전을 다시 돌리면 `o6-pre dev=PASS(B2) prod=PASS(B2)`다(선택 — kv만 본다). **3단계가 끝난 시각(UTC — 마지막 `OK … acl v1` 줄을 본 때 · `[DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')`)을 기록 칸 B에 적는다** — W-6은 시각을 찍지 않는다 · 4단계 `REFRESH` 판정의 기준이다(T075 보정 2026-11-17 · 리뷰 KA-9).
+  4. **ESO 갱신 확인**(dev): 빠른 길 = 창 B(관리자 kubeconfig — `--kubeconfig` 직접)의 `force-sync` 어노테이션 · 기다리는 길 = ESO 주기(`refreshInterval` 5m):
+
+     ```powershell
+     $kc = "$HOME\.kube\joshuatech-admin.yaml"
+     $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+     kubectl --kubeconfig $kc -n data annotate externalsecret dragonfly-dev-acl "force-sync=$ts" --overwrite
+     ```
+
+     판정(agent-view — 값은 보지 않는다): `kubectl -n data get externalsecret dragonfly-dev-acl -o custom-columns='NAME:.metadata.name,REFRESH:.status.refreshTime,SYNCED_RV:.status.syncedResourceVersion'`와 `kubectl -n data get externalsecret dragonfly-dev-acl` → STATUS `SecretSynced` · READY `True` · `REFRESH`가 3단계 끝 시각(기록 칸 B — UTC)보다 뒤(§4 T057 「ACL 파일 갱신」 4와 같은 판정).
+  5. **kubelet 반영**(dev — 창 B · 읽기 · 관리자 kubeconfig를 명령에 직접 — 새 창이면 `$kc`부터):
+
+     ```powershell
+     $kc = "$HOME\.kube\joshuatech-admin.yaml"
+     kubectl --kubeconfig $kc -n data exec deploy/dragonfly-dev -c dragonfly -- ls -la /etc/dragonfly
+     ```
+
+     → `..data -> ..<YYYY_MM_DD_HH_MM_SS.…>` 링크 대상 이름의 시각(UTC)이 **데이터가 바뀐 동기화**(그 env의 acl을 W-6이 쓴 직후의 첫 `SecretSynced`)보다 뒤(T075 보정 2026-11-20 — 이전 문구 「4단계 `REFRESH`보다 뒤」). 기준은 가장 최근 `REFRESH`가 아니다 — 데이터가 바뀌지 않은 동기화는 새 `..data`를 만들지 않는다: 2026-11-19 prod에서 데이터가 바뀐 동기화 08:13:28Z(추론 — `..data` 08:13:47Z로 확인 · 17:13:28 KST · 근거 = 그 시각의 `SecretSynced` 성공 · W-6 prod 쓰기 직후 — 3단계 끝으로 적은 08:13:32Z(17:13:32 KST)보다 4초 앞) 뒤에 `..data` 08:13:47Z(17:13:47 KST)가 생겼고, 그 뒤 데이터 변화 없는 `REFRESH` 08:18:28Z(17:18:28 KST) 뒤에는 새 `..data`가 없었다(build-notes 「T075 라이브 결과」 발견 「ESO 데이터 변화 동기화 ≠ REFRESH」). 그래서 `..data`가 가장 최근 `REFRESH`보다 앞이어도 데이터가 바뀐 동기화보다 뒤면 반영된 것이다. 명령이 실패하면(이미지에 `ls`가 없다) `REFRESH` 뒤 2분 이상 기다린다. 볼륨은 `items`(subPath 아님)라 kubelet이 파일을 바꾼다 — 실행 중인 Dragonfly는 6단계 전까지 옛 규칙 그대로다.
+  6. **admin `ACL LOAD`**(dev — **먼저 · 재시작 아님**): `…\w6-acl-load.ps1` → ① `dev` ② root 토큰 ③ 보낼 명령을 본 뒤 `load-dev`. admin 비밀번호는 블록이 kv에서 읽어 `kubectl exec -i`의 stdin으로만 `redis-cli --askpass`에 준다(argv · 화면 · 파일 · 클립보드 0 — 사람이 칠 수 없는 값이라 블록이다). 기대:
+
+     ```text
+     INFO vault CLI: Vault v… · Application ~\…\vault.exe · kubectl Application ~\…\kubectl.exe — 변경 = admin ACL LOAD 1회뿐(재시작 0)
+     OK   Vault 도달 · 초기화됨 · unsealed(seal type=ocikms · server 2.0.4)
+     OK   ACL LOAD env = dev(deploy/dragonfly-dev · ns data)
+     OK   토큰 정책에 root 포함 · kv/dev/dragonfly/admin 읽음(값 미출력) · VAULT_TOKEN 지움
+
+     보낼 명령 1개: kubectl --kubeconfig <관리자 kubeconfig> -n data exec -i deploy/dragonfly-dev -c dragonfly -- redis-cli --user admin --askpass ACL LOAD(비밀번호는 stdin 으로만)
+       성공하면 Dragonfly 의 모든 연결이 끊긴다(소비자는 다시 붙는다) · 실패하면 옛 규칙이 메모리에 남는다(안전) — 어느 쪽이든 재시작하지 않는다
+     OK   dragonfly-dev ACL LOAD — OK · 다음 = O-6 사후(o6-post-dragonfly-dryrun.ps1) dev
+
+     --- T075 W-6 ACL LOAD 결과(env=dev · 비밀번호 · 해시 없음 — 런북 bootstrap.md §4 T075 기록 칸에 그대로 기록) ---
+     acl-load dev = OK(admin ACL LOAD — 마운트 aclfile 을 다시 읽었다 · 모든 연결이 끊겼다)
+     ```
+
+     `INFO` 줄의 kubectl 경로(`Application` · `kubectl.exe`로 끝나는가)를 root 토큰을 붙이기 전에 본다. 블록은 kv에서 admin 비밀번호를 읽은 직후 `VAULT_TOKEN`을 env에서 지운다 — kubectl 자식 프로세스 env에 root 토큰이 가지 않는다(T075 보정 2026-11-17 · 리뷰 KB-4 · O-6 사후도 같다).
+
+  7. **O-6 사후**(dev): `…\o6-post-dragonfly-dryrun.ps1` → ① `dev` ② root 토큰. 기대:
+
+     ```text
+     PASS ACL DRYRUN identity-admin ACL LIST → 거부(This user has no permissions to run the 'ACL LIST' command) · 기대 거부
+     PASS ACL DRYRUN identity-admin REPLICAOF NO ONE → 거부(This user has no permissions to run the 'REPLICAOF' command) · 기대 거부
+     PASS ACL DRYRUN identity-admin CLIENT LIST → 거부(This user has no permissions to run the 'CLIENT' command) · 기대 거부
+     PASS ACL DRYRUN identity-admin GET revoked:sub:x → 허용(OK) · 기대 허용
+     PASS ACL DRYRUN identity-admin SET identity-admin:x 1 → 허용(OK) · 기대 허용
+     PASS ACL DRYRUN sample-pod SET revoked:sub:x 1 → 거부(This user has no permissions to run the 'SET' command) · 기대 거부
+     PASS ACL DRYRUN sample-pod CLIENT KILL ID 1 → 거부(This user has no permissions to run the 'CLIENT' command) · 기대 거부
+     o6-post dev=PASS 7/7
+     ```
+
+     DRYRUN은 명령을 실행하지 않는다(라이브에 `REPLICAOF`를 보내지 않는다) · `ACL GETUSER`(해시를 보인다) · `MONITOR`(AUTH 평문)는 쓰지 않는다.
+  8. **prod**: 1(O-6 사전 — 기대 `prod=PASS(B2)` · kv는 3단계에서 이미 B2) → 4–7을 prod로(`dragonfly-prod-acl` · `deploy/dragonfly-prod` · `load-prod` · 기대 `o6-post prod=PASS 5/5` — prod에는 `sample-pod` 사용자가 없어 그 두 행이 없다). 그다음 GP-A 머지(운영자 · 관문 skip) → 완료된 data-assert Job 삭제(운영자 · 창 B · 관리자 kubeconfig를 명령에 직접 — gitops `platform/policies/tests/README.md` §재실행 모델 · T075 보정 2026-11-17 · 리뷰 KA-6):
+
+     ```powershell
+     $kc = "$HOME\.kube\joshuatech-admin.yaml"
+     kubectl --kubeconfig $kc -n jt-dev delete job data-assert
+     ```
+
+     → selfHeal(≤ 3분)이 Job을 다시 만든다(삭제 시각을 기록 칸 B에) → 컨트롤러(agent-view): `kubectl -n jt-dev get job data-assert`(COMPLETIONS `1/1`) · `kubectl -n jt-dev logs job/data-assert` → 7 id PASS(`acl-list` = identity-admin의 `ACL LIST` → `NOPERM` — B2 꼬리가 빠지면 FAIL하는 회귀 탐지기). **L6 완료 = dev · prod O-6 사후 PASS + data-assert 7 id PASS** — 이 출력을 컨트롤러에게 붙인다(GP-2 머지 선행 조건).
+- **실패 갈래**:
+  - **W-6 `STOP <acl 경로> — live-mismatch: 옛 규칙 acl — pod 사용자 줄에 B2 꼬리(…)가 없다(…)`**: 2단계를 건너뛰었다 — 쓰기 0 · 옛 acl을 덮어쓰지 않았다(하네스 S37a). 2단계(그 acl 경로 삭제) 뒤 재실행.
+  - **W-6 `STOP <acl 경로> — 렌더한 acl 이 허용 꼴이 아니다(…) · put 전 중단(쓰기 0)`**: 렌더 대조 실패 — 블록 결함이다(하네스 S38). 더 시도하지 않고 컨트롤러에게 보고한다(앞 env의 acl은 썼을 수 있다 — 요약 표).
+  - **`acl-load <env> = 실패(ACL LOAD 응답 = …)`**: 옛 규칙이 메모리에 남는다(안전). **재시작하지 않는다.** 마운트 파일은 다음 기동에서 무인증이 될 수 있는 상태이므로 Dragonfly 재시작 요인을 멈춘다 — SUC 창 · 노드 작업 보류(**두 env 모두** — 3단계가 두 env의 acl을 같은 렌더로 썼다). 그다음 둘 중 하나:
+    - ① W-6 정정 → 하네스 → 2 · 3단계(재렌더) → 4–7.
+    - ② ①이 늦으면 **사용자 확인 뒤에만** acl을 T057 op1(옛 판 · 라이브에서 형식이 검증된 판)로 되돌린다: 2단계(acl 경로 삭제 — `w6-acl-delete.ps1` · kv에 W-6의 acl이 있으면 op1이 `acl 내용 불일치`로 멈춘다 · 그 성공 줄의 「다음 = W-6」은 이 갈래에서는 op1로 읽는다) → op1 실행(사용자 경로 `SKIP … live-ok` · acl `absent → 생성`) → 4 · 5단계 반영 확인 → admin `ACL LOAD` → O-6 사전(기대 = 「옛 규칙」 FAIL — 사후 DRYRUN은 B2 기대라 돌리지 않는다). `metadata delete` 뒤라 `kv rollback`은 쓸 수 없다.
+  - **`acl-load <env> = 실패(admin AUTH 실패 …)`** · O-6 사후 `판정 불가(admin AUTH 실패 …)`: kv의 admin 비밀번호가 라이브 aclfile과 다르다(회전 반쪽 등) — LOAD는 가지 않았다. 컨트롤러에게 보고한다.
+  - **`acl-load <env> = 결과 미확인(kubectl exec exit=… — ACL LOAD 가 Dragonfly 에 닿았는지 모른다 · O-6 사후로 라이브 규칙을 본다)`**(T075 보정 2026-11-17 · 리뷰 KB-10): kubectl이 실패했다 — LOAD가 닿기 전에 끊겼는지 뒤에 끊겼는지 모른다(성공한 LOAD도 모든 연결을 끊는다). **O-6 사후로 본다**: `o6-post <env>=PASS`면 LOAD가 닿았다(다음 단계로) · 옛 규칙 FAIL이면 관리자 kubeconfig · pod 상태(`kubectl -n data get pod -l app.kubernetes.io/name=dragonfly` — agent-view)를 본 뒤 6단계를 다시 한다. O-6 사후도 `kubectl exec 실패`면 같은 확인 뒤 다시 본다. 재시작하지 않는다.
+  - **O-6 사후 FAIL인데 LOAD는 OK**(`o6-post <env>=FAIL k/n — ACL LOAD 가 OK 였다면 마운트 파일이 아직 옛 내용이었다(5단계 미반영)`): 5단계를 다시 보고 기다린 뒤 6–7을 다시 한다.
+- **기록 칸 B**(실행 뒤 컨트롤러가 채운다 — 날짜 · 시각(KST, Z 병기) · 비밀번호 · 해시 · acl 내용 · 토큰은 적지 않는다):
+
+  | 항목 | 값 |
+  |---|---|
+  | L6 전 — SUC 다음 창 · 노드 작업 일정(겹침 없음 확인 · 「규칙」 재시작 요인 보류) | 2026-11-19 17:07 KST(08:07Z) · SUC 다음 창 = 2026-11-22(일) 03:00 KST(11-21 18:00Z) — gitops main plan 창 일요일 03:00–05:00 KST(agent-view는 plans 조회 Forbidden) · 오늘 L6와 겹치지 않음 · 두 노드 v1.36.6 + plan 해시 라벨(대기 업그레이드 없음) · 노드 작업 일정은 운영자에게 물었다(회신 내용은 기록 없음) · Dragonfly 기준선 dev · prod pod Running · 재시작 0(노드 joshtech-cache) · 재시작 요인 보류 = 2단계 ~ prod O-6 사후 PASS(아래 8 행) |
+  | 1 O-6 사전(전) — `o6-pre` 줄 | `o6-pre dev=FAIL(옛 규칙 — UD-9 적용 전이면 기대한 FAIL · 적용 뒤면 회귀) prod=FAIL(옛 규칙 — …)` — 기대한 FAIL(dev 4줄 · prod 3줄 · pod 사용자 꼬리 = `+@all`) · 다른 결함 0 · Vault v2.1.0 |
+  | 2 acl 삭제(`w6-acl-delete.ps1`) — `acl-delete <경로> =` 줄 2개(dev · prod) | 사용자 「진행」 확인 뒤 · `acl-delete kv/dev/dragonfly/acl = OK(모든 버전 · 메타데이터 삭제 — No value found 확인 · 삭제) · 다음 = W-6` · `acl-delete kv/prod/dragonfly/acl = OK(…) · 다음 = W-6` |
+  | 3 W-6 — 요약 7행 · 집계 줄 · 판정 줄 · `INFO vault CLI` 줄 · **끝 시각(UTC)** | SKIP 5(live-ok — dev admin · identity-admin · sample-pod · prod admin · identity-admin) · `OK kv/dev/dragonfly/acl v1 — 생성 · 되읽기 해시 일치(users.acl)` · `OK kv/prod/dragonfly/acl v1 — 생성 · 되읽기 해시 일치(users.acl)` · `이 실행이 kv 에 새로 쓴 경로: 2건(생성·검증 완료 2 · …) · 결과 미확인 0 · 건너뜀 5 · 중단 0 · 미실행 0` · `판정: kv 7경로 준비 완료(생성 또는 live-ok · acl = B2 렌더)` · `INFO vault CLI` 줄은 기록 없음 · **끝 시각 2026-11-19T08:13:32Z(17:13:32 KST)** |
+  | 4–5 dev — ES STATUS · `refreshTime` · `syncedResourceVersion` · `..data` 시각 | 기다리는 길(force-sync 없음) · `dragonfly-dev-acl` SecretSynced True · REFRESH 2026-11-19T08:15:35Z(17:15:35 KST — 3단계 끝 뒤) · SYNCED_RV `1-c60f6262…`(ES 객체 기준 — 데이터와 무관하게 같다) · `..data -> ..2026_11_19_08_15_45.…`(17:15:45 KST · 08:15:45Z — REFRESH 10초 뒤) |
+  | 6–7 dev — `acl-load dev =` 줄 · `o6-post dev=` 줄 | 사용자 「진행」 확인 뒤 · kubectl = Docker Desktop 동봉판(`Application` · `kubectl.exe`) · `acl-load dev = OK(admin ACL LOAD — 마운트 aclfile 을 다시 읽었다 · 모든 연결이 끊겼다)` · `o6-post dev=PASS 7/7` · 17:22:31 KST(08:22:31Z) Dragonfly 두 pod 재시작 0 · 두 ES `lastTransitionTime` 2026-10-22 그대로(삭제 · 재렌더 사이 SecretSyncedError 전이 0) |
+  | 8 prod — `o6-pre` 줄 · ES · `..data` · `acl-load prod =` · `o6-post prod=` | `o6-pre dev=PASS(B2) prod=PASS(B2)` · `dragonfly-prod-acl` 데이터가 바뀐 동기화 = 08:13:28Z(17:13:28 KST — W-6 prod 쓰기 직후의 첫 SecretSynced · 3단계 끝 기록보다 4초 앞) · 그 뒤 REFRESH 17:18:28 KST(08:18:28Z)는 데이터 변화 없음 · `..data -> ..2026_11_19_08_13_47.…`(17:13:47 KST · 08:13:47Z — 데이터가 바뀐 동기화 19초 뒤 · 5단계 보정 참조) · 사용자 「진행」 확인 뒤 `acl-load prod = OK(…)` · `o6-post prod=PASS 5/5` → UD-9 B2 두 env 적용 끝 · 재시작 요인 보류 해제 |
+  | GP-A 머지(커밋 · 시각) · Job 삭제 시각(8단계 명령) · 다시 만든 Job COMPLETIONS · data-assert 7 id 결과(`acl-list` = NOPERM) | gitops PR #61(head d76a5d980195bf5d0a61e71385de136e83e46d5d — `gh pr update-branch`로 갱신 · CI 17:50:15 KST(08:50:15Z) CLEAN) · 사용자 「머지」 뒤 squash → main `6729cf04f4b05017bdfc6278eeeb307b71c591e7` · 2026-11-19 18:43:44 KST(09:43:44Z) · platform-tests sync Unknown(ComparisonError — 서버 측 diff · 예정된 8단계 Job 삭제로 풀림 — §3 T075 기록 칸 「복구」 행) · Job 삭제 = §4 T075 B 8단계에 예정된 명령 그대로(운영자 · 18:45 KST 무렵(09:45Z 무렵)) → 새 Job 18:45:33 KST(09:45:33Z) 생성 · 18:45:38 KST(09:45:38Z) 끝 · succeeded 1 · `SUMMARY: pass=13 fail=0` — Dragonfly 7 id(`noauth` · **`acl-list` = NOPERM** · `writer-set` · `reader-get` · `reader-set-denied` · `reader-cross-denied` · `noperm`) PASS |
+
+### T076 — tester-m2m 자격 경로(UD-15 · UD-16): 음성 대조 O-10 · Vault 정책 plan/apply · kv 시드 W-7
+
+> **라이브 전(T076 보정 2026-11-20 — 새 절).** 실행 순서 · 창 · tester 디스패치 · 관찰은 §3 T076, 결정 정본은 `specs/003-platform-foundation/design/t076-design.md`(D2 · D3 · D7 · D14), 블록 정본 · 결정 대응 · 하네스 결과 · 남은 위험은 `specs/003-platform-foundation/design/t076-blocks/README.md`다. 이 절의 세 단계는 라이브 창 ①에서 이 순서로만 돈다(§3 T076 ①-2 → ①-5) — **O-10이 PASS가 아니면 2 · 3으로 가지 않는다.**
+
+- **사전**(§4 T075 「사전」 1–4와 같다): 창 D 창 시작 체크리스트(`vault-unseal.md` §0 — `SaveNothing` · 전사 없음 · 클립보드 기록 0 · 모듈 로깅 정책 0 · 실효 상태 0 — 켜져 있으면 블록이 아무것도 묻기 전에 멈춘다)의 마지막 줄(`$env:KUBECONFIG`)은 건너뛴다(관리자 kubeconfig 경로는 블록 README 「실행 꼴」을 따른다 — T075 블록 관례는 `--kubeconfig "$HOME\.kube\joshuatech-admin.yaml"`을 명령에 직접) · 창 C port-forward `18200:8200` · 창 D `Get-ChildItem Env:VAULT_*` 없음 · `~/.vault-token` 없음. 블록은 **파일로만**, 인자 없이 실행한다(`pwsh -NoProfile -File <절대 경로>` · 붙여 넣기 금지 — 새 프로세스 · 남는 인자가 있으면 블록이 외부 호출 0으로 멈춘다). 정지점(가려진 입력 · 타자 단어 — O-10 `probe` · W-7 root 토큰 → `seed` · §3 T076 블록 표 「정지점(입력 순서)」 · T076 보정 2026-11-20 · 리뷰 RO-06)은 블록이 화면에 안내한다 — 출력을 읽은 사람이 입력해야 다음으로 간다.
+- **바뀌는 것**(값은 W-7이 tofu 출력에서 옮긴다 · 이 표에 값은 없다):
+
+  | 대상 | 지금(기록) | T076이 할 일 |
+  |---|---|---|
+  | 정책 `e2e-reader` | `kv/data/platform/authentik/e2e` read 1줄(T044) | + `kv/data/platform/access/tester-m2m` read 1줄(정확한 경로 · 와일드카드 0 · metadata 0) |
+  | 정책 `eso-platform` | `kv/data/platform/*` · `kv/metadata/platform/*` read | + `kv/data/platform/access/*` · `kv/metadata/platform/access/*` deny 2줄(「ESO 밖」을 Vault ACL로 강제 — 더 긴 경로가 이긴다 · 나머지 `platform/*` 읽기 그대로) |
+  | kv `kv/platform/access/tester-m2m` | 없음(T045 이연 — 비밀번호 관리자 사본만 · §1 T011) | W-7 — 키 정확히 둘 `client_id` · `client_secret`(`-cas=0` · JSON stdin) |
+
+1. **O-10 — 음성 대조(관찰 · 쓰기 0 · §3 ①-2)**: `pwsh -NoProfile -File D:\code\joshuatech_ver2\specs\003-platform-foundation\design\t076-blocks\o10-vault-audience-negative.ps1`. 블록이 관리자 kubeconfig로 audience 없는 agent-view 토큰(`--duration=10m`)을 변수로만 받고, 보내기 전에 무자격 `sys/seal-status`로 `cluster_name` = `vault-cluster-d3b29227`(§3 T044 「git 밖 라이브 상태」)을 확인한 뒤 e2e-reader 로그인(`POST /v1/auth/kubernetes/login`)에 넣는다(정지점 `probe`를 지난 뒤에만). **거부돼야 PASS** — 끝 줄 `o10=PASS 로그인 거부(코드 · errors 첫 줄) …`(VD-T076-1). 로그인이 통과하면(= 에이전트의 8h kubeconfig 토큰이 이미 Vault 자격) 블록이 받은 Vault 토큰을 그 자리에서 revoke하고 `o10=FAIL 로그인 통과(…) … revoke-self <결과> …`를 낸다 → **멈춘다**(2 · 3 진행 안 함 · 사용자 보고). 끝 줄(`o10=` 줄)은 컨트롤러에게 붙인다 — 컨트롤러는 그 줄을 본 뒤에만 2의 plan을 확인한다(`o10=PASS`면 errors 첫 줄이 audience 거부인지도 본다 — §3 T076 ①-2 · T076 보정 2026-11-20 · 리뷰 RO-07).
+2. **정책 plan → 컨트롤러 확인 → apply → plan 파일 삭제(§3 ①-3 · ①-4)** — `infra/vault/backend.tf` 머리 절차 · `vault-unseal.md` 「정례 드리프트 확인」과 같은 창 D(root 토큰은 환경 변수로만 — `vault-unseal.md` §0 절대 규칙 1):
+
+   ```powershell
+   $env:VAULT_ADDR = 'http://127.0.0.1:18200'
+   $env:VAULT_TOKEN = (Read-Host -AsSecureString 'VAULT_TOKEN' | ConvertFrom-SecureString -AsPlainText).TrimEnd("`r", "`n")   # PM에서 붙여넣기
+   Set-Clipboard -Value ' '
+   $env:AWS_REQUEST_CHECKSUM_CALCULATION = 'when_required'
+   tofu -chdir=D:/code/joshuatech_ver2/infra/vault init
+   tofu -chdir=D:/code/joshuatech_ver2/infra/vault plan "-out=t076.tfplan"
+   ```
+
+   - 기대 요약: `vault_policy.this["e2e-reader"]` · `vault_policy.this["eso-platform"]` **in-place update 2** · `Plan: 0 to add, 2 to change, 0 to destroy.` 요약(리소스 주소 · 개수 — 정책 본문 diff는 비밀이 아니다)을 컨트롤러에게 붙인다. 그 밖의 변경 · add · destroy가 하나라도 있으면 apply하지 않는다(plan 파일 삭제 → 컨트롤러 · 사용자 판정 — destroy는 `.claude/rules/infra.md` 「OpenTofu」).
+   - 컨트롤러의 「plan 확인됨(in-place update 2 · 그 밖 0)」 줄 **뒤에만**:
+
+   ```powershell
+   tofu -chdir=D:/code/joshuatech_ver2/infra/vault apply t076.tfplan     # 기대: Apply complete! Resources: 0 added, 2 changed, 0 destroyed.
+   Remove-Item D:\code\joshuatech_ver2\infra\vault\t076.tfplan            # plan 파일은 인가 지도다 — 로컬에 남기지 않는다(vault-unseal.md §0 절대 규칙 5)
+   Remove-Item Env:VAULT_TOKEN, Env:VAULT_ADDR                             # W-7은 VAULT_* 가 없는 창에서 돈다(토큰은 블록이 tofu 다음에 묻는다 — 설계 D2-1)
+   ```
+
+   - apply 뒤의 정책 판정은 컨트롤러가 Vault에 로그인해 보지 않는다 — tester 2차의 O-8이 읽기 전에 `sys/capabilities-self`로 본다(VD-T076-9 · 설계 D2-6).
+3. **W-7 — kv 시드(변경 · §3 ①-5)**: `pwsh -NoProfile -File D:\code\joshuatech_ver2\specs\003-platform-foundation\design\t076-blocks\w7-seed-tester-m2m.ps1`. 순서(설계 D2-1 · T075 `w2-kv-seed.ps1` 원칙 (a)–(h) 그대로): ① tofu `infra/cloudflare` 출력 `service_tokens`의 `tester-m2m`에서 `client_id` · `client_secret` 둘만 변수로 받아 꼴을 판정한다(id `\A[0-9a-f]{32}\.access\z` · secret `\A[0-9A-Za-z_-]{54}\z` — T075 L4 실측 꼴 · tofu 실행 중 `VAULT_TOKEN` 0) ② Vault 도달(`vault status` — 초기화 · unsealed · `cluster_name` = `vault-cluster-d3b29227` — 리뷰 S-09)을 본 뒤에만 Vault root 토큰을 묻는다(정지점 — 가려진 입력) ③ `kv/platform/access/tester-m2m`의 상태(absent · live · dead)를 판정한다 ④ absent면 정지점 `seed`를 거쳐 `-cas=0`으로 쓴다(JSON stdin · 키 정확히 둘) — live면 저장값과 SHA-256 Ordinal 비교: 같으면 쓰지 않고 건너뛰고 다르면 멈춘다(회전 = T084) · dead(soft-delete · destroy · v0)도 멈춘다 ⑤ 되읽어 `current_version` +1 · 키 집합 · 해시 일치를 판정한다(값 · 해시 출력 0) · 응답 유실이면 재판정한다. 기대 끝 줄(T076 보정 2026-11-20 · 리뷰 C-07 · RO-06): `w7=OK absent→v1`(첫 실행 — 응답 유실 뒤 재판정으로 확인했으면 `w7=OK absent→v1 · 응답 유실 뒤 재판정(…)`) · 재실행이면 `w7=SKIP live-same` · 그 밖은 `w7=STOP <요약 행>`(아래 실패 표). 그다음 창 정리는 끝 줄로 가른다(리뷰 RO-03 · RO2-02): `w7=OK …` · `w7=SKIP live-same`이면 끝 줄의 창 정리 안내(`창 정리(T076 — 런북 bootstrap.md §3 T076 ①-5): …` — 창 C만 닫는다)를 따른다 — 창 A 터널 · 창 D는 유지(§3 T076 ②-3 · ④-1 · ④-3 · ⑤에 쓴다) · `w7=STOP …`이면 창 C를 닫지 않는다(블록도 그 안내 `창 정리(T076 — 런북 bootstrap.md §4 T076 실패 표): …`를 낸다 — 아래 실패 표 조치(재실행 · 버전 이력 · `cluster_name` 조사)에 18200이 필요하다).
+- **실패 시**(값 · 해시 · 토큰은 어디에도 나오지 않는다 · 출력 열은 끝 줄 꼴 — `…`는 블록이 채운다 · 정확한 문구는 블록 README · T076 보정 2026-11-20 · 리뷰 C-07 · RO-06 · RO-07 · S-07 · S-09):
+
+  | 출력(끝 줄) | 뜻 | 조치 |
+  |---|---|---|
+  | `o10=FAIL 로그인 통과(…) … revoke-self <결과> …` | audience 없는 agent-view 토큰이 e2e-reader에 로그인됐다 — 8h kubeconfig 토큰이 Vault 자격이라는 뜻(VD-T076-1 어긋남) | **멈춘다** — 2 · 3으로 가지 않는다. 끝 줄(revoke 결과 포함)을 컨트롤러에게 붙이고 사용자에게 보고(role `e2e-reader`의 audience · bound 설정 조사 — `infra/vault/roles.tf`) |
+  | `o10=FAIL 판정 불가(…)` — 보내기 전(첫 해석 가림 · 토큰 발급 · 클레임 · seal-status: Vault 미도달 · sealed · `cluster_name` 다름) | JWT를 보내지 않았다 | 창 C · 관리자 kubeconfig · 터널을 확인한 뒤 재실행 · 첫 해석 가림(`kubectl` · `curl.exe`가 같은 이름의 함수 · 별칭 · 프로필 정의)이면 그 정의를 걷어낸 새 창에서 · `cluster_name`이 다르면 멈추고 보고(다른 Vault다) · 클레임 사유가 `aud 에 vault 가 있다(…) — 음성 대조가 성립하지 않는다`면 다시 돌리지 않고 멈추고 보고(음성 대조 불성립 — 사람 판정 · T076 보정 2026-11-20 · 리뷰 rv2C-01) |
+  | `o10=FAIL 판정 불가(로그인 응답 — 코드 <c> · …)` — `<c>` = 5xx · 200(client_token 없음) · 4xx(auth 객체 있음) 등(T076 보정 2026-11-20 · 리뷰 RO2-03 · rv2C-01) | 로그인을 한 번 보냈고 받은 토큰은 0 — 거부(4xx · auth 없음)도 통과(client_token)도 아닌 응답 — VD-T076-1 미판정 | 한 번 다시 돌린다. 같으면 **멈추고** 끝 줄을 컨트롤러 · 사용자에게 넘긴다 — VD-T076-1 판정은 사람 몫이다(몇 번을 다시 돌려도 같다 · 2 · 3으로 가지 않는다) |
+  | `o10=FAIL 판정 불가(로그인 응답 — curl exit=… …)`(응답 유실 · 시간 초과) | 로그인이 닿았는지 모른다 — 받은 토큰 0(보낸 것은 10분 토큰) | 다시 돌린다 |
+  | `o10=FAIL 판정 불가(인자 <n>개 — …)` · `w7=STOP 인자 <n>개(…) — 미실행(…)`(남는 인자 · 외부 호출 0 — 정확한 글자는 블록 README) | 파일 실행에 인자가 붙었다 — 아무것도 하지 않았다 | 인자 없이 다시 돌린다(모드 · 확인은 정지점에서 고른다) |
+  | plan 요약이 기대(in-place 2)와 다름 | drift 또는 다른 변경이 섞였다 | apply하지 않는다 · plan 파일 삭제 · 출력을 컨트롤러에게(`vault-unseal.md` 「정례 드리프트 확인」으로 원인 조사) |
+  | apply 오류 | 정책 갱신이 일부만 됐을 수 있다 | 다시 plan(2) → 컨트롤러 확인 → apply. 같은 오류가 반복되면 멈춘다 |
+  | `w7=STOP 미실행(자격 꼴 아님 — …)` | tofu 꼴 판정 FAIL — `service_tokens`의 `tester-m2m`이 기대 꼴이 아니다(값 미출력) · Vault 토큰을 묻지 않았다 · 쓰기 0 | 컨트롤러에게 보고(꼴 가정 오류인지 · 실물 회전인지 사람 판정 — T075 O-5a 1차 사고와 같은 갈래) |
+  | `w7=STOP 미실행(Vault cluster_name = <값 또는 (없음)> — 기대 vault-cluster-d3b29227 · …)`(root 토큰을 묻기 전 · 쓰기 0 — 정확한 글자는 블록 README) | 창 C 너머가 이 클러스터의 Vault(`vault-cluster-d3b29227`)가 아니다 | **멈추고** 보고 — root 토큰을 넣지 않는다 · 창 C의 kubeconfig · 컨텍스트를 확인한다(리뷰 S-09) |
+  | `w7=STOP 미실행(…)`(그 밖 — 판정 전 중단 · 첫 해석 가림 · 정지점에서 중단) · `w7=STOP 쓰기 예정(…)`(판정 뒤 정지점 `seed` 전에 끊김 · T076 보정 2026-11-20 · 리뷰 RO2-03 · rv2C-01) | 쓰기 0 — 원인은 pwsh 오류 글자다(블록이 던진 예외 — 끝 줄 · 창 정리 줄 **아래**에 나온다 · 블록 README §5.0) · `쓰기 예정`은 정지점 `seed` 앞에서 끊긴 것이라 오류 글자가 없을 수 있다(T076 보정 2026-11-21 · 리뷰 r2 V1-04 · V2-01) | 그 오류 글자를 보고 원인을 걷어낸 뒤 재실행(정지점에서 다른 단어를 넣었으면 그대로 다시) |
+  | `w7=STOP 중단(live-different: …)` · `w7=STOP 중단(live-mismatch: …)` | kv에 다른 값(또는 다른 키 집합)이 있다 — 쓰기 0 | 덮어쓰지 않는다 · 버전 이력(값 없음)으로 누가 · 언제 썼는지 본 뒤 사용자 판정(회전 = T084) |
+  | `w7=STOP 중단(dead — …)`(soft-delete · destroy · current_version=0) | 현재 버전이 지워졌거나 파기됐거나 메타데이터만 있다 — 쓰기 0 | 되살리거나 지우지 않는다 · 버전 이력(값 없음)으로 누가 · 언제 지웠는지 본 뒤 사용자 판정 |
+  | `w7=STOP 중단(판정 불가 — …)`(조회 오류 · 응답 해석 실패) | 상태를 판정하지 못했다 — 쓰기 0 | 창 C · 터널을 확인한 뒤 재실행 · 반복되면 컨트롤러에게 보고 |
+  | `w7=STOP 중단(쓰기 거부 …)`(CAS 충돌 포함) | 그 사이 다른 값이 쓰였거나 쓰기가 거부됐다 — 덮어쓰지 않았다 | live 다름과 같다 — 버전 이력을 본 뒤 사용자 판정 |
+  | `w7=OK absent→v1 · 응답 유실 뒤 재판정(…)` | kv의 새 버전이 이 실행의 값임을 되읽기로 확인했다 — 정상 완료와 같다 | 조치 없음 · 기록 칸에 그 줄을 옮긴다 |
+  | `w7=STOP 결과 미확인(…)` · `w7=STOP 기록됨 — …`(되읽기 불일치 · 실패) · `w7=STOP 기록됨 v1 — 되읽기 검증 전(…)`(쓰기 뒤 되읽기 전에 끊김 · T076 보정 2026-11-20 · 리뷰 RO2-03 · rv2C-01) | 쓰기 결과를 확인하지 못했다 | 지우지 말고 재실행(판정이 건너뜀 · 멈춤을 가른다) · 반복되면 컨트롤러에게 보고 |
+- **기록 칸**(실행 뒤 컨트롤러가 채운다 — 날짜 · 시각(KST, Z 병기) · 값 · 해시 · 토큰은 적지 않는다):
+
+  | 항목 | 값 |
+  |---|---|
+  | 사전 — 창 D 체크리스트 · 창 C 수립 시각 · `VAULT_*` 없음 |  |
+  | 1 O-10 — `cluster_name` 확인 줄 · `o10=` 줄 · 시각 · 컨트롤러가 그 줄을 본 시각 |  |
+  | 2 정책 plan — 요약 줄(리소스 주소 · 개수) · 컨트롤러 확인 시각 |  |
+  | 2 apply — 결과 줄 · 시각 · plan 파일 삭제 · `Env:VAULT_*` 제거 |  |
+  | 3 W-7 — tofu 꼴 판정 줄 · 상태 판정 줄 · 끝 줄(`w7=…`) · 되읽기 판정 · 시각 · 창 정리 안내 줄(닫기 · 유지 어느 꼴인지) · 창 C를 닫은 시각(`w7=STOP …`이면 실패 표 조치 뒤 — §3 T076 ⑤ · T076 보정 2026-11-20 · 리뷰 RO2-02) |  |
+  | 실패 갈래를 썼다면(무엇 · 왜 · 사용자 확인 시각) |  |
 
 ## §5 v1 삭제 기록
 

@@ -24,8 +24,8 @@ django-pod.md §Outbox and events).
 - Celery(D14): 앱 구성(원격 제어 끔 · 키 접두 · 결과 백엔드 없음 · eager 끔 · 브로커 = 기동 시 DRAGONFLY_URL · beat = purge 하나 일
   1회 03:17 UTC + identity-admin(T073) 셋 — 재적용 30 s · 로그 purge 03:27 · 대조 03:37) · 작업 apply()가 purge를 돈다 · 실제
   워커(하위 프로세스 · D14 명령 · 시험 DB app role · 시험 Dragonfly pod 사용자 = 운영 규칙 resetchannels ~revoked:* ~<pod>:* +@all
-  — identity-admin(T073) 설계 D24): send_task → dead_at 31일 전 행만 지워진다 · 작업 성공 줄 · beat 기동 ·
-  로그에 NOPERM 0 · 자격 0 · 멈춤 신호 뒤 상한 안에 끝나고 남은 프로세스 0.
+  -@admin -@dangerous -client — identity-admin(T073) 설계 D24 · 꼬리는 T075 UD-9): send_task → dead_at 31일 전 행만 지워진다 · 작업
+  성공 줄 · beat 기동 · 로그에 NOPERM 0 · 자격 0 · 멈춤 신호 뒤 상한 안에 끝나고 남은 프로세스 0.
 """
 
 from __future__ import annotations
