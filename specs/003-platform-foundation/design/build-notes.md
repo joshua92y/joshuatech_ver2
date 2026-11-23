@@ -5521,3 +5521,50 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
   - tester-m2m 1년 토큰 만료 2027-09-03 — T084 회전 매트릭스.
 - **다음**: UD-13 정비 단계 → Phase 7 US4(T077–).
   - 대기 사용자 결정: UD-1(다음 main 통합) · UD-10(T098 전) · UD-11(T081 전) · UD-2 · UD-4(T081) · UD-3(T083) · UD-7 · UD-8(T089) · UD-16(1회용 — `/finish` 전).
+
+## UD-13 정비 단계(2026-11-23 결정 — T076 뒤 · US4 전 · tasks.md 밖)
+
+- **근거**: 사용자 결정 UD-13(2026-11-17 — `.superpowers/t075/decisions-controller.md`) 「Argo CD v3.5.7 + K3s v1.36.6(Traefik 3.7.15) — 14일 원칙 충족 · 스냅샷 3종 · 노드 순차 · Traefik ≥ 3.7.18은 다음 K3s 패치에서 — T084의 전제」.
+  - K3s v1.36.6은 SUC가 이미 적용했다(T075 L1).
+- **조사**(워크플로 `wf_1cd6b6be-93f` · 렌즈 4 + 독립 재조회 2 · 읽기 전용 — `.superpowers/ud13/research/{argocd-upstream,traefik-k3s,gitops-impact,monorepo-impact}.md` · `*-verify.md`).
+  - 핵심 외부 사실은 모두 CONFIRMED다.
+  - REFUTED는 부수 2건이고 결론을 바꾸지 않는다: Traefik 권고 일부에 CVE 번호가 있다(hrpp = CVE-2026-121966 · xv5x = CVE-2026-130732) · 차트 키 철자가 `kubernetesIngressNGINX`이고 기본 false다.
+  - 결정 문서 = `.superpowers/ud13/decisions-controller.md`.
+- **Argo CD 사실**
+  - 3.5.x 패치는 v3.5.3–v3.5.8이다. v3.5.7은 published 2026-11-02T20:14:51Z로 14일이 지났다. v3.5.8은 2026-11-18T19:54:30Z — **14일 = 2026-12-03 04:54 KST**. v3.6.x가 있지만 범위 밖이다.
+  - v3.5.7은 annotated 태그다(v3.5.0 · rc도) → URL에는 `^{}` 줄의 커밋을 쓴다(태그 객체 SHA로 쓰면 raw 404). v3.5.8은 lightweight다(커밋 `71576a24e898f50c9bf5e31b6930d81d4ac7717d`). gitops `bootstrap/argocd/kustomization.yaml` 머리 주석의 핀 절차를 「`^{}` 줄이 있으면 그 SHA · 없으면 태그 줄 SHA」로 고친다.
+  - install.yaml v3.5.2 → v3.5.7 차이는 argocd 이미지 태그 8줄뿐이다. 문서 59 · CRD · RBAC · 인자 · ConfigMap은 같다. 내장 kustomize 5.8.1 · helm 4.2.1도 같다 → `KUST_FIELDS` · `KUST_NESTED`를 다시 대조해도 바뀌는 것이 없다. v3.5.8은 PR 때 다시 확인한다.
+  - gitops PR 자리: `bootstrap/argocd/kustomization.yaml` `:56` URL SHA · `:72` argocd digest · 판 표기 주석. redis digest는 그대로다. 렌더 변화는 이미지 6줄이다.
+  - 적용 경로: `platform-argocd` Application(source `bootstrap/argocd` · automated selfHeal · SSA · wave -20)이 Argo 자신을 갱신한다. `bootstrap/argocd/**`는 prod-approval 관문 대상이다.
+  - 보안: v3.5.2는 Argo 공개 권고 10건(critical 4 · high 4 · medium 2)에 해당하고, ≤ v3.5.7이 모두 고친다. critical은 저장소 내용을 쥔 공격자를 전제한다 — T075 GP-1 완화책(원격 ref · jsonnet · helmGlobals 금지 · hook 허용 목록)이 막는 꼴이다(추론). v3.5.7에 남는 의존성 CVE(git-lfs · go-jose · regexp2 · Go 1.26.11)는 v3.5.8이 고친다.
+  - spec FR-048: Argo CD · 플랫폼 차트 업그레이드는 「유지보수 창(일요일 03:00–05:00 KST)에서만 머지」 · 「스냅샷 3종 확인」.
+    - 스냅샷 3종 = Vault raft · K3s SQLite(`platform-backup.sh --pre-upgrade`) + CNPG 수동 Backup(restore-drill §1-4).
+    - 런북 §6 사후 확인 목록은 K3s용이다(Argo용은 PR 때 더한다).
+  - 모노레포: 판 올림과 함께 고칠 자리는 없다. `CLAUDE.md:61`은 bn:17 계획대로 /finish · archive 때 고친다. 판을 단언하는 시험은 0이다.
+- **Traefik · K3s 사실**
+  - Traefik 3.7.18 = ForwardAuth 권고 GHSA-hrpp(→ 3.7.16) · 그 불완전 수정 GHSA-p956(→ 3.7.18)과 경로 인가 우회 GHSA-cp28(→ 3.7.18)을 모두 고친 첫 판이다.
+  - **라이브 3.7.15는 무인증 DoS GHSA-xv5x(→ 3.7.17)에도 걸린다.**
+  - Traefik ≥ 3.7.18을 번들한 K3s v1.36.x는 아직 없다. release-1.36 브랜치에 3.7.19가 실렸다(11-19 · 3.7.18은 건너뜀). v1.36.7은 태그도 RC도 없다.
+  - gitops SUC Plan은 채널 v1.36 + 일요일 창뿐이다 → **14일 원칙은 구현돼 있지 않다**(v1.36.5는 공개 ≈ 3.1일 뒤에 적용 — T075 편차 14 후보와 같은 사실).
+- **사용자 결정**
+  - **UD-13a = 「12-06 창에 v3.5.8 한 번」**(선택지: 창 2번 v3.5.7 → v3.5.8(권장) · 12-06 창 v3.5.8 한 번 · 이번 주 창 밖 v3.5.7 → 12-06 v3.5.8).
+  - **UD-13b = 「SUC 자동 + T080 · T084 전 관문」**(권장 · 선택지: SUC 판 핀(14일 원칙 구현) · HelmChartConfig로 3.7.19 지금 고정 — 정적 계약 x-10 개정 필요).
+- **일정 · 할 일**
+  1. 11-29(일) 창: v1.36.7이 그 전에 나오면 SUC가 적용한다. 그 뒤 런북 §6 사후 확인과 K3s · Traefik 판 기록(운영자 터널 + agent-view).
+  2. 12-03 04:54 KST 뒤: Argo CD v3.5.8 gitops PR을 준비한다.
+     - digest를 다시 조회하고, install.yaml 차이 · 내장 도구 판을 다시 확인한다.
+     - 머리 주석의 `^{}` 규칙을 고친다.
+     - PR 템플릿의 스냅샷 3종 확인 칸을 채운다.
+     - 런북 §6에 Argo 사후 확인 목록을 더한다.
+  3. 12-06(일) 03:00–05:00 KST(운영자): 스냅샷 3종 → 관문 승인 → 머지 → 사후 확인. 그 창에서 SUC가 K3s를 올리면 그 뒤에 머지한다.
+     - 사후 확인: Applications Synced/Healthy · argocd 이미지 v3.5.8 · `cluster.tests.ps1` argo-1–5.
+  4. **T080 · T084 시작 전 관문**: 라이브 Traefik ≥ 3.7.18(agent-view `kubectl -n kube-system get deploy traefik -o jsonpath='{.spec.template.spec.containers[0].image}'`). 아니면 그 과제를 시작하지 않고 사용자에게 다시 여쭙는다.
+- **받아들인 위험**
+  - v3.5.2의 critical 4건이 12-06까지 열려 있다(GP-1 완화).
+  - Traefik xv5x · cp28 등 — 지금 Access 없이 백엔드에 닿는 공개 경로가 없다(추론). T080이 Authentik 공개 경로를 열기 전에 관문 4가 닫는다.
+  - K3s 14일 원칙 미구현 — T116.
+- **기록 자리**(UD-13c — 컨트롤러 기본값 · 선례 T035/T036 「후속」 절 · T072 절 안 판 올림 · T048 학습 로그)
+  - 이 절에 기록한다.
+  - 런북 §6 「실행 기록」에 창마다 한 항목을 남긴다.
+  - 학습 로그는 그날 진행 중인 과제 디렉터리에 둔다.
+  - 문서 보정 표식은 「UD-13 보정 YYYY-MM-DD」로 단다.
