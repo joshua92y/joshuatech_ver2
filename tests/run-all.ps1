@@ -80,6 +80,13 @@ $c = $LASTEXITCODE
 Write-Host ($o.TrimEnd())
 Check 'kafka-harness' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see kafka harness test output above"
 
+# 1b2a5. identity-harness (T078) — tests/scripts/identity-tests.tests.ps1: tests/platform/identity.tests.ps1 단위 테스트(US4 신원 · Access 경계 · 교환 · authz-assert 단언;
+#        가짜 kubectl · curl 심 · 실제 클러스터 · 공개 호스트 접근 없음 · 약 1.5분). 1b2a1과 같은 규율(요약 줄 'N passed, 0 failed' · 빈 출력 · 크래시 = FAIL).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/identity-tests.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'identity-harness' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see identity harness test output above"
+
 # 1b2b. backup-verify (T048) — tests/scripts/backup-verify.tests.ps1: scripts/backup-verify.ps1 하네스(진짜 age · age-keygen · tar · vault ·
 #       파이썬 sqlite3 + 가짜 oci 심 · 실행마다 임시 픽스처 · 실제 OCI · 클러스터 · 개인키 접근 없음 · 약 3분). 하네스가 설정됐을 때 요약 줄에 접미를 붙이는 환경 변수가 하나 더 있다(BACKUP_VERIFY_SCRIPT).
 #       도구가 없으면 하네스가 첫 줄 'SKIP backup-verify tests -- ' + exit 0으로 끝난다 — 그때만 SKIP 허용(1b3과 같은 규율).
