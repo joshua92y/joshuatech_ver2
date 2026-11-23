@@ -5568,3 +5568,27 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
   - 런북 §6 「실행 기록」에 창마다 한 항목을 남긴다.
   - 학습 로그는 그날 진행 중인 과제 디렉터리에 둔다.
   - 문서 보정 표식은 「UD-13 보정 YYYY-MM-DD」로 단다.
+
+## T077 · T078 · T079 (2026-11-23 설계 확정 — US4 시험 먼저 · 자격 없이 빨강 · 세션 모델 Opus 5.5)
+
+- **과제 문면**: tasks.md :210 · :211 · :212(설계 머리에 그대로). 설계 정본 = `design/t077-design.md`(T077–T079 한 문서 — 세 과제가 Playwright 기반 · env 계약 · 노출 0 설계를 함께 쓴다).
+- **조사**(`wf_7661f2eb-532` · 3명 · 읽기 전용 — `.superpowers/t077/research/{spec-contract,e2e-harness,cred-path}.md`)
+  - 대응: T077 = AC1 · T078 = AC2 · AC5 · AC6 · T079 = AC3 · AC4. 초록 = T080–T083 · T092 · T094 뒤(T079는 US5 뒤).
+  - 저장소에 Playwright 실행 기반이 없다(`e2e/` README뿐 · lockfile 0 · 브라우저 캐시는 옛 chromium-1179).
+  - 올바른 빨강 이유 = Authentik 없음 → 「도달 확인 → 자격」 순서면 빨강 확인에 자격이 필요 없다.
+  - 문면대로는 성립하지 않는 단언 셋: T079 tester-m2m 401은 실제로 CN 관문 403 · T078 `admin.` 무헤더 403은 실측 302 · 세션 삭제 웹훅은 2026.8에 없음(UD-4).
+  - Playwright trace에는 값 가림이 없고, HTML 리포트에 `fill` 값이 평문으로 실린다.
+  - T078 · T079 문면은 tester 자격 밖 비밀(web-bff(-dev))을 전제한다.
+- **사용자 결정**(2026-11-23 — 결정 문서 `.superpowers/t077/decisions-controller.md`)
+  - **T077-a = 「첫 자격 실행 전에」**(S-01 개정 시점): T077–T079는 자격 없이 시험 작성 + 빨강 확인만 한다. 자격 블록 · S-01 · approval-review는 T080–T081 무렵 실물 블록과 함께 한다(T076 정정 노트 23과 순서가 다르다 — 설계 §0-1).
+  - **T077-b = 미룸**: web-bff(-dev) 자격 경로는 S-01과 한 묶음이다(권고 (a) dev 한정 · `kv/*/access/web-bff` 영구 제외).
+  - **T077-c = (A) BFF 프록시**: T079는 `/api/proxy/identity-admin/tenants/me` → logout `all_devices: true` → 1 s 뒤 401 `session_revoked`로 잰다.
+  - **T077-d = 루트 devDependency**(권고였던 e2e 워크스페이스 패키지 대신): `@playwright/test` 1.65.1 정확 핀 + `--only-shell chromium` · dry-run 먼저 · 해시 기록.
+  - **T077-e · f = 둘 다 이관**: tester-k8s 시드 → T084 · 「면제 셋 밖 PLACEHOLDER- 0」 → T081.
+- **설계 경과**: 초안 + 비판 2렌즈(`wf_62857a17-17f` — A 정합 · 실행 approve_with_fixes MEDIUM 7 · B 자격 · 보안 approve_with_fixes HIGH 1(B-1 APIRequestContext call log에 쿠키 · Set-Cookie 평문) · MEDIUM 9) → r1(`wf_017fdc40-48a` — 31건 처리 · 대조 28 resolved · 3 partial · 새 MEDIUM 2) → r2(`wf_874c655b-42c` — 14항목 14/14 resolved · 새 LOW 1 · NIT 4) → 컨트롤러 보정 N-1–N-5(needle-control 대조 값 읽기 · 시점 칸 · ASCII 줄 `INFO auth-residue 0` · `.url(` 전용 helper · T094 뒤 `[product]`). 보고 `.superpowers/t077/design/`.
+- **빌드 계획**(설계 D12)
+  - ①a T077 기반 + 로그인(web-builder) → ①b T079(같은 빌더) · ② T078(infra-builder · 병렬).
+  - run-all 슬롯 `e2e-selftest` · `identity-harness`는 컨트롤러가 등록한다.
+  - 리뷰 세 렌즈(A 정합 · 문면 · B 노출 · 자격 · C 하네스 변이 · lockfile · events-test · CI install).
+  - 커밋은 과제마다 하나다. tick은 빨강 관찰 뒤에 한다(T078은 운영자 창 — agent-view).
+- **설치 승인 지점**(D2-5): 0–4단계(env 가드 · `pnpm add -D -w --save-exact --ignore-scripts @playwright/test@1.65.1` · frozen install · lockfile 검사 · `playwright install --dry-run --only-shell chromium`)는 컨트롤러가 돌린다. dry-run 결과를 사용자에게 보인 뒤 5단계(내려받기) · 6단계(해시 기록) · 7단계(events-test)를 한다. 설계는 「빌더 ①a가 실행」이었지만, 승인 대기 때문에 컨트롤러가 대신 한다.
