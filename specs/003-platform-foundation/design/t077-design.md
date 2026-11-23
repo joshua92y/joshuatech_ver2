@@ -444,4 +444,65 @@
 - 정본 = r1과 함께 컨트롤러에게 돌려준 처리 표(31행 — A-1–A-17 · B-1–B-14 · 심각도 · 처리 · r1 자리 · 설명)와 이 r2와 함께 돌려준 처리 표(14행 — V-1–V-11 · partial A-2 · B-2 · B-14 · 처리 · r2 자리 · 설명)(r2). 본문 반영 자리마다 「(r1 — …)」 · 「(r2 — …)」 표식을 달았다. 확정 때 컨트롤러가 이 절에 옮긴다.
 
 ## 정정 노트
-(빌드 · 실측에서 달라진 점을 여기에 덧붙인다.)
+
+### 2026-11-23 — 설치 · 빌드 r0 · 수정 r1 · 라이브 빨강 반영
+정본 = build-notes 「## T077 · T078 · T079」 · 보고 `.superpowers/t077/{build,reviews}/`(빌드 r0 `wf_ebfd861d-425` · 리뷰 A · B · C · 수정 r1 `wf_92b7426c-261` · 검증 V1 · V2). 결정 본문은 그대로이고, 실물과 다른 점만 적는다.
+
+1. **D2-4 · 사용자 안내 「기존 chromium-1179는 건드리지 않는다」**
+   - `playwright install`이 미사용 브라우저를 자동으로 지웠다: chromium-1179 · chromium_headless_shell-1179 · ffmpeg-1011.
+   - 설치 때 정리하는 기본 동작을 미리 확인하지 못했다.
+2. **D12 커밋 단위**: T077 · T079를 한 커밋으로 묶는다(리뷰 A-6).
+   - 까닭: r1에서 두 과제가 `e2e/lib/{test-base,authentik-flow}.ts` · tracked-files · static-gate를 함께 쓰게 됐다. 나누면 앞 커밋의 selftest가 빨강이다.
+   - T078은 따로 커밋한다.
+3. **D9 list 기대 「T077: live 1 · T079: live 3」은 누적 수다.** T079 자신은 live 2(AC3 · AC4) → 합 3.
+4. **T077(A-7 · A-1 · A-2 · A-10 · B-5 · B-6)**
+   - 로그아웃 완료 = 로그인 화면 표식(identify 칸 visible)이다. 두 스펙의 흐름은 새 lib `e2e/lib/authentik-flow.ts`로 모았다.
+     - 무효화 페이지 접두만으로 끝을 판정하면 빈 PASS가 되기 때문이다 — Playwright `waitForURL`은 URL이 이미 맞으면 바로 돌아온다.
+   - 잔여 검사 순서
+     - 잔여 계수가 globalSetup 맨 앞이다: `[state] previous-run residue count=N`.
+     - teardown도 지우기 전에 센다: `[state] auth-residue at teardown count=N` → 실패로 끝낸다.
+   - `step-not-advanced` 판정 · 잠금 표식은 「값이 칸에 들어간 뒤」에 낸다(`AFTER_FILL_CODE`). fill 자체 실패는 `[product]`이고 잠금 0이다.
+   - 죽은 상태 확인은 메모리 storageState로 먼저 하고, 그 뒤에만 파일을 쓴다.
+   - runId 접두는 `t077-`다(T079도 쓴다).
+5. **T079(A-7 · A-8 · A-9)**
+   - 흐름 세부
+     - copy → baseline 순서
+     - baseline · logout의 probe 꼴
+     - bff-login 줄 분할 · `status=N` 접미
+     - 간격을 모를 때 15 s 대기 · 로그 재읽기
+   - AC4 창 = [기준 − 2 s, 기준 + 폭 + 2 s] · `--since-time` = 아래 경계.
+   - `diagnoseUntil`은 첫 재질문 전에 500 ms 기다린다.
+6. **T078(A-7 · C-5 · B-9)**
+   - 판정 줄 꼴 = `FAIL <id> -- [gate|env|product|guard] <§1-2 글자>`(D5 접두를 붙였다). xchg-0은 `[gate] Traefik 404 (no router) — until T080`이다(§1-2 원문 「Traefik 404 — until T080」).
+   - fga `[gate] … until T082` 갈래와 T082 지시문 `$FgaPendingIds = @()` · acc-1 `[env]`(ing-1을 확인하지 못했을 때) · tool-1 실패면 curl 호출 0.
+   - curl이 물려받는 프록시 · TLS env는 `[guard] curl-env-not-allowed <정렬된 이름>`이다(값을 읽지 않는다).
+     - 이름 = `*_PROXY`(NO_PROXY 포함) · `SSLKEYLOGFILE` · `CURL_CA_BUNDLE` · `SSL_CERT_FILE` · `SSL_CERT_DIR`.
+   - gate-3에 닮은 SA 이름 사례를 더했다.
+7. **공통(D3 · D5 · D10)**
+   - tracked-files = `git ls-files --cached --others --exclude-standard -- e2e`.
+   - static-gate를 넓혔다(B-2 · C-1 · C-2 · C-4)
+     - 자격 env 이름 글자 자체
+     - 리스너 넷 + requestfinished · requestfailed
+     - 값을 싣는 Playwright API 다수: 로케이터 매처 · 스냅숏 · ariaSnapshot · innerHTML · `.content()` · getAttribute · route · expose* · request 별칭 등
+     - `emit-args`
+     - `@playwright/test` 직접 import 금지 → `e2e/lib/test-base.ts` 필수 — 파일 단위 `test.use()` 우회 차단(B-3)
+   - env 가드를 넓혔다: `PLAYWRIGHT_*` · `PW_*` · `PWTEST_*`는 전부 막는다(허용은 `PLAYWRIGHT_TEST=1` · `PLAYWRIGHT_NO_COPY_PROMPT=1`). `DEBUG`에 `*`가 들면 막고, `NODE_OPTIONS`는 허용 목록이다.
+   - config: `PLAYWRIGHT_NO_COPY_PROMPT=1` · `captureGitInfo` off · `updateSnapshots: 'none'` · `snapshotDir` = outputDir 아래.
+   - needle(B-1)
+     - 실행 1 의도 실패 9 · needle-control 7(노출 경로마다 양성 대조 — log · inp · req · sck · url · nav · pgs).
+     - 루트를 실행마다 따로 둔다 · 산출물 수 0 판정.
+   - 잠금 관문은 cred 직전에 본다(B-4). 표식 쓰기가 실패하면 실행 범위 표식이 남은 live를 멈춘다.
+8. **VD-T077-4 실측**: 1.65.1은 실패하면 outputDir에 `error-context.md`(오류 + 코드 프레임 + 페이지 aria snapshot)를 쓴다 → 위 config로 껐다. APIRequestContext 오류에는 cookie · authorization 헤더 원문이, fill 오류에는 값이 실린다(B-1 설계가 맞았다).
+9. **발견(Node v24.11.1 · Windows)**: 비재귀 `fs.rmSync(<파일>)`은 경로에 한글이 있으면 오류 없이 파일을 남기거나 프로세스를 중단한다(0xC0000409). `auth-dir`는 `unlinkSync` + 지운 뒤 확인으로 바꿨다.
+10. **라이브 빨강(2026-11-23T12:04:30Z · D9 ④)**
+    - `live-red passed=0 failed=3 gate-reach=3/3 child-exit=1 auth-residue=ok root=removed` · 자식 env 이름 = 허용 목록 11개.
+    - T077 `reach` · T079 `reach-auth` ×2 모두 `[gate] authentik-absent until T080 — Traefik 404 signature (T076 D10) matched` → §1-1 충족.
+11. **인계 — G-4(첫 자격 실행) 전에 닫을 것**(검증 V1 · 리뷰 B)
+    - V1 V-1: APIRequestContext 매개변수 · 대입 별칭이 static-gate를 비켜 간다.
+    - V-2: cred 직전 lockGate 배선을 spec 시험으로 고정한다.
+    - V-3: static-gate · emit-args에 남은 꼴(심은 12개 미탐지).
+    - V-4: live-red 끝 줄 `auth-residue=ok`가 teardown 신호를 보지 않는다.
+    - V-6: AC4 창 · probe 기준 시각 — T081.
+    - B-8: `jtApprovedBlock` 관문은 자기 신고 문자열 대조일 뿐이다 → §5-1 G-3 설계에서 블록 일회 nonce · 해시 결속.
+    - V2 NIT 셋(gate-3 접미 · 1b catch 갈래 · 문구).
+    - 기록만: C-7(기존 `ci.yml:63–70` events-test 방어 · CODEOWNERS).

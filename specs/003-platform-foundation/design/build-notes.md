@@ -5592,3 +5592,55 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
   - 리뷰 세 렌즈(A 정합 · 문면 · B 노출 · 자격 · C 하네스 변이 · lockfile · events-test · CI install).
   - 커밋은 과제마다 하나다. tick은 빨강 관찰 뒤에 한다(T078은 운영자 창 — agent-view).
 - **설치 승인 지점**(D2-5): 0–4단계(env 가드 · `pnpm add -D -w --save-exact --ignore-scripts @playwright/test@1.65.1` · frozen install · lockfile 검사 · `playwright install --dry-run --only-shell chromium`)는 컨트롤러가 돌린다. dry-run 결과를 사용자에게 보인 뒤 5단계(내려받기) · 6단계(해시 기록) · 7단계(events-test)를 한다. 설계는 「빌더 ①a가 실행」이었지만, 승인 대기 때문에 컨트롤러가 대신 한다.
+- **설치 실행(컨트롤러 · 2026-11-23 17:3x–17:45 KST)**
+  - 0: env 가드 이름 0 · `pnpm config get registry` = `https://registry.npmjs.org/` · pnpm 10.34.5 · node v24.11.1 · `minimumReleaseAge: 4320`(3일).
+  - 1: `pnpm add -D -w --save-exact --ignore-scripts @playwright/test@1.65.1` → exit 0 · `devDependencies: + @playwright/test 1.65.1` · Packages +3.
+  - 2: `pnpm install --frozen-lockfile --ignore-scripts` → 「Lockfile is up to date」 exit 0.
+  - 3: 루트 `package.json`에 `"devDependencies": {"@playwright/test": "1.65.1"}`. lockfile 차이 30+/1−는 루트 importer `{}` → devDependencies와 새 패키지 정확히 {`@playwright/test@1.65.1` · `playwright@1.65.1` · `playwright-core@1.65.1`}뿐이다. 모두 sha512 integrity가 있고, `tarball:` 0 · integrity 없는 resolution 0 · 다른 importer · 기존 스냅숏 변화 0.
+  - 4: `pnpm exec playwright --version` = 1.65.1. `install --dry-run --only-shell chromium`이 보인 것(VD-T077-3):
+    - Chrome Headless Shell 159.0.8154.6(chromium-headless-shell v1255 · 123.8 MB)
+    - FFmpeg v1013(1.6 MB) · Winldd v1007(0.1 MB)
+    - 모두 `cdn.playwright.dev`에서 받는다(크기는 CDN HEAD Content-Length) → 사용자 승인 「내려받기」.
+  - 5: `pnpm exec playwright install --only-shell chromium` 17:44:09–17:44:20 KST exit 0 → `%LOCALAPPDATA%\ms-playwright\{chromium_headless_shell-1255, ffmpeg-1013, winldd-1007}`.
+    - **발견 — Playwright가 설치하면서 「unused browser」를 자동으로 지웠다**: `chromium-1179` · `chromium_headless_shell-1179` · `ffmpeg-1011`. 설계 D2-4 · 사용자 안내 「기존 chromium-1179는 건드리지 않는다」와 다르다 — 설치 때 미사용 브라우저를 정리하는 Playwright 기본 동작을 확인하지 못했다(설계 정정 · 학습 로그 사고 항목). 다른 곳에서 그 판을 쓰면 다시 받아야 한다.
+  - 6: 해시 기록(§5-1 G-3 대조용)
+    - `chrome-headless-shell.exe`(`chromium_headless_shell-1255\chrome-headless-shell-win64\`) 226,079,232 B · sha256 `b23921f57bcff971495917b208b63df393788525120c6ce23a79c1e3e1583114`.
+    - 디렉터리 목록 290파일 · 합 300,652,590 B. 목록 sha256 = `17b28ef03296a267b2ffc87ff884188425e1b210d32f4e0956de27c03d829b6e` — 줄 = 「상대 경로(`/`) 크기 sha256(소문자)」 · 줄 Ordinal 정렬 · LF 결합 · 끝 LF 없음 · UTF-8. 사본은 `.superpowers/t077/headless-shell-1255.manifest.txt`.
+  - 7: `pnpm --filter @jt/events --fail-if-no-match test` → 2 files · 267 passed · exit 0.
+
+### T077 · T078 · T079 빌드 · 리뷰 · 빨강 관찰(2026-11-23)
+
+- **빌드 r0**(`wf_ebfd861d-425` · 빌더 opus — 보고 `.superpowers/t077/build/{1a,1b,2}-r0-report.md`)
+  - ①a T077(web-builder): 새 파일 34
+    - `playwright.config.ts` · `e2e/{auth.spec,global-setup,global-teardown}.ts`
+    - `e2e/lib/` 12 · `e2e/selftest/` 14 · `e2e/selftest-browser/` 2 · `e2e/needle/` 2
+    - `.gitignore` D4 다섯 줄 · `e2e/README.md`
+    - 결과: selftest 107/0 · selftest-browser 11/0 · `needle=PASS`(실행 1 hits 0 · 대조 바늘 로그 면 13) · list live 1 · events 267.
+  - ①b T079(web-builder): `e2e/revocation.spec.ts` · `e2e/lib/{bff,kubectl-log}.ts` · BFF 분류 selftest → selftest 148/0 · list live 3(누적).
+  - ② T078(infra-builder): `tests/platform/identity.tests.ps1` · 짝 `tests/scripts/identity-tests.tests.ps1`
+    - 짝 하네스 빨강 126/196 → 355/0 × 2 · 변이 21/21.
+    - 오늘 상태 픽스처 C01 모의 출력: 6 PASS(gate 3 · tool-1 · acc-2 302 · acc-3 401) · 12 FAIL(전부 `[gate] … until T080/T082`) · 4 SKIP(xchg-1 · 2 자격 블록 전용 · man-1 · 2 운영자 수동).
+  - 실측: 1.65.1은 실패 때 outputDir에 `error-context.md`(코드 프레임 + aria snapshot)를 쓴다 → `PLAYWRIGHT_NO_COPY_PROMPT=1` · `captureGitInfo` off. env 가드는 `PLAYWRIGHT_*` · `PW_*` 전부 차단(허용 둘).
+- **리뷰 r0**(`.superpowers/t077/reviews/{A,B,C}-r0.md` — 셋 다 approve_with_fixes · HIGH 0)
+  - A 정합 · 문면: MEDIUM 2(A-1 로그아웃 완료 판정이 무효화 페이지 접두 → 빈 PASS · A-2 잔여 검사가 가드 뒤 → `[state]` 소실) · LOW 6 · NIT 3.
+  - B 노출 · 자격: MEDIUM 4(needle 양성 증거 공백 · static-gate가 값 싣는 API를 놓침 · 파일 단위 `test.use()` 우회 · 잠금 표식 실행 중간) · LOW 2 · NIT 3.
+  - C 변이 · lockfile · CI: MEDIUM 3(static-gate 목록 · screenshot 대소문자 · evidence mask 시험) · LOW 2 · NIT 2.
+- **수정 r1**(`wf_92b7426c-261` — 보고 `F1-e2e-r1-report.md` · `F2-t078-r1-report.md`)
+  - e2e: 전부 반영 → selftest 171/0 · selftest-browser 23/0 · `needle=PASS`(실행 1 의도 실패 9 · needle-control 7 — 노출 경로별 양성 대조) · list live 3 · events 267.
+    - 새 lib `test-base.ts` · `authentik-flow.ts`.
+    - 발견: Node v24.11.1 Windows 비재귀 `fs.rmSync`가 한글 경로에서 파일을 남기거나 프로세스를 중단한다 → `unlinkSync` + 확인.
+  - T078: C-5(I01–I05 · I07) · B-9(`[guard] curl-env-not-allowed`) · A-11 → 짝 하네스 475/0 × 2.
+- **검증 r1**(`.superpowers/t077/reviews/V{1,2}-*-r1.md`)
+  - V1(e2e): approve_with_fixes · 16/16 resolved(MEDIUM 9 모두 변이 → 빨강 → 복원 초록으로 실증) · 새 LOW 2 · NIT 4. G-4(첫 자격 실행) 전에 닫을 것 → 설계 정정 노트 11.
+  - V2(T078): approve · 6/6 resolved · 변이 17 잡힘 · NIT 3.
+- **run-all 슬롯**(컨트롤러): `tests/run-all.ps1` 1b2a5 `identity-harness`(data-harness 꼴) · 1b2a6 `e2e-selftest`(`node e2e/lib/launch.mjs selftest` — `@playwright/test` 없으면 SKIP 허용 · 그 밖 `N passed, 0 failed`). 슬롯 명령 실측: 21:04:14 KST · `171 passed, 0 failed` · exit 0 · 약 6 s.
+- **라이브 빨강 관찰**(컨트롤러 · T077 · T079 — 설계 D9 ④ · 공개 HTTP만 · 자격 env 0)
+  - 실행: `node e2e/lib/launch.mjs live-red` · 2026-11-23T12:04:30Z–12:04:38Z(21:04 KST) · exit 1.
+  - 출력
+    - `INFO child-env names=JT_E2E_EVIDENCE_DIR,JT_E2E_LIVE,JT_E2E_OUTPUT_DIR,JT_E2E_ROOT,JT_E2E_RUN_ID,LOCALAPPDATA,PATH,SystemRoot,TEMP,TMP,USERPROFILE` — 허용 목록 그대로이고, `KUBECONFIG` · `JT_E2E_SECRET_*` · `JT_E2E_BLOCK` · `JT_E2E_NEEDLE_SET`은 0이다.
+    - `T077 reach FAIL [gate] authentik-absent until T080 — Traefik 404 signature (T076 D10) matched`
+    - `T079 reach-auth FAIL [gate] …`(같은 꼴 ×2) · `INFO reach-control status=401 — edge response - not origin evidence`(대조 호스트 · INFO).
+    - 끝 줄 `live-red passed=0 failed=3 gate-reach=3/3 child-exit=1 auth-residue=ok root=removed`.
+  - 로그 IP 꼴 0. 뒤 확인: `e2e/.auth` 없음 · `%TEMP%\jt-e2e` 0 · 잠금 표식 0 · 무시된 산출물 0 · git 상태 = 지정 파일뿐.
+- **tick**: T077 · T079 = 설계 §1-1 세 조건(오프라인 초록 · needle PASS · list · live-red `[gate]` 3/3) 충족 → [X] 83 · 84/119. T078 = 짝 하네스 초록이지만 라이브 줄(운영자 터널 + agent-view 창)이 아직이라 tick하지 않는다 — 다음 운영자 창에서 관찰한 뒤 tick만 담은 문서 커밋(설계 D9 · D12).
+- **커밋**(설계 정정 노트 2): T078(하네스 둘 + `identity-harness` 슬롯) → T077 · T079 한 커밋(e2e · 루트 config · 의존성 · `e2e-selftest` 슬롯 · 기록 · tick).

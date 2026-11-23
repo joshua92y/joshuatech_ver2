@@ -87,6 +87,15 @@ $c = $LASTEXITCODE
 Write-Host ($o.TrimEnd())
 Check 'identity-harness' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see identity harness test output above"
 
+# 1b2a6. e2e-selftest (T077 · T079) — node e2e/lib/launch.mjs selftest: Playwright 브라우저 0 selftest(config-hygiene · static-gate · tracked-files ·
+#        순수 함수 · scan-needle 양성 대조 — 공개 호스트 · 자격 0). @playwright/test가 없으면 런처가 첫 줄 'SKIP e2e-selftest tests -- ' + exit 0으로 끝난다 —
+#        그때만 SKIP 허용(1b2b와 같은 규율). 그 밖에는 exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS.
+$o = node e2e/lib/launch.mjs selftest 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+if ($c -eq 0 -and $o -match '\ASKIP e2e-selftest tests -- ') { Write-Host 'SKIP e2e-selftest -- allowed (@playwright/test not installed; see SKIP line above)' }
+else { Check 'e2e-selftest' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see e2e selftest output above" }
+
 # 1b2b. backup-verify (T048) — tests/scripts/backup-verify.tests.ps1: scripts/backup-verify.ps1 하네스(진짜 age · age-keygen · tar · vault ·
 #       파이썬 sqlite3 + 가짜 oci 심 · 실행마다 임시 픽스처 · 실제 OCI · 클러스터 · 개인키 접근 없음 · 약 3분). 하네스가 설정됐을 때 요약 줄에 접미를 붙이는 환경 변수가 하나 더 있다(BACKUP_VERIFY_SCRIPT).
 #       도구가 없으면 하네스가 첫 줄 'SKIP backup-verify tests -- ' + exit 0으로 끝난다 — 그때만 SKIP 허용(1b3과 같은 규율).
