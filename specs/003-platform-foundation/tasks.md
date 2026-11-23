@@ -193,7 +193,7 @@ description: "Task list for 003-platform-foundation (joshuatech override: tests 
 
 ### E2E for User Story 6 (MANDATORY — executed by the tester agent)
 
-- [ ] T076 [US6] E2E: US6 AC1–AC6 — 템플릿으로 `tests/fixtures/generated/sample-pod`(gitignore) 생성 → 테스트 6종 + 마이그레이션 검사 PASS(증거: pytest 출력) → arm64 빌드 → 렌더 단언(securityContext·probe·`-migrate` 분리); `identity-m2m-dev.`·`identity-m2m-prod.joshuatech.dev/health` 200(Access 서비스 토큰 **`tester-m2m`** — T011), 헤더 없이 403, `/admin/` 404, **m2m 호스트로 `/webhooks/authentik`·`/healthz`·`/ready` → 404**(Ingress 경로 허용 목록 5개 밖 — T066에서 이관된 Ingress 층위 단언); ExternalSecret 2개(`-env`·`-migrate`) 주입 확인 — evidence recorded in the tester report
+- [X] T076 [US6] E2E: US6 AC1–AC6 — 템플릿으로 `tests/fixtures/generated/sample-pod`(gitignore) 생성 → 테스트 6종 + 마이그레이션 검사 PASS(증거: pytest 출력) → arm64 빌드 → 렌더 단언(securityContext·probe·`-migrate` 분리); `identity-m2m-dev.`·`identity-m2m-prod.joshuatech.dev/health` 200(Access 서비스 토큰 **`tester-m2m`** — T011), 헤더 없이 403, `/admin/` 404, **m2m 호스트로 `/webhooks/authentik`·`/healthz`·`/ready` → 404**(Ingress 경로 허용 목록 5개 밖 — T066에서 이관된 Ingress 층위 단언); ExternalSecret 2개(`-env`·`-migrate`) 주입 확인 — evidence recorded in the tester report
 
 **Checkpoint**: pod 규율이 코드로 강제되고 identity-admin이 살아 있음
 

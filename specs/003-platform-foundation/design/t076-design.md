@@ -301,3 +301,11 @@ D4(O-8) · D5(C-8) · D6(L-8) · D7(W-7 · O-9 · O-10) · D8(하네스)이 정�
 ### 2026-11-21 — r2 검증(V1 · V2) 반영
 결정 정본 = `.superpowers/t076/decisions-controller.md` 「r2 검증 처리」(검증 V1 블록 렌즈 · V2 문서 렌즈 — `.superpowers/t076/reviews/V{1,2}-r2.md` · 둘 다 approve) · 고친 곳의 정본 = `design/t076-blocks/README.md`(§2a 「r2 대응」 · §3 35 · §5.0 · §5.7). 위 8의 이력 구절을 괄호 한정어로 옮겼다(V1-03). 하네스만 바꾼 것(ST-O8 기다림 고리 단언 — V1-01 · V1-02)은 설계와 다른 점이 아니라 README에만 적는다.
 24. **D13 · §7 tester 1차 FAIL 분류(위 19 보완 — RO2-04 · V2-04)**: 블록 이름이 아니라 FAIL 사유로 가른다 — 환경 = 터널 · API 일시 오류(`kubectl get … 실패(exit=… · <오류 첫 줄>)`이고 오류 첫 줄이 TLS handshake timeout · i/o timeout · Unable to connect to the server 꼴) · ③-1 뒤 gitops main 이동(L-8 ⓪ revision만 다름 — ③-1을 다시 한 뒤 L-8만 다시) / 제품 · 구성 = 응답을 받았는데 값이 기대와 다르다. 라이브 창 동안 gitops main 머지 0(런북 §3 T076 ③-1 · 실패 갈래 ③-2).
+
+### 2026-11-23 — 라이브(창 ① – ⑤) 반영
+정본 = `research/2026-11-23-e2e-us6-t076.md`(컨트롤러 판정 둘 + tester 원문 둘) · build-notes 「T076 라이브 결과」 · 런북 §3 · §4 T076 기록 칸. 결정 본문은 그대로다.
+25. **D13 · §7 1차 ⓐ 플랫폼 하네스**: `tests/platform/run-platform-tests.ps1`은 이 환경에서 infra 단계의 [plan] 기준선 FAIL(운영자 OCI 자격 · `TF_VAR_budget_alert_email`)로 KUBECONFIG 게이트 앞에서 멈춘다. tester가 라이브 파일 다섯(cluster · data · ingress · kafka · reboot)을 러너와 같은 꼴로 직접 돌렸다 — 96 PASS · 0 FAIL · 11 SKIP(T075 선례와 같은 수 · data env-1 = D12 ⑤ PASS). 설계 편차가 아니라 실행 꼴의 보완이다(런북 §3 T076 ③-2 ⓐ 보정).
+26. **D14 창 ② 순서**: ②-1 → ②-3 → ②-2로 돌렸다 — svc-verify 세션(1 h)을 tester 1차의 OCI 행에 남기려고(RO-09 취지 · 만료 12:05 KST · OCI 행 11:14–11:17 KST).
+27. **VD 결과**(§2 「검증 후 결정」 표 + 위 13): VD-T076-1 · 2 · 7 · 9 PASS · 3 · 4 · 5 · 6 설계와 같음 — D10 기준값은 실측 꼴 그대로라 정정하지 않는다 · 8 = 가짜 서비스 토큰 → 401 · text/html(Access 엣지 응답으로 보임 · 기록) · 10 = **배열**(K3s TokenRequest 단일 audience `["vault"]` — O-9 · O-8 둘 다).
+28. **§1 AC4 「iss 불일치 401」의 증거 자리**: 생성물 · identity-admin 시험 이름에 iss 사례가 없다 — 공통 라이브러리 `packages/django-common/tests/test_auth.py::test_auth_4_issuer_mismatch`(Bearer iss → 401)가 맡는다. tester 2차 끝에 돌려 PASS(`2 passed`). Access JWT의 다른 iss는 401이 아니라 403 `access_required`(`test_auth_13_access_invalid` 안의 `other-issuer` 사례 — 다른 층). §1 합격선은 그대로이고 증거만 더했다.
+29. **D16 인계 ⑥(W-7 `cluster_name`)**: `vault status` 출력에 `cluster_name`이 있었다(W-7 `OK … cluster_name = vault-cluster-d3b29227(seal type=ocikms · server 2.0.4)`) — 추론이 성립했다.

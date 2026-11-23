@@ -1202,7 +1202,7 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
   | ②-2 svc-verify 세션 | 라이브 창 ② · 운영자 | `oci session authenticate --profile-name svc-verify --region ap-chuncheon-1`(1 h — 플랫폼 하네스의 OCI 행) | 세션 유효(만료 시각 기록) |
   | ②-3 O-7(키 이름 — 값 0) | 라이브 창 ② · 운영자(창 B · 관리자 kubeconfig) | 아래 「O-7」 — dev · prod 둘 다 | env마다 2줄(`identity-admin-env` 11키 · `identity-admin-migrate` 1키) → 출력을 컨트롤러에게(컨트롤러가 tester 1차에 넘긴다 — 설계 D12 ⑥) |
   | ③-1 디스패치 준비 | 컨트롤러 | arm64 binfmt 등록(설계 D9 선행 — 근거 줄 「installing: arm64 OK」 + emulators의 `qemu-aarch64`) · `git -C D:/code/platform-gitops fetch` → `rev-parse origin/main` = `-ExpectedRevision` · 배포 이미지를 만든 모노레포 main 커밋 = `-ExpectedSha` · **사전 확인 둘**(T076 보정 2026-11-20): ⓐ migrate Job(리뷰 C-08 · RO-05) — agent-view로 `kubectl --kubeconfig ~/.kube/agent-view.yaml -n jt-dev get job identity-admin-migrate -o jsonpath='{.status.completionTime}'` · 같은 명령 `-n jt-prod` → 완료 시각 둘 기록 ⓑ 같은 이미지(리뷰 RO-07) — `git -C D:/code/platform-gitops show origin/main:apps/identity-admin/overlays/dev/kustomization.yaml` · `…/overlays/prod/kustomization.yaml`의 `images:` digest 대조(`-ExpectedSha` 하나로 dev · prod 둘을 판정한다) | 값 둘 확정 · ⓐ 둘 다 있음 · ⓑ 같음. ⓐ Job이 없으면(NotFound — TTL이 지났다) **디스패치 전에 사용자 결정**: 운영자 수동 Sync로 PreSync 재실행(= migrate 재실행 · 라이브 변경) 또는 L-8 ③ Job 줄을 편차로 적고 gitops 렌더로 대신. ⓑ digest가 다르면 사용자 결정. 라이브 창 동안 gitops main 머지 0(머지가 끼면 ③-1을 다시 — `-ExpectedRevision` · 이미지가 바뀐다 · T076 보정 2026-11-20 · 리뷰 RO2-04) |
-  | ③-2 tester 1차(Vault 능력 0) | 컨트롤러 → tester | 설계 §7 지시문 골격. 순서(T076 보정 2026-11-20 · 리뷰 RO-09 — ②-2 svc-verify 세션 1 h 안에 OCI 행이 돌게): ⓐ `tests/platform/run-platform-tests.ps1`(cluster · ingress · data · kafka — 맨 먼저) → ⓑ L-8(`-ExpectedRevision` · ⑤ 무헤더 포함 — 실행 꼴은 위 「누가 무엇을」: `chcp.com 65001` 접두 · `echo "exit=$?"` · 판정은 끝 줄과 종료 코드 · 리뷰 RO-04) → ⓒ D9 ①–④(템플릿 하네스 `-v` — 10분을 넘을 수 있어 배경 실행(설계 D9 ①) · 보존 트리 pytest · arm64 이미지 · identity-admin 스위트) · O-7 출력 확인. Bash 도구 timeout 600000(블록 최악 ≈ 565 s — O-8 · Forwarding 줄 기다림 ≤ 45 s 포함 · 리뷰 RO-08 · RO2-01) | 보고(글)를 컨트롤러가 `specs/003-platform-foundation/research/<라이브 날짜>-e2e-us6-t076.md`에 저장. FAIL이 있으면 아래 「실패 갈래」 ③-2로 먼저 가른다(환경 원인 / 제품 · 구성) |
+  | ③-2 tester 1차(Vault 능력 0) | 컨트롤러 → tester | 설계 §7 지시문 골격. 순서(T076 보정 2026-11-20 · 리뷰 RO-09 — ②-2 svc-verify 세션 1 h 안에 OCI 행이 돌게): ⓐ `tests/platform/run-platform-tests.ps1`(cluster · ingress · data · kafka — 맨 먼저 · 러너가 infra 단계의 [plan] 기준선 FAIL(운영자 OCI 자격 · `TF_VAR_budget_alert_email`)로 KUBECONFIG 게이트 앞에서 멈추면 라이브 파일 다섯(cluster · data · ingress · kafka · reboot)을 러너와 같은 꼴(`KUBECONFIG` = agent-view · `pwsh -NoProfile -ExecutionPolicy Bypass -File <파일>`)로 직접 — T075 · T076 실측 · T076 보정 2026-11-23) → ⓑ L-8(`-ExpectedRevision` · ⑤ 무헤더 포함 — 실행 꼴은 위 「누가 무엇을」: `chcp.com 65001` 접두 · `echo "exit=$?"` · 판정은 끝 줄과 종료 코드 · 리뷰 RO-04) → ⓒ D9 ①–④(템플릿 하네스 `-v` — 10분을 넘을 수 있어 배경 실행(설계 D9 ①) · 보존 트리 pytest · arm64 이미지 · identity-admin 스위트) · O-7 출력 확인. Bash 도구 timeout 600000(블록 최악 ≈ 565 s — O-8 · Forwarding 줄 기다림 ≤ 45 s 포함 · 리뷰 RO-08 · RO2-01) | 보고(글)를 컨트롤러가 `specs/003-platform-foundation/research/<라이브 날짜>-e2e-us6-t076.md`에 저장. FAIL이 있으면 아래 「실패 갈래」 ③-2로 먼저 가른다(환경 원인 / 제품 · 구성) |
   | ④-1 O-9 `issue` | 운영자(창 D) | `pwsh -NoProfile -File D:\code\joshuatech_ver2\specs\003-platform-foundation\design\t076-blocks\o9-issue-vault-jwt.ps1`(인자 없이) → 정지점에 `issue` | `o9 issued exp=<UTC> file=~\AppData\Local\jt-e2e\vault-e2e-reader.jwt` — `exp`를 컨트롤러에게(1시간 창이 열린다). `o9=STOP …`이면 아래 「실패 갈래」 |
   | ④-2 tester 2차(`exp` 전) | 컨트롤러 → tester(Claude Code tester만 — Codex tester는 O-8을 SKIP으로 보고한다 · `.claude/agents/tester.md` 「Credentials」) | O-8(`-ExpectedSha`) → C-8(`-Since` · `-Nonce` = O-8 출력 `INFO o8 start=<UTC> nonce=<nonce>`) — 실행 꼴은 위 「누가 무엇을」(`chcp.com 65001` 접두 · `echo "exit=$?"`) · Bash 도구 timeout 600000(O-8 최악 ≈ 565 s — Forwarding 줄 기다림 ≤ 45 s 포함 · T076 보정 2026-11-20 · 리뷰 RO-04 · RO-08 · RO2-01 · rv2C-05) | `o8=PASS 10/10` · `c8=PASS 10/10` · 둘 다 exit 0. 실패면 블록 출력 그대로 FAIL — 컨트롤러가 원인을 본 뒤 같은 1시간 안에서 다시 디스패치(설계 D13 · 재시도 방식은 바꾸지 않는다 · C-8 원인 후보는 아래 「실패 갈래」) |
   | ④-3 O-9 `clear` | 운영자(창 D) | ④-1과 같은 명령(인자 없이) → 정지점에 `clear` | `o9 cleared`(파일이 이미 없으면 `o9 nothing-to-clear` — 정상). `o9=STOP …`이면 아래 「실패 갈래」 ④-3(T076 보정 2026-11-20 · 리뷰 RO2-03) |
@@ -1226,6 +1226,7 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
   Remove-Item Env:VAULT_TOKEN, Env:VAULT_ADDR -ErrorAction SilentlyContinue
   Get-Process kubectl -ErrorAction SilentlyContinue | Select-Object Id, StartTime, CommandLine   # 0줄 — 남았으면 시작 시각 · 명령 줄로 무엇인지 본 뒤 Stop-Process -Id <Id>(끊긴 tester 블록의 port-forward 등 · 리뷰 RO-08)
   # 창 A 터널 리스너 종료 뒤 캐시 토큰 삭제
+  Get-Process cloudflared -ErrorAction SilentlyContinue | Select-Object Id, StartTime   # 0줄 — 남았으면 시작 시각을 본다(이전 세션에서 남은 터널도 여기서 보인다 · T076 실측 2026-11-23 — T075 세션 터널이 3일 남아 있었다) → 그 창에서 Ctrl+C 또는 Stop-Process -Id <Id>
   Remove-Item "$env:USERPROFILE\.cloudflared\*-token*" -ErrorAction SilentlyContinue
   ```
 
@@ -1246,19 +1247,19 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
 
   | 항목 | 값 |
   |---|---|
-  | ①-1 — 터널 · 창 C 수립 시각 |  |
-  | ①-2 – ①-5 — §4 T076 기록 칸(O-10 · plan/apply · W-7) |  |
-  | ②-1 — agent-view 재발급 시각 · 만료(UTC) · `auth whoami` |  |
-  | ②-2 — svc-verify 세션 시각 · 만료 |  |
-  | ②-3 O-7 dev · prod — 키 이름(값 0) |  |
-  | ③-1 — binfmt 근거 줄 · `-ExpectedRevision` · `-ExpectedSha` · migrate Job 완료 시각(dev · prod) · overlays digest 같음 |  |
-  | ③-2 tester 1차 — 시각 · 결과 요약 · 보고 파일 |  |
-  | ④-1 O-9 `issue` — `o9 issued exp=` 줄 · `INFO aud 꼴=` 줄(VD-T076-10 — K3s TokenRequest 단일 audience 직렬화: 문자열 · 배열) |  |
-  | ④-2 tester 2차 — `INFO o8 start=` 줄 · `o8=` 줄 · `c8=` 줄 · exit 코드 · 재디스패치 횟수 |  |
-  | ④-3 O-9 `clear` — `o9 cleared` 또는 `o9 nothing-to-clear` 줄 |  |
-  | ⑤ 세션 끝 정리 — JWT 파일(④-3이 `o9=STOP clear …`였으면 그 끝 줄 · 직접 삭제 여부) · plan 파일 · `.vault-token` 없음 · 창 C(①-5에서 닫지 않았으면 닫은 시각) · 남은 `kubectl` 0 · 터널 · 캐시 토큰(T076 보정 2026-11-20 · 리뷰 RO2-02 · RO2-03) |  |
-  | UD-16 마무리 결정(1회용 전환 여부 — `/finish` 전 · 사용자): 「1회용」 = 짧은 `--duration`(예: 10–15분 · tester 2차 직전 발급) + 사용 뒤 운영자 clear — JWT 사본은 exp까지 유효하므로 파일 삭제만으로는 1회용이 아니다(리뷰 S-03). 바꾸면 ④-2 재디스패치 갈래(같은 1시간 안 재시도)와 O-9 발급 횟수도 바뀐다(T076 보정 2026-11-20 · 리뷰 RO-11) |  |
-  | 실패 갈래 · 재시도를 썼다면(무엇 · 왜 · 사용자 확인 시각) |  |
+  | ①-1 — 터널 · 창 C 수립 시각 | 2026-11-23 — 터널(6443) = 2026-11-20 13:54:53 KST에 띄운 cloudflared가 그대로 떠 있었다(T075 세션 끝 정리에서 빠진 것 — ⑤에서 발견 · 오늘 창들이 그 리스너를 썼다) · 창 C 10:28:05 KST(01:28:05Z — §4 T076 기록 칸 「사전」) |
+  | ①-2 – ①-5 — §4 T076 기록 칸(O-10 · plan/apply · W-7) | §4 T076 기록 칸(2026-11-23 — O-10 `o10=PASS`(403 audience 거부) · plan/apply in-place 2 · W-7 `w7=OK absent→v1`) |
+  | ②-1 — agent-view 재발급 시각 · 만료(UTC) · `auth whoami` | 2026-11-23 02:04:27Z(11:04:27 KST — 토큰 iat) · 만료 **2026-11-23T10:04:27Z**(19:04:27 KST · 수명 28800 s) · `auth whoami` = `system:serviceaccount:kube-system:agent-view` · aud = K3s 기본 둘(vault 없음 — UD-16) · 운영자 로컬 갱신(`--duration=8h` · `--audience` 없음 · `RESULT=RENEWED; EXIT=0`) |
+  | ②-2 — svc-verify 세션 시각 · 만료 | 11:0x KST(`Completed browser authentication process!`) · 만료 `Session is valid until 2026-11-23 12:05:10`(KST — 컨트롤러 `oci session validate` exit 0) · 순서는 ②-3 뒤(세션 1 h를 tester 1차 OCI 행에 — OCI 행 11:14–11:17 KST) |
+  | ②-3 O-7 dev · prod — 키 이름(값 0) | dev · prod 같음 — `identity-admin-env: AUTHENTIK_API_TOKEN AUTHENTIK_ISSUER AUTHENTIK_JWKS_URL AUTHENTIK_WEBHOOK_SECRET DATABASE_URL DRAGONFLY_URL KAFKA_PASSWORD OPENFGA_PRESHARED_KEY OPENFGA_STORE_ID SECRET_KEY SENTRY_DSN`(11) · `identity-admin-migrate: DATABASE_OWNER_URL`(1) |
+  | ③-1 — binfmt 근거 줄 · `-ExpectedRevision` · `-ExpectedSha` · migrate Job 완료 시각(dev · prod) · overlays digest 같음 | `installing: arm64 OK` · emulators `qemu-aarch64` · `-ExpectedRevision` = `cb3ba13615913da1a47f6ff2f2d11a38350eeded` · `-ExpectedSha` = `9fd9f2c766059f1f4f0ab87718156ff3a6c0964d`(그 digest를 낸 봇 PR #60의 원천 커밋) · migrate Job 완료 dev 2026-11-19T10:11:43Z · prod 2026-11-20T03:34:04Z(ttl 604800 — 기한 dev 11-26 19:11 · prod 11-27 12:34 KST) · overlays `images:` digest dev = prod(`sha256:faf55a57…57dd`) |
+  | ③-2 tester 1차 — 시각 · 결과 요약 · 보고 파일 | 11:11:34–11:37:44 KST · AC1–AC4 · AC5(로그) PASS — 템플릿 하네스 949 passed · skipped 0 · 생성물 165 · arm64 `linux/arm64 10001:10001` · identity-admin 521 · AC3 대리 측정 relay call 2.26 s · AC5 OTLP SKIP · AC6 1차 몫 `l8=PASS 24/24` · O-7 일치 · data env-1 PASS · 무헤더 401(편차 6) · 러너 = infra [plan] 기준선 FAIL → 라이브 파일 직접 96 PASS · 0 FAIL · 11 SKIP · 제품 · 구성 FAIL 0 · 보고 `specs/003-platform-foundation/research/2026-11-23-e2e-us6-t076.md` |
+  | ④-1 O-9 `issue` — `o9 issued exp=` 줄 · `INFO aud 꼴=` 줄(VD-T076-10 — K3s TokenRequest 단일 audience 직렬화: 문자열 · 배열) | `INFO aud 꼴=배열(VD-T076-10 관찰 — …)` · `o9 issued exp=2026-11-23T03:50:33Z file=~\AppData\Local\jt-e2e\vault-e2e-reader.jwt`(발급 ≈ 11:50:33 KST) |
+  | ④-2 tester 2차 — `INFO o8 start=` 줄 · `o8=` 줄 · `c8=` 줄 · exit 코드 · 재디스패치 횟수 | `INFO o8 start=2026-11-23T02:51:51Z nonce=t076-20261123T025251Z-3c97b0 — C-8 입력(-Since · -Nonce) …` · `o8=PASS 10/10` exit 0(11:52:36–11:53:11 KST) · `c8=PASS 10/10` exit 0(11:54:19–11:54:33 KST) · 재디스패치 0 · `INFO vault token revoked(204)` · 권한 관문 줄 = 설계(VD-T076-9) |
+  | ④-3 O-9 `clear` — `o9 cleared` 또는 `o9 nothing-to-clear` 줄 | `o9 cleared`(12:0x KST) |
+  | ⑤ 세션 끝 정리 — JWT 파일(④-3이 `o9=STOP clear …`였으면 그 끝 줄 · 직접 삭제 여부) · plan 파일 · `.vault-token` 없음 · 창 C(①-5에서 닫지 않았으면 닫은 시각) · 남은 `kubectl` 0 · 터널 · 캐시 토큰(T076 보정 2026-11-20 · 리뷰 RO2-02 · RO2-03) | 2026-11-23 — JWT 파일 False(④-3 `o9 cleared`) · plan 파일 False · `.vault-token` False · `Env:VAULT_*` 제거 · 창 C = ①-5 뒤 닫힘(10:49–11:07 KST) · `kubectl` 0줄 · 캐시 토큰 `*-token*` 삭제 → 0 · **터널 = T075 세션(2026-11-20 13:54:53 KST)부터 떠 있던 cloudflared(6443)** — 운영자 정리 확인 뒤 컨트롤러가 리스너 조회 · 프로세스 시작 시각으로 발견 → 운영자 정지 · 컨트롤러 확인 12:32:58 KST(03:32:58Z — cloudflared 0 · 6443 리스너 0 · 토큰 파일 0) · 세션 끝 블록에 `Get-Process cloudflared` 줄을 더했다(T076 보정 2026-11-23) |
+  | UD-16 마무리 결정(1회용 전환 여부 — `/finish` 전 · 사용자): 「1회용」 = 짧은 `--duration`(예: 10–15분 · tester 2차 직전 발급) + 사용 뒤 운영자 clear — JWT 사본은 exp까지 유효하므로 파일 삭제만으로는 1회용이 아니다(리뷰 S-03). 바꾸면 ④-2 재디스패치 갈래(같은 1시간 안 재시도)와 O-9 발급 횟수도 바뀐다(T076 보정 2026-11-20 · 리뷰 RO-11) | 미정 — `/finish` 전 사용자 결정(이번 창: 1시간 JWT 발급 1회 · tester 2차 1회 · 끝나고 clear) |
+  | 실패 갈래 · 재시도를 썼다면(무엇 · 왜 · 사용자 확인 시각) | 실패 갈래 0 · 재디스패치 0. 실행 꼴 보완 둘 — ③-2 ⓐ 러너 대신 라이브 파일 직접(러너가 infra [plan] 기준선에서 멈춤 — T075 선례 · 위 ③-2 행 보정) · 창 ② 순서 ②-1 → ②-3 → ②-2(svc-verify 1 h) |
 
 ## §4 Vault init·시크릿 시드
 
@@ -2218,12 +2219,12 @@ Certificate의 `spec.secretName`이 전이 전용 이름 `wildcard-joshuatech-de
 
   | 항목 | 값 |
   |---|---|
-  | 사전 — 창 D 체크리스트 · 창 C 수립 시각 · `VAULT_*` 없음 |  |
-  | 1 O-10 — `cluster_name` 확인 줄 · `o10=` 줄 · 시각 · 컨트롤러가 그 줄을 본 시각 |  |
-  | 2 정책 plan — 요약 줄(리소스 주소 · 개수) · 컨트롤러 확인 시각 |  |
-  | 2 apply — 결과 줄 · 시각 · plan 파일 삭제 · `Env:VAULT_*` 제거 |  |
-  | 3 W-7 — tofu 꼴 판정 줄 · 상태 판정 줄 · 끝 줄(`w7=…`) · 되읽기 판정 · 시각 · 창 정리 안내 줄(닫기 · 유지 어느 꼴인지) · 창 C를 닫은 시각(`w7=STOP …`이면 실패 표 조치 뒤 — §3 T076 ⑤ · T076 보정 2026-11-20 · 리뷰 RO2-02) |  |
-  | 실패 갈래를 썼다면(무엇 · 왜 · 사용자 확인 시각) |  |
+  | 사전 — 창 D 체크리스트 · 창 C 수립 시각 · `VAULT_*` 없음 | 2026-11-23 — 창 B · C · D 체크리스트 기대대로(운영자 「다르면 멈춤」 보고 없음) · 창 C port-forward 10:28:05 KST(01:28:05Z — kubectl 시작 시각 · 리스너 `127.0.0.1` · `[::1]` 둘 다 같은 프로세스 — 운영자 화면은 IPv4 한 줄이라 컨트롤러가 `Get-NetTCPConnection`으로 확인) · 창 D `Env:VAULT_*` 없음 · `~/.vault-token` 없음 |
+  | 1 O-10 — `cluster_name` 확인 줄 · `o10=` 줄 · 시각 · 컨트롤러가 그 줄을 본 시각 | `OK   Vault seal-status 200 · sealed = false · cluster_name = vault-cluster-d3b29227(http://127.0.0.1:18200 — 창 C)` · `o10=PASS 로그인 거부(코드 403 · invalid audience (aud) claim: audience claim does not match any expected audience) — audience 없는 agent-view 토큰은 e2e-reader 자격이 아니다(VD-T076-1)` · 실행 10:28–10:31 KST(블록은 시각을 내지 않는다) · 컨트롤러 확인 10:31 KST(01:31Z) — errors 첫 줄 = audience 거부 → VD-T076-1 PASS · 그 토큰의 aud = `[https://kubernetes.default.svc.cluster.local, k3s]`(K3s 기본 둘 — vault 없음) |
+  | 2 정책 plan — 요약 줄(리소스 주소 · 개수) · 컨트롤러 확인 시각 | `vault_policy.this["e2e-reader"]`(+ `kv/data/platform/access/tester-m2m` read 1줄) · `vault_policy.this["eso-platform"]`(+ `kv/data/platform/access/*` · `kv/metadata/platform/access/*` deny 2줄) in-place · 기존 줄 그대로 · `Plan: 0 to add, 2 to change, 0 to destroy.` · refresh 15 · 그 밖 drift 0 · `policies.tf`와 줄 단위 일치 → 컨트롤러 「plan 확인됨(in-place update 2 · 그 밖 0)」 10:35 KST(01:35Z) |
+  | 2 apply — 결과 줄 · 시각 · plan 파일 삭제 · `Env:VAULT_*` 제거 | `Apply complete! Resources: 0 added, 2 changed, 0 destroyed.`(두 정책 각 2 s · 10:3x KST) · plan 파일 삭제(운영자 `Test-Path` False · 컨트롤러 10:42 KST 확인) · `Env:VAULT_TOKEN` · `VAULT_ADDR` 제거(출력 없음) |
+  | 3 W-7 — tofu 꼴 판정 줄 · 상태 판정 줄 · 끝 줄(`w7=…`) · 되읽기 판정 · 시각 · 창 정리 안내 줄(닫기 · 유지 어느 꼴인지) · 창 C를 닫은 시각(`w7=STOP …`이면 실패 표 조치 뒤 — §3 T076 ⑤ · T076 보정 2026-11-20 · 리뷰 RO2-02) | `OK   tofu 출력 service_tokens → tester-m2m 의 client_id · client_secret 꼴 확인(값 미출력 · 나머지 토큰은 버렸다)` · `OK   Vault 도달 · 초기화됨 · unsealed · cluster_name = vault-cluster-d3b29227(seal type=ocikms · server 2.0.4)` · `PLAN kv/platform/access/tester-m2m — absent → 생성 예정(키 client_id · client_secret · -cas=0) · 지금 v0` · 정지점 root 토큰 → `seed` · `OK   kv/platform/access/tester-m2m v1 — 생성 · 되읽기 해시 일치(client_id·client_secret)` · 끝 줄 **`w7=OK absent→v1`**(10:4x KST · vault CLI 2.1.0 · tofu 1.12.6) · 창 정리 안내 = 닫기 꼴(`창 정리(T076 — 런북 bootstrap.md §3 T076 ①-5): 창 C port-forward(18200) 종료 …`) · 창 C 닫힘 10:49–11:07 KST 사이(컨트롤러 11:07 KST 확인 — 18200 리스너 0) |
+  | 실패 갈래를 썼다면(무엇 · 왜 · 사용자 확인 시각) | 없음 |
 
 ## §5 v1 삭제 기록
 

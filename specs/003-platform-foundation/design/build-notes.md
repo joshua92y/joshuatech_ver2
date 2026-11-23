@@ -5423,3 +5423,101 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
   - 검증: V1 **approve**(rv2 지적 14 모두 resolved · 독립 변이 18 / 18 · 추가 경계 3 생존 → LOW 1 = V1-01 대기 간격 0.5 s를 하네스가 고정하지 않는다 · NIT 4) · V2 **approve**(14 모두 resolved · 블록 글자 조립 대조 24 / 24 · NIT 4). 처리 = `decisions-controller.md` 「r2 검증 처리」.
 - **컨트롤러 보정 r2**(2026-11-21): harness-tester ST-O8에 기다림 고리 단언 하나(각 고리 바로 앞 문장 = 제 `$deadline` 대입 · 고리 본문의 대기 `Start-Sleep -Milliseconds 500` 각 하나 · o8의 `Start-Sleep` 2곳뿐 — V1-01 · V1-02 · ST-O8 46 → 47) → V1 변이 실행기 사본 21 / 21 잡힘(V-19 · V-20 · V-21 포함) · 대조 3 / 3 · 런북 §4 실패 표 W-7 「그 밖」 행(원인 = 창 정리 줄 **아래**의 pwsh 오류 글자 — V1-04 = V2-01 · 블록 끝 줄의 「위 오류」 글자는 T075 관례대로 둠 · README §5.0 기록) · 세션 끝 창 C 문장 일반형(V2-02) · ④-3 직접 삭제 `-Force` · 그래도 남으면 멈추고 보고(V2-03) · README(§2a 「r2 검증 → 컨트롤러 보정 r2」 · §3 35 · §4 · §5.0 · §5.7 · §7) · 설계 정정 노트 8 한정어(V1-03) · 24(1차 FAIL 사유 분류 — V2-04). 재확인: harness-tester **163 / 163 · 4422**(두 번) · harness-op 174 / 174 · 5289 · T075 359 / 359 · 11359(t075-blocks diff 0) · codex-parity 12 / 0 · hooks 23 / 0 · publish-pod 66 / 0 · agent-layer 72 / 0 · restore-drill 28 / 0 · codex-integration 12 / 0 · tofu.tests vt 18 / 0(그 밖 27 FAIL = OCI 자격이 필요한 plan 계열 — 이전과 같음) · 바이트 · 형식 13파일 0 문제. 스크래치 `r2-G1` · `r2-G2` · `r2-V1` · `r2-V2` · `r2-C`는 `.superpowers/t076/build/scratch/t076/`에 보존.
 - **인계 · 후속**: ① 다음 gitops 문서 PR — `platform/cnpg-databases/README.md` P2 행 · `externalsecrets.yaml` 주석의 eso-platform 요약에 deny 두 줄(B1 우려) ② `kv/{env}/authentik/web-bff`의 「ESO 밖」은 관례뿐 → web-bff 시드 과제에서 eso-dev · eso-prod deny 검토 ③ UD-16 1회용 전환 = `/finish` 전 사용자 결정(S-03 정의) ④ VD-T076-10 = O-9 첫 실행의 `INFO aud 꼴=` 줄 ⑤ 라이브 기한(migrate Job TTL — dev ≈ 2026-11-26 19:1x KST · prod ≈ 2026-11-27 12:3x KST · 추론) ⑥ W-7 `cluster_name`은 `vault status -format=json` 필드라는 추론 위에 있다 — 없으면 fail-closed(①-5 첫 실행에서 확인) ⑦ T077 · T085: S-01 문장(`tester.md` · `infra.md` 「Credentials」 + KR 미러 · k8s-security · infra-builder)은 T076 O-8 블록 하나만 지명하고 그 밖의 Vault 요청을 무자격 seal-status로 한정한다 — Playwright의 `kv/platform/authentik/e2e` 읽기(T077) · T085 블록은 검토된 블록을 두고 그 블록을 예외에 더하는 문장 개정(UD-15 범위 확장 = 사용자 결정 · approval-review)이 먼저다(rv2 S2-01 · rv2C-02).
+- **커밋 · push(라이브 전)**: `072bc8e`(2026-11-21 · 33파일 · tick 없음) → 사용자 확인 뒤 push(`929204d..072bc8e`) · 초안 PR #2 CI 전부 통과(GitGuardian 포함). 라이브 시작 = 사용자 「지금 시작」.
+
+### T076 라이브 결과(창 ① – ⑤ · 2026-11-23 10:28–12:1x KST)
+
+라이브 기록 정본 = `.superpowers/t076/live/L1-20261123.md`(gitignore). tester 보고 · 판정 정본 = `research/2026-11-23-e2e-us6-t076.md`. 증거 사본 = `.superpowers/t076/evidence/tester1/`. 런북 §3 · §4 T076 기록 칸을 채웠다.
+
+- **창 ①(운영자 · 10:28–10:4x KST)**
+  - ①-1: 창 C port-forward 10:28:05 KST. 리스너 `127.0.0.1` · `[::1]` 둘 다 같은 kubectl이다. 운영자 화면에는 IPv4 한 줄만 있었고, 컨트롤러가 `Get-NetTCPConnection`으로 둘을 확인했다.
+  - ①-2 O-10: `o10=PASS 로그인 거부(코드 403 · invalid audience (aud) claim: audience claim does not match any expected audience)`.
+    - errors 첫 줄 = audience 거부 → **VD-T076-1 PASS**(10:31 KST).
+    - audience를 주지 않은 TokenRequest의 aud는 K3s 기본 둘(`https://kubernetes.default.svc.cluster.local` · `k3s`)이었다.
+  - ①-3 plan: in-place 2 · 그 밖 0. `policies.tf`와 줄 단위로 같고, refresh 15 · drift 0. 컨트롤러 「plan 확인됨」 10:35 KST.
+  - ①-4 apply: `Apply complete! Resources: 0 added, 2 changed, 0 destroyed.` · plan 파일 · `Env:VAULT_*` 삭제.
+  - ①-5 W-7: **`w7=OK absent→v1`**.
+    - tofu 꼴 판정 OK.
+    - `cluster_name` OK — seal ocikms · server 2.0.4. 설계 D16 인계 ⑥의 추론(`vault status`에 그 필드가 있다)이 성립했다.
+    - absent → `seed` → v1 · 되읽기 해시 일치.
+    - 창 정리 = 닫기 꼴. 창 C는 10:49–11:07 KST 사이에 닫혔다.
+- **창 ②(운영자 · 11:0x KST)**
+  - ②-1 agent-view 8h: 운영자 로컬 갱신 · `--audience` 없음 · exp 10:04:27Z · whoami agent-view · aud에 vault 없음.
+  - ②-3 O-7: dev · prod 모두 `-env` 11키 · `-migrate` 1키다. T075에서 비어 있던 prod 기록을 채웠다.
+  - ②-2 svc-verify: 만료 12:05:10 KST. 1 h를 tester 1차에 남기려고 ②-3 뒤에 돌렸다.
+- **③-1 디스패치 준비(컨트롤러 · 11:07–11:15 KST)**
+  - binfmt `installing: arm64 OK` · `qemu-aarch64`.
+  - `-ExpectedRevision` = cb3ba13(11-20 이후 머지 0).
+  - `-ExpectedSha` = 9fd9f2c. dev = prod overlays digest(`faf55a57…`)이고, 그 digest를 낸 봇 PR #60의 원천 커밋이다.
+  - migrate Job 완료: dev 11-19 10:11:43Z · prod 11-20 03:34:04Z(기한 dev 11-26 19:11 · prod 11-27 12:34 KST — 추론과 일치).
+- **③-2 tester 1차(11:11–11:37 KST)**
+  - AC1–AC4 · AC5(로그) PASS
+    - 템플릿 하네스 949 passed · skipped 0 · 7분 38초 · 단계 42줄 전부 ok
+    - 생성물 165 passed · 수집 7파일
+    - arm64 `linux/arm64 10001:10001`
+    - identity-admin 521 passed
+  - AC3 대리 측정: relay call 2.26 s.
+  - AC5 OTLP: SKIP.
+  - AC6 1차 몫: `l8=PASS 24/24` · O-7 일치 · data env-1 PASS.
+  - 무헤더: 401(편차 6).
+  - 플랫폼 러너: infra [plan] 27 기준선 FAIL로 멈췄다. 라이브 파일을 직접 돌려 96 PASS · 0 FAIL · 11 SKIP(T075와 같은 수).
+  - **제품 · 구성 FAIL 0.** 컨트롤러가 증거 로그의 요약 줄 · 개수로 대조했다.
+- **④(11:50–12:0x KST)**
+  - O-9 `issue`: `INFO aud 꼴=배열` → **VD-T076-10 = 배열 `["vault"]`** · exp 03:50:33Z.
+  - tester 2차
+    - O-8 **`o8=PASS 10/10`**. 35 s로 끝났고, Forwarding 줄 기다림 문제는 없었다.
+    - C-8 **`c8=PASS 10/10`**.
+    - 재디스패치 0 · `vault token revoked(204)` · kubectl 0.
+    - django-common iss 두 시험 `2 passed`(AC4 보충 — 1차 관찰 ①).
+  - O-9 `clear`: `o9 cleared`.
+- **VD**: 1 · 2 · 7 · 9 PASS. 3 · 4 · 5 · 6은 설계와 같다(D10 정정 불필요). 8 = 가짜 자격 401 · text/html · 61212 B(Access 엣지 · 기록). 10 = 배열(설계 정정 노트 27).
+- **⑤ 세션 끝**
+  - JWT 파일 · plan 파일 · `.vault-token` 없음 · kubectl 0 · 캐시 토큰 삭제.
+  - **발견 — T075 세션(2026-11-20 13:54:53 KST)에 띄운 cloudflared 터널이 3일 동안 떠 있었다.**
+    - T075 세션 끝 정리에서 빠졌고, 오늘 창들도 그 6443 리스너를 썼다.
+    - 컨트롤러가 정리 확인 뒤 `Get-NetTCPConnection`과 프로세스 시작 시각으로 찾았다 → 운영자가 멈췄다. 컨트롤러 확인 12:32:58 KST — cloudflared 0 · 6443 리스너 0 · 토큰 파일 0.
+    - 런북 세션 끝 블록에 `Get-Process cloudflared` 줄을 더했다.
+- **tester 쪽 기록**
+  - 1차는 Git Bash `/tmp`에 임시 파일 하나를 만들었다가 지웠다(비밀 0 · 자진 보고).
+  - 2차는 O-8 seal-status 줄(루프백 주소:포트)을 가렸다. 지시의 「IP 꼴」 규칙을 넓게 적용한 것이고 편차가 아니다.
+
+### T076 결과(2026-11-23 · 마감)
+
+- **tick**: tasks:196 [X] — 결과 줄 없음(spec VD 측정 아님) · 82/119.
+  - 설계 D15 조건: §1 합격선 전부 PASS이고, SKIP(AC5 OTLP) · 편차 후보 6–12가 §1 표 그대로다.
+  - 새 편차는 없다. 아래 두 실행 메모는 증거를 얻는 꼴의 보완이고, 합격선은 그대로다.
+    - 러너 대신 라이브 파일 직접
+    - AC4 iss 증거 자리(공통 라이브러리 시험)
+- **report 편차**(설계 §1 후보 6–12 — 모두 실현). report.md 반영은 T117 초안 · /finish.
+  - 6: 무헤더 m2m 401 · admin 302
+  - 7: 생성 경로 `tests/fixtures/generated/apps/sample-pod`
+  - 8: testcontainers(compose 아님)
+  - 9: AC3 대리 측정 2.26 s
+  - 10: AC5 OTLP SKIP
+  - 11: e2e-reader 두 경로 — vt-16 · 권한 관문 실물 VD-T076-9
+  - 12: Authentik 비밀 sentinel — 설계대로 · 이번에는 키 이름만 관측
+- **설계 정정**: t076-design.md 「2026-11-23 — 라이브 반영」 노트 25–29(러너 대체 · 창 ② 순서 · VD 결과 · AC4 iss 증거 자리 · W-7 `cluster_name`).
+- **런북 보정**(표식 「T076 보정 2026-11-23」)
+  - §3 T076 ③-2 ⓐ: 러너가 infra [plan] 기준선에서 멈추면 라이브 파일 다섯을 같은 꼴로 직접.
+  - 세션 끝 블록: `Get-Process cloudflared` — 이전 세션 잔여 터널.
+  - 기록 칸 §3 · §4 T076.
+- **run-all**: 2026-11-23 12:12:27–13:06:38 KST(03:12:27–04:06:38Z · 54분).
+  - 조건: KUBECONFIG 없음. 터널을 닫는 중이었고, 플랫폼 라이브 파일은 tester 1차가 11:13–11:18 KST에 이미 돌렸다(96/0/11).
+  - 결과: 슬롯 줄 PASS 30 · 구조 검사 PASS 9 · **1 FAILED = `platform` ← `infra tests` 35/27**.
+    - 실패 원인은 `tofu plan`이 운영자 OCI 자격 · `budget_alert_email`을 요구하는 것이다. T053 · T054 · T058 · T059 · T075와 같은 기대 FAIL이다.
+    - vt-1–17 · vt-14b는 PASS다.
+  - 그 밖 슬롯은 전부 PASS: hooks · codex-* · scripts · harness 여섯 · ci-* · gitops-base-sync · specs-index-fresh · agent-layer · codex-parity · kernel-trial 235/0 · restore-drill 28/0 등.
+  - 로그 사본: `.superpowers/t076/evidence/run-all-20261123.log`.
+- **학습 로그**: `content/tmp/003-t076/2026-11-23.md`(라이브 날).
+- **인계 · 후속**
+  - UD-16 1회용 전환 — `/finish` 전 사용자 결정.
+  - T077 · T085 전 S-01 문장 개정 — UD-15 범위 확장 · 사용자 결정 · approval-review · 정정 노트 23.
+  - UD-13 정비 — Argo CD 3.5.7 · Traefik ≥ 3.7.18 · 다음 단계.
+  - 다음 gitops 문서 PR — cnpg-databases README P2 · externalsecrets.yaml 주석 deny 두 줄.
+  - web-bff 시드 과제의 eso-dev · eso-prod deny 검토.
+  - T084 tester-m2m 회전 — Cloudflare(tofu) → Vault `-cas=<n>`.
+  - GitGuardian 38849990 오탐 표시 — 운영자.
+  - 플랫폼 러너의 infra [plan] 게이트를 KUBECONFIG 단계와 떼는 개선 — 후보 · 소유 미정.
+  - tester-m2m 1년 토큰 만료 2027-09-03 — T084 회전 매트릭스.
+- **다음**: UD-13 정비 단계 → Phase 7 US4(T077–).
+  - 대기 사용자 결정: UD-1(다음 main 통합) · UD-10(T098 전) · UD-11(T081 전) · UD-2 · UD-4(T081) · UD-3(T083) · UD-7 · UD-8(T089) · UD-16(1회용 — `/finish` 전).
