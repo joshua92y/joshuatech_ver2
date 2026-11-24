@@ -4,6 +4,10 @@
   "private": true,
   "description": "Content loaders and schemas (skeleton, T015)",
   "scripts": {
-    "build": "echo @jt/content: skeleton, no build step"
+    "build": "echo @jt/content: skeleton, no build step",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.5"
   }
 }

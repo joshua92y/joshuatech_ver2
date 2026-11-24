@@ -12,7 +12,17 @@ importers:
         specifier: 1.65.1
         version: 1.65.1
 
-  packages/content: {}
+  apps/web:
+    devDependencies:
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(vite@8.3.5)
+
+  packages/content:
+    devDependencies:
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(vite@8.3.5)
 
   packages/events:
     dependencies:

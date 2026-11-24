@@ -36,6 +36,9 @@ __pycache__/
 .open-next/
 .wrangler/
 
+# Next.js build output (apps/web — T086–T089 설계 ⓪)
+.next/
+
 # Environment files (commit only *.example)
 .env
 .env.*
