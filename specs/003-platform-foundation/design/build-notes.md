@@ -5644,3 +5644,29 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
   - 로그 IP 꼴 0. 뒤 확인: `e2e/.auth` 없음 · `%TEMP%\jt-e2e` 0 · 잠금 표식 0 · 무시된 산출물 0 · git 상태 = 지정 파일뿐.
 - **tick**: T077 · T079 = 설계 §1-1 세 조건(오프라인 초록 · needle PASS · list · live-red `[gate]` 3/3) 충족 → [X] 83 · 84/119. T078 = 짝 하네스 초록이지만 라이브 줄(운영자 터널 + agent-view 창)이 아직이라 tick하지 않는다 — 다음 운영자 창에서 관찰한 뒤 tick만 담은 문서 커밋(설계 D9 · D12).
 - **커밋**(설계 정정 노트 2): T078(하네스 둘 + `identity-harness` 슬롯) → T077 · T079 한 커밋(e2e · 루트 config · 의존성 · `e2e-selftest` 슬롯 · 기록 · tick).
+
+## T086 · T087 · T088 · T089 (2026-11-24 설계 확정 — US5 시험 먼저 · 라이브 0 · 자격 0 · 세션 모델 Opus 5.5)
+
+- **설계 정본** = `design/t086-design.md`(r2 본문 + §7 확정 보정 N-1–N-19). 컨트롤러 결정 기록 = `.superpowers/t086/decisions-controller.md`(gitignore) · 조사 · 비판 · 검증 = `.superpowers/t086/{research,design}/`.
+- **경과**(워크플로)
+  - 조사 3 → 초안 r0 → 비판 2렌즈(`wf_830b6e89-a19` — 둘 다 approve_with_fixes).
+  - UD-7 동향 조사(`wf_869711dc-082` — 표준 · 보안 지침 · 업계: 최신 기본값 = 「그 기기만」).
+  - 설계 r1 + 검증 2렌즈(`wf_0b42edd3-9ab` — 둘 다 approve_with_fixes · HIGH 0 · r1이 UD-7c 발견).
+  - 콘텐츠 로더 오픈 소스 조사(`wf_565e05f3-de5` — 요구를 통째로 덮는 것 없음 · MDX 실행 차단 내장 0).
+  - 설계 r2 + 검증 2렌즈(`wf_2b68f4c0-bad` — 둘 다 approve_with_fixes · HIGH 0) → 컨트롤러 확정 보정 N-1–N-19.
+- **사용자 결정(2026-11-24)**
+  - **UD-7 = 기본 로그아웃 「그 기기만」**(사용자: 「관례대로 기기 단위로 하고 결함 고쳐 관례 기준으로 기준 조금 내려도 좋아」). 「이 기기」 = BFF 경유 2 s 안에 401(편차 〔86-22〕 · 〔86-23〕) · 「모든 기기」 = AC3 그대로(T079가 명시 `all_devices: true`로 잰다).
+  - **UD-7a = ① 둘 다**: (ㄱ) 로그아웃이 그 브라우저의 Authentik 세션도 끝낸다(RP-Initiated Logout · User Logout 단계 — T080 · T081 VD) · (ㄴ) `revoked:sid` 값 = 폐기 시각 + 세션 단위 하한 `identity-admin:sid-floor:{sid}`(W35 수정 — 조각 ⑤ · 재배포 때 UD-1 재확인).
+  - **UD-8 = 관례(한계 수용)**: callback은 identity-admin을 부르지 않는다.
+  - **T086-a = A**: 사용자가 노트 001 · 002를 검토 · 승인한 뒤 `draft: false`(T091 ~ T093 전에 다시 여쭌다).
+  - **T086-e = (A) 자체 로더 + 순수 마크다운**: `.mdx`를 Markdown + GFM으로만 파싱하고 거부 플러그인이 `html` 노드 · `import`/`export` 줄 · `{}` · 허용 목록 밖 URL을 파일 · 줄 · 규칙 이름과 함께 빌드 실패로 만든다(ADR 0004 D19 그대로 · 새 ADR 0).
+  - **B-6 = 쿠키 접두 채택**: `__Host-jt_session` · `__Host-jt_csrf` + (N-9 컨트롤러 정밀화) `__Host-jt_pkce; Path=/`.
+- **나중에 여쭐 것**(설계 §5-3 · §7 끝)
+  - **UD-7c**(r1 발견): 우리 end-session의 Authentik `logout` 이벤트가 웹훅(UD-4 B) · 대조(UD-2)를 거쳐 사용자 단위 폐기로 번진다(dev · prod 교차 포함). T080 블루프린트 전에 UD-4와 함께 여쭌다.
+    - **순서 제약**: 해소 조각이 라이브에 들기 전에는 어느 BFF(prod · preview · 로컬)든 end-session과 웹훅 logout Rule · 대조 권한을 동시에 켜지 않는다.
+  - T090 착수 때 로더 새 의존 설치 승인.
+  - T091 전 곁가지 셋
+    - @opennextjs/cloudflare 1.20.18 peer `next >=16.4.5`(Next 16.3.4 고정과 충돌 — 2026-11-03 Next 보안 릴리스)
+    - Workers 압축 크기 한도 폐지(2026-09-04 — 2.5 MiB 게이트 근거)
+    - OpenNext #1334 수정판
+- **빌드 조각**(설계 D14): ⓪ 기반(컨트롤러 — apps/web 최소 매니페스트 · vitest 5.0.5 재사용 · lock 검사) → ① T086 + T088 · ② T089 · ③ T087(web-builder opus 셋) · ⑤ UD-7a(ㄴ)(api-builder opus) 병렬 → 리뷰 4렌즈 → 컨트롤러 빨강 관찰 → 과제마다 커밋.
