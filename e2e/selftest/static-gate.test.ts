@@ -20,6 +20,13 @@ const HTTP = 'e2e/lib/http.ts';
 const SECRET_INPUT = 'e2e/lib/secret-input.ts';
 const TEST_BASE = 'e2e/lib/test-base.ts';
 const FIXTURE_GUARD = 'e2e/selftest-browser/fixture-guard.test.ts';
+// T087(설계 t086-design.md D10 ④ · r2 — V-B-6 · N-14)
+const HELLO = 'e2e/hello.spec.ts';
+const SITE = 'e2e/lib/site.ts';
+const SITE_PROBE = 'e2e/lib/site-probe.ts';
+const SITE_PROBE_TEST = 'e2e/selftest-browser/site-probe.test.ts';
+// site-probe를 가져오는 꼴 — 정적 · 타입 · 부수 효과 · 동적 import · require(경로 끝 site-probe, 확장자 선택 · 지정자 인용 부호 ' " ` — 리뷰 B-5)
+const SITE_PROBE_IMPORT = new RegExp(J('(?:\\bfrom|\\bimport|\\brequire)\\s*\\(?\\s*[\'"`][^\'"`\\n]*site-', 'probe(?:\\.[cm]?[jt]s)?[\'"`]'));
 
 // 공통 test 기반을 써야 하는 파일(브라우저 · 요청 픽스처를 쓰는 spec · needle · selftest-browser — 리뷰 B-3)
 const baseUser = (rel: string): boolean => /^e2e\/[^/]+\.spec\.ts$/.test(rel) || rel.startsWith('e2e/needle/') || rel.startsWith('e2e/selftest-browser/');
@@ -44,7 +51,8 @@ const ANYWHERE: Array<[string, RegExp]> = [
   ['record-video', lit(J('record', 'Video'))],
   ['attach', lit(J('.att', 'ach('))],
   ['pause', lit(J('.pau', 'se('))],
-  ['listener', new RegExp(J('\\.(on|once|addListener|prependListener)\\(\\s*[\'"`]', '(request|response|console|requestfinished|requestfailed|framenavigated|pageerror|dialog|download|popup|websocket|filechooser|weberror|worker)[\'"`]'))],
+  // T087(D10 ④) — request 이벤트만 이름 붙은 예외 listener-request(site-probe.ts — prefetch 계수기)로 뺐다. 그 밖의 이벤트는 어디서나 0.
+  ['listener', new RegExp(J('\\.(on|once|addListener|prependListener)\\(\\s*[\'"`]', '(response|console|requestfinished|requestfailed|framenavigated|pageerror|dialog|download|popup|websocket|filechooser|weberror|worker)[\'"`]'))],
   ['to-be-ok', lit(J('toBe', 'OK('))],
   ['to-have-url', lit(J('toHave', 'URL('))],
   ['to-have-value', lit(J('toHave', 'Value('))],
@@ -77,6 +85,20 @@ const ANYWHERE: Array<[string, RegExp]> = [
   ['request-property', new RegExp(J('\\.requ', 'est\\b'))],
   // 리뷰 C-2 — 스냅숏 자리를 저장소 안으로 되돌리는 설정
   ['snapshot-template', new RegExp(J('snapshotPath', 'Template|pathTem', 'plate'))],
+  // T087(D10 ④ · r2 — V-B-6) — Request · Response의 쿠키 포함 헤더 보기(단수 header-value 글자 규칙에 걸리지 않는 복수 · 배열 꼴까지) · 요청 본문 · 요청의 응답 객체.
+  // 헤더 객체 메서드(이름 headers)는 허용한다 — 값이 출력 면에 나가는 것은 http.ts 감싸개 · emit-args · expect-args가 막는다(리뷰 B-6 — emit-args · expect-args 쪽은 아래 T087 rule details, http.ts 감싸개의 값 없는 오류는 selftest http가 고정).
+  // APIResponse의 headers()는 Set-Cookie까지 줄바꿈으로 이어 돌려준다(site.ts cookieNames · selftest-browser site-probe 실측) — 「쿠키를 빼고 돌려준다」는 근거가 아니다.
+  ['all-headers', lit(J('allHea', 'ders('))],
+  ['header-value', lit(J('headerVal', 'ue('))],
+  ['header-values', lit(J('headerVal', 'ues('))],
+  ['headers-array', lit(J('headersAr', 'ray('))],
+  ['post-data', lit(J('post', 'Data'))],
+  ['response-call', lit(J('.resp', 'onse('))],
+  // N-14(V-B2-7) — 모아 둔 요청 · 콘솔 · 페이지 오류 · 응답을 꺼내는 pull API(Playwright 1.65.1 types.d.ts). D10 ⑤ 「페이지의 모은 요청 목록 읽기 0」을 여기서 집행한다.
+  ['requests-pull', lit(J('reque', 'sts('))],
+  ['console-messages', lit(J('consoleMes', 'sages('))],
+  ['page-errors', lit(J('pageErr', 'ors('))],
+  ['existing-response', lit(J('existingRes', 'ponse('))],
 ];
 
 // 이름 붙은 파일에서만
@@ -100,13 +122,18 @@ const NAMED: Rule[] = [
   { id: 'url-read', hit: rx(lit(J('.u', 'rl('))), allowed: [HTTP] },
   { id: 'needle-prefix', hit: rx(lit(J('JTNEE', 'DLE-'))), allowed: [LAUNCH, ENV_CONTRACT] },
   // 리뷰 B-2 — 값을 읽는 evaluate는 길이만 읽는 secret-input에만. fill은 secret-input과 고정 신원(E2E_EMAIL) 인자만.
-  { id: 'evaluate', hit: rx(new RegExp(J('\\.(evaluate|evaluateAll|evaluateHandle|\\$eval|\\$\\$eval)', '\\('))), allowed: [SECRET_INPUT] },
+  // T087(D10 ④) — site-probe.ts는 토큰 CSSOM을 페이지 안에서 판정해 수 · 불리언만 돌려준다(이름 붙은 예외).
+  { id: 'evaluate', hit: rx(new RegExp(J('\\.(evaluate|evaluateAll|evaluateHandle|\\$eval|\\$\\$eval)', '\\('))), allowed: [SECRET_INPUT, SITE_PROBE] },
   { id: 'fill', hit: rx(new RegExp(J('\\.fi', 'll\\(\\s*(?!E2E_EMAIL\\s*[,)])'))), allowed: [SECRET_INPUT, CONTROL] },
   // 리뷰 B-3 — 재단언 픽스처를 다른 곳에서 덮어 끄지 못하게 이름을 test-base에만 둔다
   { id: 'guard-fixture', hit: rx(lit(J('jtFixture', 'Guard'))), allowed: [TEST_BASE] },
   // 리뷰 B-3 · C-1 — 파일 단위 옵션 덮기(test 객체의 use 호출)는 FullConfig에 드러나지 않아 기록 끄기 세 겹을 우회한다.
   // 예외는 그 우회를 실행 때 막는지 보는 양성 대조 한 파일뿐이다(로컬 setContent만).
   { id: 'test-use', hit: rx(lit(J('.us', 'e('))), allowed: [FIXTURE_GUARD] },
+  // T087(D10 ④) — request 이벤트 리스너는 prefetch 계수기(site-probe.ts) 하나만: 헤더 하나만 보고 수만 센다(보관 0 · URL 읽기 0 · 리스너 매개변수 이름 ≠ request).
+  { id: 'listener-request', hit: rx(new RegExp(J('\\.(on|once|addListener|prependListener)\\(\\s*[\'"`]', 'request[\'"`]'))), allowed: [SITE_PROBE] },
+  // T087(D10 ④) — site-probe(페이지 안 evaluate · request 리스너의 이름 붙은 예외)를 쓸 수 있는 파일은 hello.spec.ts와 그 selftest-browser뿐(타입 import 포함)
+  { id: 'site-probe-import', hit: rx(SITE_PROBE_IMPORT), allowed: [HELLO, SITE_PROBE_TEST] },
 ];
 
 // 경로 범위 규칙(리뷰 B-3 · C-4)
@@ -120,8 +147,8 @@ const VALUE_SOURCE = /\.value\b|\bcookies\s*\(|\bstorageState\s*\(|\bsecrets\b|\
 
 type Ctx = { k: 'code'; paren: number } | { k: 'sq' } | { k: 'dq' } | { k: 'tpl' } | { k: 'expr'; brace: number };
 
-// open = 여는 괄호 자리. 인자 목록의 코드 글자만 돌려준다(문자열 · 템플릿 글자 부분은 공백 하나로).
-function argumentCode(text: string, open: number): string {
+// open = 여는 괄호 자리. 인자 목록의 코드 글자와 닫는 괄호 다음 자리를 돌려준다(문자열 · 템플릿 글자 부분은 공백 하나로).
+function argumentSpan(text: string, open: number): { code: string; end: number } {
   const stack: Ctx[] = [{ k: 'code', paren: 0 }];
   let out = '';
   for (let i = open; i < text.length; i += 1) {
@@ -163,11 +190,15 @@ function argumentCode(text: string, open: number): string {
     if (c === '(') top.paren += 1;
     else if (c === ')') {
       top.paren -= 1;
-      if (top.paren === 0) return out + c;
+      if (top.paren === 0) return { code: out + c, end: i + 1 };
     }
     out += c;
   }
-  return out;
+  return { code: out, end: text.length };
+}
+
+function argumentCode(text: string, open: number): string {
+  return argumentSpan(text, open).code;
 }
 
 function emitArgsCarryValues(text: string): boolean {
@@ -179,10 +210,31 @@ function emitArgsCarryValues(text: string): boolean {
   return false;
 }
 
+// T087(D10 ④) — spec의 expect 인자 코드(와 이어 붙은 매처의 인자 코드)에 값 출처(헤더 · 본문 · 쿠키)가 있으면 위반이다 — 실패 메시지에 값이 실린다.
+// argumentCode(위)를 다시 쓴다. 문자열 · 템플릿 글자 부분은 값이 아니다.
+const EXPECT_CALL = new RegExp(J('\\bexp', 'ect\\s*(?:\\.\\s*[A-Za-z]+\\s*)?\\('), 'g');
+const MATCHER_CHAIN = /^\s*(?:\.\s*(?:not|resolves|rejects)\s*)*\.\s*[A-Za-z]+\s*\(/;
+const EXPECT_VALUE_SOURCE = /\bheaders\b|\.body\b|\bcookies\s*\(/;
+
+function expectArgsCarryValues(text: string): boolean {
+  EXPECT_CALL.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = EXPECT_CALL.exec(text)) !== null) {
+    const a = argumentSpan(text, m.index + m[0].length - 1);
+    if (EXPECT_VALUE_SOURCE.test(a.code)) return true;
+    const chain = MATCHER_CHAIN.exec(text.slice(a.end));
+    if (chain && EXPECT_VALUE_SOURCE.test(argumentCode(text, a.end + chain[0].length - 1))) return true;
+  }
+  return false;
+}
+
+const specFile = (rel: string): boolean => /^e2e\/[^/]+\.spec\.ts$/.test(rel);
+
 const SCOPED: Rule[] = [
   { id: 'pw-test-import', hit: rx(PW_VALUE_IMPORT), allowed: [], applies: baseUser },
   { id: 'test-base-required', hit: (t) => !BASE_IMPORT.test(t), allowed: [], applies: baseUser },
   { id: 'emit-args', hit: emitArgsCarryValues, allowed: [], applies: emitter },
+  { id: 'expect-args', hit: expectArgsCarryValues, allowed: [], applies: specFile },
 ];
 
 const RULES: readonly Rule[] = [...ANYWHERE.map(([id, re]) => ({ id, hit: rx(re), allowed: [] as string[] })), ...NAMED, ...SCOPED];
@@ -222,6 +274,8 @@ test('static-gate: the scan covers e2e/** sources, the root config and this file
     'playwright.config.ts', HTTP, OUT, ENV_CONTRACT, LAUNCH, SCAN, SECRET_INPUT, TEST_BASE, 'e2e/lib/authentik-flow.ts', 'e2e/auth.spec.ts', 'e2e/global-setup.ts',
     'e2e/global-teardown.ts', 'e2e/selftest/static-gate.test.ts', CONTROL, 'e2e/needle/needle.test.ts', 'e2e/revocation.spec.ts', 'e2e/lib/bff.ts', 'e2e/lib/kubectl-log.ts',
     'e2e/selftest-browser/authentik-flow.test.ts', 'e2e/selftest-browser/evidence.test.ts', 'e2e/selftest-browser/secret-input.test.ts', 'e2e/selftest-browser/fixture-guard.test.ts',
+    // T087(D10 ④ — 새 파일)
+    HELLO, SITE, SITE_PROBE, SITE_PROBE_TEST, 'e2e/selftest/site.test.ts',
   ]) {
     expect(rels.includes(must), must).toBe(true);
   }
@@ -241,7 +295,7 @@ const PLANTED: Record<string, { rel: string; text: string }> = {
   'record-video': { rel: 'e2e/planted.ts', text: J('{ record', 'Video: {} }') },
   attach: { rel: 'e2e/planted.ts', text: J('testInfo.att', 'ach("x")') },
   pause: { rel: 'e2e/planted.ts', text: J('page.pau', 'se()') },
-  listener: { rel: 'e2e/planted.ts', text: J('page.on("re', 'quest", f)') },
+  listener: { rel: 'e2e/planted.ts', text: J('page.on("res', 'ponse", f)') },
   'to-be-ok': { rel: 'e2e/planted.ts', text: J('expect(r).toBe', 'OK()') },
   'to-have-url': { rel: 'e2e/planted.ts', text: J('expect(p).toHave', 'URL(u)') },
   'to-have-value': { rel: 'e2e/planted.ts', text: J('expect(l).toHave', 'Value(v)') },
@@ -294,6 +348,20 @@ const PLANTED: Record<string, { rel: string; text: string }> = {
   'pw-test-import': { rel: 'e2e/planted.spec.ts', text: BASE_LINE + J("import { test as t2 } from '@playwright/", "test';") },
   'test-base-required': { rel: 'e2e/needle/planted.test.ts', text: 'const x = 1;' },
   'emit-args': { rel: 'e2e/planted.spec.ts', text: BASE_LINE + J('emit', 'Info(`cookie=${c.val', 'ue}`);') },
+  // T087(D10 ④ · N-14)
+  'listener-request': { rel: 'e2e/planted.ts', text: J('page.on("re', 'quest", f)') },
+  'site-probe-import': { rel: 'e2e/planted.ts', text: J("import { startPrefetchCounter } from './lib/site-", "probe';") },
+  'all-headers': { rel: 'e2e/planted.ts', text: J('const h = await r.allHea', 'ders()') },
+  'header-value': { rel: 'e2e/planted.ts', text: J('const v = await r.headerVal', 'ue("set-cookie")') },
+  'header-values': { rel: 'e2e/planted.ts', text: J('const v = await r.headerVal', 'ues("set-cookie")') },
+  'headers-array': { rel: 'e2e/planted.ts', text: J('const a = await r.headersAr', 'ray()') },
+  'post-data': { rel: 'e2e/planted.ts', text: J('const b = r.post', 'Data()') },
+  'response-call': { rel: 'e2e/planted.ts', text: J('const x = await r.resp', 'onse()') },
+  'requests-pull': { rel: 'e2e/planted.ts', text: J('const all = await page.reque', 'sts()') },
+  'console-messages': { rel: 'e2e/planted.ts', text: J('const m = await page.consoleMes', 'sages()') },
+  'page-errors': { rel: 'e2e/planted.ts', text: J('const e = await page.pageErr', 'ors()') },
+  'existing-response': { rel: 'e2e/planted.ts', text: J('const x = await r.existingRes', 'ponse()') },
+  'expect-args': { rel: 'e2e/planted.spec.ts', text: BASE_LINE + J("expect(r.head", "ers['set-cookie']).toBeUndefined();") },
 };
 
 test('static-gate: every rule detects a planted pattern and stays quiet in its allowed files (positive control)', () => {
@@ -326,4 +394,34 @@ test('static-gate: rule details — listener forms, fill identity line, type-onl
   expect(violations([{ rel: 'e2e/lib/x.ts', text: J('emit', "Info(`t079 cleanup copies=cleared`, 'no headers');\nconst h = copies.session;") }])).toEqual([]);
   expect(violations([{ rel: 'e2e/lib/x.ts', text: J('emit', 'Step(T, "copy", "PASS", `n=${copies.session.length}`)') }])).toEqual(['emit-args e2e/lib/x.ts']);
   expect(argumentCode(J('emit', 'Info(`a ${x.val', 'ue} b`, "c(d)")'), J('emit', 'Info').length)).toBe(J('(  x.val', 'ue ,  )'));
+});
+
+test('static-gate: T087 rule details — request listener only in site-probe, site-probe importers, headers() allowed, expect argument scope (D10 ④)', () => {
+  // request 이벤트 리스너는 site-probe에서만 · 그 밖의 이벤트는 site-probe에서도 0
+  expect(violations([{ rel: SITE_PROBE, text: J("page.on('re", "quest', h)") }])).toEqual([]);
+  expect(violations([{ rel: SITE_PROBE, text: J("page.once('res", "ponse', h)") }])).toEqual([`listener ${SITE_PROBE}`]);
+  expect(violations([{ rel: HELLO, text: BASE_LINE + J("page.on('re", "quest', h)") }])).toEqual([`listener-request ${HELLO}`]);
+  // site-probe import 꼴 — 타입 · 부수 효과 · 동적 import · require도 같다(지정자가 템플릿 리터럴이어도 — 리뷰 B-5). 이름만 닮은 경로(site-probes)는 아니다.
+  for (const t of [
+    J("import type { X } from './site-", "probe';"),
+    J("import './site-", "probe';"),
+    J("const p = await import('./site-", "probe');"),
+    J("const p = require('../lib/site-", "probe.ts');"),
+    J('const p = await import(`./site-', 'probe`);'),
+  ]) {
+    expect(violations([{ rel: 'e2e/lib/x.ts', text: t }]), t).toEqual(['site-probe-import e2e/lib/x.ts']);
+  }
+  expect(violations([{ rel: 'e2e/lib/x.ts', text: J("import { y } from './site-", "probes';") }])).toEqual([]);
+  // 헤더 객체 메서드는 허용 — 근거(리뷰 B-6): 값이 출력 면에 나가는 것은 http.ts 감싸개 · emit-args · expect-args가 막는다(APIResponse의 headers()는 Set-Cookie도 돌려준다)
+  expect(violations([{ rel: 'e2e/lib/x.ts', text: 'const h = r.headers();' }])).toEqual([]);
+  expect(violations([{ rel: 'e2e/lib/x.ts', text: J('emit', "Info(`sc=${r.head", "ers()['set-cookie']}`);") }])).toEqual(['emit-args e2e/lib/x.ts']);
+  expect(violations([{ rel: 'e2e/x.spec.ts', text: BASE_LINE + J("expect(r.head", "ers()['set-cookie']).toBeUndefined();") }])).toEqual(['expect-args e2e/x.spec.ts']);
+  // expect 인자: 값 출처가 없으면 통과 · 이어 붙은 매처 인자도 본다 · soft도 같다 · selftest와 lib는 범위 밖
+  expect(violations([{ rel: 'e2e/x.spec.ts', text: BASE_LINE + "expect(n, 'rows').toBe(1);" }])).toEqual([]);
+  expect(violations([{ rel: 'e2e/x.spec.ts', text: BASE_LINE + "expect(n, 'headers count').toBe(1);" }])).toEqual([]);
+  expect(violations([{ rel: 'e2e/x.spec.ts', text: BASE_LINE + J('expect(1).not.toBe(r.bo', 'dy.length);') }])).toEqual(['expect-args e2e/x.spec.ts']);
+  expect(violations([{ rel: 'e2e/x.spec.ts', text: BASE_LINE + J('expect(await ctx.coo', 'kies()).toEqual([]);') }])).toEqual(['expect-args e2e/x.spec.ts']);
+  expect(violations([{ rel: 'e2e/x.spec.ts', text: BASE_LINE + J("expect.soft(r.head", "ers['x']).toBe('y');") }])).toEqual(['expect-args e2e/x.spec.ts']);
+  expect(violations([{ rel: 'e2e/selftest/x.test.ts', text: J("expect(r.head", "ers['x']).toBe('y');") }])).toEqual([]);
+  expect(violations([{ rel: 'e2e/lib/x.ts', text: J("expect(r.head", "ers['x']).toBe('y');") }])).toEqual([]);
 });

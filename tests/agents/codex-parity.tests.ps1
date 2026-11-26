@@ -177,7 +177,7 @@ if (-not ($testerAgent -and $testerAgent -match '(?m)^sandbox_mode\s*=\s*"worksp
 Assert 'agents-1: four unpinned Codex agents preserve scopes and tester hook' ($agentErrors.Count -eq 0) ($agentErrors -join ', ')
 
 # ---------- Path router and command policy ----------
-$ruleDocs = @('content.md', 'django-pod.md', 'docs.md', 'events.md', 'fastapi-pod.md', 'infra.md', 'specs.md', 'web.md')
+$ruleDocs = @('content.md', 'django-pod.md', 'docs.md', 'e2e.md', 'events.md', 'fastapi-pod.md', 'infra.md', 'specs.md', 'web.md')
 $routeErrors = @($ruleDocs | Where-Object { -not $agents.Contains(".claude/rules/$_") })
 Assert 'router-1: AGENTS routes every Claude path rule for Codex' ($routeErrors.Count -eq 0 -and $agents -match 'before (reading or )?editing') ($routeErrors -join ', ')
 

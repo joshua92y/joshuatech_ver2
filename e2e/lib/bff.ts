@@ -53,10 +53,11 @@ export const BFF_PATHS = {
   session: '/api/session',
   tenantsMe: '/api/proxy/identity-admin/tenants/me',
 } as const;
-export const BFF_SESSION_COOKIE = 'jt_session';
-export const BFF_CSRF_COOKIE = 'jt_csrf';
+// 계약 쿠키 이름(B-6 — __Host- 접두 · t086-design.md §0-7). 시험의 독립 기대값이다 — gateway에서 가져오지 않는다. 접두 없는 옛 이름은 BFF가 읽지 않는다.
+export const BFF_SESSION_COOKIE = '__Host-jt_session';
+export const BFF_CSRF_COOKIE = '__Host-jt_csrf';
 export const CSRF_HEADER = 'x-csrf-token';
-// all_devices: true 명시 — UD-7(기본 로그아웃 범위 · T089 전 결정)과 떼어 낸다(교환 토큰에 sid 없음 — denylist.md:23 · 〔77-14〕)
+// all_devices: true 명시 — UD-7 = (나) 2026-11-24 — 모든 기기는 명시해야 한다(생략 = 이 기기만 · 교환 토큰에 sid 없음 — denylist.md:23 · 〔77-14〕)
 export const LOGOUT_BODY: Readonly<{ all_devices: true }> = Object.freeze({ all_devices: true });
 // 밑줄 → 하이픈(bff-api.md:87 · pod-template.md 「오류」 행). 밑줄 꼴 session_revoked 글자 일치는 PASS가 아니다(r1 — A-4).
 export const PROBLEM_SESSION_REVOKED = 'https://joshuatech.dev/problems/session-revoked';

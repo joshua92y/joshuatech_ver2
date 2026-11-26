@@ -90,7 +90,7 @@ test('bff: paths are the contract routes (bff-api.md §엔드포인트 — healt
 });
 
 test('bff: observeHttp keeps status, content-type and body only', () => {
-  const o = observeHttp({ status: 401, headers: { 'content-type': PROBLEM_CT, 'set-cookie': 'jt_session=x', 'x-request-id': 'r' }, body: Buffer.from('{}') });
+  const o = observeHttp({ status: 401, headers: { 'content-type': PROBLEM_CT, 'set-cookie': '__Host-jt_session=x', 'x-request-id': 'r' }, body: Buffer.from('{}') });
   expect(Object.keys(o).sort()).toEqual(['body', 'contentType', 'status']);
   expect(o.status).toBe(401);
   expect(o.contentType).toBe(PROBLEM_CT);
@@ -231,39 +231,42 @@ test('bff: session cookie copies are picked by name and chain host; values never
   const s = marker();
   const c = marker();
   const cookies = [
-    { name: 'jt_session', value: s, domain: 'localhost' },
-    { name: 'jt_csrf', value: c, domain: 'localhost' },
+    { name: '__Host-jt_session', value: s, domain: 'localhost' },
+    { name: '__Host-jt_csrf', value: c, domain: 'localhost' },
     { name: 'authentik_session', value: marker(), domain: 'auth.joshuatech.dev' },
   ];
   const r = pickSessionCopies(cookies, 'http://localhost:3000');
   expect(r.ok).toBe(true);
   if (r.ok) expect(r.copies).toEqual({ session: s, csrf: c });
   // prod — host-only 도메인 · 앞 점 도메인
-  expect(pickSessionCopies([{ name: 'jt_session', value: s, domain: '.joshuatech.dev' }, { name: 'jt_csrf', value: c, domain: 'joshuatech.dev' }], 'https://joshuatech.dev').ok).toBe(true);
+  expect(pickSessionCopies([{ name: '__Host-jt_session', value: s, domain: '.joshuatech.dev' }, { name: '__Host-jt_csrf', value: c, domain: 'joshuatech.dev' }], 'https://joshuatech.dev').ok).toBe(true);
   // 다른 호스트의 쿠키는 사본이 아니다
-  const other = pickSessionCopies([{ name: 'jt_session', value: s, domain: 'preview.joshuatech.dev' }, { name: 'jt_csrf', value: c, domain: 'localhost' }], 'http://localhost:3000');
-  expect(reason(other)).toBe('[product] session-cookies-missing names=jt_session');
-  expect(reason(pickSessionCopies([], 'http://localhost:3000'))).toBe('[product] session-cookies-missing names=jt_session,jt_csrf');
+  const other = pickSessionCopies([{ name: '__Host-jt_session', value: s, domain: 'preview.joshuatech.dev' }, { name: '__Host-jt_csrf', value: c, domain: 'localhost' }], 'http://localhost:3000');
+  expect(reason(other)).toBe('[product] session-cookies-missing names=__Host-jt_session');
+  expect(reason(pickSessionCopies([], 'http://localhost:3000'))).toBe('[product] session-cookies-missing names=__Host-jt_session,__Host-jt_csrf');
+  // (B-6) 접두 없는 옛 이름은 사본이 아니다 — BFF가 읽지 않는 이름이다(t086-design.md §0-7)
+  const legacy = pickSessionCopies([{ name: 'jt_session', value: s, domain: 'localhost' }, { name: 'jt_csrf', value: c, domain: 'localhost' }], 'http://localhost:3000');
+  expect(reason(legacy)).toBe('[product] session-cookies-missing names=__Host-jt_session,__Host-jt_csrf');
   // 빈 값은 없는 것과 같다
-  const empty = pickSessionCopies([{ name: 'jt_session', value: '', domain: 'localhost' }, { name: 'jt_csrf', value: c, domain: 'localhost' }], 'http://localhost:3000');
-  expect(reason(empty)).toBe('[product] session-cookies-missing names=jt_session');
+  const empty = pickSessionCopies([{ name: '__Host-jt_session', value: '', domain: 'localhost' }, { name: '__Host-jt_csrf', value: c, domain: 'localhost' }], 'http://localhost:3000');
+  expect(reason(empty)).toBe('[product] session-cookies-missing names=__Host-jt_session');
   // 같은 이름이 둘이면 어느 사본인지 모른다
-  const dup = pickSessionCopies([...cookies, { name: 'jt_session', value: marker(), domain: 'localhost' }], 'http://localhost:3000');
-  expect(reason(dup)).toBe('[product] session-cookies-ambiguous names=jt_session');
-  for (const v of [other, empty, dup]) {
+  const dup = pickSessionCopies([...cookies, { name: '__Host-jt_session', value: marker(), domain: 'localhost' }], 'http://localhost:3000');
+  expect(reason(dup)).toBe('[product] session-cookies-ambiguous names=__Host-jt_session');
+  for (const v of [other, legacy, empty, dup]) {
     expect(JSON.stringify(v).includes(s)).toBe(false);
     expect(JSON.stringify(v).includes(c)).toBe(false);
   }
 });
 
-test('bff: probe and logout headers — explicit Cookie with both copies; CSRF header only on logout; body all_devices true', () => {
+test('bff: probe and logout headers — explicit Cookie with both copies (B-6 __Host- names); CSRF header only on logout; body all_devices true', () => {
   const copies = { session: 'S1', csrf: 'C1' };
-  expect(BFF_SESSION_COOKIE).toBe('jt_session');
-  expect(BFF_CSRF_COOKIE).toBe('jt_csrf');
+  expect(BFF_SESSION_COOKIE).toBe('__Host-jt_session');
+  expect(BFF_CSRF_COOKIE).toBe('__Host-jt_csrf');
   expect(CSRF_HEADER).toBe('x-csrf-token');
-  expect(cookieHeader(copies)).toBe('jt_session=S1; jt_csrf=C1');
-  expect(probeHeaders(copies)).toEqual({ cookie: 'jt_session=S1; jt_csrf=C1' });
-  expect(logoutHeaders(copies)).toEqual({ cookie: 'jt_session=S1; jt_csrf=C1', 'x-csrf-token': 'C1' });
+  expect(cookieHeader(copies)).toBe('__Host-jt_session=S1; __Host-jt_csrf=C1');
+  expect(probeHeaders(copies)).toEqual({ cookie: '__Host-jt_session=S1; __Host-jt_csrf=C1' });
+  expect(logoutHeaders(copies)).toEqual({ cookie: '__Host-jt_session=S1; __Host-jt_csrf=C1', 'x-csrf-token': 'C1' });
   expect(LOGOUT_BODY).toEqual({ all_devices: true });
 });
 

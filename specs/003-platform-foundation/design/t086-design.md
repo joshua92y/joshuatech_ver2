@@ -1218,3 +1218,24 @@ h-4 사례: `ko` → `/ko` · `ko-KR,ko;q=0.9,en;q=0.8` → `/ko` · `en-US,en;q
       - T093: 패키지 전체 + CI 배선
     - VD-T089-1 결과 = 없는 모듈의 동적 import는 사례마다 따로 실패한다(수집 실패 0) → D9-1의 image-loader 가르기는 쓰지 않았고 G14는 `gateway.test.ts` 안에 남았다(G14는 `loadImageLoader`만 적재해 T091에서 따로 초록을 볼 수 있다).
     - run-all 슬롯은 지금 두지 않는다(빨강 시험이 run-all을 FAIL로 만든다 — D13 그대로). T090 뒤 `@jt/content` 슬롯을 T093 전에 둘지는 §5-1-6에 따라 컨트롤러가 정한다.
+19. **§1-2 · D11 h-7 — prod `status: degraded`도 PASS(값 없는 INFO 한 줄)**(리뷰 A-2 · F3 ④)
+    - 결정: h-7 prod = 200 · JSON · `status`가 `ok`든 `degraded`든 PASS다 — 계약(bff-api.md :44 · C17)이 둘 다 유효로 정했고 AC3은 「200을 중계」다. degraded면 값 없는 `INFO health-status degraded` 한 줄을 판정 통과 바로 뒤 · Set-Cookie 검사 앞에서 낸다(T087 접두 없음 — skip INFO와 다르다). 계약 밖 `status` · 없음은 그대로 `[product] health-status-field`다(반복 단언 — status 검사 자체를 지우는 구현을 잡는다). 〔86-31〕(엄격 유지 편차)은 쓰지 않는다.
+    - §1-2 h-7 행(:192) · D11 h-7 행(:639) · §5-2 T095에 덧붙일 문장: 「degraded INFO는 FAIL이 아니다」. §5-2 T093 Linux 판정 규율의 「h-7 INFO 줄」은 local skip 줄이고, degraded 줄은 prod에서만 나온다.
+    - degraded 갈래는 prod 모드에서만 실행된다 — 지금은 순수 판정 시험 · hello.spec 정적 순서 시험 · 변이로만 고정했고, 실행 관찰은 T095 몫이다.
+    - 기대 수치: selftest 211 → 213(site.test.ts +2) · selftest-browser 30 그대로 · `list … selftest=213 …`(README h-7 줄도 고쳤다). 정본 = build-notes.
+20. **h-7 `judgeHealth`의 엄격도 — T095 전에 정한다**(F3 ④ 범위 밖 발견 · V1 참고)
+    - `judgeHealth`(e2e/lib/site.ts)는 r0부터 bff-api.md :44 「본문 키는 정확히 `status` · `upstream` · `upstream_ms` · `checks`」와 `checks` 항목 꼴(C17 — 이름 `^[a-z][a-z0-9_]{0,31}$` · 값 `{status, latency_ms}`만)을 보지 않는다. selftest의 `good` 픽스처 `checks: { db: 'ok' }`(site.test.ts :333)도 C17 꼴이 아니다.
+    - 엄격하게 할지(키 정확 집합 · `checks` 꼴 + 픽스처 정정)는 T095 전에 컨트롤러가 정한다. 그때까지 h-7은 키 집합 · `checks` 꼴을 판정하지 않는다.
+    - (문서 담당 확인) T079 `selftest/bff.test.ts`의 `HEALTH_OK`(:47)도 같은 꼴이지만, 그 판정(`bff.ts` :100)은 `upstream`만 본다.
+21. **D10-4 static-gate — 템플릿 리터럴 지정자 · `headers()` 허용 근거**(F3 ④ · 리뷰 B-5 · B-6)
+    - `site-probe-import`의 인용 부호 칸은 `'` · `"` · 백틱 셋을 본다 — ``import(`./site-probe`)`` · ``require(`…`)``까지 잡는다(심은 대조 하나 더함). 빌드 r0 보고 ③-6 「동적 import까지」를 보강한 것이다.
+    - `headers()` 허용 근거: 「쿠키 · 보안 헤더를 빼고 돌려준다」는 브라우저 Request/Response에만 맞다 — APIResponse의 `headers()`는 set-cookie를 이어 돌려준다. 근거를 「값이 출력 면에 나가는 길은 http.ts 감싸개(값 없는 오류 — selftest http가 고정) · emit-args · expect-args가 막는다」로 바꾸고(static-gate.test.ts 주석 :88–:90), emit-args · expect-args의 `headers` 값 출처를 단언 두 줄(:417 · :418)로 고정했다. e2e.md 「(`headers()` stays allowed)」는 그대로다.
+22. **t077 「정정 노트」 ②(B-6)는 이 커밋의 변경 뒤 줄 번호로 · ①의 번호는 T089 커밋 시점**(리뷰 A-6 · F3 ④ 줄 번호)
+    - 문서 담당 r0가 돌려준 ② 원문의 번호를 바꿔 넣는다: `e2e/lib/bff.ts:56–57` → `:57–:58` · `selftest/bff.test.ts:93 · :234–:266` → `:93 · :234–:269` · `README:61` → `README:67` · `revocation.spec.ts:158`은 그대로. README는 수정 r1에서 줄 수가 그대로라 :67이 유지된다.
+    - 같은 절 ①(T089 커밋)의 `bff.ts:59–60` · `:182–:185`는 T089 커밋 시점 번호다 — 이 커밋 뒤에는 `:60–:61` · `:183–:186`이다.
+    - 리뷰가 인용한 줄의 이동: site.ts :212 = 지금 `judgeHealth` 시작 줄(status 검사 :217) · static-gate :88–:89 → :88–:90(그 뒤 +1).
+23. **§0-5 · §4-1 T087 행 밖 — agent-layer RULES · MIRRORS에 e2e(72 → 79)**(리뷰 C-4 · FD ④-c)
+    - `tests/agents/agent-layer.tests.ps1`의 고정 목록 RULES · MIRRORS에 e2e를 더했다 — e2e.md의 존재 · frontmatter · `paths:` 키 · 글롭 꼴(절대 · `..` 0)과 KR 미러의 존재 · 첫 줄 · 제목을 이제 하네스가 본다(단언 72 → 79). 새 run-all 슬롯이 아니라 D13 「run-all 새 슬롯 0」과 맞다.
+    - 한 커밋 묶음: agent-layer · codex-parity `$ruleDocs` · AGENTS.md 행(+ KR) · `.claude/rules/e2e.md` + KR. 하나라도 빠지면 router-1 · rule-e2e-* · mirror-rules-e2e-*가 빨강이다.
+    - `tests/run-all.ps1` 쌍 목록(:308–:318)은 그대로 둔다 — 001 SC-005의 고정 9쌍이고 SP-1 규칙 다섯도 거기 없다(그 미러 검사는 agent-layer — T108 · T112).
+    - tasks.md T108 문면은 규칙 다섯을 적지만 하네스는 이제 여섯을 본다 → tasks.md는 불변이므로 build-notes T087 절에 「agent-layer 72 → 79(C-4) · T108 문면 5개는 불변」으로 남긴다(과거 기록의 「72/0」은 이력이라 그대로). 남는 공백(정본 머리 · KR 영어 제목)은 아래 공통 인계(FD ④-b).

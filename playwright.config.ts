@@ -1,15 +1,23 @@
 // playwright.config.ts — 루트 Playwright 설정(설계 specs/003-platform-foundation/design/t077-design.md D3 · T077-d).
 // 자리 = 저장소 루트: 인자 없는 `pnpm exec playwright test`도 늘 이 설정을 잡고, tester 쓰기 가드(^e2e/) 밖이라 약화는 리뷰된 커밋으로만 들어온다.
-// 인자 없는 실행 = selftest 두 프로젝트뿐이다. needle · live는 런처(e2e/lib/launch.mjs) · 검토된 자격 블록이 주는 플래그로만 실린다.
+// 인자 없는 실행 = selftest 두 프로젝트뿐이다. needle · live · site는 런처(e2e/lib/launch.mjs) · 검토된 자격 블록이 주는 플래그로만 실린다.
+// site(T087 — 설계 specs/003-platform-foundation/design/t086-design.md D10 ①)는 JT_E2E_SITE=1 + BASE_URL + JT_E2E_SITE_MODE이고, 대상은 여기서
+// e2e/lib/site.ts validateSiteTarget로 검증한다(local = 루프백 origin · prod = 정확히 apex · 그 밖은 값 없이 멈춤). 스펙은 env를 읽지 않는다 —
+// 모드는 프로젝트 metadata(jtSiteMode), 대상은 프로젝트 use.baseURL로만 간다. 최상위 use.baseURL · webServer는 두지 않는다.
 import { defineConfig, type PlaywrightTestConfig } from '@playwright/test';
 import * as crypto from 'node:crypto';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { validateSiteTarget } from './e2e/lib/site';
 
 export const AUTH_BASE_URL = 'https://auth.joshuatech.dev';
 // 브라우저 프로세스 env 허용 목록(VD-T077-3 최종) — process.env를 통째로 넘기지 않는다(r1 — B-11).
 export const BROWSER_ENV_NAMES = ['SystemRoot', 'TEMP', 'TMP', 'LOCALAPPDATA', 'USERPROFILE'] as const;
 export const NEEDLE_LIVE_CONFLICT = '[guard] needle-live-conflict — needle+live 동시 금지';
+// site는 live · needle과 배타다(사이트 시험 실행에 바늘 값 · 자격 프로젝트가 섞이지 않게)
+export const SITE_CONFLICT = '[guard] site-conflict — site는 live · needle과 함께 실리지 않는다';
+// 대상 값은 싣지 않는다 — 허용 꼴만 적는다
+export const SITE_TARGET_GUARD = '[guard] site-target-not-allowed — local = http://127.0.0.1:<port> | http://localhost:<port> · prod = https://joshuatech.dev';
 
 const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
 
@@ -22,8 +30,10 @@ export function makeRunId(now: Date = new Date(), hex: string = crypto.randomByt
 export function buildConfig(env: Record<string, string | undefined>): PlaywrightTestConfig {
   const live = env.JT_E2E_LIVE === '1';
   const needle = env.JT_E2E_NEEDLE === '1';
+  const site = env.JT_E2E_SITE === '1';
   // 바늘 값이 실제 IdP로 가지 않게 두 플래그는 함께 실리지 않는다(r2 — V-9)
   if (live && needle) throw new Error(NEEDLE_LIVE_CONFLICT);
+  if (site && (live || needle)) throw new Error(SITE_CONFLICT);
   const runId = env.JT_E2E_RUN_ID;
   if (!runId || !RUN_ID.test(runId)) throw new Error('[guard] run id missing or malformed (JT_E2E_RUN_ID)');
   const outputDir = env.JT_E2E_OUTPUT_DIR || path.join(os.tmpdir(), 'jt-e2e', runId);
@@ -43,6 +53,11 @@ export function buildConfig(env: Record<string, string | undefined>): Playwright
   }
   if (live) {
     projects.push({ name: 'live', testMatch: ['auth.spec.ts', 'revocation.spec.ts'], use: { baseURL: AUTH_BASE_URL } });
+  }
+  if (site) {
+    const target = validateSiteTarget(env.BASE_URL, env.JT_E2E_SITE_MODE);
+    if (!target.ok) throw new Error(SITE_TARGET_GUARD);
+    projects.push({ name: 'site', testMatch: 'hello.spec.ts', use: { baseURL: target.base }, metadata: { jtSiteMode: target.mode } });
   }
 
   return {

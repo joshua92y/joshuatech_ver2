@@ -155,7 +155,7 @@ async function bffLogin(page: Page, chain: Chain, secrets: Secrets, st: T079Stat
   st.bffUp = true;
 }
 
-// 6. copy — context 쿠키에서 jt_session · jt_csrf 사본을 메모리에만(파일 0). 개수만 출력한다.
+// 6. copy — context 쿠키에서 __Host-jt_session · __Host-jt_csrf 사본을 메모리에만(파일 0). 개수만 출력한다.
 async function copyStep(page: Page, chain: Chain, st: T079State): Promise<SessionCopies> {
   let picked: ReturnType<typeof pickSessionCopies>;
   try {

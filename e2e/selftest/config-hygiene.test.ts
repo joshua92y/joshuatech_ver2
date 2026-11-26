@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { AUTH_BASE_URL, BROWSER_ENV_NAMES, NEEDLE_LIVE_CONFLICT, buildConfig, makeRunId } from '../../playwright.config';
+import { AUTH_BASE_URL, BROWSER_ENV_NAMES, NEEDLE_LIVE_CONFLICT, SITE_CONFLICT, SITE_TARGET_GUARD, buildConfig, makeRunId } from '../../playwright.config';
 
 const REPO = path.resolve(__dirname, '..', '..');
 
@@ -101,6 +101,63 @@ test('config-hygiene: projects are conditional on the flags; no flag → selftes
   expect(names({ JT_E2E_LIVE: 'true' })).toEqual(['selftest', 'selftest-browser']);
   expect(() => buildConfig({ ...id, JT_E2E_LIVE: '1', JT_E2E_NEEDLE: '1' })).toThrow(NEEDLE_LIVE_CONFLICT);
   expect(NEEDLE_LIVE_CONFLICT.startsWith('[guard] needle-live-conflict')).toBe(true);
+});
+
+// T087(설계 t086-design.md D10 ①) — site 프로젝트는 JT_E2E_SITE=1 + 허용 대상일 때만 · live · needle과 배타 · 최상위 baseURL 0 · webServer 0
+const SITE_LOCAL = { JT_E2E_SITE: '1', BASE_URL: 'http://127.0.0.1:3000', JT_E2E_SITE_MODE: 'local' };
+
+test('config-hygiene: site project only with JT_E2E_SITE=1; exclusive with live and needle ([guard] site-conflict)', () => {
+  const id = { JT_E2E_RUN_ID: 't077-20261123T000000Z-abcdef' };
+  const names = (env: Record<string, string>) => (buildConfig({ ...id, ...env }).projects ?? []).map((p) => p.name);
+  expect(names(SITE_LOCAL)).toEqual(['selftest', 'selftest-browser', 'site']);
+  expect(names({ ...SITE_LOCAL, JT_E2E_SITE: 'true' })).toEqual(['selftest', 'selftest-browser']);
+  expect(names({ BASE_URL: 'http://127.0.0.1:3000', JT_E2E_SITE_MODE: 'local' })).toEqual(['selftest', 'selftest-browser']);
+  expect(() => buildConfig({ ...id, ...SITE_LOCAL, JT_E2E_LIVE: '1' })).toThrow(SITE_CONFLICT);
+  expect(() => buildConfig({ ...id, ...SITE_LOCAL, JT_E2E_NEEDLE: '1' })).toThrow(SITE_CONFLICT);
+  expect(SITE_CONFLICT.startsWith('[guard] site-conflict')).toBe(true);
+  // 세 플래그가 함께면 기존 needle+live 가드가 먼저다
+  expect(() => buildConfig({ ...id, ...SITE_LOCAL, JT_E2E_LIVE: '1', JT_E2E_NEEDLE: '1' })).toThrow(NEEDLE_LIVE_CONFLICT);
+});
+
+test('config-hygiene: site project = hello.spec.ts · use.baseURL = the validated target · metadata jtSiteMode; top level keeps no baseURL and no webServer', () => {
+  const cases: Array<[string, string]> = [
+    ['http://127.0.0.1:3000', 'local'],
+    ['http://localhost:4000', 'local'],
+    ['https://joshuatech.dev', 'prod'],
+  ];
+  for (const [base, mode] of cases) {
+    const cfg = buildConfig({ JT_E2E_RUN_ID: 't077-20261123T000000Z-abcdef', JT_E2E_SITE: '1', BASE_URL: base, JT_E2E_SITE_MODE: mode });
+    const site = (cfg.projects ?? []).find((p) => p.name === 'site');
+    expect(site?.testMatch, `${mode} testMatch`).toBe('hello.spec.ts');
+    expect(site?.use?.baseURL, `${mode} baseURL`).toBe(base);
+    expect(site?.metadata, `${mode} metadata`).toEqual({ jtSiteMode: mode });
+    expect(cfg.use?.baseURL, 'top-level baseURL').toBeUndefined();
+    expect(cfg.webServer, 'webServer').toBeUndefined();
+    expect(cfg.preserveOutput, 'preserveOutput').toBe('never');
+  }
+});
+
+test('config-hygiene: a site target outside the allowlist stops the config load — [guard] site-target-not-allowed, value never echoed', () => {
+  const mk = 'mk' + Math.random().toString(16).slice(2, 12);
+  const bad: Array<Record<string, string>> = [
+    { BASE_URL: `http://${mk}:3000`, JT_E2E_SITE_MODE: 'local' },
+    { BASE_URL: 'https://preview.joshuatech.dev', JT_E2E_SITE_MODE: 'prod' },
+    { BASE_URL: 'http://127.0.0.1:3000/', JT_E2E_SITE_MODE: 'local' },
+    { BASE_URL: 'https://joshuatech.dev', JT_E2E_SITE_MODE: mk },
+    { JT_E2E_SITE_MODE: 'local' },
+    { BASE_URL: 'http://127.0.0.1:3000' },
+  ];
+  expect(SITE_TARGET_GUARD.startsWith('[guard] site-target-not-allowed')).toBe(true);
+  for (const env of bad) {
+    let msg = '';
+    try {
+      buildConfig({ JT_E2E_RUN_ID: 't077-20261123T000000Z-abcdef', JT_E2E_SITE: '1', ...env });
+    } catch (e) {
+      msg = String((e as Error).message);
+    }
+    expect(msg, JSON.stringify(Object.keys(env))).toBe(SITE_TARGET_GUARD);
+    expect(msg.includes(mk)).toBe(false);
+  }
 });
 
 test('config-hygiene: live project targets the fixed Authentik origin and the two live specs', () => {

@@ -32,6 +32,7 @@ Codex는 `.claude/rules/*.md`의 `paths:` YAML을 해석하지 않는다. 경로
 | `.claude/rules/content.md` | `content/**` |
 | `.claude/rules/django-pod.md` | `apps/*/pyproject.toml`, `apps/*/*.py`, `apps/*/**/*.py`, `apps/*/Dockerfile`, `packages/django-common/**`, `templates/django-pod/**` |
 | `.claude/rules/docs.md` | `docs/**` |
+| `.claude/rules/e2e.md` | `e2e/**`, `playwright.config.ts` |
 | `.claude/rules/events.md` | `packages/events/**` |
 | `.claude/rules/fastapi-pod.md` | `templates/fastapi-pod/**`, `packages/fastapi-common/**` |
 | `.claude/rules/infra.md` | `infra/**`, `scripts/**` |
@@ -48,6 +49,10 @@ Codex는 `.claude/rules/*.md`의 `paths:` YAML을 해석하지 않는다. 경로
 | Codex 파괴 명령 핸들러 contract | `pwsh -NoProfile -File tests/hooks/run-codex-command-policy-tests.ps1` |
 | Codex 어댑터 동등성 | `pwsh -NoProfile -File tests/agents/codex-parity.tests.ps1` |
 | 전체 저장소 점검 | `pwsh -NoProfile -File tests/run-all.ps1` |
+| 콘텐츠 로더 시험(vitest) | `pnpm --filter @jt/content --fail-if-no-match test` — `--fail-if-no-match`가 없으면 일치하는 패키지가 없어도 exit 0 |
+| 웹 앱 시험(vitest — BFF gateway · 번들 예산) | `pnpm --filter @jt/web --fail-if-no-match test` |
+| E2E `site` 프로젝트(T087) | `BASE_URL`과 `JT_E2E_SITE_MODE`(`local` 또는 `prod`)를 env에 두고 `node e2e/lib/launch.mjs site`; 다른 런처 모드는 `e2e/README.md` |
+| E2E `site` 빨강 관찰(T087) | `node e2e/lib/launch.mjs site-red` — 닫힌 루프백 포트; 빨강 = `[gate] site-absent until T091` |
 | `specs/README.md` 재생성 | `pwsh -NoProfile -File scripts/update-specs-index.ps1` — run-all `scripts`/`specs-index-fresh`가 FAIL이면 실행 후 `specs/README.md`를 커밋; `error: <dir>/spec.md: …`이면 해당 spec 헤더를 고치고 재실행 |
 | Spec Kit CLI(초기화 / 업그레이드 / 확장) | `~/.local/bin`의 `specify`(`uv`로 설치); 절차는 `docs/runbooks/spec-kit-upgrade.md` |
 

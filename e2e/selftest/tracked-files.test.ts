@@ -10,11 +10,13 @@ const REPO = path.resolve(__dirname, '..', '..');
 // T077 조각 ①a + T079 조각 ①b의 e2e 파일(설계 D1 · D12). ①b = revocation.spec.ts · lib/{bff,kubectl-log}.ts · selftest/{bff,kubectl-log}.test.ts.
 // 리뷰 r1 수정: lib/test-base.ts(B-3 공통 test 기반) · lib/authentik-flow.ts(A-1 · B-4 · B-5 · B-6 흐름 — 두 spec 공용) + 그 selftest 셋
 // (selftest/test-base · selftest-browser/authentik-flow · selftest-browser/fixture-guard).
+// T087(설계 t086-design.md D10 ⑦ — 새 파일 5): hello.spec.ts · lib/{site,site-probe}.ts · selftest/site.test.ts · selftest-browser/site-probe.test.ts.
 const EXPECTED_E2E = [
   'e2e/README.md',
   'e2e/auth.spec.ts',
   'e2e/global-setup.ts',
   'e2e/global-teardown.ts',
+  'e2e/hello.spec.ts',
   'e2e/lib/auth-dir.ts',
   'e2e/lib/authentik-flow.ts',
   'e2e/lib/bff.ts',
@@ -29,6 +31,8 @@ const EXPECTED_E2E = [
   'e2e/lib/reach.ts',
   'e2e/lib/scan-needle.mjs',
   'e2e/lib/secret-input.ts',
+  'e2e/lib/site-probe.ts',
+  'e2e/lib/site.ts',
   'e2e/lib/test-base.ts',
   'e2e/lib/totp-window.ts',
   'e2e/needle/needle-control.test.ts',
@@ -38,6 +42,7 @@ const EXPECTED_E2E = [
   'e2e/selftest-browser/evidence.test.ts',
   'e2e/selftest-browser/fixture-guard.test.ts',
   'e2e/selftest-browser/secret-input.test.ts',
+  'e2e/selftest-browser/site-probe.test.ts',
   'e2e/selftest/auth-dir.test.ts',
   'e2e/selftest/bff.test.ts',
   'e2e/selftest/config-hygiene.test.ts',
@@ -51,6 +56,7 @@ const EXPECTED_E2E = [
   'e2e/selftest/pace.test.ts',
   'e2e/selftest/reach.test.ts',
   'e2e/selftest/scan-needle.test.ts',
+  'e2e/selftest/site.test.ts',
   'e2e/selftest/static-gate.test.ts',
   'e2e/selftest/test-base.test.ts',
   'e2e/selftest/totp-window.test.ts',

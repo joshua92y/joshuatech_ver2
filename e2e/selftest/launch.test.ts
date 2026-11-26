@@ -3,6 +3,8 @@
 import { test as base, expect } from '@playwright/test';
 import * as path from 'node:path';
 import { CONTROL_PREFIX, NAMES, NEEDLE_PREFIX as CONTRACT_PREFIX } from '../lib/env-contract';
+import { validateSiteTarget } from '../lib/site';
+import { SITE_TARGET_GUARD } from '../../playwright.config';
 
 type Launch = typeof import('../lib/launch.mjs');
 type Scan = typeof import('../lib/scan-needle.mjs');
@@ -35,6 +37,10 @@ function source(): Record<string, string> {
     HTTPS_PROXY: 'http://proxy',
     NODE_OPTIONS: '--inspect',
     GITHUB_TOKEN: 'leak',
+    // T087 — 런처 env의 site 값은 site 모드가 넘기는 대상(target)으로만 자식에 간다(다른 모드 · source 직접 복사 0)
+    BASE_URL: 'http://leak.example',
+    JT_E2E_SITE: '1',
+    JT_E2E_SITE_MODE: 'prod',
   };
 }
 
@@ -358,6 +364,176 @@ test('launch: CLI is resolved to an absolute path from the repo root; a root wit
   expect(path.isAbsolute(r?.cli ?? '')).toBe(true);
   expect(path.basename(r?.cli ?? '')).toBe('cli.js');
   expect(L.resolveCli(testInfo.outputPath('no-such-root'))).toBeNull();
+});
+
+// ---- T087(설계 t086-design.md D10 ③) — site · site-red · list의 site 실행 ----
+const SITE_NAMES = [
+  'BASE_URL', 'JT_E2E_EVIDENCE_DIR', 'JT_E2E_OUTPUT_DIR', 'JT_E2E_ROOT', 'JT_E2E_RUN_ID', 'JT_E2E_SITE', 'JT_E2E_SITE_MODE',
+  'LOCALAPPDATA', 'PATH', 'SystemRoot', 'TEMP', 'TMP', 'USERPROFILE',
+];
+const SITE_SUMMARY = { passed: 8, failed: 0, flaky: 0, skipped: 1, interrupted: 0, didNotRun: 0, errors: 0 };
+
+test('launch: modes include site and site-red; site env names are JT_E2E_SITE · BASE_URL · JT_E2E_SITE_MODE', ({ L }) => {
+  expect(L.MODES).toEqual(['selftest', 'selftest-browser', 'needle', 'list', 'live-red', 'site', 'site-red']);
+  expect(L.SITE_ENV_NAMES).toEqual(['JT_E2E_SITE', 'BASE_URL', 'JT_E2E_SITE_MODE']);
+});
+
+test('launch: site and site-red child env = allowlist + the three site names, values from the target (no KUBECONFIG, secrets, block or needle set)', ({ L }) => {
+  const l = L.planLayout(TMP, RUN);
+  const target = { base: 'http://127.0.0.1:3000', mode: 'local' };
+  for (const mode of ['site', 'site-red']) {
+    const env = L.buildChildEnv(source(), l, RUN, L.modeValues(mode, target));
+    expect(Object.keys(env).sort(), mode).toEqual(SITE_NAMES);
+    expect(L.expectedEnvNames(mode), mode).toEqual(SITE_NAMES);
+    expect(env.JT_E2E_SITE).toBe('1');
+    expect(env.BASE_URL).toBe(target.base);
+    expect(env.JT_E2E_SITE_MODE).toBe('local');
+  }
+  expect(() => L.modeValues('site')).toThrow();
+  expect(() => L.modeValues('site-red', { base: 'http://127.0.0.1:3000' })).toThrow();
+});
+
+test('launch: selftest, live and needle runs never carry the site names even when the launcher env has them', ({ L }) => {
+  const l = L.planLayout(TMP, RUN);
+  for (const mode of ['selftest', 'selftest-browser', 'list-live', 'list-needle', 'live-red']) {
+    const env = L.buildChildEnv(source(), l, RUN, L.modeValues(mode));
+    for (const n of L.SITE_ENV_NAMES) expect(Object.prototype.hasOwnProperty.call(env, n), `${mode} ${n}`).toBe(false);
+  }
+});
+
+test('launch: list-site uses the launcher constant target http://127.0.0.1:9 · local', ({ L }) => {
+  expect(L.LIST_SITE_TARGET).toEqual({ base: 'http://127.0.0.1:9', mode: 'local' });
+  expect(L.modeValues('list-site')).toEqual({ JT_E2E_SITE: '1', BASE_URL: 'http://127.0.0.1:9', JT_E2E_SITE_MODE: 'local' });
+  expect(Object.keys(L.buildChildEnv(source(), L.planLayout(TMP, RUN), RUN, L.modeValues('list-site'))).sort()).toEqual(SITE_NAMES);
+});
+
+test('launch: site mode reads BASE_URL and JT_E2E_SITE_MODE from the launcher env (case-insensitive names); either missing → null', ({ L }) => {
+  expect(L.readSiteTarget({ BASE_URL: 'http://127.0.0.1:3000', JT_E2E_SITE_MODE: 'local' })).toEqual({ base: 'http://127.0.0.1:3000', mode: 'local' });
+  expect(L.readSiteTarget({ base_url: 'https://joshuatech.dev', jt_e2e_site_mode: 'prod' })).toEqual({ base: 'https://joshuatech.dev', mode: 'prod' });
+  expect(L.readSiteTarget({ BASE_URL: 'http://127.0.0.1:3000' })).toBeNull();
+  expect(L.readSiteTarget({ JT_E2E_SITE_MODE: 'local' })).toBeNull();
+  expect(L.readSiteTarget({ BASE_URL: '', JT_E2E_SITE_MODE: 'local' })).toBeNull();
+  expect(L.readSiteTarget({})).toBeNull();
+});
+
+// 런처의 사전 검사는 설정의 validateSiteTarget(정본 — e2e/lib/site.ts)과 같은 판정이어야 한다(값 없이 [guard] 줄로 일찍 멈출 뿐)
+const TARGET_CASES: Array<[unknown, unknown]> = [
+  ['http://127.0.0.1:3000', 'local'],
+  ['http://localhost:3000', 'local'],
+  ['http://127.0.0.1:1', 'local'],
+  ['http://localhost:65535', 'local'],
+  ['https://joshuatech.dev', 'prod'],
+  ['http://127.0.0.1:3000/', 'local'],
+  ['http://127.0.0.1:3000/ko', 'local'],
+  ['http://127.0.0.1:3000?x=1', 'local'],
+  ['http://127.0.0.1:3000#x', 'local'],
+  ['https://127.0.0.1:3000', 'local'],
+  ['http://127.0.0.2:3000', 'local'],
+  ['http://0.0.0.0:3000', 'local'],
+  ['http://[::1]:3000', 'local'],
+  ['http://localhost', 'local'],
+  ['http://127.0.0.1:0', 'local'],
+  ['http://127.0.0.1:65536', 'local'],
+  ['http://127.0.0.1:03000', 'local'],
+  ['http://localhost:80', 'local'],
+  ['http://user@127.0.0.1:3000', 'local'],
+  ['HTTP://LOCALHOST:3000', 'local'],
+  ['http://localhost.:3000', 'local'],
+  [' http://127.0.0.1:3000', 'local'],
+  ['https://joshuatech.dev', 'local'],
+  ['http://127.0.0.1:3000', 'prod'],
+  ['https://joshuatech.dev/', 'prod'],
+  ['https://www.joshuatech.dev', 'prod'],
+  ['http://joshuatech.dev', 'prod'],
+  ['https://preview.joshuatech.dev', 'prod'],
+  ['https://joshuatech.dev:443', 'prod'],
+  ['http://127.0.0.1:3000', 'Local'],
+  ['http://127.0.0.1:3000', ''],
+  ['http://127.0.0.1:3000', '__proto__'],
+  ['http://127.0.0.1:3000', undefined],
+  [undefined, 'local'],
+  ['', 'local'],
+];
+
+test('launch: the site pre-check agrees with validateSiteTarget on every case and prints the guard without the value', ({ L }) => {
+  for (const [b, m] of TARGET_CASES) {
+    expect(L.siteTargetAllowed({ base: b, mode: m }), `${String(b)} ${String(m)}`).toBe(validateSiteTarget(b, m).ok);
+  }
+  expect(L.siteTargetAllowed(null)).toBe(false);
+  expect(L.SITE_TARGET_GUARD_LINE.startsWith('[guard] site-target-not-allowed — ')).toBe(true);
+  expect(L.SITE_TARGET_GUARD_LINE.includes('127.0.0.1:3000')).toBe(false);
+  // 런처 줄과 설정 가드 글자는 같다(어느 쪽에서 멈춰도 같은 이유를 읽는다)
+  expect(L.SITE_TARGET_GUARD_LINE).toBe(SITE_TARGET_GUARD);
+});
+
+test('launch: allowed skip = 1 only for a local run that printed the exact health-skip INFO line', ({ L }) => {
+  const lines = ['T087 reach PASS site-v2', 'INFO T087 health skipped mode=local'];
+  expect(L.SITE_HEALTH_SKIP_LINE).toBe('INFO T087 health skipped mode=local');
+  expect(L.allowedSkip('local', lines)).toBe(1);
+  expect(L.allowedSkip('prod', lines)).toBe(0);
+  expect(L.allowedSkip('local', ['T087 reach PASS site-v2'])).toBe(0);
+  expect(L.allowedSkip('local', ['INFO T087 health skipped mode=prod'])).toBe(0);
+  expect(L.allowedSkip('local', ['xINFO T087 health skipped mode=local'])).toBe(0);
+});
+
+test('launch: site end line and exit — 0 only when the child passed, nothing failed, the only skip is the allowed one, something passed and the root is gone', ({ L }) => {
+  const ok = { summary: SITE_SUMMARY, allowed: 1, exit: 0, cleaned: true };
+  expect(L.siteEndLine(ok)).toBe('site passed=8 failed=0 skipped=1 allowed-skip=1 child-exit=0 root=removed');
+  expect(L.siteOk(ok)).toBe(true);
+  // prod 실행 = skip 0
+  expect(L.siteOk({ summary: { ...SITE_SUMMARY, passed: 9, skipped: 0 }, allowed: 0, exit: 0, cleaned: true })).toBe(true);
+  const bad: Array<[string, Record<string, unknown>]> = [
+    ['child exit 1', { ...ok, exit: 1 }],
+    ['a failure', { ...ok, summary: { ...SITE_SUMMARY, passed: 7, failed: 1 } }],
+    ['flaky', { ...ok, summary: { ...SITE_SUMMARY, passed: 7, flaky: 1 } }],
+    ['interrupted', { ...ok, summary: { ...SITE_SUMMARY, passed: 7, interrupted: 1 } }],
+    ['did not run', { ...ok, summary: { ...SITE_SUMMARY, passed: 7, didNotRun: 1 } }],
+    ['error outside tests', { ...ok, summary: { ...SITE_SUMMARY, errors: 1 } }],
+    ['skip not allowed (prod or no INFO line)', { ...ok, allowed: 0 }],
+    ['two skips', { ...ok, summary: { ...SITE_SUMMARY, passed: 7, skipped: 2 } }],
+    ['nothing passed', { ...ok, summary: { ...SITE_SUMMARY, passed: 0 } }],
+    ['no summary', { ...ok, summary: null }],
+    ['root left', { ...ok, cleaned: false }],
+  ];
+  for (const [name, x] of bad) expect(L.siteOk(x), name).toBe(false);
+  expect(L.siteEndLine({ summary: { ...SITE_SUMMARY, passed: 6, failed: 1, interrupted: 1 }, allowed: 1, exit: 1, cleaned: false })).toBe('site passed=6 failed=2 skipped=1 allowed-skip=1 child-exit=1 root=left');
+  expect(L.siteEndLine({ summary: null, allowed: 0, exit: 1, cleaned: true })).toBe('site passed=0 failed=-1 skipped=0 allowed-skip=0 child-exit=1 root=removed');
+});
+
+const SITE_GATE = 'T087 reach FAIL [gate] site-absent until T091';
+
+test('launch: site-red counts only the reach [gate] site-absent lines (the right reason for the red) and prints gate-site=<g>/<failed>', ({ L }) => {
+  const lines = [
+    `${SITE_GATE} — loopback refused and apps/web scaffold absent (next.config.ts)`,
+    SITE_GATE,
+    'T087 reach FAIL [env] site-server-not-running',
+    'T087 reach FAIL [env] network (timeout)',
+    'T087 reach FAIL [product] reach-unexpected status=200',
+    `${SITE_GATE} until later`,
+    `INFO ${SITE_GATE}`,
+    'T079 reach FAIL [gate] site-absent until T091',
+    'T087 h-1 FAIL [gate] site-absent until T091',
+    'T087 reach PASS site-v2',
+  ];
+  expect(L.countGateSite(lines)).toBe(2);
+  expect(L.countGateSite([])).toBe(0);
+  // 중계는 out.ts 꼴의 T087 줄을 그대로 옮긴다
+  expect(L.relay(lines[0])).toEqual([lines[0]]);
+  const s = { passed: 0, failed: 8, flaky: 0, skipped: 1, interrupted: 0, didNotRun: 0, errors: 0 };
+  expect(L.siteRedEndLine({ summary: s, gateSite: 8, exit: 1, cleaned: true })).toBe('site-red passed=0 failed=8 skipped=1 gate-site=8/8 child-exit=1 root=removed');
+  expect(L.siteRedEndLine({ summary: { ...s, failed: 7, interrupted: 1 }, gateSite: 7, exit: 1, cleaned: true })).toBe('site-red passed=0 failed=8 skipped=1 gate-site=7/8 child-exit=1 root=removed');
+  expect(L.siteRedEndLine({ summary: null, gateSite: 0, exit: 1, cleaned: false })).toBe('site-red passed=0 failed=-1 skipped=0 gate-site=0/-1 child-exit=1 root=left');
+});
+
+test('launch: list end line carries site=<n> next to the live · needle counts; selftest counts must agree across the three listings', ({ L }) => {
+  const live = { selftest: 180, 'selftest-browser': 30, live: 3 };
+  const needle = { selftest: 180, 'selftest-browser': 30, needle: 9, 'needle-control': 8 };
+  const site = { selftest: 180, 'selftest-browser': 30, site: 9 };
+  expect(L.listCountsAgree(live, needle, site)).toBe(true);
+  expect(L.listCountsAgree(live, needle, { ...site, selftest: 179 })).toBe(false);
+  expect(L.listCountsAgree(live, needle, null)).toBe(false);
+  expect(L.listEndLine({ live, needle, site, ok: true })).toBe('list live=3 needle=9 needle-control=8 site=9 selftest=180 selftest-browser=30 result=ok');
+  expect(L.listEndLine({ live: null, needle, site: null, ok: false })).toBe('list live=0 needle=9 needle-control=8 site=0 selftest=0 selftest-browser=0 result=FAIL');
 });
 
 test('launch: run id shape', ({ L }) => {

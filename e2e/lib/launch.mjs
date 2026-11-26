@@ -1,16 +1,22 @@
-// e2e/lib/launch.mjs — e2e 런처(설계 D9 · D10 ⑧ · r1 — A-6 · B-14 · A-7 · r2 — V-2 · V-3 · V-4 · V-6). Node 내장 모듈만.
-// 사용: node e2e/lib/launch.mjs <selftest|selftest-browser|needle|list|live-red>
+// e2e/lib/launch.mjs — e2e 런처(설계 D9 · D10 ⑧ · r1 — A-6 · B-14 · A-7 · r2 — V-2 · V-3 · V-4 · V-6 · T087 — t086-design.md D10 ③). Node 내장 모듈만.
+// 사용: node e2e/lib/launch.mjs <selftest|selftest-browser|needle|list|live-red|site|site-red>
 //   selftest · selftest-browser — 브라우저 0 / 로컬 setContent만. 끝 줄 '<n> passed, <m> failed'(run-all e2e-selftest 슬롯이 읽는다).
 //   needle — 바늘을 실행마다 만들어 자식 env로만 넘기고 두 실행 + 스캔. 실행 1 = 감싸개를 지나는 의도 실패 9 · 모든 면 hits 0 · 루트 바이너리 산출물 0,
 //            실행 2 = 감싸개 없이 같은 노출 경로를 밟는 경로별 양성 대조(빌드 리뷰 r1 — B-1). 끝 줄 'needle=PASS|FAIL …'(면별 hits 수 · 경로별 대조 수).
-//   list — JT_E2E_LIVE=1 · JT_E2E_NEEDLE=1을 따로 준 --list 두 번 → 프로젝트별 수.
+//   list — JT_E2E_LIVE=1 · JT_E2E_NEEDLE=1 · JT_E2E_SITE=1(대상 = 런처 상수 http://127.0.0.1:9 · local)을 따로 준 --list 세 번 → 프로젝트별 수.
 //   live-red — 공개 호스트 무자격 GET(빨강 관찰 — 컨트롤러 몫). 자식 env = 허용 목록 + JT_E2E_LIVE=1. 끝 줄에 gate-reach=<n>/<live 시험 수>(리뷰 A-3).
+//   site — T087 site 프로젝트. 런처 env의 BASE_URL · JT_E2E_SITE_MODE를 대상으로 넘긴다(검증은 설정 — 값은 출력 0). 자식 env = 허용 목록 + JT_E2E_SITE=1 · BASE_URL ·
+//          JT_E2E_SITE_MODE. 끝 줄 'site passed=… failed=… skipped=… allowed-skip=<0|1> child-exit=… root=…' — exit 0 = 자식 0 · 실패 0 · skip = allowed-skip ·
+//          통과 ≥ 1 · 루트 삭제(allowed-skip = local이고 'INFO T087 health skipped mode=local' 줄이 있을 때 1). prod 모드는 공개 apex를 부른다 — 컨트롤러 지시가 있을 때만.
+//   site-red — 루프백 빈 포트(닫힌 포트)를 local 대상으로 site를 돌린다(빨강 관찰 — 공개 호스트 0). 끝 줄 'site-red … gate-site=<g>/<failed> …' —
+//          g = 중계한 줄 가운데 'T087 reach FAIL [gate] site-absent until T091' 줄 수(올바른 이유의 빨강은 g = failed일 때뿐).
 // 공통: 블록 소유 루트 os.tmpdir()/jt-e2e/<runId>(outputDir · evidence · 로그 · 자식 TEMP/TMP) · 자식 env 허용 목록 · shell 0 ·
 // 출력은 판정 줄 · env 이름 · 수뿐(값 0 — static-gate 이름 붙은 예외) · finally에서 루트 삭제 + 존재 0 확인.
 import { spawn, spawnSync } from 'node:child_process';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
+import * as net from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,8 +39,15 @@ const NAMES = {
   needleSet: 'JT_E2E_NEEDLE_SET',
 };
 
-const MODES = ['selftest', 'selftest-browser', 'needle', 'list', 'live-red'];
+export const MODES = ['selftest', 'selftest-browser', 'needle', 'list', 'live-red', 'site', 'site-red'];
 const CHILD_TIMEOUT_MS = 570_000;
+
+// T087 site 값(D10 ② ③) — 이 세 이름만 site 모드의 자식에 더한다(값은 런처가 정한 대상에서 · 런처 env를 그대로 복사하지 않는다)
+export const SITE_ENV_NAMES = ['JT_E2E_SITE', 'BASE_URL', 'JT_E2E_SITE_MODE'];
+// list의 site --list 대상(연결하지 않는다 — 시험 수만 센다)
+export const LIST_SITE_TARGET = Object.freeze({ base: 'http://127.0.0.1:9', mode: 'local' });
+// local 실행의 h-7 skip 표식 — 이 줄이 있을 때만 skip 1을 받아들인다
+export const SITE_HEALTH_SKIP_LINE = 'INFO T087 health skipped mode=local';
 const SURFACES = ['log', 'root', 'test-results', 'auth', 'tmp-playwright', 'git-status'];
 
 // 실행 1의 의도 실패 9건 — 제목 → 첫 오류 줄(포트는 <port>로 맞춘다). 다른 실패(브라우저 부재 등)는 메시지가 달라 FAIL이다.
@@ -136,7 +149,13 @@ export function controlSpecs(set) {
   return out;
 }
 
-export function modeValues(mode, set) {
+export function siteValues(target) {
+  if (!target || typeof target.base !== 'string' || typeof target.mode !== 'string') throw new Error('launch: site target missing');
+  return { JT_E2E_SITE: '1', BASE_URL: target.base, JT_E2E_SITE_MODE: target.mode };
+}
+
+// extra = needle 묶음(needle) · 대상 { base, mode }(site · site-red)
+export function modeValues(mode, extra) {
   switch (mode) {
     case 'selftest':
     case 'selftest-browser':
@@ -146,16 +165,49 @@ export function modeValues(mode, set) {
       return { JT_E2E_LIVE: '1' };
     case 'list-needle':
       return { JT_E2E_NEEDLE: '1' };
+    case 'list-site':
+      return siteValues(LIST_SITE_TARGET);
+    case 'site':
+    case 'site-red':
+      return siteValues(extra);
     case 'needle':
       return {
         JT_E2E_NEEDLE: '1',
-        [NAMES.password]: set.password,
-        [NAMES.codes]: set.codes,
-        [NAMES.step0]: set.step0,
-        [NAMES.needleSet]: JSON.stringify(set),
+        [NAMES.password]: extra.password,
+        [NAMES.codes]: extra.codes,
+        [NAMES.step0]: extra.step0,
+        [NAMES.needleSet]: JSON.stringify(extra),
       };
     default:
       throw new Error('launch: unknown mode');
+  }
+}
+
+// site 모드의 대상 = 런처 env의 BASE_URL · JT_E2E_SITE_MODE(이름은 대소문자 무관 — Windows env). 하나라도 없으면 null. 꼴 검증의 정본은 설정(validateSiteTarget)이다.
+export function readSiteTarget(source) {
+  const base = lookup(source, 'BASE_URL');
+  const mode = lookup(source, 'JT_E2E_SITE_MODE');
+  if (typeof base !== 'string' || base.length === 0 || typeof mode !== 'string' || mode.length === 0) return null;
+  return { base, mode };
+}
+
+// 사전 검사 — 설정의 validateSiteTarget(e2e/lib/site.ts — 정본)과 같은 규칙이다. 설정 로드의 throw는 Playwright 오류 줄이라 중계되지 않으므로(끝 줄 failed=-1만 남는다)
+// 자식을 띄우기 전에 값 없는 [guard] 줄로 이유를 낸다. 두 판정이 같은지는 selftest launch가 사례 표로 고정한다.
+export const SITE_TARGET_GUARD_LINE = '[guard] site-target-not-allowed — local = http://127.0.0.1:<port> | http://localhost:<port> · prod = https://joshuatech.dev';
+const SITE_LOCAL_ORIGIN = /^http:\/\/(127\.0\.0\.1|localhost):([0-9]{1,5})$/;
+
+export function siteTargetAllowed(target) {
+  if (!target || typeof target.base !== 'string') return false;
+  if (target.mode === 'prod') return target.base === 'https://joshuatech.dev';
+  if (target.mode !== 'local') return false;
+  const m = SITE_LOCAL_ORIGIN.exec(target.base);
+  if (!m) return false;
+  const port = Number(m[2]);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return false;
+  try {
+    return new URL(target.base).origin === target.base;
+  } catch {
+    return false;
   }
 }
 
@@ -186,7 +238,8 @@ export function buildChildEnv(source, layout, runId, values) {
 }
 
 export function expectedEnvNames(mode) {
-  const values = modeValues(mode, mode === 'needle' ? makeNeedleSet() : undefined);
+  const extra = mode === 'needle' ? makeNeedleSet() : mode === 'site' || mode === 'site-red' ? LIST_SITE_TARGET : undefined;
+  const values = modeValues(mode, extra);
   return [...BASE_ENV_NAMES, ...COMMON_ENV_NAMES, ...Object.keys(values)].sort();
 }
 
@@ -392,6 +445,51 @@ export function liveRedEndLine({ summary, gateReach, exit, residue, cleaned }) {
   return `live-red passed=${summary ? summary.passed : 0} failed=${failed} gate-reach=${gateReach}/${total} child-exit=${exit} auth-residue=${residue ? 'ok' : 'missing'} root=${cleaned ? 'removed' : 'left'}`;
 }
 
+// ---- T087 site · site-red(D10 ③) — skip은 실패와 따로 센다(local의 h-7 skip만 허용) ----
+function siteFailed(s) {
+  return s.failed + s.flaky + s.interrupted + s.didNotRun + s.errors;
+}
+
+export function allowedSkip(siteMode, relayedLines) {
+  return siteMode === 'local' && relayedLines.includes(SITE_HEALTH_SKIP_LINE) ? 1 : 0;
+}
+
+export function siteEndLine({ summary, allowed, exit, cleaned }) {
+  return `site passed=${summary ? summary.passed : 0} failed=${summary ? siteFailed(summary) : -1} skipped=${summary ? summary.skipped : 0} allowed-skip=${allowed} child-exit=${exit} root=${cleaned ? 'removed' : 'left'}`;
+}
+
+// exit 0 = 자식 0 · 실패 0 · skip = 허용 수 · 통과 ≥ 1(빈 초록 0) · 루트 삭제
+export function siteOk({ summary, allowed, exit, cleaned }) {
+  return !!summary && exit === 0 && siteFailed(summary) === 0 && summary.skipped === allowed && summary.passed > 0 && cleaned === true;
+}
+
+// site-red 「올바른 이유의 빨강」 계수: 중계한 줄 가운데 reach의 루프백 거부 + 스캐폴드 없음 [gate] 줄 수
+const GATE_SITE = /^T087 reach FAIL \[gate\] site-absent until T091( — |$)/;
+
+export function countGateSite(lines) {
+  return lines.filter((l) => GATE_SITE.test(l)).length;
+}
+
+export function siteRedEndLine({ summary, gateSite, exit, cleaned }) {
+  const failed = summary ? siteFailed(summary) : -1;
+  return `site-red passed=${summary ? summary.passed : 0} failed=${failed} skipped=${summary ? summary.skipped : 0} gate-site=${gateSite}/${failed} child-exit=${exit} root=${cleaned ? 'removed' : 'left'}`;
+}
+
+// ---- list(세 번의 --list) ----
+function listCount(c, k) {
+  return c && typeof c[k] === 'number' ? c[k] : 0;
+}
+
+export function listCountsAgree(live, needle, site) {
+  if (!live || !needle || !site) return false;
+  return ['selftest', 'selftest-browser'].every((k) => listCount(live, k) === listCount(needle, k) && listCount(live, k) === listCount(site, k));
+}
+
+export function listEndLine({ live, needle, site, ok }) {
+  const n = listCount;
+  return `list live=${n(live, 'live')} needle=${n(needle, 'needle')} needle-control=${n(needle, 'needle-control')} site=${n(site, 'site')} selftest=${n(live, 'selftest')} selftest-browser=${n(live, 'selftest-browser')} result=${ok ? 'ok' : 'FAIL'}`;
+}
+
 export function resolveCli(repoRoot = REPO_ROOT) {
   try {
     const req = createRequire(path.join(repoRoot, 'package.json'));
@@ -542,6 +640,7 @@ async function runList(pw, runId) {
   const layout = planLayout(os.tmpdir(), runId);
   let a;
   let b;
+  let c;
   let cleaned = false;
   try {
     say(`INFO launch mode=list run=${runId} playwright=${pw.version}`);
@@ -549,15 +648,17 @@ async function runList(pw, runId) {
     a = await runChild(pw.cli, null, ['--list'], envA, layout, 'list-live');
     const envB = buildChildEnv(process.env, layout, runId, modeValues('list-needle'));
     b = await runChild(pw.cli, null, ['--list'], envB, layout, 'list-needle');
+    const envC = buildChildEnv(process.env, layout, runId, modeValues('list-site'));
+    c = await runChild(pw.cli, null, ['--list'], envC, layout, 'list-site');
   } finally {
     cleaned = removeRoot(layout);
   }
   const ca = a ? parseListCounts(a.stdout) : null;
   const cb = b ? parseListCounts(b.stdout) : null;
-  const n = (c, k) => (c && typeof c[k] === 'number' ? c[k] : 0);
-  const ok = !!a && !!b && a.exit === 0 && b.exit === 0 && !!ca && !!cb && n(ca, 'selftest') === n(cb, 'selftest') && n(ca, 'selftest-browser') === n(cb, 'selftest-browser') && cleaned;
+  const cc = c ? parseListCounts(c.stdout) : null;
+  const ok = !!a && !!b && !!c && a.exit === 0 && b.exit === 0 && c.exit === 0 && listCountsAgree(ca, cb, cc) && cleaned;
   if (!cleaned) say('FAIL cleanup -- run root not removed');
-  say(`list live=${n(ca, 'live')} needle=${n(cb, 'needle')} needle-control=${n(cb, 'needle-control')} selftest=${n(ca, 'selftest')} selftest-browser=${n(ca, 'selftest-browser')} result=${ok ? 'ok' : 'FAIL'}`);
+  say(listEndLine({ live: ca, needle: cb, site: cc, ok }));
   return ok ? 0 : 1;
 }
 
@@ -647,10 +748,76 @@ async function runLiveRed(pw, runId) {
   return r.exit === 0 && residue && cleaned ? 0 : 1;
 }
 
+// T087 — site 프로젝트 한 번(대상은 site: 런처 env · site-red: 닫힌 루프백 포트). 대상 값은 출력하지 않는다(env 이름 · 판정 줄 · 수만).
+async function runSiteProject(pw, runId, mode, target) {
+  const layout = planLayout(os.tmpdir(), runId);
+  let r = null;
+  let relayed = [];
+  let titles = [];
+  let cleaned = false;
+  try {
+    const env = buildChildEnv(process.env, layout, runId, modeValues(mode, target));
+    const names = Object.keys(env).sort();
+    say(`INFO launch mode=${mode} run=${runId} playwright=${pw.version}`);
+    say(`INFO child-env names=${names.join(',')}`);
+    if (names.join(',') === expectedEnvNames(mode).join(',')) {
+      r = await runChild(pw.cli, 'site', [], env, layout, mode);
+      relayed = relay(r.stdout + '\n' + r.stderr);
+      for (const l of relayed) say(l);
+      titles = summaryTitles(r.stdout);
+    } else {
+      say(`FAIL ${mode} -- child env names differ from the allowlist`);
+    }
+  } finally {
+    cleaned = removeRoot(layout);
+  }
+  for (const t of titles) say(`FAIL test -- ${t}`);
+  if (!cleaned) say('FAIL cleanup -- run root not removed');
+  return { r, relayed, cleaned };
+}
+
+async function runSite(pw, runId, target) {
+  const { r, relayed, cleaned } = await runSiteProject(pw, runId, 'site', target);
+  const x = { summary: r ? parseSummary(r.stdout) : null, allowed: allowedSkip(target.mode, relayed), exit: r ? r.exit : -1, cleaned };
+  say(siteEndLine(x));
+  return siteOk(x) ? 0 : 1;
+}
+
+// 닫힌 루프백 포트 — 잡았다가 놓는다(연결 거부를 낸다). 공개 호스트 0.
+function closedLoopbackPort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.once('error', reject);
+    srv.listen(0, '127.0.0.1', () => {
+      const addr = srv.address();
+      const port = addr && typeof addr === 'object' ? addr.port : 0;
+      srv.close(() => (port > 0 ? resolve(port) : reject(new Error('launch: no loopback port'))));
+    });
+  });
+}
+
+async function runSiteRed(pw, runId) {
+  const port = await closedLoopbackPort();
+  const { r, relayed, cleaned } = await runSiteProject(pw, runId, 'site-red', { base: `http://127.0.0.1:${port}`, mode: 'local' });
+  const exit = r ? r.exit : -1;
+  say(siteRedEndLine({ summary: r ? parseSummary(r.stdout) : null, gateSite: countGateSite(relayed), exit, cleaned }));
+  return exit === 0 && cleaned ? 0 : 1;
+}
+
 export async function main(argv) {
   const mode = argv[0];
   if (argv.length !== 1 || !MODES.includes(mode)) {
-    say('FAIL launch -- usage: node e2e/lib/launch.mjs <selftest|selftest-browser|needle|list|live-red>');
+    say('FAIL launch -- usage: node e2e/lib/launch.mjs <selftest|selftest-browser|needle|list|live-red|site|site-red>');
+    return 2;
+  }
+  // site는 대상 두 이름이 런처 env에 있어야 한다(이름만 출력 — 값 0)
+  const siteTarget = mode === 'site' ? readSiteTarget(process.env) : null;
+  if (mode === 'site' && !siteTarget) {
+    say('FAIL launch -- site mode needs BASE_URL and JT_E2E_SITE_MODE in the launcher env');
+    return 2;
+  }
+  if (mode === 'site' && !siteTargetAllowed(siteTarget)) {
+    say(SITE_TARGET_GUARD_LINE);
     return 2;
   }
   const pw = resolveCli();
@@ -671,6 +838,8 @@ export async function main(argv) {
     if (mode === 'selftest' || mode === 'selftest-browser') return await runSelftest(pw, mode, runId);
     if (mode === 'list') return await runList(pw, runId);
     if (mode === 'needle') return await runNeedle(pw, runId);
+    if (mode === 'site') return await runSite(pw, runId, siteTarget);
+    if (mode === 'site-red') return await runSiteRed(pw, runId);
     return await runLiveRed(pw, runId);
   } catch (e) {
     say(`FAIL launch -- internal error (${e && e.name ? e.name : 'unknown'})`);

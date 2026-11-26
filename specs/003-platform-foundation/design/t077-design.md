@@ -511,3 +511,4 @@
 정본 = design/t086-design.md(r2 본문 + §7 확정 보정). 결정 본문은 그대로이고, 이 설계의 전제가 바뀐 점만 적는다.
 
 1. **UD-7 = (나) 확정(2026-11-24)** — T079의 명시 `all_devices: true`(e2e/lib/bff.ts:59–60)는 기본 범위와 떼어 낸 것에서 「모든 기기」 경로의 필수 본문이 됐다. 로그아웃 성공 응답은 204 그대로이고 헤더 `x-end-session-url`만 더해지므로 `judgeLogout`(e2e/lib/bff.ts:182–:185) 변경은 0이다(이 문서 :440 인계를 닫는다).
+2. **B-6 쿠키 접두 채택(2026-11-24)** — `BFF_SESSION_COOKIE` · `BFF_CSRF_COOKIE`(e2e/lib/bff.ts:57–:58)를 `__Host-jt_session` · `__Host-jt_csrf`로 바꿨다. selftest 기대값(selftest/bff.test.ts:93 · :234–:269) · README:67 · revocation.spec.ts:158 주석을 함께 고쳤다. `pickSessionCopies`의 도메인 판정은 host-only 쿠키와 그대로 맞는다. 판정 동작 변경 0. 자리값 `jt_session=`(e2e/needle/* · selftest/http.test.ts · scan-needle.test.ts)은 계약 이름을 단언하지 않아 그대로 뒀다(t086-design.md §7 N-19). 줄 번호는 T087 커밋 시점이다 — ①의 `bff.ts:59–60` · `:182–:185`는 T089 커밋 시점 번호이고, 이 커밋 뒤에는 `:60–:61` · `:183–:186`이다(t086-design.md 정정 노트 22).

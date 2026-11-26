@@ -5716,3 +5716,18 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
 - **인계**: V3-1 → T092 착수 때 G8-3에 갈래 두 행(logout `all_devices: true` · `/api/session` inactive)을 시험 먼저(정정 노트 14).
 - **함께 든 것**: `contracts/bff-api.md` T089 보정(B-6 이름 · A-4 세 문장) · `.claude/rules/web.md` + KR · `quickstart.md`(폐기 = 모든 기기 꼴) · t077 정정 노트 ①(UD-7) · 설계 정정 노트 9–18 · 학습 로그 `content/tmp/003-t089/2026-11-26.md`(⑤ 절 포함).
 - **tick**: T089 [X] 87/119. 초록은 image-loader = T091 · gateway = T092(§1-3).
+
+### T087 빨강 관찰 · tick(2026-11-26)
+
+- **재관찰**(컨트롤러 16:22:32–16:23:51 KST · 루프백만 · 공개 호스트 요청 0)
+  - `node e2e/lib/launch.mjs selftest` → `213 passed, 0 failed` · exit 0
+  - `node e2e/lib/launch.mjs selftest-browser` → `30 passed, 0 failed` · exit 0
+  - `node e2e/lib/launch.mjs needle` → `needle=PASS run1-exit=1 run1-failed=9 run1-messages=9/9 run1-hits=log:0,root:0,test-results:0,auth:0,tmp-playwright:0,git-status:0 run1-artifacts=0 run2-exit=1 run2-passed=6 run2-failed=1 run2-messages=1/1 controls=log@log:13,inp@log:13,req@log:13,sck@log:13,url@log:26,nav@log:26,pgs@root:13 …` · exit 0
+  - `node e2e/lib/launch.mjs list` → `list live=3 needle=9 needle-control=7 site=9 selftest=213 selftest-browser=30 result=ok`
+  - `node e2e/lib/launch.mjs site-red` → 첫 단계 줄 `T087 reach FAIL [gate] site-absent until T091 — loopback refused and apps/web scaffold absent (next.config.ts)` × 8 · `INFO T087 health skipped mode=local` · 끝 줄 `site-red passed=0 failed=8 skipped=1 gate-site=8/8 child-exit=1 root=removed` · exit 1 · `[env]` · `[guard]` · `[product]` 0 — §1-2 그대로.
+  - 잔여: `e2e/.auth` 없음 · `%TEMP%\jt-e2e` 없음 · e2e 무시된 산출물 0.
+- **합격선 §1-1**: ① selftest · selftest-browser 실패 0 · `needle=PASS` · `list site=9` ② `site-red gate-site=8/8` · skipped 1(h-7) · passed 0 ③ 저장소 밖 계약 스텁 양성 8 PASS + 변이 10(빌드 r0) · A-2 · B-5 · B-6 변이(수정 r1 F3 · 검증 V1 재현) ④ 잔여 0 ⑤ B-6 상수 개정 뒤 selftest 초록.
+- **selftest 수**: 171(T077 · T079) → 211(빌드 r0) → 213(수정 r1 — h-7 degraded 두 사례) · selftest-browser 23 → 30.
+- **agent-layer · parity**: RULES · MIRRORS에 e2e(리뷰 C-4) → `tests/agents/agent-layer.tests.ps1` 72 → 79 · `tests/agents/codex-parity.tests.ps1` 12/0(`$ruleDocs`에 `e2e.md`). tasks.md T108 문면(규칙 5개)은 불변이다 — 하네스는 이제 6개를 본다(FD ④-c · 과거 기록의 「72/0」은 이력이라 그대로).
+- **함께 든 것**: 새 규칙 `.claude/rules/e2e.md` + KR · AGENTS.md 행(+ KR — e2e 라우팅 · vitest · 런처 명령) · web-builder 에이전트 영역(+ KR · Codex toml) · `playwright.config.ts` `site` 프로젝트 · T079 쿠키 상수 · selftest · README · `revocation.spec.ts` 주석(B-6) · t077 정정 노트 ②(B-6) · 설계 정정 노트 19–23 · 학습 로그 `content/tmp/003-t087/2026-11-26.md`.
+- **tick**: T087 [X] 88/119. 초록은 로컬 = T090 · T091 · T092 + T086-a · CI = T093 · prod = T094 뒤 T095(§1-3).
