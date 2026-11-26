@@ -1143,4 +1143,34 @@ h-4 사례: `ko` → `/ko` · `ko-KR,ko;q=0.9,en;q=0.8` → `/ko` · `en-US,en;q
 
 ## 정정 노트
 
-- 없음(r2).
+### 2026-11-26 — 빌드 r0 · 수정 r1 · r2 반영
+정본 = build-notes 「## T086 · T087 · T088 · T089」 · 보고 `.superpowers/t086/{build,reviews}/`(빌드 r0 `wf_af201538-c48` · 리뷰 A · B · C · D · 수정 r1 `wf_1ad3683a-0cd` → 재개 `wf_7d09bb68-946` · 검증 V1 · V2 · 수정 r2 G1 · G2) · 컨트롤러 결정 `.superpowers/t086/decisions-controller.md`. 결정 본문은 그대로이고, 실물과 다른 점과 인계만 적는다(설계 자리는 절 · 사례 id로 가리키고, 줄 번호는 이 확정본 기준 보조다).
+
+1. **§1-4 〔86-18〕 — 「본문 5절 검증」은 T090 TDD에 넣지 않는다(T090 전 필수)**(리뷰 A-1 · F1 ④a · V1 참고)
+   - 결정: `getCollection`은 본문 절(content.md:28의 다섯 절 · 순서 · 비어 있지 않음)을 검증하지 않는다. 다섯 절은 사람 검토와 /finish Study contract가 맡고, 실제 노트 2편은 ld-1(h2 다섯 · 순서 · id)이 지킨다. 정본 = `loader.test.ts` 머리 주석(본문 절 줄).
+   - **T090은 이것을 로더에 넣지 않는다 — TDD 사례도 0.** T090 지시문에 이 항목을 싣는다(V1: 이 노트가 없으면 T090 빌더가 〔86-18〕 문구대로 절 검증을 TDD로 넣는다).
+   - 까닭: 픽스처는 「짧은 노트」(D4)라 다섯 절을 가진 파일이 0이다. 로더 오류로 넣으면 issues 정확 비교 · 정상 반환 사례 대부분이 다른 이유로 빨강이 돼, T090이 승인된 T086 시험을 고치거나 요구를 버려야 한다(변이 `sections` — 로더가 절을 검증 — 가 T086 사례 대부분을 실패시킨다 · F1 실측). FR-029(spec:272)의 zod 항목과 tasks.md T090 문면에도 본문 절은 없다.
+   - 〔86-18〕의 나머지(하이라이트 · 1회 스캔 캐시 · JSON Schema export · 본문 산출 필드)는 그대로 T090 TDD다. /finish가 〔86-18〕을 report 「편차」로 옮길 때 이 노트로 읽는다.
+2. **D4 API · 스키마 · ld-4 · ld-10 — 날짜 = `'YYYY-MM-DD'` 문자열 하나 · `file` 갈래 code `name` · `ko-missing`**(리뷰 A-7 · F1 ④b · ④g · V1-2 → 수정 r2 G2)
+   - `data.pubDate` · `data.updatedDate` = `'YYYY-MM-DD'` 문자열 하나(Date 0). 입력은 따옴표 없는 날짜와 따옴표 문자열을 모두 받고, 출력은 같은 문자열이다 — T091 `time[datetime]`과 h-2가 이 값을 그대로 쓴다. T090 인계: YAML 1.2 core 기본 스키마(따옴표 없는 날짜 = 문자열)로 읽고 Date로 바꾸지 않는다.
+   - D4는 `file` 갈래 code로 `encoding`(파이프라인 1)만 정했다 → 둘을 더한다: `name` = study 파일 이름 규칙 위반 `(그 파일, file, name)`(ld-10 「번호 없는 파일 이름」) · `ko-missing` = ko 파일이 없는 slug의 **변형 파일마다** `(변형 파일, file, ko-missing)`. D4 ld-4 행 「오류 · 그 slug」(:326) → 이 정확 triple. 빌드 r0 참조 구현의 `(lang, ko_missing)`은 버렸다.
+   - 리뷰는 「시험은 그대로 둬도 된다」였지만, 주석만 두면 변이(`date-object` · `ld4-lang` · `name-code`)가 살아남아 시험으로도 고정했다(ld-1 · ld-7 날짜 단언 · ld-4 정확 triple · ld-10 사례 +1). 빌드 r0 보고 ① ③-4 · ④a · ④d는 이것으로 닫힌다.
+   - (수정 r2 G2 — V1-2) 「변형 파일마다」를 시험으로 고정했다: 파일 이름 규칙이 `(en|ja)`이므로 ld-4 픽스처에 `001-orphan.ja.mdx`를 더하고 en · ja 두 triple을 정확히 기대한다(주석을 좁히는 길은 버렸다). 픽스처 디렉터리 이름은 `en-only` → `ko-missing`(그 디렉터리를 쓰는 사례는 ld-4 하나 — 이름이 거짓이 됐다) · ld-4 바늘 넷(두 변형의 title · description). 변이 `v-komissing-per-slug`(첫 변형에만 issue)가 잡힌다. 검증 V3의 변이 `v3-name-no-ja`(파일 이름 규칙에서 ja를 뺌)도 이제 잡힌다 — r1 픽스처에는 `.ja.mdx`가 0이라 규칙의 ja 쪽은 이 픽스처가 처음 고정한다. 수치는 build-notes.
+   - 시험 수 · 끝 줄 수치는 설계에 적지 않는다(D12에도 수치가 없다 — F1 ④g). 정본 = build-notes.
+3. **§7 N-2 「입력 값 0」 — 범위 = 오류 객체 전체 · `cause` 0**(리뷰 B-1 · F1 ④c · ④f)
+   - N-2 「`ContentValidationError` 메시지와 issues에는 입력 값이 없다 … ld-10 · ld-13에 단언」 → 「오류 객체 전체 — message · issues · `stack` · `util.inspect` 출력(`cause` · 자기 속성 포함) — 에 입력 값이 없다」. ld-10 · ld-13 · ld-14가 이 넷을 바늘 대상으로 보고, `cause === undefined`와 자기 속성 키 ⊆ {`issues`, `name`, `message`, `stack`}을 단언한다(같음이 아니라 부분 집합 — private 필드 + 접근자 같은 정상 구현은 막지 않는다). 정본 = 머리 주석(입력 값 0 줄).
+   - 까닭: Node(잡히지 않은 오류)와 vitest 출력은 `[cause]` · `Caused by`를 찍는다. `new ContentValidationError(issues, { cause: yamlError })` 꼴이면 YAML 오류에 든 원문 줄이 공개 CI 로그로 나간다 — r0 시험은 이 변이를 전부 통과시켰다(리뷰 B 실측).
+   - T090 인계: Error 생성자에 `{ cause }`를 넘기지 않는다 · YAML · TextDecoder 오류 객체를 싣지 않는다 · 자기 속성은 위 넷 안에서만.
+   - 바늘 주의(F1 ④f): 바늘 대상에 stack · inspect 출력이 들어갔으므로, 새 바늘은 파일 경로 · 스택 프레임 글자와 겹치지 않는 값만 쓴다(겹치면 거짓 빨강).
+4. **D4 ld-13 · D12 — 중첩 컨테이너 여섯 행 · 함정 ⓕ**(리뷰 B-4 · F1 ④d)
+   - ld-13 금지 사례에 중첩 픽스처 여섯(`body-rules/study/022`–`027`)을 더한다: 목록 항목 `- [x](javascript:alert(1))` → `unsafe-url` · 인용 `> <b>x</b>` → `raw-html` 둘 · 표 칸 `| a | {x} |` → `expression` · 헤딩 `## {y}` → `expression` · 링크 글자 `[{z}](./a)` → `expression` · 각주 정의 `[^1]: <i>x</i>` → `raw-html` 둘. 거부 플러그인은 트리 전체를 돈다.
+   - `raw-html`은 html 노드마다 하나다 — 글줄 안의 여는 · 닫는 태그는 각각 하나(`<b>x</b>` · `<i>x</i>`는 CommonMark 유형 7 html 블록 조건 — 여는 태그 뒤 공백만 — 을 채우지 않아 글줄 html 둘). 그래서 023 · 027은 issue가 둘씩이다.
+   - D12 T086 행에 ⓕ를 더한다: 「최상위 children(+ 문단 글줄)만 도는 거부 플러그인 → ld-13 금지 passed 0」. 컨테이너를 하나씩 건너뛰는 변이 여섯도 각자 자기 픽스처 줄만 빠뜨려 잡힌다.
+5. **§3 VD-T086-3 · 4 확장 — 실물 remark 대조는 T090 설치 직후 첫 단계**(리뷰 C-3 · F1 ④e)
+   - ld-13(줄 · 개수 정확) · ld-8 · ld-1의 「참조 구현 통과」는 손으로 쓴 CommonMark 부분 모형으로만 증명됐다(저장소에 remark · micromark 0 · 설치 0). T090은 로더 의존 설치 직후 첫 단계로 이 셋을 실물 remark-parse · remark-gfm · remark-frontmatter 파이프라인에 돌린다.
+   - VD-T086-3 · 4의 범위에 「ld-13 줄 · 개수」와 모형으로만 확인한 꼴을 더한다: html 블록 `<script>`(유형 1) · `<iframe>`(유형 6) · `<!-- -->`(유형 2) · 단독 `<br>`(유형 7) · `<Callout />` = 글줄 html 하나 · 줄바꿈 든 문단 = text 노드 하나(007 → 줄 13) · 정의 줄만 `unsafe-url`(013 → 15) · 문자 참조 · 탭은 해석 뒤 값 · (r1 중첩) 인용 · 각주 정의 > 문단 > html 둘(023 → 13 · 027 → 15) · 표 칸 text 줄 = 그 행(024 → 15) · 링크 글자 `{z}` = link의 text 자식(026 → 13) · 목록 둘째 항목의 링크(022 → 14).
+   - line은 프런트매터를 포함한 파일 기준이다 — T090이 프런트매터를 잘라 내고 파싱하면 위치를 보정한다.
+   - 기대값이 실물과 다르면 시험을 조용히 고치지 않고 이 「정정 노트」에 남긴다(VD-T086-4 「어긋나면」 칸과 같은 규율).
+6. **§4-1 T086 행 밖 — data-model.md §11 `sources` 행 · 덩어리 단위 스테이징**(FD ④-a · 리뷰 A-9)
+   - data-model.md :245 `sources` 행을 N-13 꼴(`path` = `^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$` · `.` · `..` 세그먼트 0 · `url` = http/https)로 고쳐 이 커밋에 넣는다(표식 「T086 보정 2026-11-24 · N-13」). §4-1 T086 행에는 content.md + KR만 있었다.
+   - 같은 파일에 ⑤ 몫(:71 값 꼴 줄 — 리뷰 D-8 · r0 ⑤ 자리 아홉)이 함께 있어, 파일 이름 단위 스테이징(D14)이면 ⑤ 내용이 이 커밋에 딸려 든다 → 이 파일만 덩어리 단위로 나눈다: `git diff` → 덩어리를 거른 패치 → `git apply --cached`(대화형 `-p` 0). :245 = 이 커밋 · 나머지 = ⑤ 커밋.

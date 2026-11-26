@@ -19,13 +19,14 @@ series: "sp-0-claude-setup"         # optional
 seriesOrder: 1                      # optional integer
 draft: true                         # required; generated notes start true, a human flips it to false
 change: "001-claude-setup"          # required; the feature directory name
-sources:                            # required; may be empty; path = repo path or url
+sources:                            # required; may be empty; each item has exactly one of path (repo-relative: ^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$, no . or .. segment) or url (http/https)
   - { title: "spec", path: "specs/001-claude-setup/spec.md" }
 ---
 ```
 
 - File name = `<NNN-slug>.mdx` (ASCII kebab-case). One note per feature; a second note for the same feature gets a `-2` suffix only after asking the human.
 - Body sections, in this order: `## 문제`, `## 배운 개념`, `## 선택과 대안`, `## 결과와 검증`, `## 다음 학습`. Each must be non-empty.
+- Bodies are Markdown + GFM even though the file is `.mdx`: no JSX or HTML tags (`<…>`, comments included), no `import`/`export` lines, no `{` or `}` outside code spans and fenced code, and link, image and definition URLs only `http`, `https`, `mailto` (scheme in any case), relative paths or `#` fragments. Front matter is YAML between exact `---` lines starting at the first line of the file (no BOM, no `---js` or other languages). The loader parses notes as plain Markdown and fails the build on any violation (file, line, rule — never the offending value) — it never strips one silently.
 - Write for a reader who was not in the session: state the concept, why it mattered here, what was rejected and why.
 - Never include secrets, tokens, internal hostnames, or personal data.
 

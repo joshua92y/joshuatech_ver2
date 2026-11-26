@@ -5670,3 +5670,30 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
     - Workers 압축 크기 한도 폐지(2026-09-04 — 2.5 MiB 게이트 근거)
     - OpenNext #1334 수정판
 - **빌드 조각**(설계 D14): ⓪ 기반(컨트롤러 — apps/web 최소 매니페스트 · vitest 5.0.5 재사용 · lock 검사) → ① T086 + T088 · ② T089 · ③ T087(web-builder opus 셋) · ⑤ UD-7a(ㄴ)(api-builder opus) 병렬 → 리뷰 4렌즈 → 컨트롤러 빨강 관찰 → 과제마다 커밋.
+
+### T086–T089 빌드 · 리뷰 · 수정(2026-11-24 · 11-26)
+
+- **빌드 r0**(`wf_af201538-c48` · 빌더 opus 5 — 보고 `.superpowers/t086/build/{1-t086-t088,2-t089,3-t087,5-ud7a,docs}-r0-report.md`)
+  - ① T086 + T088(web-builder): `loader.test.ts` 47 사례 + 픽스처 · `bundle-budget.test.mjs` 15 사례. 빨강 = 수집 실패(`../src/index` · `./bundle-budget.mjs`). 저장소 밖 참조 구현 47/47 · 15/15 · 던지는 · 관대한 스텁 passed 0 · 가드 없는 · 과잉 가드 스텁 → ld-13 금지 · 대조 passed 0 · T088 변이 7(8변형) 모두 검출.
+  - ② T089(web-builder): `gateway.test.ts` 318 사례 + `src/lib/__tests__/` 7파일. gateway 318/318 실패(원인 2종 — gateway · image-loader 부재) · oracles 22 passed · 부분 참조 89 passed · 전체 참조 318/318 · 누출 변이 7 검출.
+  - ③ T087(web-builder): `e2e/hello.spec.ts` 9건 + `e2e/lib/{site,site-probe}.ts` + selftest. selftest 211 · selftest-browser 30 · `needle=PASS` · `list site=9` · `site-red gate-site=8/8` · 계약 스텁 양성 8 PASS + 변이 10.
+  - ⑤ UD-7a(ㄴ)(api-builder): 시험 먼저 빨강 → 구현 → 초록(아래 「UD-7a(ㄴ) 조각 ⑤」).
+  - 문서: 설계 §4-1 「지금」 보정(content.md · web.md · bff-api.md · quickstart · 새 규칙 `.claude/rules/e2e.md` · AGENTS 행 · codex-parity · ⑤ 계약 · 규칙) + t077 정정 노트 ①(UD-7). ②(B-6)는 원문만 돌려받아 T087 커밋에 넣는다.
+- **리뷰 r0**(4렌즈 — 보고 `.superpowers/t086/reviews/{A,B,C,D}-r0.md` · 모두 approve_with_fixes · HIGH 0): A 정합 MEDIUM 1(A-1 본문 5절 검증 ↔ T090) · B 노출 MEDIUM 1(B-1 오류 객체 `cause` 누출 미검사) · C 하네스 MEDIUM 1 = D 파드 MEDIUM 1(C-1 · D-1 템플릿 하네스 이미지 6건 — arm64 binfmt 미등록 · 환경).
+  - C-1 · D-1 해소(컨트롤러 · 11-24 18:5x–19:01 KST): R0-1 등록(`installing: arm64 OK` · `qemu-aarch64`) → 6 노드 `6 passed, 943 deselected in 195.76s` · exit 0 → 빌더 943과 합쳐 949.
+- **수정 r1**(F1 T086 · F2 T089 · F3 T087 · F5 ⑤ · FD 문서 → 검증 V1 · V2)
+  - 첫 시도 `wf_1ad3683a-0cd`는 **11-24 19:14 KST 주간 사용 한도로 7명 모두 보고 없이 끊겼다**(작업 트리에 r1 일부만 남음).
+  - 11-26 재개 `wf_7d09bb68-946`: 수정자마다 트랜스크립트 도구 기록에서 뽑은 「첫 시도 흔적」을 지시문에 싣고 남은 것만(중복 0 · before 사본이 r0 상태인지 확인) → 7/7 · 48분. 보고 `.superpowers/t086/build/{F1-t086,F2-t089,F3-t087,F5-ud7a,FD-docs}-r1-report.md`.
+  - 검증 V1(web): approve_with_fixes — 11건 resolved 10 · partial 1(B-2) · claim-false 0 · 새 LOW 1(V1-1) · NIT 1(V1-2). 검증 V2(파드 · 문서): approve_with_fixes — 9건 resolved 8 · partial 1(README) · 새 NIT 2(V2-1 · V2-2 pre_existing). 처리 결정 = `.superpowers/t086/decisions-controller.md` 「r1 검증 처리」.
+- **수정 r2**(`wf_476382ab-567`): G1 T089(V1-1 G8-3 라우트별 하류 바늘 · FD ④-d 주석) · G2 T086(V1-2 ja 변형 픽스처) → 검증 V3 **approve**(새 NIT 3 — 기록 · 인계). 같은 워크플로의 문서 담당이 정정 노트 초안을 커밋별로 묶어 썼다 → 설계 「정정 노트」 1–35(커밋마다 그 묶음을 옮긴다).
+- **증거 보존**(리뷰 C-7 · 정정 노트 30): 참조 구현 · 스텁 · 변이 · 검사기 · 재관찰 로그를 스크래치에서 `.superpowers/t086/evidence/`(gitignore)로 옮겼다 — `robocopy /E /XJ /XD node_modules` · 17,811파일 · reparse point 0 · 「검증 전용 · 구현 참조 금지」 README.
+- **하위 에이전트 규칙 위반 자진 신고**(저장소 영향 0): Bash `cd <절대 경로> && …`(F1 · F5 · 문서 담당) · `/tmp` 한 번(V2) · 스크래치 스크립트 heredoc(V3) · 스크래치 검사기의 `\u` 이스케이프(G1). 저장소 밖 부산물: `%TEMP%\playwright-transform-cache`(V1 — 삭제 권한 거부) · 저장소 루트 `node_modules/.vitest-cache/` 캐시 파일 둘(G1 · G2 — gitignore · V3-2).
+- **공통 확인(컨트롤러 · 2026-11-26)**: `pnpm install --frozen-lockfile --ignore-scripts` → `Lockfile is up to date, resolution step is skipped` · `Already up to date` · exit 0 · lock · 매니페스트 4개 `51e9b74` 대비 변경 0(새 의존 0) · `pnpm --filter @jt/events --fail-if-no-match test` → `Tests  267 passed (267)` · exit 0.
+
+### T086 빨강 관찰 · tick(2026-11-26)
+
+- **재관찰**(컨트롤러 16:21:55 KST — 정정 노트 7의 꼴): `pnpm --filter @jt/content --fail-if-no-match test` → `FAIL  tests/loader.test.ts` · `Error: Cannot find module '../src/index' imported from D:/code/joshuatech_ver2/packages/content/tests/loader.test.ts` · `Test Files  1 failed (1)` · `Tests  no tests` · exit 1 — §1-2 그대로.
+- **합격선 §1-1**: ① 위 빨강 ② 인프라 vitest 5.0.5(⓪ · 빌드 r0 임시 스모크 1 passed 뒤 삭제) ③ 공허 검사 — 참조 구현 48/48 · 던지는 · 관대한 스텁 48 failed · 가드 없는 · 과잉 가드 스텁 → ld-13 금지 · 대조 passed 0 · 변이(B-1 넷 · B-4 일곱 · A-7 셋 · V1-2 `v-komissing-per-slug`) 모두 잡힘(수정 r1 F1 · r2 G2 · 검증 V1 · V3 재현) ④ frozen · events(위 공통) ⑤ 새 의존 0 ⑥ git status = 지정 파일.
+- **사례**: 47(r0) → 48(r1 — ld-10 파일 이름 code 사례 +1) → 48(r2 — ld-4를 en · ja 두 triple로 교체 · 픽스처 디렉터리 `en-only` → `ko-missing`).
+- **함께 든 것**: `.claude/rules/content.md` · KR(T086-e 본문 규칙 · `sources` 꼴) · `data-model.md` §11 `sources` 행(덩어리 단위 스테이징 — 같은 파일의 ⑤ 몫은 ⑤ 커밋) · 설계 정정 노트 1–6 · 학습 로그 `content/tmp/003-t086/2026-11-26.md`.
+- **tick**: T086 [X] 85/119.

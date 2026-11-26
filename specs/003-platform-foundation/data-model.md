@@ -240,7 +240,7 @@ frontmatter(`rules/content.md` 계약, zod로 코드화):
 | `series` · `seriesOrder` | string · int | 선택, 같이 존재 |
 | `draft` | boolean | 필수; PROD 빌드에서 `true`는 제외 |
 | `change` | string | 필수(study), `^\d{3}-[a-z0-9-]+$` |
-| `sources` | `{title, path?, url?}[]` | 필수(빈 배열 허용), path 또는 url 중 하나 |
+| `sources` | `{title, path?, url?}[]` | 필수(빈 배열 허용), 항목마다 `path` · `url` 가운데 정확히 하나 — `path` = 저장소 상대 경로 `^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$`(`.` · `..` 세그먼트가 없다) · `url` = http/https(T086 보정 2026-11-24 · N-13) |
 
 파생 필드(로더가 계산): `slug`(파일명), `lang`(접미사 `.en`·`.ja` → `en`·`ja`, 없으면 `ko`), `collection`, `readingTime`, `headings[]`, `translations[]`(같은 slug의 다른 lang). 규칙: 같은 slug의 언어 변형은 `pubDate`·`change`가 같아야 하고, `ko` 파일이 없으면 오류.
 
