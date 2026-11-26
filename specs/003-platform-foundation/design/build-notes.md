@@ -5704,3 +5704,15 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
 - **합격선 §1-1**: ① 위 빨강 ② 저장소 밖 참조 구현 15/15 + 변이 7(8변형) 각각 검출(빌드 r0 · 리뷰 C 재실행) ③–⑤ T086과 같다(공통 확인). 리뷰 · 수정에서 T088 시험 변경 0 — T088 몫 지적은 명령 꼴(C-2 · 정정 노트 7)과 규칙 주입 범위(C-8 · 정정 노트 8 — T093 전 문서 담당).
 - **함께 든 것**: 설계 정정 노트 7–8 · 학습 로그 `content/tmp/003-t088/2026-11-26.md`.
 - **tick**: T088 [X] 86/119. 초록은 T093 측정부(VD-2와 같은 과제 — §1-3).
+
+### T089 빨강 관찰 · tick(2026-11-26)
+
+- **재관찰**(컨트롤러 16:22:08 KST)
+  - `pnpm --filter @jt/web --fail-if-no-match exec vitest run src/lib/gateway.test.ts --reporter=json --outputFile=<스크래치>` → exit 1 · 329 사례 전부 실패 · passed 0 · 원인(JSON 분류 — 실패 메시지의 모듈 이름) = `Cannot find module '/src/lib/gateway'` 323 · `'/src/lib/image-loader'` 6 · 그 밖 0.
+  - `pnpm --filter @jt/web --fail-if-no-match exec vitest run src/lib/__tests__/oracles.test.ts` → `Test Files  1 passed (1)` · `Tests  22 passed (22)` · exit 0.
+  - web 전체 `pnpm --filter @jt/web --fail-if-no-match test` → `Test Files  2 failed | 1 passed (3)` · `Tests  329 failed | 22 passed (351)` · exit 1 · 서로 다른 오류 3종(`./bundle-budget.mjs` 1 · `/src/lib/gateway` 93블록 · `/src/lib/image-loader` 6블록 — 블록 수는 판정에 쓰지 않는다 · 정정 노트 9).
+- **합격선 §1-1**: ① 위 빨강 + oracles 전부 통과 ② 던지는 스텁 329 failed · 관대한 스텁 passed 0(빌드 r0 · 검증 V3) ③ 부분 참조 + 누출 변이 7 검출(빌드 r0) · 전체 참조 329/329(수정 r2 G1 · V3 — 거짓 빨강 0) ④ CI 꼴 gitleaks `dir --redact --ignore-gitleaks-allow` → `no leaks found`(검증 V1 · G1 · V3 — 카나리아 양성) · `gitleaks:allow` 0 ⑤ frozen · events(공통) ⑥ git status. 렌즈 A가 G3 · G11을 결정과 대조했다(리뷰 A r0).
+- **사례**: 318(r0) → 326(r1 — A-10 경계 둘 · B-2 바늘 · B-3 옛 이름 라우트) → 329(r2 — G8-3 라우트별 하류 바늘 셋). 검증 V1 변이 넷 · G1 변이 18 · V3 독립 변이 8이 G8-3에서 잡힌다(r1 시험에서는 모두 `326 passed` 생존).
+- **인계**: V3-1 → T092 착수 때 G8-3에 갈래 두 행(logout `all_devices: true` · `/api/session` inactive)을 시험 먼저(정정 노트 14).
+- **함께 든 것**: `contracts/bff-api.md` T089 보정(B-6 이름 · A-4 세 문장) · `.claude/rules/web.md` + KR · `quickstart.md`(폐기 = 모든 기기 꼴) · t077 정정 노트 ①(UD-7) · 설계 정정 노트 9–18 · 학습 로그 `content/tmp/003-t089/2026-11-26.md`(⑤ 절 포함).
+- **tick**: T089 [X] 87/119. 초록은 image-loader = T091 · gateway = T092(§1-3).

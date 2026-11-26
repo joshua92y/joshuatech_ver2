@@ -506,3 +506,8 @@
     - B-8: `jtApprovedBlock` 관문은 자기 신고 문자열 대조일 뿐이다 → §5-1 G-3 설계에서 블록 일회 nonce · 해시 결속.
     - V2 NIT 셋(gate-3 접미 · 1b catch 갈래 · 문구).
     - 기록만: C-7(기존 `ci.yml:63–70` events-test 방어 · CODEOWNERS).
+
+### 2026-11-24 — T086–T089 설계 확정 반영(design/t086-design.md §4-2)
+정본 = design/t086-design.md(r2 본문 + §7 확정 보정). 결정 본문은 그대로이고, 이 설계의 전제가 바뀐 점만 적는다.
+
+1. **UD-7 = (나) 확정(2026-11-24)** — T079의 명시 `all_devices: true`(e2e/lib/bff.ts:59–60)는 기본 범위와 떼어 낸 것에서 「모든 기기」 경로의 필수 본문이 됐다. 로그아웃 성공 응답은 204 그대로이고 헤더 `x-end-session-url`만 더해지므로 `judgeLogout`(e2e/lib/bff.ts:182–:185) 변경은 0이다(이 문서 :440 인계를 닫는다).

@@ -1182,3 +1182,39 @@ h-4 사례: `ko` → `/ko` · `ko-KR,ko;q=0.9,en;q=0.8` → `/ko` · `en-US,en;q
 8. **§5-2 T093 인계 더함 — `.claude/rules/infra.md`(`paths: scripts/**`)가 `apps/web/scripts/**`에도 주입된다**(리뷰 C-8 · 빌드 r0 보고 ① ④h)
    - Claude는 이 글롭을 중첩된 `apps/web/scripts/`에도 맞춰 infra.md를 주입한다(T088 빌드 · 리뷰 C에서 관찰). AGENTS.md 라우터(Codex)는 같은 행을 루트 `scripts/**`로 읽는다 → 두 에이전트의 규칙 범위가 갈린다.
    - 지금은 무해하다. T093이 `apps/web/scripts/bundle-budget.mjs`를 쓰기 전에 문서 담당이 판단한다.
+9. **§1-2 T089 「올바른 이유의 빨강」 — 실물 문구 · T060 재관찰 판정 꼴**(리뷰 C-6 · A-11 · F2 ④6)
+   - 「실패 줄마다 `./gateway` · `./image-loader`」(:180) → 실물은 `Cannot find module '/src/lib/gateway'` · `'/src/lib/image-loader'`다(vitest가 루트 기준 경로로 바꿔 쓰고, 같은 오류를 묶음 블록으로 낸다).
+   - 판정 = gateway 사례 전부 실패 · passed 0(끝 줄 `Tests <n> failed | <m> passed` — 통과는 `oracles.test.ts` 자기 시험뿐) + **서로 다른 오류 2종**. 묶음 블록 수는 vitest 묶음 방식에 따라 달라 판정에 쓰지 않는다. 명령 꼴은 노트 7.
+   - 사례 수는 수정 r2(G8-3)로 다시 바뀐다 — 수치 정본 = build-notes.
+10. **D7 C13 ↔ D8 G17 「필드 꼴 오류」 — 행별 적용**(리뷰 A-11)
+    - G17 필드 꼴 오류 가운데 `id_token`(두 조각 · base64url 아님)은 코드 교환 행에만, `expires_in` 문자열은 코드 교환 · refresh 행(refresh 라우트 · 프록시 내부 · logout 내부)에만 적용했다. 교환 응답의 `expires_in` 꼴 오류는 C13 「캐시 0 · 성공 중계」(G7-10)다 — G17 표의 「→ 503」과 부딪치던 것을 이렇게 풀었다(결함 아님 · 정본 = `gateway.test.ts` 머리 주석 「설계 해석」).
+11. **D7 C15 · C16 · 계약 callback 행 — 시험이 고정한 판정 세 문장**(FD ④-d · ④-e · ④-f · 리뷰 A-4 · 수정 r2 G1)
+    - C16 「`instance` = 라우트 경로」 → 요청 URL의 pathname(질의 0 — 프록시도 템플릿 `/api/proxy/[pod]/[...path]`가 아니라 그 요청의 경로)(bff-api.md :123).
+    - C15에 더한 뜻(bff-api.md :128): `upstream` = 그 요청의 마지막 상류 호출 종류 · `upstream_ms` = 그 호출의 정수 ms(상류 호출이 없으면 `null` — `upstream` null과 양방향) · `exchange_result` = 교환 캐시를 쓰지도 교환을 시도하지도 않은 요청은 `null`, 교환이 성공했으면 그 뒤 호출(pod · `/sessions/revoke`)이 실패해도 `exchanged`. FD가 첫 시도 괄호 「`upstream`이 `null`일 때만 `null`」(한 방향)을 「상류 호출이 없으면 `null`」로 고쳤다(④-f).
+    - callback 행(bff-api.md :40)에 G17 callback 행을 실었다: 코드 교환 200 + 깨진 본문 · 필드 꼴 오류 → 503 · 세션 쿠키 0 · pkce 삭제. 「세션 쿠키 0」 글자는 G17 표 · N-15 · callback 행의 다른 두 문장과 같아 그대로 둔다 — 시험(`callback-error`)은 CSRF 쿠키 설정도 0이고, 쿠키 표의 「`__Host-jt_session`과 같은 자리(callback · refresh)에서 싣는다」가 이를 덮는다(④-e — 일관성).
+    - (수정 r2 G1 — FD ④-d) `gateway.test.ts` 머리 주석의 「(교환을 시도하지 않은 요청 = null)」은 `cache_hit`(교환을 시도하지 않았는데 값이 있다)과 문면이 어긋난다 → 계약 :128 문구 「교환 캐시를 쓰지도 교환을 시도하지도 않은 요청」으로 맞춘다(단언 G13-2는 이미 계약과 같다). 결과는 build-notes.
+12. **D6 `isSameOriginPath` 정의 — N-8에 맞춘다**(F2 ④1 · 리뷰 A-3)
+    - D6(:373) 「C27 ① · ③의 디코딩 값 규칙」 → 「bff-api.md 「같은 origin 경로」 공유 정의 — ③ 출력 가능 ASCII는 `return_to` 규칙(login · callback 재검증)에서 따로 본다(N-8)」. 정본 = `gateway.test.ts` 머리 주석. G2-4는 두 읽기에서 결과가 같은 사례만 직접 본다(시험 충돌 0).
+13. **D8 G16 세부 · D7 C4 세부 — 결정 경계 두 곳을 사례로 고정**(F2 ④2 · ④3 · 리뷰 A-10)
+    - G16 세부(:553–:559)의 설정 무효 인스턴스 둘((a) 키만 무효 · (b) `AUTHENTIK_ISSUER` 무효) → **셋**. (c) = `WEB_BFF_CLIENT_ID`만 무효(빈 문자열 — `delete`면 이름이 있는지만 보는 구현이 통과한다)이고, logout 응답의 `x-end-session-url`은 0이다(C23 「둘 다 유효할 때만」 — issuer만 보는 구현을 잡는다).
+    - C4 세부(:420) 「`created_at + 300 s` 초과 = `invalid_state`」에 덧붙인다: 정확히 300 s는 유효(G3-1b) — 정수 초 시계에서만 고정하고 초 미만은 열어 둔다. 단위: `now()` = epoch ms · `created_at` = 정수 epoch 초(⌊`now()`/1000⌋) — 계약 :25에는 단위가 없고 시험 머리 주석이 정본이다(빌드 r0 보고 ② ④3).
+14. **D8 G8 · G13 — 콜백 밖 라우트의 쿠키 값도 바늘 · G8-3(수정 r2 G1)**(F2 ④4 · 리뷰 B-2 · V1-1)
+    - N-9의 대가(`__Host-jt_pkce; Path=/`가 최대 300 s 동안 같은 origin 요청마다 실린다)의 짝 단언: 콜백 밖 라우트(login 포함)에 실려 온 `__Host-jt_pkce` 값과 봉인 평문 `state` · `verifier`는 하류 · 로그 · 응답 0. hostileClient에 pkce 항목을, G8 needles에 들어온 세션 · CSRF 쿠키 값을, G13-3 · 6 · 7 · 8에 pkce 바늘을 더했다. 첫 시도의 login state 예외는 지웠다(들어온 state를 새 authorize에 다시 싣는 구현이 통과했다).
+    - (수정 r2 G1 — V1-1) G8-2의 네 다리(proxy → session → health → logout)는 2 s 확인 캐시 · 교환 캐시를 함께 써서 `/api/session` · refresh의 하류 바늘이 공허했다(누출 변이 넷 생존) → G8-3 `it.each(['session', 'refresh', 'logout'])`: 라우트마다 새 setup(세션 + CSRF + hostileClient 쿠키 · 적대 헤더 · refresh · logout은 맞는 CSRF) · 단언 = 하류 · 출력 0 · 응답 헤더. V1 변이 넷(`v1-pkce-session` · `v1-session-on-session` · `v1-pkce-refresh` · `v1-csrf-refresh`)과 G1 변이 18 · V3 독립 변이 8이 G8-3 해당 라우트 · 호출에서 잡힌다(수치 = build-notes).
+    - G8-3이 결정보다 넓힌 것(V3 수용 — 참조 구현 통과): 바늘 = hostileClient 전체 + 세션(같은 캐시 공백이 클라이언트 헤더 값도 가렸다 — pkce · 세션 라벨 다섯은 따로 `arrayContaining`) · 공허 0 = 「≥ 1」이 아니라 하류 호출 종류 · 순서 정확(session `[check]` · refresh `[check, token-refresh]` · logout `[check, token-refresh, token-exchange, sessions-revoke, rfc7009]` — C18 · G11-5 · G11-14가 이미 고정한 순서열) · `assertResponseHeaders`(D8 「Response를 내는 G 사례 끝」).
+    - G8-2 제목의 「/api/session의 하류 … 0」은 G8-2 혼자로는 공허하고 G8-3과 함께여야 지켜진다(G1 ④-4) → 제목은 그대로 두고 G8-3 앞 주석 · 이 노트로 관계를 기록한다(시험 이름 변경 0).
+    - **T092 인계(검증 V3-1)**: G8-3은 라우트마다 정상 갈래 하나만 돈다 — logout `{"all_devices": true}` 갈래와 `/api/session` inactive 갈래(RFC 7009 호출)에는 적대 쿠키 · 헤더를 실은 사례가 없다(탐침 변이 둘 생존). T092 착수 때 시험 먼저 G8-3에 두 행을 더한다(logout + `all_devices: true` → 같은 다섯 종류 · 204 · logout-deleted / session + check `{active:false}` → `[check, rfc7009]` · 401 · session-deleted). 구현은 하류 헤더 · 본문을 라우트 · 갈래와 무관한 한 곳에서 만든다.
+15. **§0-7 · D7 C5 「옛 이름은 읽지 않는다」 — 시험 자리**(F2 ④5 · 리뷰 B-3)
+    - G4 세부는 `/api/session` 하나만 적었다 → G4-4 = `it.each`(session · proxy · refresh · logout — 옛 이름 세션만이면 쿠키 없음과 같다) · G11-1 = 옛 이름 `jt_csrf`만 + 맞는 `x-csrf-token` → 403(logout · refresh). 대조 쪽은 옛 이름에 다른 유효 세션을 실어, 어느 쪽을 읽었는지 sub · sid로 가린다.
+16. **D9-5 「비밀성 값은 전부 실행 중 생성」의 예외 — 공개 RFC 벡터**(리뷰 B-7)
+    - `__tests__/oracles.test.ts`의 RFC 7516 부록 A.1 리터럴(CEK 숫자 배열 · 암호문 · 태그)은 공개 벡터이고 O1-1(오라클 자체 검증)에서만 쓴다 — gateway 키로 쓰지 않는다. 이름에 비밀 키워드가 없어 gitleaks · GitGuardian 꼴에 걸리지 않는다(리뷰 B 실측). RFC 7636 부록 B 벡터(옥텟 · challenge — O1-5 · G1-3)도 같은 성격이다(문서 담당 확인).
+17. **§5-2 T092 인계 더함 — 어댑터의 Request origin**(리뷰 B-8)
+    - G11-12는 gateway가 받은 `request.url`만 고정한다. T092 어댑터(OpenNext · `next start`)가 Request url의 host를 클라이언트 `host` · `x-forwarded-host`에서 다시 만들면 `post_logout_redirect_uri`(C23)와 C1 `redirect_uri`의 원천이 요청 헤더가 된다(Authentik 등록값 대조는 그다음 방어선이다).
+    - T092 어댑터 TDD · VD에 「어댑터 Request origin = 라우팅된 호스트 · 클라이언트 `x-forwarded-host` 무시」 사례를 둔다.
+18. **§1-3 · §5-2 T091 · T092 · T093 — 초록 증거는 파일 단위 명령 · D9-1 가르기는 쓰지 않았다**(리뷰 C-5)
+    - `apps/web`의 `test` 스크립트(`vitest run` — scripts · src를 함께 수집)는 bundle-budget(T093) 때문에 T092 뒤에도 exit 1이다. 초록 증거는:
+      - T091(image-loader): `pnpm --filter @jt/web --fail-if-no-match exec vitest run src/lib/gateway.test.ts -t "G14"`
+      - T092(gateway): `pnpm --filter @jt/web --fail-if-no-match exec vitest run src/` → `src/` 시험 파일 전부 통과(지금 2파일)
+      - T093: 패키지 전체 + CI 배선
+    - VD-T089-1 결과 = 없는 모듈의 동적 import는 사례마다 따로 실패한다(수집 실패 0) → D9-1의 image-loader 가르기는 쓰지 않았고 G14는 `gateway.test.ts` 안에 남았다(G14는 `loadImageLoader`만 적재해 T091에서 따로 초록을 볼 수 있다).
+    - run-all 슬롯은 지금 두지 않는다(빨강 시험이 run-all을 FAIL로 만든다 — D13 그대로). T090 뒤 `@jt/content` 슬롯을 T093 전에 둘지는 §5-1-6에 따라 컨트롤러가 정한다.
