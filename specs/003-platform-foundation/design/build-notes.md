@@ -5697,3 +5697,10 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
 - **사례**: 47(r0) → 48(r1 — ld-10 파일 이름 code 사례 +1) → 48(r2 — ld-4를 en · ja 두 triple로 교체 · 픽스처 디렉터리 `en-only` → `ko-missing`).
 - **함께 든 것**: `.claude/rules/content.md` · KR(T086-e 본문 규칙 · `sources` 꼴) · `data-model.md` §11 `sources` 행(덩어리 단위 스테이징 — 같은 파일의 ⑤ 몫은 ⑤ 커밋) · 설계 정정 노트 1–6 · 학습 로그 `content/tmp/003-t086/2026-11-26.md`.
 - **tick**: T086 [X] 85/119.
+
+### T088 빨강 관찰 · tick(2026-11-26)
+
+- **재관찰**(컨트롤러 16:21:5x KST): `pnpm --filter @jt/web --fail-if-no-match exec vitest run scripts/bundle-budget.test.mjs` → `FAIL  scripts/bundle-budget.test.mjs` · `Error: Cannot find module './bundle-budget.mjs' imported from D:/code/joshuatech_ver2/apps/web/scripts/bundle-budget.test.mjs` · `Test Files  1 failed (1)` · `Tests  no tests` · exit 1 — §1-2 그대로.
+- **합격선 §1-1**: ① 위 빨강 ② 저장소 밖 참조 구현 15/15 + 변이 7(8변형) 각각 검출(빌드 r0 · 리뷰 C 재실행) ③–⑤ T086과 같다(공통 확인). 리뷰 · 수정에서 T088 시험 변경 0 — T088 몫 지적은 명령 꼴(C-2 · 정정 노트 7)과 규칙 주입 범위(C-8 · 정정 노트 8 — T093 전 문서 담당).
+- **함께 든 것**: 설계 정정 노트 7–8 · 학습 로그 `content/tmp/003-t088/2026-11-26.md`.
+- **tick**: T088 [X] 86/119. 초록은 T093 측정부(VD-2와 같은 과제 — §1-3).

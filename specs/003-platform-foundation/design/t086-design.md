@@ -1174,3 +1174,11 @@ h-4 사례: `ko` → `/ko` · `ko-KR,ko;q=0.9,en;q=0.8` → `/ko` · `en-US,en;q
 6. **§4-1 T086 행 밖 — data-model.md §11 `sources` 행 · 덩어리 단위 스테이징**(FD ④-a · 리뷰 A-9)
    - data-model.md :245 `sources` 행을 N-13 꼴(`path` = `^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$` · `.` · `..` 세그먼트 0 · `url` = http/https)로 고쳐 이 커밋에 넣는다(표식 「T086 보정 2026-11-24 · N-13」). §4-1 T086 행에는 content.md + KR만 있었다.
    - 같은 파일에 ⑤ 몫(:71 값 꼴 줄 — 리뷰 D-8 · r0 ⑤ 자리 아홉)이 함께 있어, 파일 이름 단위 스테이징(D14)이면 ⑤ 내용이 이 커밋에 딸려 든다 → 이 파일만 덩어리 단위로 나눈다: `git diff` → 덩어리를 거른 패치 → `git apply --cached`(대화형 `-p` 0). :245 = 이 커밋 · 나머지 = ⑤ 커밋.
+7. **§1-2 T088 · T089 명령 — `--fail-if-no-match`를 붙인 꼴로 읽는다**(리뷰 C-2)
+   - §1-2의 `pnpm --filter @jt/web exec vitest run scripts/bundle-budget.test.mjs`(:179) · `… src/lib/gateway.test.ts` · `… src/lib/__tests__/oracles.test.ts`(:180)는 필터가 어긋나도 `No projects matched the filters` · exit 0이다(리뷰 C 실측). 특히 「oracles 전부 통과 · exit 0」은 빈 초록과 구별되지 않는다 — D2-1이 스스로 금지한 꼴이다.
+   - 읽는 꼴 = `pnpm --filter @jt/web --fail-if-no-match exec vitest run <파일>`. tick · T060 재관찰 기록(D14)에는 이 꼴과 끝 요약 줄(`Tests … (…)`)을 함께 적는다. AGENTS.md Commands 행은 이미 이 플래그를 쓴다.
+   - 빌드 r0 증거는 끝 요약 줄을 함께 실어 유효하다.
+   - 부산물(검증 V3-2 실측): 저장소 안 vitest 실행은 패키지 `node_modules/.vite`가 아니라 저장소 루트 `node_modules/.vitest-cache/`(vitest 5 fsModuleCache)에 캐시 파일을 남긴다(gitignore `node_modules/` — git 영향 0). `pnpm … exec`는 실행마다 루트에 `_tmp_<pid>_<hex>` 둘을 만들었다가 지운다. 쓰지 않으려면 `--no-cache --no-fsModuleCache`를 붙인다(tick 기록 명령은 §1-2 꼴 그대로).
+8. **§5-2 T093 인계 더함 — `.claude/rules/infra.md`(`paths: scripts/**`)가 `apps/web/scripts/**`에도 주입된다**(리뷰 C-8 · 빌드 r0 보고 ① ④h)
+   - Claude는 이 글롭을 중첩된 `apps/web/scripts/`에도 맞춰 infra.md를 주입한다(T088 빌드 · 리뷰 C에서 관찰). AGENTS.md 라우터(Codex)는 같은 행을 루트 `scripts/**`로 읽는다 → 두 에이전트의 규칙 범위가 갈린다.
+   - 지금은 무해하다. T093이 `apps/web/scripts/bundle-budget.mjs`를 쓰기 전에 문서 담당이 판단한다.
