@@ -5744,3 +5744,8 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
 - **기록만(/finish 인계)**: V2-2 — 요청 경로 사용자 단위 하한 `apply_user`의 TTL 리터럴 변이 생존(pre_existing · T073 코드 · 정정 노트 33).
 - **함께 든 것**: `contracts/denylist.md` · `contracts/identity-admin-api.md` · `contracts/pod-template.md`(:108 좁힘 — D-3 (가)) · `data-model.md`(T086 덩어리 밖 전부) · `.claude/rules/django-pod.md` + KR · 템플릿 `test_auth_middleware.py.jinja` · 설계 정정 노트 24–35 + 대조표.
 - **라이브 변경 0**: identity-admin · django-common 재배포는 main 발행 지점이라 UD-1을 다시 여쭌다 — BFF가 처음 identity-admin을 부르기 전(D15-8 · VD-UD7a-1 시점 = 정정 노트 28).
+
+### T086–T089 run-all(2026-11-26 · 마감)
+
+- **run-all**(컨트롤러 · KUBECONFIG 없음 · 17:00:04–18:01:54 KST): `pwsh -NoProfile -File tests/run-all.ps1` → `1 FAILED` · exit 1. FAIL = `platform` ← `infra tests`(`35 passed, 27 failed` — `tofu plan`이 변수 `budget_alert_email` 값 없음으로 멈춘다 · T076 마감 run-all과 같은 기준선). 그 밖 슬롯 전부 PASS — `identity-harness` · `e2e-selftest` · `agent-layer`(79) · `codex-parity` · `ci-gitleaks` · `specs-index-fresh`(재생성 변경 0) 등 · 작업 트리 변경 0. 사본 `.superpowers/t086/evidence/run-all-20261126.log`.
+- push = 사용자 확인(「run-all 뒤 push」) — `55de003` · `51e9b74` · 과제 커밋 다섯 · 이 기록 커밋.
