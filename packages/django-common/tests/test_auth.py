@@ -5,8 +5,9 @@
 - 순서: Access(Cf-Access-Jwt-Assertion · aud ∈ {ACCESS_AUD_M2M, ACCESS_AUD_ADMIN} · common_name == ACCESS_EXPECTED_CN —
   없거나 실패 403 access_required) → Bearer(JWKS · iss 공개 URL · aud identity-admin · exp · nbf · RS256 — 실패 401
   invalid_token) → AUTH_ACTOR_SUB가 설정된 경우에만 act.sub(불일치 401 invalid_token · 빈 값 = impersonation 모드) →
-  거부 목록(revoked:sub:{sub} 값 nbf > iat 또는 revoked:sid:{sid} 존재 → 401 session_revoked · 조회 오류는 종류와
-  무관하게 503 denylist_unavailable — fail-closed · 판정 0.2 s · 클라이언트 재시도 0 · 결과 캐시 없음).
+  거부 목록(revoked:sub:{sub} 값 nbf > iat 또는 revoked:sid:{sid} 값 nbf > iat → 401 session_revoked — 같으면 통과 ·
+  UD-7a 보정: 이전 문구 「revoked:sid 존재」 · 조회 오류는 종류와 무관하게 503 denylist_unavailable — fail-closed · 판정
+  0.2 s · 클라이언트 재시도 0 · 결과 캐시 없음).
 - 면제(정확 일치 · 접두 아님): /healthz · /ready · /health · /webhooks/authentik. 웹훅은 HMAC 헬퍼가 대신 검증한다
   (실패는 모두 401 webhook_signature_invalid · 재전송 멱등 저장은 pod — 시험 뷰는 집합 대역).
 - 오류는 RFC 9457: Content-Type application/problem+json · type = https://joshuatech.dev/problems/ + 슬러그의 `_`를 `-`로.
@@ -463,14 +464,24 @@ def test_auth_14_revoked_sub(auth_client: Client, jwks_server: JwksInfo, writer:
 
 
 def test_auth_15_revoked_sid(auth_client: Client, jwks_server: JwksInfo, writer: redis.Redis) -> None:
-    """auth-15 — revoked:sid:{sid} 존재 → 401 session_revoked · sid 클레임이 없는 토큰은 sid 키와 무관(revoked:sid:other
-    가 있어도 200)."""
+    """auth-15 — revoked:sid:{sid} 값(nbf) > 토큰 iat → 401 session_revoked · 값 = iat → 200 · 값 = iat − 60 → 200(같은
+    Client로 이어서 묻는다 — 결과를 캐시하지 않는다 · UD-7a 보정: 값은 폐기 시각이다 — 로그아웃 뒤 같은 sid로 다시 발급된
+    토큰(iat ≥ nbf)은 통과한다 · 이전 문구 「revoked:sid 존재 → 401」) · sid 클레임이 없는 토큰은 sid 키와 무관(그 토큰의
+    sid 자리 키와 revoked:sid:other 값이 iat보다 커도 200)."""
+    iat = int(time.time())
     access = _access(jwks_server)
-    writer.set(f"revoked:sid:{BEARER_SID}", 1, ex=DENYLIST_TTL_S)
-    response = auth_client.get(PROTECTED, headers=_headers(bearer=_bearer(jwks_server), access=access))
-    _assert_problem(response, 401, "session_revoked")
-    writer.set("revoked:sid:other", 1, ex=DENYLIST_TTL_S)
-    response = auth_client.get(PROTECTED, headers=_headers(bearer=_bearer(jwks_server, sid=None), access=access))
+    headers = _headers(bearer=_bearer(jwks_server, iat=iat), access=access)
+    key = f"revoked:sid:{BEARER_SID}"
+    writer.set(key, iat + 60, ex=DENYLIST_TTL_S)
+    _assert_problem(auth_client.get(PROTECTED, headers=headers), 401, "session_revoked")
+    for nbf in (iat, iat - 60):
+        writer.set(key, nbf, ex=DENYLIST_TTL_S)
+        response = auth_client.get(PROTECTED, headers=headers)
+        assert response.status_code == 200, f"sid nbf = iat {nbf - iat:+d}"
+    for sid_key in (key, "revoked:sid:other"):
+        writer.set(sid_key, iat + 60, ex=DENYLIST_TTL_S)
+    sidless = _headers(bearer=_bearer(jwks_server, iat=iat, sid=None), access=access)
+    response = auth_client.get(PROTECTED, headers=sidless)
     assert response.status_code == 200
 
 

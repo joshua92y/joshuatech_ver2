@@ -4,7 +4,7 @@ spec Key Entities의 상세. 헌법 III에 따라 엔티티마다 **소유자**(
 
 pod DB 테이블은 두 등급이다(contracts/pod-template.md §테이블 등급): **A 테넌트 범위**(`TenantModel`, `tenant_id` + FORCE RLS) / **B pod 전역**(RLS 미적용, 허용 목록 `tenant`·`tenant_membership`·`outbox`·`session_revocation_log`). 테넌트 식별자는 어디서나 UUID — Authentik 그룹 `tenant:<uuid>`, claim `tenant_id`, FGA object `tenant:<uuid>`, Kafka 파티션 키 `tenantid`. slug는 `Tenant.slug` 컬럼에만 있다.
 
-**엔티티 수는 14개**다: 아래 §1–§13 중 §3만 두 항목(`SessionRevocationLog` = DB 정본, `SessionRevocation` = Dragonfly 파생 캐시)을 담고 나머지 12개 절이 1개씩이다. spec Key Entities·plan Constitution Check III의 "14개"는 이 셈을 가리킨다. 세션 하한 키는 §3 `SessionRevocation`(파생 캐시)의 키 한 줄이라 엔티티 수는 그대로다(T073 보정 2026-11-12).
+**엔티티 수는 14개**다: 아래 §1–§13 중 §3만 두 항목(`SessionRevocationLog` = DB 정본, `SessionRevocation` = Dragonfly 파생 캐시)을 담고 나머지 12개 절이 1개씩이다. spec Key Entities·plan Constitution Check III의 "14개"는 이 셈을 가리킨다. 세션 하한 키 둘(사용자 단위 · 세션 단위 — UD-7a 보정 2026-11-24)은 §3 `SessionRevocation`(파생 캐시)의 키 두 줄이라 엔티티 수는 그대로다(T073 보정 2026-11-12).
 
 ## 1. Tenant — 소유 identity-admin (DB `identity_admin`, 등급 B)
 
@@ -51,7 +51,7 @@ DB 테이블 `session_revocation_log`(등급 B, `sub` 단위):
 | `id` | UUID v7 | PK. 값을 주지 않으면 DB가 만든다(`uuidv7()` — Django 6.1 `UUID7()` `db_default` · PostgreSQL 18 · T073 보정 2026-11-12). |
 | `tenant_id` | UUID | NOT NULL(사용자의 테넌트; 사용자당 테넌트 1) · `Tenant.id` 값 참조(FK 없음 — §1 · T066 r1 보정) |
 | `sub` | text | NOT NULL |
-| `sid` | text | nullable — **NULL = 사용자 단위 폐기**(`revoked:sub:{sub}`), 값 = 세션 단위 폐기(`revoked:sid:{sid}`) · 아래 "한 행 = 한 키" |
+| `sid` | text | nullable — **NULL = 사용자 단위 폐기**(`revoked:sub:{sub}`), 값 = 세션 단위 폐기(`revoked:sid:{sid}` + 세션 단위 하한 — UD-7a 보정 2026-11-24) · 아래 "한 행 = 한 키" |
 | `reason` | enum `logout` · `logout_all` · `admin` · `authentik_webhook` · `tenant_suspended` | |
 | `nbf` | timestamptz | 거부 기준 시각(정수 초 — 처리 시각 epoch 초 내림 + 1, 웹훅 본문 `nbf`가 있으면 그 값 · contracts/identity-admin-api.md). 일 1회 대조 보정은 이벤트 `created` 내림 + 1이다. 미래 값은 경로마다 쓰기 전에 막는다 — 웹훅 본문 `nbf`가 이벤트 `created` 내림 + 1을 넘으면 그 값으로 낮춰 기록하고(거부하지 않는다 — contracts/identity-admin-api.md), 관리 명령 `revoke_sessions`는 `nbf > DB now() + 301 s`면 기록하지 않는다(`CommandError`). `/sessions/revoke`의 `nbf`는 서버가 정한다(T073 보정 2026-11-12) |
 | `expires_at` | timestamptz | `nbf` + 330 s(access TTL 300 s + 30 s) |
@@ -63,17 +63,19 @@ Dragonfly 키(파생 캐시, contracts/denylist.md가 정본):
 | 키 | 값 | TTL |
 |---|---|---|
 | `revoked:sub:{sub}` | epoch 초 `nbf` — `iat < nbf`인 토큰 거부(전체 기기·관리자·테넌트 정지) | 330 s |
-| `revoked:sid:{sid}` | `1` — 특정 세션만 거부(단일 기기) | 330 s |
+| `revoked:sid:{sid}` | epoch 초 `nbf` — `iat < nbf`인 그 세션 토큰 거부(단일 기기 · UD-7a 보정 2026-11-24 — 이전 값 `1`) | 330 s |
 | `identity-admin:session-floor:{sub}` | 그 `sub`의 사용자 단위 행 가운데 가장 큰 `nbf`(epoch 초) — 세션 시작 시각 < 값인 BFF 세션은 inactive(`/session/check`만 읽는다 · T073 보정 2026-11-12) | 그 행 `expires_at + 30 d`까지 |
+| `identity-admin:sid-floor:{sid}` | 그 `sid` 행 가운데 가장 큰 `nbf`(epoch 초) — 세션 시작 시각 < 값이고 `sid`가 같은 BFF 세션은 inactive(`/session/check`만 읽는다 · UD-7a 보정 2026-11-24) | 그 행 `expires_at + 30 d`까지 |
 | `identity-admin:denylist:reapplied-at` | 마지막 재적용 시각(epoch 초) — 재적용 생존 신호(T073 보정 2026-11-12) | 300 s |
 
+- 값 꼴(UD-7a 보정 2026-11-24): `revoked:sub` · `revoked:sid` · 두 하한의 값은 epoch 초를 쓴 ASCII 숫자 1–19자(정규 꼴)이고, 꼴 밖의 값은 조회 실패(503)다 — 판독의 정본은 contracts/denylist.md §조회 규약 2(두 하한은 §조회 규약 7).
 - **센티널 키 `denylist:epoch`는 없다(폐지).**
-- **한 행 = 한 키(T066 보정 2026-11-03)**: `sid`가 NULL인 행은 `revoked:sub:{sub}` = `nbf`(epoch 초), `sid`가 있는 행은 `revoked:sid:{sid}` = `1`. `/sessions/revoke` `all_devices: true`·관리자 폐기·**Authentik 웹훅**은 `sid` NULL 행(웹훅 본문의 `sid`는 쓰지 않는다 — 이벤트 문맥이 토큰 `sid` 클레임과 같다는 보장이 없어 사용자 단위로 fail-safe), 단일 기기 로그아웃(`all_devices: false`)만 `sid` 행이다. 재적용은 이 규칙으로 키를 다시 만든다(행만 보고 키가 정해진다). 사용자 단위 행(`sid` NULL)은 그 밖에 세션 하한 키 `identity-admin:session-floor:{sub}`를 만든다 — 값은 같은 `sub`의 사용자 단위 행 가운데 가장 큰 `nbf`다(contracts/denylist.md §키 스키마). `revoked:*`는 그대로 한 행 = 한 키다. 일 1회 대조 보정 행과 관리 명령 `revoke_sessions`의 행도 같은 규칙이다(T073 보정 2026-11-12).
-- 쓰기: 기록(INSERT)과 같은 트랜잭션에 outbox `identity-admin.session.revoked`(data `sid`는 행의 `sid` — 사용자 단위면 `null`); 커밋 후 Dragonfly SET(TTL = `min(330, 남은 초)` · 1 미만이면 쓰지 않는다 · 사용자 단위 행은 그 `sub`의 최댓값 행을 읽어 `revoked:sub`와 세션 하한 키를 함께 쓴다 — contracts/denylist.md §쓰기 규약 · T073 보정 2026-11-12). 등급 B이므로 app role이 컨텍스트 없이 쓴다.
-- 재적용: 기동 시 1회(Celery `beat_init` — contracts/identity-admin-api.md §주기 작업) + Celery beat 30 s마다 `expires_at > now()` 행을 **조건 없이 전부** 다시 SET한다(멱등, 남은 TTL = `expires_at - now()` 초 내림 — TTL을 330 s로 되돌리지 않는다). 캐시 상태를 묻지 않는다(이미 있는 키도 덮어쓴다). Kafka 재생은 쓰지 않는다. 같은 키의 행이 여럿이면 `nbf`가 가장 큰 행을 쓰고 TTL 1초 미만은 건너뛴다. 같은 실행이 `sid` NULL이고 `expires_at + 30 d > now()`인 행으로 세션 하한 키를 되살리고 신선도 키를 쓴다(T073 보정 2026-11-12).
+- **한 행 = 한 키(T066 보정 2026-11-03)**: `sid`가 NULL인 행은 `revoked:sub:{sub}` = `nbf`(epoch 초), `sid`가 있는 행은 `revoked:sid:{sid}` = `nbf`와 세션 단위 하한 키(UD-7a 보정 2026-11-24). `/sessions/revoke` `all_devices: true`·관리자 폐기·**Authentik 웹훅**은 `sid` NULL 행(웹훅 본문의 `sid`는 쓰지 않는다 — 이벤트 문맥이 토큰 `sid` 클레임과 같다는 보장이 없어 사용자 단위로 fail-safe), 단일 기기 로그아웃(`all_devices: false`)만 `sid` 행이다. 재적용은 이 규칙으로 키를 다시 만든다(행만 보고 키가 정해진다). 사용자 단위 행(`sid` NULL)은 그 밖에 세션 하한 키 `identity-admin:session-floor:{sub}`를 만든다 — 값은 같은 `sub`의 사용자 단위 행 가운데 가장 큰 `nbf`다(contracts/denylist.md §키 스키마). `revoked:*`는 그대로 한 행 = 한 키다. 일 1회 대조 보정 행과 관리 명령 `revoke_sessions`의 행도 같은 규칙이다(T073 보정 2026-11-12).
+- 쓰기: 기록(INSERT)과 같은 트랜잭션에 outbox `identity-admin.session.revoked`(data `sid`는 행의 `sid` — 사용자 단위면 `null`); 커밋 후 Dragonfly SET(`revoked:*` TTL = `min(330, 남은 초)` · 하한 키 TTL = 그 행 `expires_at + 30 d`까지 · 1 미만이면 쓰지 않는다 · `sid` 행은 자기 행 값으로 `revoked:sid`와 세션 단위 하한 키를 함께 쓴다(UD-7a 보정 2026-11-24) · 사용자 단위 행은 그 `sub`의 최댓값 행을 읽어 `revoked:sub`와 세션 하한 키를 함께 쓴다 — contracts/denylist.md §쓰기 규약 · T073 보정 2026-11-12). 등급 B이므로 app role이 컨텍스트 없이 쓴다.
+- 재적용: 기동 시 1회(Celery `beat_init` — contracts/identity-admin-api.md §주기 작업) + Celery beat 30 s마다 `expires_at > now()` 행을 **조건 없이 전부** 다시 SET한다(멱등, 남은 TTL = `expires_at - now()` 초 내림 — TTL을 330 s로 되돌리지 않는다). 캐시 상태를 묻지 않는다(이미 있는 키도 덮어쓴다). Kafka 재생은 쓰지 않는다. 같은 키의 행이 여럿이면 `nbf`가 가장 큰 행을 쓰고 TTL 1초 미만은 건너뛴다. 같은 실행이 `sid` NULL이고 `expires_at + 30 d > now()`인 행으로 세션 하한 키를 되살리고 신선도 키를 쓴다(T073 보정 2026-11-12). 같은 실행이 `sid`가 있고 `expires_at + 30 d > now()`인 행으로 세션 단위 하한 키를 되살린다 · `revoked:sid` 값은 행의 `nbf`(UD-7a 보정 2026-11-24).
 - 유실 창: Dragonfly가 정상 종료하면 스냅샷으로 키가 살아남고, **비정상 종료**(OOM·SIGKILL·저장 실패)일 때만 공백이 생기고 그 길이의 상한은 다음 tick(최대 30초) + 워커가 먼저 받은 작업들의 마감(대조 120 s · 위임 한 시도 20 s씩 — 평시 0–1건) + 워커 재접속이다(contracts/denylist.md). 세션 하한도 같은 창이다 — 재적용이 돌아오면 다음 확인에서 다시 inactive가 된다(contracts/denylist.md · T073 보정 2026-11-12).
 - 보존: `expires_at + 30 d` 지난 행을 일 1회 purge(구현 식 `expires_at < now() − 30 d`). 이 30일이 세션 하한 수명이자 `/session/check`의 세션 절대 수명이다(상수 하나 — T073 보정 2026-11-12).
-- 상태: `recorded`(캐시 키 존재) → `expired`(`revoked:*` TTL 만료 — 사용자 단위 행은 세션 하한 키만 남는다) → purge(하한도 끝난다 · T073 보정 2026-11-12).
+- 상태: `recorded`(캐시 키 존재) → `expired`(`revoked:*` TTL 만료 — 사용자 단위 행은 사용자 단위 하한, `sid` 행은 세션 단위 하한 키만 남는다 · UD-7a 보정 2026-11-24) → purge(하한도 끝난다 · T073 보정 2026-11-12).
 - 제약 · 인덱스(T073 보정 2026-11-12): unique `srl_event_pk_uniq`(`event_pk`) · check `srl_reason_valid` · 인덱스 `srl_expires_at_idx`(`expires_at` — 재적용 · purge) · 부분 인덱스 `srl_user_floor_idx` = `(sub, nbf DESC) WHERE sid IS NULL`(세션 하한의 `sub`별 최댓값). 마이그레이션은 pod 앱 `identity_admin`의 `0001_initial` 하나다(§1–§3의 세 표 · RLS 연산 없음 — B 등급).
 
 ## 4. OutboxEvent — 소유 각 pod (자기 DB `outbox`, 등급 B)
@@ -265,7 +267,7 @@ frontmatter(`rules/content.md` 계약, zod로 코드화):
 Tenant 1 ── n TenantMembership(sub, tenant_id)   [identity_admin DB, 등급 B — 멤버십 정본]
 Tenant.id ──값 참조──▶ 모든 pod A 등급 테이블.tenant_id (RLS 격리 키, UUID)
 TenantMembership ──identity-admin이 갱신(SP-1 seed_tenant, SP-2 outbox)──▶ Authentik 그룹 tenant:<uuid>·attribute tenant_id · FgaStore 튜플(user member tenant:<uuid>)   [파생]
-SessionRevocationLog(DB, 정본) ──기동 1회 + 30 s 무조건 재적용──▶ SessionRevocation(Dragonfly 캐시 revoked:sub·revoked:sid ◀──조회── 모든 pod · identity-admin:session-floor ◀──조회── identity-admin /session/check)
+SessionRevocationLog(DB, 정본) ──기동 1회 + 30 s 무조건 재적용──▶ SessionRevocation(Dragonfly 캐시 revoked:sub·revoked:sid ◀──조회── 모든 pod · identity-admin:session-floor · identity-admin:sid-floor ◀──조회── identity-admin /session/check)
 SessionRevocationLog ──outbox──▶ identity-admin.session.revoked ──▶ insights(SP-3)
 OutboxEvent(pod DB, 등급 B) ──릴레이(app role, dead_at IS NULL)──▶ KafkaTopic ──▶ 소비자 pod / <pod>.dlq(dev: dev.<pod>.dlq) ──dead_at+30d──▶ purge
 SecretPath(Vault) ──ESO(vault-platform·vault-dev·vault-prod·vault-data)──▶ Secret ──▶ CNPG roles · pod env(<pod>-env / <pod>-migrate) · cloudflared · Alloy · Dragonfly ACL · Authentik 웹훅

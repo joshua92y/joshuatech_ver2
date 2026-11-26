@@ -196,7 +196,8 @@ uv run --locked pytest -q tests/test_identity_infra.py::test_ia_18_env_example_c
   발화한다 — 시험 래퍼의 닫힌 포트라 대조는 `authentik.reconcile_failed error=connection` 뒤 SUCCESS로 끝난다(정상).
 - ia 시험 파일 넷(`test_identity_contract.py` · `test_identity_jobs.py` · `test_identity_commands.py` · `test_identity_infra.py`)과 가짜 ·
   도우미(`_ia_fakes.py` · `_ia_support.py` · 자기검사 `test_ia_fakes.py`)는 pod 소유다. `test_api.py` · `_identity_fakes.py` ·
-  `test_identity_fakes.py`는 T066(먼저 쓴 수용 시험)이고 단언을 바꾸지 않는다.
+  `test_identity_fakes.py`는 T066(먼저 쓴 수용 시험)이고 단언을 바꾸지 않는다(UD-7a 보정 2026-11-24 — api-7 · 12 · 13 · 30 · 51의
+  `revoked:sid` 값 · 세션 단위 하한 단언을 바꿨다 · t086-design.md D15-6).
 
 ### OpenAPI 스냅샷
 
@@ -592,7 +593,8 @@ Dragonfly가 aclfile의 주석 줄을 받는지 잰 적이 없다)은 표식 없
   `management/commands/revoke_sessions.py` · `management/commands/seed_tenant.py`
 - `tests/`: `_ia_support.py` · `_ia_fakes.py` · `test_ia_fakes.py` · `test_identity_contract.py` · `test_identity_jobs.py` ·
   `test_identity_commands.py` · `test_identity_infra.py`
-- 생성 전부터 있던 T066 수용 시험 셋: `tests/test_api.py` · `tests/_identity_fakes.py` · `tests/test_identity_fakes.py`(단언을 바꾸지
-  않는다 — 독스트링 · 주석만 고쳤다)
+- 생성 전부터 있던 T066 수용 시험 셋: `tests/test_api.py` · `tests/_identity_fakes.py` · `tests/test_identity_fakes.py`(T073: 단언을
+  바꾸지 않고 독스트링 · 주석만 고쳤다 · UD-7a 보정 2026-11-24 — api-7 · 12 · 13 · 30 · 51의 `revoked:sid` 값 · 세션 단위 하한
+  단언을 바꿨다 · t086-design.md D15-6)
 
 <!-- identity-admin(T073) 끝 -->

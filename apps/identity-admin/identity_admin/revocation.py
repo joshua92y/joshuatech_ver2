@@ -31,7 +31,8 @@ membership_tenant(sub) -> uuid.UUID | None: 웹훅 · 관리 명령의 tenant �
 
 커밋 뒤 콜백 `_after`(단계마다 자기 try/except — 예외 클래스 이름만 남긴다 · Django robust 로그는 예외 문구를 싣는다 · 실패
 로그 호출 자신이 던져도 뒤 단계가 돈다)
-  ① 거부 목록 · 하한 쓰기(`denylist_writer.apply_user` · `apply_sid`) → after.denylist = ok · skipped · failed · unreachable
+  ① 거부 목록 · 하한 쓰기(`denylist_writer.apply_user(sub)` · `apply_sid(sid, nbf, expires_at)` — sid 행은 `revoked:sid`와 세션
+     단위 하한을 그 행 nbf로 · UD-7a(ㄴ)) → after.denylist = ok · skipped · failed · unreachable
   ② 지표 `session_revocations_total{reason}` +1(커밋 뒤에만)
   ③ INFO `session_revocation.recorded`(reason · scope user|session · source · tenant_id · sub_hash · revocation_id)
   ④ delegate면 Authentik 세션 삭제 위임(설계 D16 「위임 조건」 순서 — 쓰기 플래그 → 자리값 자격 → ①의 결과 → enqueue) →
@@ -281,7 +282,10 @@ def _after(
 ) -> None:
     """커밋 뒤 콜백(설계 D12 6단계 ①-④) — 단계마다 자기 try/except가 예외 클래스 이름만 남긴다."""
     try:  # ①
-        after.denylist = denylist_writer.apply_user(sub) if sid is None else denylist_writer.apply_sid(sid, expires_at)
+        if sid is None:
+            after.denylist = denylist_writer.apply_user(sub)
+        else:
+            after.denylist = denylist_writer.apply_sid(sid, nbf, expires_at)
     except Exception as exc:  # noqa: BLE001 — 쓰기 함수는 값으로 돌려준다 · 예상 밖 예외만 여기에 온다
         after.denylist = denylist_writer.FAILED
         _callback_failed("denylist", exc)

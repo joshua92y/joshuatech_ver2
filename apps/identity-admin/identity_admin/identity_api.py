@@ -18,13 +18,15 @@ D28(반환 규칙) · D29(세션 하한 · 절대 수명).
 `GET /session/check`(설계 D8 — 순서 고정)
 1. 질의 검증(Query[CheckQuery] — `sub` · `sid`는 출력 가능 ASCII `!`-`~` 1-255자 · `iat`은 정수): 어기면 400 validation_error
    (조회 앞 — `Denylist.lookup`은 빈 값에 ValueError다).
-2. 모듈 수준 `_DENYLIST`(하나 — 클라이언트를 URL별로 둔다) 로 거부 목록 조회: 실패면 503 denylist_unavailable이고 3단계를 하지
-   않는다(api-8의 0.5 s 상한).
-3. 세션 하한 조회(`session_floor.read_floor` — 쓰기 클라이언트 · 0.2 s · 재시도 0): 실패 · 정수가 아닌 값이면 503
+2. 모듈 수준 `_DENYLIST`(하나 — 클라이언트를 URL별로 둔다) 로 거부 목록 조회: 실패(정규 꼴이 아닌 `revoked:*` 값 포함 —
+   UD-7a 보정)면 503 denylist_unavailable이고 3단계를 하지 않는다(api-8의 0.5 s 상한).
+3. 세션 하한 조회(`session_floor.read_floor(sub, sid)` — 쓰기 클라이언트 · 파이프라인 1회로 사용자 단위 하한 + sid가 있으면 세션
+   단위 하한 · 0.2 s · 재시도 0 — UD-7a(ㄴ) T-c): 실패 · 어느 값이든 정규 꼴(ASCII 숫자 1-19자)이 아니면 503
    denylist_unavailable(fail-closed · DB로 메우지 않는다).
-4. 판정(`session_floor.is_active` · now = pod 시계 int(time.time())). iat가 now + 60 s를 넘으면 WARNING
-   `session_check.iat_in_future`(값 · sub 없음).
-5. 응답 `{"active": …, "nbf": revoked:sub 값}` — nbf는 그 키가 있을 때만 실린다(exclude_none · 판정 원인과 무관).
+4. 판정(`session_floor.is_active` — 거부 목록 · 두 하한 · 나이 · 미래 iat · now = pod 시계 int(time.time())). iat가 now + 60 s를
+   넘으면 WARNING `session_check.iat_in_future`(값 · sub 없음).
+5. 응답 `{"active": …, "nbf": revoked:sub 값}` — nbf는 그 키가 있을 때만 실린다(exclude_none · 판정 원인과 무관 · revoked:sid ·
+   두 하한 값은 싣지 않는다).
 DB 접근은 0이다(Dragonfly 왕복 2회). 뷰가 만드는 응답(200 · 503)에는 `Cache-Control: no-store`를 단다(200은 Ninja가 넘긴 임시
 응답 객체에 · 503은 직접 돌려주는 응답에 — 400은 템플릿 검증 처리기 몫이라 손대지 않는다).
 
@@ -181,18 +183,19 @@ def session_check(
     request: HttpRequest, query: Query[CheckQuery], response: HttpResponse
 ) -> dict[str, Any] | HttpResponse:
     """세션 활성 판정(BFF · Access 전용) — 거부 목록 · 세션 하한 · 절대 수명 · 미래 iat."""
+    # 세션 하한은 사용자 단위 + 세션 단위 둘이다(UD-7a(ㄴ) — 위 독스트링은 OpenAPI 설명이라 스냅샷과 함께만 바꾼다)
     try:
         record = _DENYLIST.lookup(query.sub, query.sid)
     except DenylistUnavailable as exc:
         return _no_store(exc.to_response())
     try:
-        floor = session_floor.read_floor(query.sub)
+        floor, sid_floor = session_floor.read_floor(query.sub, query.sid)
     except DenylistUnavailable as exc:
         return _no_store(exc.to_response())
     now = int(time.time())
     if query.iat > now + session_floor.FUTURE_IAT_TOLERANCE_S:
         log.warning("session_check.iat_in_future")
-    active = session_floor.is_active(record=record, floor=floor, iat=query.iat, now=now)
+    active = session_floor.is_active(record=record, floor=floor, sid_floor=sid_floor, iat=query.iat, now=now)
     _no_store(response)  # Ninja가 넘긴 임시 응답 — 200 본문이 이 객체에 실린다(헤더가 그대로 남는다)
     return {"active": active, "nbf": record.sub_nbf}
 

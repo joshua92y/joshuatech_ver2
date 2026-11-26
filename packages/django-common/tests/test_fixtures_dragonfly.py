@@ -29,7 +29,8 @@ def test_infra_df_1_acl(dragonfly: DragonflyInfo) -> None:
     자격 없는 default 접속 거부.
 
     파이프라인은 MULTI/EXEC(redis-py 기본)와 비트랜잭션 둘 다 본다 — 거부 목록 조회(T070)가 어느 쪽을 쓰든 reader
-    ACL이 막지 않아야 한다. 자격 없는 클라이언트는 재시도를 끈다: AuthenticationError는 ConnectionError의 하위라
+    ACL이 막지 않아야 한다. 표본은 조회 꼴 그대로 GET 둘(revoked:sub · revoked:sid — UD-7a 보정: sid 값도 시각이라 읽는다 ·
+    이전 꼴 GET + EXISTS). 자격 없는 클라이언트는 재시도를 끈다: AuthenticationError는 ConnectionError의 하위라
     redis-py 기본 재시도(지수 백오프 10회)가 판정을 수 초 늦출 수 있다.
     """
     writer = redis.Redis.from_url(dragonfly.writer_url)
@@ -43,8 +44,8 @@ def test_infra_df_1_acl(dragonfly: DragonflyInfo) -> None:
         for transaction in (True, False):
             pipe = reader.pipeline(transaction=transaction)
             pipe.get("revoked:sub:x")
-            pipe.exists("revoked:sid:y")
-            assert pipe.execute() == [b"1", 0], f"transaction={transaction}"
+            pipe.get("revoked:sid:y")
+            assert pipe.execute() == [b"1", None], f"transaction={transaction}"
         with pytest.raises(redis.exceptions.NoPermissionError):
             reader.set("revoked:sub:x", 2)
         with pytest.raises(redis.exceptions.NoPermissionError):

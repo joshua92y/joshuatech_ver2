@@ -5731,3 +5731,16 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
 - **agent-layer · parity**: RULES · MIRRORS에 e2e(리뷰 C-4) → `tests/agents/agent-layer.tests.ps1` 72 → 79 · `tests/agents/codex-parity.tests.ps1` 12/0(`$ruleDocs`에 `e2e.md`). tasks.md T108 문면(규칙 5개)은 불변이다 — 하네스는 이제 6개를 본다(FD ④-c · 과거 기록의 「72/0」은 이력이라 그대로).
 - **함께 든 것**: 새 규칙 `.claude/rules/e2e.md` + KR · AGENTS.md 행(+ KR — e2e 라우팅 · vitest · 런처 명령) · web-builder 에이전트 영역(+ KR · Codex toml) · `playwright.config.ts` `site` 프로젝트 · T079 쿠키 상수 · selftest · README · `revocation.spec.ts` 주석(B-6) · t077 정정 노트 ②(B-6) · 설계 정정 노트 19–23 · 학습 로그 `content/tmp/003-t087/2026-11-26.md`.
 - **tick**: T087 [X] 88/119. 초록은 로컬 = T090 · T091 · T092 + T086-a · CI = T093 · prod = T094 뒤 T095(§1-3).
+
+### UD-7a(ㄴ) 조각 ⑤(2026-11-24 빌드 · 11-26 커밋 — tasks.md 밖 · tick 0)
+
+- **결정**: `revoked:sid:{sid}` 값 = 폐기 시각(nbf) · pod 미들웨어는 값 > 토큰 `iat`만 거부 · `/session/check`는 `issued_at < nbf`만 inactive · 세션 단위 하한 `identity-admin:sid-floor:{sid}`(30 d · `/session/check`만) · 네 값 모두 정규 꼴(ASCII 숫자 1–19자)로 판독하고 밖이면 503(N-16) — W35(같은 브라우저 재로그인 때 같은 sid가 새 세션까지 막힘) 수정(설계 §0-2 · D15 · CD T-c).
+- **시험 먼저 빨강**(빌드 r0): django-common 바뀐 노드 `19 failed, 7 passed` · identity-admin 22 노드 `20 failed, 2 passed` → 구현 → 초록. 표 예측과 다른 빨강 원인은 정정 노트 24.
+- **수정 r1 F5**: ia-33 (b)에 같은 세 시각의 sid 행 + 덮은 보존 상수 아래 `apply_sid` 직접 호출(리뷰 D-2) — 30일 리터럴 변이 넷(창+TTL · 창 · TTL · `apply_sid`)이 각자 다른 단언에서 잡힌다(검증 V2가 출하 코드 글자에서 만든 변이로 재현 · 대조 green · 양성 대조 api-30) · README ⑮ 두 자리 보정(A-5 · D-4) → V2-1 순서는 컨트롤러가 이 커밋에서(정정 노트 26).
+- **컨트롤러 재확인(2026-11-26)**
+  - django-common `uv run --directory packages/django-common --locked pytest -q -p no:cacheprovider` → `779 passed in 107.40s` · exit 0(15:33:57–15:35:46 KST).
+  - identity-admin `uv run --directory apps/identity-admin --locked pytest -q -p no:cacheprovider` → `526 passed in 340.84s (0:05:40)` · exit 0(16:21:55–16:27:41 KST — README V2-1 순서 수정 뒤).
+  - 템플릿 하네스 949(빌드 r0 943 + R0-1 등록 뒤 이미지 6 노드 — 11-24) · recopy 뒤 렌더본 diff = 의도한 줄뿐(빌드 r0 — r1 · r2는 템플릿 · 렌더본 변경 0).
+- **기록만(/finish 인계)**: V2-2 — 요청 경로 사용자 단위 하한 `apply_user`의 TTL 리터럴 변이 생존(pre_existing · T073 코드 · 정정 노트 33).
+- **함께 든 것**: `contracts/denylist.md` · `contracts/identity-admin-api.md` · `contracts/pod-template.md`(:108 좁힘 — D-3 (가)) · `data-model.md`(T086 덩어리 밖 전부) · `.claude/rules/django-pod.md` + KR · 템플릿 `test_auth_middleware.py.jinja` · 설계 정정 노트 24–35 + 대조표.
+- **라이브 변경 0**: identity-admin · django-common 재배포는 main 발행 지점이라 UD-1을 다시 여쭌다 — BFF가 처음 identity-admin을 부르기 전(D15-8 · VD-UD7a-1 시점 = 정정 노트 28).

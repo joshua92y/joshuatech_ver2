@@ -6,12 +6,14 @@
   kafka_producer} · 전체 ≤ 3 s · 의존 검사 병렬(항목 상한 DB 2 s · Dragonfly 0.2 s · Kafka 1 s — 순차 합 3.2 s)(api-1..3 ·
   api-52).
 - /session/check(§엔드포인트 · §인증 계층 구현 규약): Access 전용 경로(Bearer를 검증하지 않는다) · DB 접근 없음 · active =
-  `revoked:sub:{sub}` 값 > iat가 아니고 sid가 있으면 `revoked:sid:{sid}`도 없음(같은 값이면 active — 세션 하한 · 절대 수명 ·
-  미래 `iat` 조건은 T073 보정이고 tests/test_identity_contract.py가 본다) · nbf는 sub 키가 있을 때만 · 질의 검증 실패 400
-  validation_error · Dragonfly 실패 503 denylist_unavailable(0.2 s)(api-4..9).
+  `revoked:sub:{sub}` 값 > iat가 아니고 sid가 있으면 `revoked:sid:{sid}` 값 > iat도 아님(같은 값이면 active — UD-7a 보정:
+  이전 문구 「`revoked:sid:{sid}`도 없음」 · 세션 하한 · 세션 단위 하한 · 절대 수명 · 미래 `iat` 조건은 T073 · UD-7a 보정이고
+  tests/test_identity_contract.py가 본다) · nbf는 sub 키가 있을 때만 · 질의 검증 실패 400 validation_error · Dragonfly 실패
+  503 denylist_unavailable(0.2 s)(api-4..9).
 - /sessions/revoke(§엔드포인트 · data-model §3 · contracts/denylist.md §쓰기 규약 · contracts/events.md §발행 API): 202
   {id, nbf, expires_at} · 한 행 = 한 키(all_devices true → sid NULL 행 + revoked:sub = nbf(본문 sid는 쓰지 않는다) ·
-  false → sid 행 + revoked:sid = 1 · sid 원천 = 본문 → 본인 호출의 토큰(관리자 호출은 본문만) · 둘 다 없으면 400) · nbf =
+  false → sid 행 + revoked:sid = nbf + 세션 단위 하한 identity-admin:sid-floor:{sid} = nbf(UD-7a 보정 — 이전 값 1) · sid
+  원천 = 본문 → 본인 호출의 토큰(관리자 호출은 본문만) · 둘 다 없으면 400) · nbf =
   처리 시각 epoch 초 내림 + 1 · expires_at = nbf + 330 s · 로그 + outbox 같은 트랜잭션 → 커밋 후 SET(TTL = min(330, 남은 초)
   · 사용자 단위는 세션 하한 키도 — T073 보정) · 관리자 = groups 목록 원소가 정확히 platform-admin(아니면 403 forbidden) ·
   관리자 대상 테넌트 = TenantMembership(없으면 400) · 요청 처리 중 Authentik을 부르지 않는다(위임 실패도 202) · 지표
@@ -26,7 +28,8 @@
 - 주기 작업(§주기 작업 · contracts/denylist.md §쓰기 규약): expires_at > now() 행 전부 조건 없이 다시 SET(센티널 없음 ·
   덮어쓰기 · 남은 TTL = expires_at − now() 내림 · 한 행 = 한 키) · beat 30 s · beat_init에서 같은 프로세스 동기 1회 · 로그
   purge(expires_at + 30 d) · outbox dead purge(dead_at + 30 d) · 경계 = DB now()(api-30..35) · 같은 재적용이 세션 하한 키와
-  신선도 키도 쓴다 — T073 보정 · tests/test_identity_jobs.py가 본다.
+  신선도 키도 쓴다 — T073 보정 · tests/test_identity_jobs.py가 본다 · revoked:sid 값 = 행의 nbf와 세션 단위 하한(sid별 nbf
+  최댓값 — UD-7a 보정 · api-30).
 - seed_tenant(data-model §1 파생 쓰기 규칙): 멱등(행 수·id 불변 · 파생 중복 없음 · 같은 상태면 Authentik 쓰기 0) · DB →
   파생 · 파생 실패 CommandError · 그룹 `?name=` · 사용자 `?uuid=` 조회(쓰기 플래그와 무관하게 늘 한다 — 없으면
   CommandError · 그룹은 만들지 않는다 · 미끼 그룹·사용자 불변) · attributes 병합 PATCH · AUTHENTIK_WRITES_ENABLED · FGA
@@ -235,6 +238,10 @@ ACCESS_EXPECTED_CN = "web-bff-test-client-id.access"  # 서비스 토큰 Client 
 TOPIC = "identity-admin.session.revoked"
 SOURCE = "identity-admin"
 DENYLIST_TTL_S = 330  # contracts/denylist.md §키 스키마(access TTL 300 s + 30 s)
+# 세션 단위 하한(UD-7a(ㄴ) — t086-design.md D15 T-c): 키 접두 · 수명 = 그 행 expires_at + 30 d(TTL은 프로세스 시각 기준 —
+# 요청 경로 · DB 시계 기준 — 재적용). 30일은 로그 보존 · 세션 절대 수명과 같은 상수다(시험의 독립 기대값).
+SID_FLOOR_PREFIX = "identity-admin:sid-floor:"
+RETENTION_S = 30 * 24 * 3600
 TENANT_A = TENANT_ID  # tests._jwt 테넌트 A(UUID 문자열)
 TENANT_B = "00000000-0000-4000-8000-00000000000b"
 TENANT_SLUGS = {TENANT_A: "tenant-a", TENANT_B: "tenant-b"}
@@ -630,6 +637,20 @@ def _get_int(client: redis.Redis, key: str) -> int | None:
 def _denylist_keys(client: redis.Redis) -> list[str]:
     """지금 있는 거부 목록 키(`revoked:*`) — 정렬."""
     return sorted(key.decode() for key in client.scan_iter(match="revoked:*", count=1000))
+
+
+def _sid_floor_keys(client: redis.Redis) -> list[str]:
+    """지금 있는 세션 단위 하한 키(`identity-admin:sid-floor:*` — UD-7a(ㄴ) T-c) — 정렬."""
+    return sorted(key.decode() for key in client.scan_iter(match=f"{SID_FLOOR_PREFIX}*", count=1000))
+
+
+def _sid_keys_state(client: redis.Redis, sid: str) -> tuple[tuple[int | None, int | None], tuple[int, int]]:
+    """sid의 (`revoked:sid` 값, 세션 단위 하한 값)과 (두 키의 TTL) — 단언 앞에서 지역 값으로 읽는다(클라이언트를 assert 식의
+    호출 인자로 두지 않는다 — 규칙 §Tests)."""
+    keys = (f"revoked:sid:{sid}", f"{SID_FLOOR_PREFIX}{sid}")
+    values = (_get_int(client, keys[0]), _get_int(client, keys[1]))
+    ttls = (int(client.ttl(keys[0])), int(client.ttl(keys[1])))
+    return values, ttls
 
 
 def _counter(reason: str) -> float:
@@ -1259,16 +1280,23 @@ def test_api_6_session_check_sub_key(jwks_server: JwksFixture, df_admin: redis.R
 
 
 def test_api_7_session_check_sid_key(jwks_server: JwksFixture, df_admin: redis.Redis) -> None:
-    """api-7 — revoked:sid:sid-x = 1 → sid 쿼리가 sid-x면 {"active": false}(sub 키가 없으니 nbf 키 없음) · sid 쿼리 없음 →
-    {"active": true} · 다른 sid → {"active": true}."""
+    """api-7 — revoked:sid:sid-x 값과 iat 비교(UD-7a 보정 — 값은 폐기 시각 nbf · 값 > iat일 때만 폐기 · 이전 꼴 「값 1 =
+    존재」): 값 = iat + 1 → sid 쿼리가 sid-x면 {"active": false}(sub 키가 없으니 nbf 키 없음) · = iat → {"active": true}(경계 —
+    로그아웃 뒤 같은 sid로 시작한 세션 · W35) · = iat − 100 → {"active": true} / 값 = iat + 1인 채 sid 쿼리 없음 →
+    {"active": true} · 다른 sid → {"active": true}. 같은 Client로 이어 묻는다(결과를 캐시하지 않는다)."""
     sub, iat = "check-sub", int(time.time())
-    df_admin.set("revoked:sid:sid-x", 1, ex=DENYLIST_TTL_S)
     client = Client()
     headers = _headers(jwks_server, M2M_HOST)
-    for sid, expected in (("sid-x", {"active": False}), (None, {"active": True}), ("sid-other", {"active": True})):
+    for nbf, active in ((iat + 1, False), (iat, True), (iat - 100, True)):
+        df_admin.set("revoked:sid:sid-x", nbf, ex=DENYLIST_TTL_S)
+        response = _get(client, _check_path(sub, iat, "sid-x"), headers)
+        assert response.status_code == 200, f"sid nbf = iat {nbf - iat:+d}"
+        assert json.loads(response.content) == {"active": active}, f"sid nbf = iat {nbf - iat:+d}"
+    df_admin.set("revoked:sid:sid-x", iat + 1, ex=DENYLIST_TTL_S)
+    for sid in (None, "sid-other"):
         response = _get(client, _check_path(sub, iat, sid), headers)
         assert response.status_code == 200, sid
-        assert json.loads(response.content) == expected, sid
+        assert json.loads(response.content) == {"active": True}, sid
 
 
 def test_api_8_session_check_denylist_unavailable(jwks_server: JwksFixture, settings: Settings) -> None:
@@ -1358,9 +1386,11 @@ def test_api_11_revoke_same_second(jwks_server: JwksFixture) -> None:
 
 @DB
 def test_api_12_revoke_single_session(jwks_server: JwksFixture, df_admin: redis.Redis) -> None:
-    """api-12 — {"all_devices": false, "reason": "logout"}(토큰 sid sid-1) → 202 · revoked:sid:sid-1 = "1" · TTL ∈
-    [325, 330] · revoked:sub:<sub> 없음 · 로그 sid = sid-1 · 이벤트 data sid = sid-1 · 지표 logout +1 · 같은 토큰 →
-    /tenants/me 401 session_revoked · 같은 sub의 sid-2 토큰 → /tenants/me 200(그 세션만 거부된다)."""
+    """api-12 — {"all_devices": false, "reason": "logout"}(토큰 sid sid-1) → 202 · revoked:sid:sid-1 = 응답 nbf(UD-7a
+    보정 — 이전 값 "1") · TTL ∈ [325, 330] · 세션 단위 하한 identity-admin:sid-floor:sid-1 = nbf · TTL ∈ [30 d + 320,
+    30 d + 330](그 행 expires_at + 30 d까지 — UD-7a(ㄴ) T-c) · revoked:sub:<sub> 없음 · 로그 sid = sid-1 · 이벤트 data sid =
+    sid-1 · 지표 logout +1 · 같은 토큰 → /tenants/me 401 session_revoked(nbf > 그 토큰 iat) · 같은 sub의 sid-2 토큰 →
+    /tenants/me 200(그 세션만 거부된다)."""
     sub = "single-sub"
     _member(sub, TENANT_A)
     before = _counter("logout")
@@ -1369,8 +1399,10 @@ def test_api_12_revoke_single_session(jwks_server: JwksFixture, df_admin: redis.
     response = _post_json(client, REVOKE_PATH, headers, {"all_devices": False, "reason": "logout"})
     assert response.status_code == 202
     nbf = json.loads(response.content)["nbf"]
-    assert df_admin.get("revoked:sid:sid-1") == b"1"
-    assert 325 <= df_admin.ttl("revoked:sid:sid-1") <= DENYLIST_TTL_S
+    values, ttls = _sid_keys_state(df_admin, "sid-1")  # 클라이언트를 assert 식 밖에서 읽는다(규칙 §Tests)
+    assert values == (nbf, nbf)
+    assert 325 <= ttls[0] <= DENYLIST_TTL_S, f"revoked:sid TTL {ttls[0]}"
+    assert RETENTION_S + 320 <= ttls[1] <= RETENTION_S + DENYLIST_TTL_S, f"세션 단위 하한 TTL {ttls[1]}"
     assert df_admin.exists(f"revoked:sub:{sub}") == 0
     (row,) = _rows("session_revocation_log")
     assert (row.sid, row.reason) == ("sid-1", "logout")
@@ -1384,14 +1416,21 @@ def test_api_12_revoke_single_session(jwks_server: JwksFixture, df_admin: redis.
 
 @DB
 def test_api_13_revoke_body_sid(jwks_server: JwksFixture, df_admin: redis.Redis) -> None:
-    """api-13 — all_devices false + 본문 sid "sid-9"(토큰 sid는 sid-1) → revoked:sid:sid-9만 생긴다(본문 sid가 우선) ·
+    """api-13 — all_devices false + 본문 sid "sid-9"(토큰 sid는 sid-1) → revoked:sid:sid-9만 생긴다(본문 sid가 우선) · 값 =
+    응답 nbf · TTL ∈ [325, 330](UD-7a 보정 — 이전 값 "1") · 세션 단위 하한도 sid-9 하나(값 nbf · TTL ∈ [30 d + 320, 30 d + 330]) ·
     revoked:sid:sid-1 · revoked:sub:<sub> 없음 · 로그 sid = sid-9."""
     sub = "body-sid-sub"
     headers = _headers(jwks_server, M2M_HOST, bearer=_bearer(jwks_server, sub, TENANT_A, sid="sid-1"))
     body = {"all_devices": False, "reason": "logout", "sid": "sid-9"}
-    assert _post_json(Client(), REVOKE_PATH, headers, body).status_code == 202
-    assert _denylist_keys(df_admin) == ["revoked:sid:sid-9"]
-    assert df_admin.get("revoked:sid:sid-9") == b"1"
+    response = _post_json(Client(), REVOKE_PATH, headers, body)
+    assert response.status_code == 202
+    nbf = json.loads(response.content)["nbf"]
+    keys = (_denylist_keys(df_admin), _sid_floor_keys(df_admin))
+    values, ttls = _sid_keys_state(df_admin, "sid-9")
+    assert keys == (["revoked:sid:sid-9"], [f"{SID_FLOOR_PREFIX}sid-9"])
+    assert values == (nbf, nbf)
+    assert 325 <= ttls[0] <= DENYLIST_TTL_S, f"revoked:sid TTL {ttls[0]}"
+    assert RETENTION_S + 320 <= ttls[1] <= RETENTION_S + DENYLIST_TTL_S, f"세션 단위 하한 TTL {ttls[1]}"
     (row,) = _rows("session_revocation_log")
     assert row.sid == "sid-9"
 
@@ -1474,7 +1513,8 @@ def test_api_51_revoke_admin_single_session(jwks_server: JwksFixture, df_admin: 
     """api-51 — 관리자 단일 세션 폐기(관리자 sub admin-sub · 테넌트 A · groups ["platform-admin"] · 토큰 sid admin-sid →
     테넌트 B 멤버 target-sub · all_devices false): (a) 본문 sid 없음 → 400 validation_error · 로그 0 · outbox 0 · 키 0(관리자
     호출은 "본인 호출"이 아니라 토큰 sid를 쓰지 않는다 — 계약 §엔드포인트 revoke "본문 sid, 없으면 본인 호출의 토큰 sid")
-    (b) 본문 sid target-sid → 202 · 거부 목록 키는 revoked:sid:target-sid 하나(값 "1") · 로그 (tenant B · target-sub ·
+    (b) 본문 sid target-sid → 202 · 거부 목록 키는 revoked:sid:target-sid 하나(값 = 응답 nbf · TTL ∈ [325, 330] — UD-7a 보정:
+    이전 값 "1") · 세션 단위 하한도 target-sid 하나(값 nbf · TTL ∈ [30 d + 320, 30 d + 330]) · 로그 (tenant B · target-sub ·
     target-sid · admin) · revoked:sid:admin-sid 없음(관리자 자신의 세션을 끊는 구현은 대상을 로그인 상태로 둔다)."""
     target = "target-sub"
     _member(target, TENANT_B)
@@ -1487,8 +1527,13 @@ def test_api_51_revoke_admin_single_session(jwks_server: JwksFixture, df_admin: 
     assert _denylist_keys(df_admin) == []
     response = _post_json(client, REVOKE_PATH, headers, {**body, "sid": "target-sid"})
     assert response.status_code == 202
-    assert _denylist_keys(df_admin) == ["revoked:sid:target-sid"]
-    assert df_admin.get("revoked:sid:target-sid") == b"1"
+    nbf = json.loads(response.content)["nbf"]
+    keys = (_denylist_keys(df_admin), _sid_floor_keys(df_admin))
+    values, ttls = _sid_keys_state(df_admin, "target-sid")
+    assert keys == (["revoked:sid:target-sid"], [f"{SID_FLOOR_PREFIX}target-sid"])
+    assert values == (nbf, nbf)
+    assert 325 <= ttls[0] <= DENYLIST_TTL_S, f"revoked:sid TTL {ttls[0]}"
+    assert RETENTION_S + 320 <= ttls[1] <= RETENTION_S + DENYLIST_TTL_S, f"세션 단위 하한 TTL {ttls[1]}"
     (row,) = _rows("session_revocation_log")
     assert (str(row.tenant_id), row.sub, row.sid, row.reason) == (TENANT_B, target, "target-sid", "admin")
     assert df_admin.exists("revoked:sid:admin-sid") == 0
@@ -1762,17 +1807,21 @@ def test_api_29_tenants_me_not_found(jwks_server: JwksFixture) -> None:
 @DB
 def test_api_30_reconcile_restores_all(df_admin: redis.Redis) -> None:
     """api-30 — 무조건 재적용(SIGKILL 재시작 시나리오 — 캐시를 통째로 비운 상태 · 센티널 denylist:epoch를 쓰지 않는다):
-    FLUSHALL 뒤 행 4(r1 sub 단위 활성 nbf = now−100 s · r2 sid sid-2 활성 nbf = now−10 s · r3 만료 nbf = now−1000 s · r4 sub
-    단위 활성 nbf = now−50 s — r4 키에는 낡은 값 1 EX 5를 미리 둔다) → reconcile_denylist 1회 → revoked:sub:r1 = nbf1 ·
-    revoked:sid:sid-2 = "1" · revoked:sub:r4 = nbf4(낡은 값을 덮어쓴다 — EXISTS로 건너뛰지 않는다) · TTL = ⌊expires_at − DB
-    now⌋ ± 5(5가 아니다 · 330으로 되돌리지 않는다 — 어긋남은 수십 s 이상이라 ±5로도 가린다) · r3 키 없음 · revoked:* 키
-    정확히 3(한 행 = 한 키 — sid 행은 sub 키를 만들지 않는다) · denylist:epoch 없음. Celery 앱을 now 측정 전에 적재한다(첫
-    적재 비용이 비교 창에 들지 않게). "30 s 안에"는 beat 주기 30 s(api-33) + 이 작업 결과로 대신한다(실시간은 T085)."""
+    FLUSHALL 뒤 행 5(r1 sub 단위 활성 nbf = now−100 s · r2 sid sid-2 활성 nbf = now−10 s · r3 만료 nbf = now−1000 s · r4 sub
+    단위 활성 nbf = now−50 s — r4 키에는 낡은 값 1 EX 5를 미리 둔다 · r5 같은 sid sid-2의 이전 폐기 nbf = now−2000 s(만료 ·
+    보존 창 안 — r2보다 뒤에 넣는다)) → reconcile_denylist 1회 → revoked:sub:r1 = nbf1 · revoked:sid:sid-2 = nbf2(UD-7a 보정 —
+    이전 값 "1") · revoked:sub:r4 = nbf4(낡은 값을 덮어쓴다 — EXISTS로 건너뛰지 않는다) · TTL = ⌊expires_at − DB now⌋ ± 5(5가
+    아니다 · 330으로 되돌리지 않는다 — 어긋남은 수십 s 이상이라 ±5로도 가린다) · r3 키 없음 · revoked:* 키 정확히 3(한 행 = 한
+    키 — sid 행은 sub 키를 만들지 않는다) / 세션 단위 하한(UD-7a(ㄴ) T-c)도 되살린다 — identity-admin:sid-floor:sid-2 하나 · 값 =
+    nbf2(sid별 nbf 최댓값 — 뒤에 넣은 r5의 작은 nbf가 아니다) · TTL = ⌊r2 expires_at + 30 d − DB now⌋ ± 5 · denylist:epoch 없음.
+    Celery 앱을 now 측정 전에 적재한다(첫 적재 비용이 비교 창에 들지 않게). "30 s 안에"는 beat 주기 30 s(api-33) + 이 작업
+    결과로 대신한다(실시간은 T085)."""
     base = _floor(_db_now())
     r1 = _log_row("r1-sub", nbf=_at(base - 100))
     r2 = _log_row("r2-sub", nbf=_at(base - 10), sid="sid-2", reason="logout")
     _log_row("r3-sub", nbf=_at(base - 1000))
     r4 = _log_row("r4-sub", nbf=_at(base - 50))
+    _log_row("r2-sub", nbf=_at(base - 2000), sid="sid-2", reason="logout")
     df_admin.flushall()
     df_admin.set("revoked:sub:r4-sub", 1, ex=5)
     _celery_app()
@@ -1780,7 +1829,7 @@ def test_api_30_reconcile_restores_all(df_admin: redis.Redis) -> None:
     _run_task(TASK_RECONCILE)
     expected = {
         "revoked:sub:r1-sub": (str(base - 100), _remaining(r1.expires_at, now)),
-        "revoked:sid:sid-2": ("1", _remaining(r2.expires_at, now)),
+        "revoked:sid:sid-2": (str(base - 10), _remaining(r2.expires_at, now)),
         "revoked:sub:r4-sub": (str(base - 50), _remaining(r4.expires_at, now)),
     }
     assert _denylist_keys(df_admin) == sorted(expected)
@@ -1788,6 +1837,11 @@ def test_api_30_reconcile_restores_all(df_admin: redis.Redis) -> None:
         assert df_admin.get(key) == value.encode(), key
         actual = df_admin.ttl(key)
         assert abs(actual - ttl) <= TTL_TOLERANCE_S, f"{key} TTL {actual} · 기대 {ttl}"
+    floor_expected = _remaining(r2.expires_at + timedelta(seconds=RETENTION_S), now)
+    floor_keys = _sid_floor_keys(df_admin)
+    (_, floor_value), (_, floor_ttl) = _sid_keys_state(df_admin, "sid-2")
+    assert (floor_keys, floor_value) == ([f"{SID_FLOOR_PREFIX}sid-2"], base - 10)
+    assert abs(floor_ttl - floor_expected) <= TTL_TOLERANCE_S, f"sid-2 하한 TTL {floor_ttl} · 기대 {floor_expected}"
     assert df_admin.exists("denylist:epoch") == 0
 
 

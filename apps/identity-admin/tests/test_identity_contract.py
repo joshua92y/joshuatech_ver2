@@ -35,7 +35,8 @@
 - ia-17(D22): outbox data가 이벤트 스키마를 만족한다(logout · logout_all · admin — authentik_webhook은 ③-b2) + 검사기 자기검사.
 - ia-19(D25 · D13): revoke 경로 · SET 실패 경로의 로그 위생 · `apply_user`가 블랙홀에서 1 s 안에 `unreachable`.
 - ia-27(D29): 사용자 단위(본인 all_devices · 관리자) → 하한 = nbf · TTL = ⌊expires_at + 30 d − DB now⌋ ± 5(웹훅은 ③-b2).
-- ia-28(D29 · E13): sid 폐기는 하한을 만들지 않는다 · 사용자 단위 쓰기의 최댓값 조회는 sid 행을 보지 않는다.
+- ia-28(D29 · E13): sid 폐기는 사용자 단위 하한을 만들지 않는다(세션 단위 하한만 — UD-7a 보정 · 아래 절) · 사용자 단위 쓰기의
+  최댓값 조회는 sid 행을 보지 않는다.
 - ia-31(D29 불변식 3): 역순 커밋에도 하한 · `revoked:sub` = 큰 nbf(과거 nbf 웹훅 사례는 ③-b2).
 
 조각 ③-b2 묶음(웹훅 · 관리 명령 — 위 묶음에 사례를 더한 것: ia-5 · 17 · 19 · 27 · 31의 웹훅 사례):
@@ -58,7 +59,17 @@ WARNING `webhook.nbf_stale`(ia-39 (a) · ia-34) · F2 본문 `"nbf": null`은 �
 재전송 · 멤버십 없음에서도(ia-8) · F4 없을 때의 값은 낮추지 않는다(ia-39 (a) — created = 지금 - 120) · F5 서명 검증 뒤 400의
 사유 줄 `webhook.rejected`(ia-6) · F9 (다) 명령 관문 거부 사유 `nbf_future`(ia-39 (b)).
 
-`/session/check` 판정 시험(ia-1 · 2 · 29 · 30 · 36 · 37)은 DB 마크를 달지 않는다 — 뷰나 미들웨어가 DB에 닿으면 pytest-django가
+UD-7a(ㄴ) 조각 ⑤(t086-design.md D15 · §7 N-4 · N-16 — `revoked:sid` 값 = 폐기 시각 nbf · 세션 단위 하한
+`identity-admin:sid-floor:{sid}` T-c · 하한 값 정규 꼴 판독):
+- 바뀐 사례: ia-25(한계 고정의 sid 값을 시각으로) · ia-28 (a)(sid 폐기 → `revoked:sid` + 세션 단위 하한 · 사용자 단위 하한 ·
+  `revoked:sub` 0) · ia-28 옆 ②(만료된 sid 행 → 세션 단위 하한 = nbf · 결과 ok · set_skipped 0줄) · ia-30 (a)(가로채기가 새
+  서명 `read_floor(sub, sid)` → 튜플을 따른다 · 뷰가 sid를 넘긴다) · 「쓰기 0」 도우미 `_written`이 세션 단위 하한도 센다.
+- ia-42(W35): 이 기기 폐기(nbf n) 뒤 같은 sid · iat = n − 5 → inactive · n · n + 3 → active.
+- ia-43(E13): `revoked:sid`가 없어도 세션 단위 하한만으로 iat < n inactive · ≥ n active(대조: 하한도 지우면 active).
+- ia-44: 세션 단위 하한 값이 정규 꼴 밖(`-5` · `x` · 20자리) → 503 · sid 질의 없는 요청은 그 키를 보지 않는다 · 첫 조회(거부 목록 —
+  `revoked:sid` 값 `x`)가 실패하면 하한 조회 0.
+
+`/session/check` 판정 시험(ia-1 · 2 · 29 · 30 · 36 · 37 · 44)은 DB 마크를 달지 않는다 — 뷰나 미들웨어가 DB에 닿으면 pytest-django가
 막아 실패한다(계약 「DB 접근 없음」). 구현 모듈(`identity_admin.session_floor` · `denylist_writer`)은 시험 함수 안에서
 가져오고(`impl`) 이음매는 돌려받은 모듈 속성을 monkeypatch로 덮는다(설계 D26 「이음매」). 단언 꼴: 응답 · 결과를 지역 변수에
 묶은 뒤 단언한다 — 자격 헤더 · 토큰 · 비밀 · URL을 assert 식 안의 호출 인자로 두지 않는다(build-notes R0-2 · 규칙 §Tests).
@@ -111,6 +122,7 @@ from tests._ia_support import (
     read_ttl,
     scan_keys,
     send,
+    sid_floor_key,
     sid_key,
     signed_webhook,
     sub_key,
@@ -231,10 +243,10 @@ def _client_for(real_client: Callable[[], redis.Redis], url: str) -> Callable[[]
 
 
 def _record() -> Any:
-    """키가 하나도 없는 거부 목록 조회 결과(django_common.auth.DenylistRecord) — 순수 함수 판정용."""
+    """키가 하나도 없는 거부 목록 조회 결과(django_common.auth.DenylistRecord — UD-7a 보정: sid_nbf) — 순수 함수 판정용."""
     from django_common.auth import DenylistRecord
 
-    return DenylistRecord(sub_nbf=None, sid_revoked=False)
+    return DenylistRecord(sub_nbf=None, sid_nbf=None)
 
 
 def _metric_values() -> dict[str, float]:
@@ -249,10 +261,11 @@ def _metric_delta(before: dict[str, float]) -> dict[str, float]:
 
 
 def _written(admin: redis.Redis) -> tuple[int, int, list[str]]:
-    """(폐기 로그 행 수, outbox 행 수, 거부 목록 · 세션 하한 키) — 「쓰기 0」 단언용(app role 연결로 센다)."""
+    """(폐기 로그 행 수, outbox 행 수, 거부 목록 · 세션 하한 · 세션 단위 하한 키) — 「쓰기 0」 단언용(app role 연결로 센다 ·
+    세션 단위 하한은 UD-7a(ㄴ) T-c)."""
     logs = model("session_revocation_log").objects.count()
     events = model("outbox").objects.count()
-    keys = scan_keys(admin, "revoked:*") + scan_keys(admin, floor_key("*"))
+    keys = scan_keys(admin, "revoked:*") + scan_keys(admin, floor_key("*")) + scan_keys(admin, sid_floor_key("*"))
     return logs, events, keys
 
 
@@ -271,6 +284,12 @@ def _revoke(client: Client, headers: dict[str, str], body: Any) -> HttpResponse:
 def _floor_ttl_expected(nbf: int) -> int:
     """하한 키의 기대 TTL = ⌊nbf + 330 + 30 d − DB now⌋(설계 D13 · D29 — DB 시계 기준)."""
     return math.floor(nbf + DENYLIST_TTL_S + LIFETIME_S - db_now().timestamp())
+
+
+def _sid_floor_ttl_expected(nbf: int) -> int:
+    """요청 경로가 쓴 세션 단위 하한의 기대 TTL = ⌊nbf + 330 + 30 d − 프로세스 시각⌋(t086-design.md D15-4 — DB를 읽지 않는
+    쓰기라 프로세스 시계다 · 재적용은 DB 시계)."""
+    return math.floor(nbf + DENYLIST_TTL_S + LIFETIME_S - time.time())
 
 
 def _call_record(
@@ -1342,12 +1361,13 @@ class TestIa21StaticSchema:
 
 @DB
 def test_ia_25_sid_key_unseen_without_sid_claim(jwks_server: JwksInfo, ia73_df_admin: redis.Redis) -> None:
-    """ia-25(한계 고정 — 설계 D9 「pod 경계의 한계」) — `revoked:sid:x`가 있어도 `sid` 클레임이 없는 Bearer(BFF 교환 토큰 꼴)로
-    `/tenants/me` → 200 / 대조: 같은 키 · 같은 사용자에서 `sid` 클레임이 x인 Bearer → 401 session_revoked(키는 살아 있다)."""
+    """ia-25(한계 고정 — 설계 D9 「pod 경계의 한계」) — `revoked:sid:x`(값 = 지금 + 60 — UD-7a 보정: 값은 폐기 시각이다 · 이전
+    값 1)가 있어도 `sid` 클레임이 없는 Bearer(BFF 교환 토큰 꼴)로 `/tenants/me` → 200 / 대조: 같은 키 · 같은 사용자에서 `sid`
+    클레임이 x인 Bearer(iat = 지금 — 값보다 작다) → 401 session_revoked(키는 살아 있다)."""
     sub = "sid-limit-sub"
     insert_row("tenant", id=TENANT_A, slug="tenant-a", display_name="Tenant A", status="active")
     insert_row("tenant_membership", tenant_id=TENANT_A, sub=sub, role="owner")
-    ia73_df_admin.set(sid_key("x"), 1, ex=FLOOR_TTL_S)
+    ia73_df_admin.set(sid_key("x"), int(time.time()) + 60, ex=FLOOR_TTL_S)
     client = Client()
     without_sid = auth_headers(jwks_server, bearer=bearer_token(jwks_server, sub, TENANT_A, sid=None))
     with_sid = auth_headers(jwks_server, bearer=bearer_token(jwks_server, sub, TENANT_A, sid="x"))
@@ -1411,16 +1431,20 @@ def test_ia_27_user_scope_writes_floor(path: str, jwks_server: JwksInfo, ia73_df
 
 
 @DB
-def test_ia_28_session_scope_writes_no_floor(jwks_server: JwksInfo, ia73_df_admin: redis.Redis) -> None:
-    """ia-28 — (a) `sid` 폐기(본인 logout · all_devices false) → `revoked:sid:{sid}`는 있고 하한 키 · `revoked:sub` 없음(sid
-    행은 하한을 만들지 않는다) / (b) 같은 sub에 더 큰 nbf의 `sid` 행(지금 + 50)이 있는 채 사용자 단위 폐기 → 하한 · `revoked:sub`
-    = 사용자 단위 행의 nbf(응답 nbf — sid 행의 더 큰 nbf가 아니다 · 최댓값 조회의 `sid IS NULL`)."""
+def test_ia_28_session_scope_writes_sid_floor_only(jwks_server: JwksInfo, ia73_df_admin: redis.Redis) -> None:
+    """ia-28 — (a) `sid` 폐기(본인 logout · all_devices false) → 키는 정확히 둘 — `revoked:sid:{sid}` = 응답 nbf와 세션 단위
+    하한 `identity-admin:sid-floor:{sid}` = 응답 nbf(UD-7a(ㄴ) T-c — 이전 문구 「sid 행은 하한을 만들지 않는다」). 사용자 단위
+    하한 `session-floor:{sub}` · `revoked:sub` 없음 / (b) 같은 sub에 더 큰 nbf의 `sid` 행(지금 + 50)이 있는 채 사용자 단위 폐기 →
+    하한 · `revoked:sub` = 사용자 단위 행의 nbf(응답 nbf — sid 행의 더 큰 nbf가 아니다 · 최댓값 조회의 `sid IS NULL`)."""
     client = Client()
     single = "ia28-single-sub"
-    single_status = _revoke(
+    single_response = _revoke(
         client, _user_headers(jwks_server, single, sid="ia28-sid"), {"all_devices": False, "reason": "logout"}
-    ).status_code
+    )
+    single_status = single_response.status_code
+    single_nbf = json.loads(single_response.content).get("nbf") if single_status == 202 else None
     single_keys = scan_keys(ia73_df_admin, "*")
+    single_values = (read_int(ia73_df_admin, sid_key("ia28-sid")), read_int(ia73_df_admin, sid_floor_key("ia28-sid")))
     mixed = "ia28-mixed-sub"
     bigger = int(time.time()) + 50
     insert_log_row(mixed, nbf=datetime.fromtimestamp(bigger, UTC), sid="ia28-old-sid", reason="logout")
@@ -1429,7 +1453,8 @@ def test_ia_28_session_scope_writes_no_floor(jwks_server: JwksInfo, ia73_df_admi
     nbf = json.loads(response.content).get("nbf") if mixed_status == 202 else None
     mixed_values = (read_int(ia73_df_admin, floor_key(mixed)), read_int(ia73_df_admin, sub_key(mixed)))
 
-    assert (single_status, single_keys) == (202, [sid_key("ia28-sid")])
+    assert (single_status, single_keys) == (202, sorted([sid_floor_key("ia28-sid"), sid_key("ia28-sid")]))
+    assert single_values == (single_nbf, single_nbf)
     assert mixed_status == 202
     assert isinstance(nbf, int) and nbf < bigger
     assert mixed_values == (nbf, nbf)
@@ -1442,7 +1467,9 @@ def test_ia_28_direct_write_branches(
     """ia-28 옆(S4 1-3 — 설계 D13 「TTL이 1 미만인 키는 보내지 않는다」 · `skipped` 반환 · 직접 호출):
     ① 과거 nbf(지금 - 3600) 사용자 단위(웹훅 경로의 reason · source · event_pk) → after.denylist ok · `revoked:sub` 없음 · 하한 =
     그 nbf · 하한 TTL = ⌊nbf + 330 + 30 d - DB now⌋ ± 5(약 30 d - 3270 s) · 그 호출의 `denylist.set_failed` 0줄
-    ② 만료된 sid 행(nbf = 지금 - 400) → skipped · 그 sid 키 없음 · INFO `denylist.set_skipped` 한 줄 · set_failed 0줄
+    ② 만료된 sid 행(nbf = 지금 - 400) → ok(UD-7a 보정 — 이전 skipped: 두 키 가운데 하나라도 보냈으면 ok이고 세션 단위 하한은
+    30 d를 산다) · 그 sid의 `revoked:sid` 없음(TTL < 1) · 세션 단위 하한 = 그 nbf · TTL = ⌊nbf + 330 + 30 d - 프로세스 시각⌋ ± 5 ·
+    `denylist.set_skipped` 0줄 · set_failed 0줄
     ③ 보존 창 밖 사용자 단위(nbf = 지금 - 31 d)를 DRAGONFLY_URL이 닫힌 포트인 채 → skipped(Dragonfly에 닿았다면 unreachable) ·
     set_failed 0줄."""
     revocation = impl("revocation")
@@ -1469,6 +1496,8 @@ def test_ia_28_direct_write_branches(
         sub="s4-sid-owner", sid=expired_sid, reason="logout", nbf=now - 400, source="revoke"
     )
     expired_keys = scan_keys(ia73_df_admin, sid_key(expired_sid))
+    expired_floor = read_int(ia73_df_admin, sid_floor_key(expired_sid))
+    expired_drift = abs(read_ttl(ia73_df_admin, sid_floor_key(expired_sid)) - _sid_floor_ttl_expected(now - 400))
     url, _ = _pod_like_url(closed_port())
     settings.DRAGONFLY_URL = url
     old, old_records = call(sub=old_sub, sid=None, reason="logout_all", nbf=now - LIFETIME_S - 86400, source="revoke")
@@ -1476,11 +1505,13 @@ def test_ia_28_direct_write_branches(
     set_failed = [len(log_events(records, SET_FAILED)) for records in (past_records, expired_records, old_records)]
     skipped_lines = [(line.get("level"), line.get("event")) for line in log_events(expired_records, SET_SKIPPED)]
 
-    assert results == ("ok", "skipped", "skipped")
+    assert results == ("ok", "ok", "skipped")
     assert past_keys == (None, past_nbf)
     assert past_drift <= FLOOR_TTL_TOLERANCE_S, f"하한 TTL 차이 {past_drift}"
     assert expired_keys == []
-    assert skipped_lines == [("info", SET_SKIPPED)]
+    assert expired_floor == now - 400
+    assert expired_drift <= FLOOR_TTL_TOLERANCE_S, f"세션 단위 하한 TTL 차이 {expired_drift}"
+    assert skipped_lines == []
     assert set_failed == [0, 0, 0]
 
 
@@ -1639,35 +1670,36 @@ def test_ia_29_floor_verdict_table(jwks_server: JwksInfo, ia73_df_admin: redis.R
 def test_ia_30_a_first_lookup_failure_skips_floor(
     jwks_server: JwksInfo, settings: SettingsWrapper, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """ia-30 (a) — `session_floor.read_floor`를 가로채 센다: 정상 요청 → 200 · 1회(가로채기가 호출 지점에 닿는다) /
-    DRAGONFLY_URL = 블랙홀 포트 → 503 denylist_unavailable · 하한 조회 0회(첫 조회가 실패하면 둘째를 하지 않는다) · 경과 1 s
-    미만. 뷰 모듈을 덮기 전에 먼저 적재한다 — import 때 `read_floor`를 이름으로 묶는 구현(이음매 규칙 위반)이 덮은 함수를 묶어
-    정상 요청의 1회 단언을 공허하게 지나지 않게(노드 단독 실행에서는 첫 요청이 urlconf를 처음 적재한다). 두 응답(200 · 거부 목록
-    조회 실패의 503) 모두 `Cache-Control: no-store`(R1)."""
+    """ia-30 (a) — `session_floor.read_floor`를 가로채 센다(가로채기는 새 서명 `read_floor(sub, sid=None)` → (하한, 세션 단위
+    하한) 튜플을 따른다 — UD-7a(ㄴ) · 이음매는 그대로 모듈 속성): 정상 요청(sid 질의 있음) → 200 · 1회 · 인자 (sub, sid)(뷰가 sid를
+    넘긴다 — 가로채기가 호출 지점에 닿는다) / DRAGONFLY_URL = 블랙홀 포트 → 503 denylist_unavailable · 하한 조회 0회(첫 조회가
+    실패하면 둘째를 하지 않는다) · 경과 1 s 미만. 뷰 모듈을 덮기 전에 먼저 적재한다 — import 때 `read_floor`를 이름으로 묶는
+    구현(이음매 규칙 위반)이 덮은 함수를 묶어 정상 요청의 1회 단언을 공허하게 지나지 않게(노드 단독 실행에서는 첫 요청이 urlconf를
+    처음 적재한다). 두 응답(200 · 거부 목록 조회 실패의 503) 모두 `Cache-Control: no-store`(R1)."""
     impl("identity_api")
     floor_module = impl("session_floor")
     original = floor_module.read_floor
-    calls: list[str] = []
+    calls: list[tuple[str, str | None]] = []
 
-    def counting(sub: str) -> Any:
-        calls.append(sub)
-        return original(sub)
+    def counting(sub: str, sid: str | None = None) -> Any:
+        calls.append((sub, sid))
+        return original(sub, sid)
 
     monkeypatch.setattr(floor_module, "read_floor", counting)
     client = Client()
     headers = auth_headers(jwks_server)
-    path = _check_path("first-fail-sub", int(time.time()))
+    path = _check_path("first-fail-sub", int(time.time()), "first-fail-sid")
     normal_response = send(client, "get", path, headers)
     normal = _outcome(normal_response)
-    normal_calls = len(calls)
+    normal_calls = list(calls)
     with blackhole() as port:
         url, _ = _pod_like_url(port)
         settings.DRAGONFLY_URL = url
         response, elapsed = timed(lambda: client.get(path, headers=headers), HANG_LIMIT_S)
-    down_calls = len(calls) - normal_calls
+    down_calls = len(calls) - len(normal_calls)
     caching = (normal_response.get("Cache-Control"), response.get("Cache-Control"))
 
-    assert (normal, normal_calls) == ((200, {"active": True}), 1)
+    assert (normal, normal_calls) == ((200, {"active": True}), [("first-fail-sub", "first-fail-sid")])
     assert_problem(response, 503, "denylist_unavailable")
     assert down_calls == 0
     assert elapsed < VERDICT_LIMIT_S, f"판정 {elapsed:.3f} s"
@@ -2060,3 +2092,106 @@ def test_ia_39_bc_db_clock_only_on_command(
     assert (refused, names_reason, command_rows) == ("CommandError", True, 0)
     assert command_calls >= 1, f"db_now_epoch 호출 {command_calls}"
     assert (revoke_status, hook_status, http_calls) == (202, 202, 0)
+
+
+# --- ia-42 · 43 · 44(UD-7a(ㄴ) — t086-design.md D15 · 세션 단위 폐기 시각 · 세션 단위 하한) ---------------------------------------
+
+
+def _device_logout(client: Client, jwks: JwksInfo, sub: str, sid: str) -> int:
+    """본인 이 기기 로그아웃(all_devices false · logout · 토큰 sid) 한 번 — 202여야 하고 응답 nbf를 준다(아니면 유한한 실패)."""
+    response = _revoke(client, _user_headers(jwks, sub, sid=sid), {"all_devices": False, "reason": "logout"})
+    if response.status_code != 202:
+        pytest.fail(f"이 기기 로그아웃이 202가 아니다: {response.status_code}", pytrace=False)
+    nbf = json.loads(response.content).get("nbf")
+    if not isinstance(nbf, int) or isinstance(nbf, bool):
+        pytest.fail(f"응답 nbf가 정수가 아니다: {type(nbf).__name__}", pytrace=False)
+    return nbf
+
+
+@DB
+def test_ia_42_same_sid_session_after_device_logout_is_active(jwks_server: JwksInfo) -> None:
+    """ia-42(UD-7a(ㄴ) — W35 · D15-6) — 이 기기 로그아웃(sid S · 응답 nbf n) 뒤 `/session/check?sub&iat&sid=S`: iat = n − 5 →
+    `{"active": false}`(로그아웃 전에 시작한 그 세션) · iat = n → `{"active": true}`(값 = iat는 통과) · iat = n + 3 →
+    `{"active": true}`(로그아웃 뒤 같은 Authentik 세션 — 같은 sid — 로 다시 로그인해 시작한 BFF 세션). 존재 판정(이전 값 1)은
+    330 s 동안 셋 다 inactive였다(W35 — t073-design.md:2532). 응답에 nbf 키가 없다(revoked:sub가 없다)."""
+    sub, sid = "ia42-sub", "ia42-sid"
+    client = Client()
+    n = _device_logout(client, jwks_server, sub, sid)
+    headers = auth_headers(jwks_server)
+    outcomes = {
+        offset: _outcome(send(client, "get", _check_path(sub, n + offset, sid), headers)) for offset in (-5, 0, 3)
+    }
+
+    assert outcomes == {-5: (200, {"active": False}), 0: (200, {"active": True}), 3: (200, {"active": True})}
+
+
+@DB
+def test_ia_43_sid_floor_alone_keeps_device_logout_final(jwks_server: JwksInfo, ia73_df_admin: redis.Redis) -> None:
+    """ia-43(UD-7a(ㄴ) — E13 · T-c) — 이 기기 로그아웃(sid S · nbf n) 뒤 `revoked:sid:S`를 지운다(330 s가 지난 꼴 — RFC 7009가
+    실패해 refresh가 살아 있는 복사 쿠키): 세션 단위 하한 `identity-admin:sid-floor:S`만으로 iat = n − 5 → `{"active": false}` ·
+    iat = n → `{"active": true}`(하한 = iat는 통과) / 대조: 하한 키까지 지우면 iat = n − 5 → `{"active": true}`(앞의 inactive가 하한
+    키에서 왔다)."""
+    sub, sid = "ia43-sub", "ia43-sid"
+    client = Client()
+    n = _device_logout(client, jwks_server, sub, sid)
+    headers = auth_headers(jwks_server)
+    ia73_df_admin.delete(sid_key(sid))
+    floor_only = {
+        offset: _outcome(send(client, "get", _check_path(sub, n + offset, sid), headers)) for offset in (-5, 0)
+    }
+    ia73_df_admin.delete(sid_floor_key(sid))
+    without_floor = _outcome(send(client, "get", _check_path(sub, n - 5, sid), headers))
+
+    assert floor_only == {-5: (200, {"active": False}), 0: (200, {"active": True})}
+    assert without_floor == (200, {"active": True})
+
+
+def test_ia_44_sid_floor_value_canonical_or_503(
+    jwks_server: JwksInfo, ia73_df_admin: redis.Redis, monkeypatch: pytest.MonkeyPatch, log_lines: LogLines
+) -> None:
+    """ia-44(UD-7a(ㄴ) — D15-2 「값 판독」) — 세션 단위 하한 값은 정규 꼴(ASCII 숫자 1-19자)만 판정에 쓴다: `-5` · `x` · 20자리 →
+    503 denylist_unavailable(int()로 읽으면 음수가 「하한 없음」처럼 통과한다) · 사례마다 WARNING `session_floor.lookup_failed`
+    한 줄 · `Cache-Control: no-store` / sid 질의가 없는 요청은 그 키를 보지 않는다(값이 `-5`여도 200 active) / 양성: 정규 꼴 값
+    iat + 1 → `{"active": false}` / 첫 조회 실패면 하한 조회 0: `revoked:sid:S` 값이 정규 꼴이 아니면(`x`) 거부 목록 조회가
+    503이고 `session_floor.read_floor` 호출 0회(가로채기는 인자를 그대로 넘긴다 — 서명과 무관하게 센다)."""
+    sub, sid, iat = "ia44-sub", "ia44-sid", int(time.time())
+    client = Client()
+    headers = auth_headers(jwks_server)
+    with_sid, without_sid = _check_path(sub, iat, sid), _check_path(sub, iat)
+    unavailable = (503, "denylist-unavailable")
+    cases = {"negative": "-5", "word": "x", "20-digits": "1" + "0" * 19}
+    outcomes: dict[str, tuple[int, Any]] = {}
+    caching: dict[str, str | None] = {}
+    warned: dict[str, int] = {}
+    for case, value in cases.items():
+        ia73_df_admin.set(sid_floor_key(sid), value, ex=FLOOR_TTL_S)
+        log_lines()
+        response = send(client, "get", with_sid, headers)
+        warned[case] = len(log_events(log_lines(), WARNING_FLOOR))
+        outcomes[case] = _outcome(response)
+        caching[case] = response.get("Cache-Control")
+    ia73_df_admin.set(sid_floor_key(sid), "-5", ex=FLOOR_TTL_S)
+    sidless = _outcome(send(client, "get", without_sid, headers))
+    ia73_df_admin.set(sid_floor_key(sid), iat + 1, ex=FLOOR_TTL_S)
+    canonical = _outcome(send(client, "get", with_sid, headers))
+    impl("identity_api")
+    floor_module = impl("session_floor")
+    original = floor_module.read_floor
+    calls: list[tuple[Any, ...]] = []
+
+    def counting(*args: Any, **kwargs: Any) -> Any:
+        calls.append(args)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(floor_module, "read_floor", counting)
+    ia73_df_admin.delete(sid_floor_key(sid))
+    ia73_df_admin.set(sid_key(sid), "x", ex=FLOOR_TTL_S)
+    first_failed = _outcome(send(client, "get", with_sid, headers))
+    floor_calls = len(calls)
+
+    assert outcomes == dict.fromkeys(cases, unavailable)
+    assert warned == dict.fromkeys(cases, 1)
+    assert caching == dict.fromkeys(cases, NO_STORE)
+    assert sidless == (200, {"active": True})
+    assert canonical == (200, {"active": False})
+    assert (first_failed, floor_calls) == (unavailable, 0)
