@@ -5749,3 +5749,18 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
 
 - **run-all**(컨트롤러 · KUBECONFIG 없음 · 17:00:04–18:01:54 KST): `pwsh -NoProfile -File tests/run-all.ps1` → `1 FAILED` · exit 1. FAIL = `platform` ← `infra tests`(`35 passed, 27 failed` — `tofu plan`이 변수 `budget_alert_email` 값 없음으로 멈춘다 · T076 마감 run-all과 같은 기준선). 그 밖 슬롯 전부 PASS — `identity-harness` · `e2e-selftest` · `agent-layer`(79) · `codex-parity` · `ci-gitleaks` · `specs-index-fresh`(재생성 변경 0) 등 · 작업 트리 변경 0. 사본 `.superpowers/t086/evidence/run-all-20261126.log`.
 - push = 사용자 확인(「run-all 뒤 push」) — `55de003` · `51e9b74` · 과제 커밋 다섯 · 이 기록 커밋.
+
+## T090 (2026-11-26 조사 · 11-27 설계 확정 — US5 구현 · `packages/content` 로더(schema · mdx · loader · index) → T086 48 PASS · 세션 모델 Opus 5.5)
+
+- **설계 정본** = `design/t090-design.md`(r2 본문 + §6 확정 보정). 컨트롤러 결정 기록 = `.superpowers/t090/decisions-controller.md`(gitignore) · 조사 · 비판 · 검증 = `.superpowers/t090/{research,design,reviews}/` · 증거 = `.superpowers/t090/evidence/`.
+- **경과**(워크플로)
+  - 조사 3(계약 · 의존 · 통합) → 초안 r0 → 비판 2렌즈(`wf_128be064-a32` — 둘 다 approve_with_fixes · HIGH 0).
+  - 사전 해석(저장소 밖 사본 · `--lockfile-only` — 코드 실행 0): 정확 기대 lock(+1020/−9) · 새 패키지 110 = 비판 B 정확 목록과 name@version + sha512 110/110.
+  - 설계 r1 + 검증 2렌즈 → r2 + r2 검증(`wf_a012c1b3-72a`). r1 검증: A approve_with_fixes · B revise(MEDIUM 1 = 링크 따라가기 변이를 잡는 사례가 없음). r2 검증: approve_with_fixes · HIGH 0 · MEDIUM 2. 판정 정규식이 굵은 표기 `**MEDIUM**`을 놓쳐 r2 단계가 한 번 건너뛰어졌고, 정규식을 고쳐 같은 run을 이어서 돌렸다.
+  - ① 실물 remark 대조(탐침 — 로더 코드 전): T086 기대값 전부 일치(ld-13 EXPECTED 30행 · 정정 노트 5 꼴 일곱 · 실제 노트 후보 0 · ld-1 · ld-8 · 울타리 줄 LF/CRLF/CR) → 시험 고치기 0. 설계 어긋남 둘(산문 `xmpp:` 자동 링크 · 위치 없는 노드의 줄)은 §6 확정 보정으로 넣었다.
+- **사용자 결정(2026-11-27)**
+  - **〔90-1〕 = 모듈 메모**: 과제 문면 「`React.cache` 1회」(출처 research/2026-08-28-brainstorm-decisions.md:57 — v1 「페이지당 3회 재스캔」 방지)를 생성 단계의 모듈 수준 Map(키 = 해석된 root · 컬렉션)으로 구현한다. react 의존 0 · 코드 주석으로 문면과 잇는다 · report 편차.
+  - **설치 승인 = 권고 세트**: 런타임 12 정확 판 + dev ajv 둘. 관문 = 사전 해석 lock과 바이트 동일 · frozen 두 번 · `@jt/events` 267 · content 빨강 원인 그대로 → 2026-11-27 10:15 KST 설치 · 관문 전부 충족.
+- **컨트롤러 결정**(마감 보고에서 한 줄씩 알림): 〔90-2〕 스캔 = `readdir`(문면 「`glob`」 — 편차 후보) · 〔90-3〕 blog · projects 잠정 계약(한쪽만 `change` = `variant-mismatch`) · B-5 http(s) URL userinfo 거부 · A-1 정규 파일이 아닌 `*.mdx` = `not-regular`(따라가지 않음) · A-9 CRLF 정상 · 따옴표 키 허용 · V2-1 JSON Schema url `format: "uri"` 되살림 · ① 산문 `xmpp:` 허용(실측 사실) · 위치 없는 노드 줄 대체 규칙.
+- **나중에 여쭐 것**: B-13(pnpm `trustPolicy` · `blockExoticSubdeps` — T090 밖 별도 커밋) — 마감 보고 때.
+- **빌드 조각**(설계 D12 · D15): ⓪ 기반(컨트롤러 — 커밋 ②) → ① 실물 대조(끝) → ② schema.ts · ③ mdx.ts · ④ loader.ts + index.ts(web-builder opus · 조각마다 빨강 → 초록) → ⑤ 변이(사본) → 문서 보정 · run-all 슬롯 → 리뷰 3렌즈 → 컨트롤러 빨강 · 초록 관찰 → 커밋 ③ · tick 89/119.
