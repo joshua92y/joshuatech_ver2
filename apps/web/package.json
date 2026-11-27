@@ -1,0 +1,12 @@
+{
+  "name": "@jt/web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Next.js web app (US5) — test-first skeleton for T088 · T089; T091 scaffolds the app",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.5"
+  }
+}

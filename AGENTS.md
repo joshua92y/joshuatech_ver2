@@ -32,6 +32,7 @@ Codex does not interpret the `paths:` YAML in `.claude/rules/*.md`. Codex MUST, 
 | `.claude/rules/content.md` | `content/**` |
 | `.claude/rules/django-pod.md` | `apps/*/pyproject.toml`, `apps/*/*.py`, `apps/*/**/*.py`, `apps/*/Dockerfile`, `packages/django-common/**`, `templates/django-pod/**` |
 | `.claude/rules/docs.md` | `docs/**` |
+| `.claude/rules/e2e.md` | `e2e/**`, `playwright.config.ts` |
 | `.claude/rules/events.md` | `packages/events/**` |
 | `.claude/rules/fastapi-pod.md` | `templates/fastapi-pod/**`, `packages/fastapi-common/**` |
 | `.claude/rules/infra.md` | `infra/**`, `scripts/**` |
@@ -48,6 +49,11 @@ Codex does not interpret the `paths:` YAML in `.claude/rules/*.md`. Codex MUST, 
 | Codex destructive-command handler contract | `pwsh -NoProfile -File tests/hooks/run-codex-command-policy-tests.ps1` |
 | Codex adapter parity | `pwsh -NoProfile -File tests/agents/codex-parity.tests.ps1` |
 | All repository checks | `pwsh -NoProfile -File tests/run-all.ps1` |
+| Content loader tests (vitest) | `pnpm --filter @jt/content --fail-if-no-match test` — without `--fail-if-no-match` a filter that matches nothing exits 0 |
+| Content front matter JSON Schema | `pnpm --filter @jt/content --fail-if-no-match schema` — regenerates `packages/content/schemas/study.schema.json` from `packages/content/src/schema.ts`; the content vitest freshness case fails until it is rerun and committed |
+| Web app tests (vitest — BFF gateway, bundle budget) | `pnpm --filter @jt/web --fail-if-no-match test` |
+| E2E `site` project (T087) | `node e2e/lib/launch.mjs site` with `BASE_URL` and `JT_E2E_SITE_MODE` (`local` or `prod`) set; other launcher modes in `e2e/README.md` |
+| E2E `site` red observation (T087) | `node e2e/lib/launch.mjs site-red` — a closed loopback port; red = `[gate] site-absent until T091` |
 | Regenerate `specs/README.md` | `pwsh -NoProfile -File scripts/update-specs-index.ps1` — if run-all `scripts`/`specs-index-fresh` fails: run it, then commit `specs/README.md`; on `error: <dir>/spec.md: …`: fix that spec header and rerun |
 | Spec Kit CLI (init / upgrade / extensions) | `specify` from `~/.local/bin` (install via `uv`); procedure in `docs/runbooks/spec-kit-upgrade.md` |
 

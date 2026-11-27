@@ -80,6 +80,36 @@ $c = $LASTEXITCODE
 Write-Host ($o.TrimEnd())
 Check 'kafka-harness' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see kafka harness test output above"
 
+# 1b2a5. identity-harness (T078) — tests/scripts/identity-tests.tests.ps1: tests/platform/identity.tests.ps1 단위 테스트(US4 신원 · Access 경계 · 교환 · authz-assert 단언;
+#        가짜 kubectl · curl 심 · 실제 클러스터 · 공개 호스트 접근 없음 · 약 1.5분). 1b2a1과 같은 규율(요약 줄 'N passed, 0 failed' · 빈 출력 · 크래시 = FAIL).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/identity-tests.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'identity-harness' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see identity harness test output above"
+
+# 1b2a6. e2e-selftest (T077 · T079) — node e2e/lib/launch.mjs selftest: Playwright 브라우저 0 selftest(config-hygiene · static-gate · tracked-files ·
+#        순수 함수 · scan-needle 양성 대조 — 공개 호스트 · 자격 0). @playwright/test가 없으면 런처가 첫 줄 'SKIP e2e-selftest tests -- ' + exit 0으로 끝난다 —
+#        그때만 SKIP 허용(1b2b와 같은 규율). 그 밖에는 exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS.
+$o = node e2e/lib/launch.mjs selftest 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+if ($c -eq 0 -and $o -match '\ASKIP e2e-selftest tests -- ') { Write-Host 'SKIP e2e-selftest -- allowed (@playwright/test not installed; see SKIP line above)' }
+else { Check 'e2e-selftest' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see e2e selftest output above" }
+
+# 1b2a7. content (T090) — pnpm --filter @jt/content --fail-if-no-match test: 콘텐츠 로더 vitest(T086 계약 48 + T090 자기 시험 · 픽스처 · 실제 노트 2편 · 네트워크 0).
+#        packages/content/node_modules/vitest가 없으면 SKIP(설치 전 — 1b2a6과 같은 규율). pnpm이 PATH에 없으면 FAIL 줄(가드 없이 부르면
+#        $ErrorActionPreference = 'Stop'이 run-all 전체를 멈춘다). 그 밖에는 exit 0 이면서 요약 줄 'Tests  N passed (N)'(실패 · 건너뜀 0)이 있어야 PASS.
+#        판정 전에 ANSI 이스케이프(CSI)를 지운다 — 환경에 FORCE_COLOR가 있으면 vitest 요약 줄이 색 코드와 섞여 나와 거짓 FAIL이 된다(T090 리뷰 C RC-3).
+if (-not (Test-Path 'packages/content/node_modules/vitest')) { Write-Host 'SKIP content -- allowed (packages/content dependencies not installed)' }
+elseif (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) { Check 'content' $false 'pnpm not found on PATH' }
+else {
+    $o = pnpm --filter @jt/content --fail-if-no-match test 2>&1 | Out-String
+    $c = $LASTEXITCODE
+    Write-Host ($o.TrimEnd())
+    $plain = $o -replace '\x1b\[[0-?]*[ -/]*[@-~]', ''
+    Check 'content' ($c -eq 0 -and $plain -match '(?m)^\s*Tests\s+(\d+) passed \(\1\)\s*$') "exit=$c; see content vitest output above"
+}
+
 # 1b2b. backup-verify (T048) — tests/scripts/backup-verify.tests.ps1: scripts/backup-verify.ps1 하네스(진짜 age · age-keygen · tar · vault ·
 #       파이썬 sqlite3 + 가짜 oci 심 · 실행마다 임시 픽스처 · 실제 OCI · 클러스터 · 개인키 접근 없음 · 약 3분). 하네스가 설정됐을 때 요약 줄에 접미를 붙이는 환경 변수가 하나 더 있다(BACKUP_VERIFY_SCRIPT).
 #       도구가 없으면 하네스가 첫 줄 'SKIP backup-verify tests -- ' + exit 0으로 끝난다 — 그때만 SKIP 허용(1b3과 같은 규율).
@@ -135,6 +165,23 @@ Write-Host ($o.TrimEnd())
 Check 'ci-publish-pod' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see publish-pod harness output above"
 $m = [regex]::Match($o, '(?m)^(\d+) skipped\b')
 if ($m.Success -and [int]$m.Groups[1].Value -gt 0) { Write-Host "NOTE ci-publish-pod -- $($m.Groups[1].Value) execution cases skipped (see SKIP lines above)" }
+
+# 1b7. gitops-base-sync (T075) — tests/scripts/gitops-base-sync.tests.ps1: 모노레포 refs/remotes/origin/main의 apps/<pod>/deploy/base ↔ 형제 클론
+#       ../platform-gitops(주 체크아웃의 형제 · remote.origin.url = github.com의 joshua92y/platform-gitops · 부분 클론 아님)
+#       refs/remotes/origin/main의 apps/<pod>/base 대조(항목 1개 이상 + 이름 집합 · blob id · mode 정확 일치 · 동기화 표의 pod마다 · fetch
+#       없음 · 대조한 두 커밋 출력) + 대조 함수의 자기 시험(gbs-* — 가짜 git 저장소 · 네트워크 불필요 · 약 2분). 모노레포 작업 트리 ≠
+#       모노레포 origin/main은 INFO 「발행 대기」 줄뿐이다(FAIL 아님).
+#       두 클론이 낡았으면 이 슬롯 전에 fetch한다(하네스는 fetch하지 않는다).
+#       판정은 1b6과 같은 양성 증거 규율: exit 0 이면서 요약 줄 'N passed, 0 failed'가 있어야 PASS(빈 출력 · 크래시 = FAIL). 선택 실행
+#       (GITOPS_BASE_SYNC_TESTS_ONLY)이면 요약 줄 끝에 접미가 붙어 이 판정을 통과하지 못한다. 형제 클론이 없을 때만 그 pod 행이 SKIP이고
+#       하네스가 'N skipped' 줄을 찍는다 — 판정 줄과 별도로 NOTE 한 줄을 찍는다(1b6과 같은 꼴). 모노레포 PR CI에는 두지 않는다 — 순서가
+#       이미지 → 매니페스트라서 과제 마감의 이 슬롯이 강제한다(설계 design/t075-design.md D2).
+$o = pwsh -NoProfile -ExecutionPolicy Bypass -File tests/scripts/gitops-base-sync.tests.ps1 2>&1 | Out-String
+$c = $LASTEXITCODE
+Write-Host ($o.TrimEnd())
+Check 'gitops-base-sync' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see gitops-base-sync harness output above"
+$m = [regex]::Match($o, '(?m)^(\d+) skipped\b')
+if ($m.Success -and [int]$m.Groups[1].Value -gt 0) { Write-Host "NOTE gitops-base-sync -- $($m.Groups[1].Value) pod(s) skipped: sibling clone ../platform-gitops not found (see SKIP lines above)" }
 
 # 1c. specs index freshness — 이 검사는 낡은 인덱스를 발견하면 specs/README.md를 갱신하는 부작용이 있다(FAIL이면 diff를 검토하고 커밋한다)
 $o = pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/update-specs-index.ps1 2>&1 | Out-String

@@ -15,13 +15,13 @@ The controller gives you: one task slice from `tasks.md` and only the spec/plan 
 
 ## Scope & rules
 - `.claude/rules/web.md` applies to every path you touch; read it before your first edit and follow its contracts (structure, naming, styling, data-access boundaries).
-- Your territory is the web workspace (`apps/web/**` and its packages) plus its test paths. Anything outside — API pods, infra, specs, reviews — is out of scope: report the need, do not edit.
+- Your territory is the web workspace (`apps/web/**` and its packages) plus its test paths, and the root Playwright tree (`e2e/**` and `playwright.config.ts`, where `.claude/rules/e2e.md` applies). Anything outside — API pods, infra, specs, reviews — is out of scope: report the need, do not edit.
 - You are a builder, not the tester: the repository `tester` agent owns E2E user-story verification and its reports. Never claim its role or write its reports.
 
 ## Workflow
 1. Restate the task slice and its acceptance criteria in one or two lines.
 2. Follow superpowers **test-driven-development**: write the failing test first (Vitest/Jest unit or component test under a test path), watch it fail, then implement until it passes.
-3. For browser-visible behavior adjacent to E2E, add or extend a **Playwright** spec under `apps/web/e2e/` (or the workspace's configured e2e dir) so the tester has a runnable scenario — but full user-story E2E remains the tester's job.
+3. For browser-visible behavior adjacent to E2E, add or extend a **Playwright** spec under the root `e2e/` (configured by the root `playwright.config.ts`, run through `node e2e/lib/launch.mjs`) so the tester has a runnable scenario — but full user-story E2E remains the tester's job.
 4. Run the workspace checks the slice names (typecheck, lint, unit tests) and paste real output; no green claim without a run.
 5. Report: files changed, test evidence, and anything out of scope you discovered.
 

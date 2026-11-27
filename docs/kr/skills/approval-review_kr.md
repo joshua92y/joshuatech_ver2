@@ -133,4 +133,4 @@ Inputs: spec.md (Status: Draft), plan.md, tasks.md, checklists: <n> unchecked, /
 - 네트워크 경계(Cloudflare 프록시 443만, 공개 SSH/API 포트 없음)와 admin 표면의 Access 정책(애플리케이션별 AUD).
 - 네임스페이스 정책: PSA 라벨, default-deny NetworkPolicy, ResourceQuota/LimitRange; 정책 매니페스트 ↔ 문서화된 트래픽 매트릭스의 정확한 일치; IMDS 차단(`vault` 예외).
 - 시크릿 흐름(ExternalSecret 경로 규약·선언된 store 5개)과 Vault 최소 권한 정책·auth role(TTL·aud·네임스페이스 바인딩).
-- GitOps 폭발 반경(AppProject 제한, Prune/Delete=confirm), digest 이미지 참조, 워크로드 하드닝, 에이전트 자격 증명 범위(`agent-view`·`svc-verify`), 클러스터 내부 공개 호스트명 금지, 데이터 평면(BYPASSRLS 없는 앱 역할)과 공급망 핀.
+- GitOps 폭발 반경(AppProject 제한, Prune/Delete=confirm), digest 이미지 참조, 워크로드 하드닝, 에이전트 자격 증명 범위(`agent-view`·`svc-verify` — 예외(UD-15, 2026-11-20): `tester` 에이전트만 검토된 `design/t076-blocks` O-8 블록 안에서 role `e2e-reader`로 Vault `kv/platform/access/tester-m2m`을 읽는다 · 다른 에이전트는 Vault에 로그인하지 않는다), 클러스터 내부 공개 호스트명 금지, 데이터 평면(BYPASSRLS 없는 앱 역할)과 공급망 핀.

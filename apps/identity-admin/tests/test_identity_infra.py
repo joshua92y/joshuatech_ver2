@@ -23,7 +23,9 @@
   글자를 뺀 값은 통과) ⑩ 서비스 기준 URL의 netloc = 호스트[:포트](F7): 퍼센트 인코딩 · 빈 포트 · 포트 0 · 범위 밖 포트 ·
   IPv6 리터럴 · `;` · 역슬래시 → 그 이름만 거부(svc 이름 · 루프백 · 대문자 스킴과 호스트는 통과).
 - ia-24(D24 · 정적): compose/dragonfly-dev.acl의 `USER identity-admin` 줄 규칙 토큰 == conftest DRAGONFLY_USERS[POD_NAME]에서
-  resetchannels를 뺀 것 == contracts/denylist.md §ACL identity-admin 행(시험 상수 — specs 경로를 읽지 않는다).
+  resetchannels를 뺀 것 == tests/test_api.py의 T066 사본 IA_DRAGONFLY_RULES(AST로 읽는다 · T075 수정 라운드 1) == contracts/denylist.md
+  §ACL identity-admin 행(시험 상수 — specs 경로를 읽지 않는다) · aclfile 전체 == 세 줄 정본(default · admin · identity-admin 줄 — 순서 ·
+  LF · 끝 LF 하나 · 다른 USER 줄 0 · T075 수정 라운드 2 RB2-1).
 - 손 수정 ⑩의 단언 재작성 등록(fix-6 K4 · 정적): tests._ia_support · tests._ia_fakes가 pytest 단언 재작성을 받았다(모듈 전역에
   `@pytest_ar` — 템플릿 tests/test_logging.py의 REWRITTEN_HELPERS 단언과 같은 방식).
 - ia-18(D23 · 조각 ⑥ · 정적 — 파일을 pyyaml로 읽는다 · DB · Docker 없음): deploy/base/externalsecret-env.yaml의 `data[0..7]`이 순정
@@ -73,6 +75,7 @@ _ia_support.model). 실패 문구는 cp949로 쓸 수 있는 글자만 쓴다. �
 
 from __future__ import annotations
 
+import ast
 import http.client
 import importlib
 import io
@@ -196,8 +199,19 @@ SERVICE_URL_ACCEPTED = (
 # --- ia-24 상수 ---------------------------------------------------------------------------------------------------------
 
 ACL_FILE = POD_ROOT / "compose" / "dragonfly-dev.acl"
-# contracts/denylist.md §ACL identity-admin 행 그대로(T066 IA_DRAGONFLY_RULES와 같은 값 — 시험이 specs 경로를 읽지 않게).
-IA_DRAGONFLY_RULES = ("~revoked:*", "~identity-admin:*", "+@all")
+# T066 수용 시험의 ACL 사용자(identity-admin-test) 규칙 사본 — ia-24가 AST로 읽어 같은 값인지 본다(T075 수정 라운드 1 RB-6 · import하지 않는다).
+TEST_API_FILE = POD_ROOT / "tests" / "test_api.py"
+# contracts/denylist.md §ACL identity-admin 행 그대로(T066 IA_DRAGONFLY_RULES와 같은 값 — 시험이 specs 경로를 읽지 않게). 꼬리
+# `-@admin -@dangerous -client`는 T075 UD-9(B2 — ACL SETUSER · CONFIG · FLUSHALL · CLIENT KILL 등을 막는다).
+IA_DRAGONFLY_RULES = ("~revoked:*", "~identity-admin:*", "+@all", "-@admin", "-@dangerous", "-client")
+# compose aclfile 전체 정본(T075 수정 라운드 2 RB2-1 — 템플릿 gen-39 check_aclfile_exact의 identity-admin 짝): default 줄(꺼짐 · AUTH ·
+# HELLO만) · admin 줄(시험 픽스처용 슈퍼유저 · 채널 &*) · identity-admin 줄(IA_DRAGONFLY_RULES) — 이 순서 · LF · 끝 LF 하나 · 다른 USER 줄 0.
+# default 줄을 지우거나 켜거나(`ON nopass ~* &* +@all`) 슈퍼유저 줄을 더하면 인증 없이 모든 명령이 열린다.
+IA_ACLFILE_TEXT = (
+    "USER default OFF +auth +hello\n"
+    "USER admin ON nopass ~* &* +@all\n"
+    f"USER {POD_NAME} ON nopass {' '.join(IA_DRAGONFLY_RULES)}\n"
+)
 # 손 수정 ⑩(tests/conftest.py)이 pytest 단언 재작성에 더한 ia 도우미 모듈 — 재작성된 모듈에만 pytest가 넣는 전역 이름 @pytest_ar가
 # 있다(템플릿 tests/test_logging.py의 REWRITTEN_HELPERS와 같은 방식 · fix-6 K4).
 IA_REWRITTEN_HELPERS = ("tests._ia_support", "tests._ia_fakes")
@@ -610,9 +624,25 @@ def test_ia_23_service_base_url_host_port(name: str) -> None:
 # --- ia-24 ------------------------------------------------------------------------------------------------------------
 
 
+def _module_constant(path: Path, name: str) -> object:
+    """모듈 최상위 `name = <리터럴>`(또는 주석 달린 대입) 하나의 값 — ast.literal_eval. 대입이 정확히 하나가 아니면 AssertionError."""
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=path.name)
+    values = [
+        node.value
+        for node in tree.body
+        if (isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets))
+        or (isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == name and node.value is not None)
+    ]
+    assert len(values) == 1, f"{path.name}: 최상위 {name} 대입 수 {len(values)}"
+    return ast.literal_eval(values[0])
+
+
 def test_ia_24_dragonfly_acl_rules_match_contract() -> None:
     """ia-24 — compose aclfile의 `USER identity-admin ON nopass <규칙>` 줄이 정확히 하나이고 그 규칙 토큰 == conftest
-    DRAGONFLY_USERS[POD_NAME]에서 resetchannels(첫 토큰)를 뺀 것 == contracts/denylist.md §ACL identity-admin 행."""
+    DRAGONFLY_USERS[POD_NAME]에서 resetchannels(첫 토큰)를 뺀 것 == tests/test_api.py의 T066 사본 IA_DRAGONFLY_RULES(AST — 수정 라운드 1
+    RB-6: 그 사본만 옛 규칙이면 identity-admin-test 사용자가 B2 꼬리 없이 만들어져 시험이 운영보다 넓은 권한으로 돈다) == contracts/denylist.md
+    §ACL identity-admin 행. 수정 라운드 2 RB2-1: aclfile 전체(줄 끝 그대로)가 세 줄 정본 IA_ACLFILE_TEXT(default · admin · identity-admin
+    줄 — 순서 · LF · 끝 LF 하나 · 다른 USER 줄 0)와 같다."""
     conftest = importlib.import_module("tests.conftest")
     lines = ACL_FILE.read_text(encoding="utf-8").splitlines()
     users = [line.split() for line in lines if line.split()[:2] == ["USER", POD_NAME]]
@@ -621,8 +651,12 @@ def test_ia_24_dragonfly_acl_rules_match_contract() -> None:
     assert tokens[2:4] == ["ON", "nopass"], f"{ACL_FILE.name}: USER {POD_NAME} 줄의 상태 · 인증 토큰 {tokens[2:4]}"
     conftest_rules = tuple(conftest.DRAGONFLY_USERS[POD_NAME])
     assert conftest_rules[:1] == ("resetchannels",), f"conftest 규칙 첫 토큰 {conftest_rules[:1]}"
-    observed = {"aclfile": tuple(tokens[4:]), "conftest": conftest_rules[1:]}
-    assert observed == {"aclfile": IA_DRAGONFLY_RULES, "conftest": IA_DRAGONFLY_RULES}
+    api_rules = _module_constant(TEST_API_FILE, "IA_DRAGONFLY_RULES")
+    observed = {"aclfile": tuple(tokens[4:]), "conftest": conftest_rules[1:], "test_api": api_rules}
+    assert observed == {"aclfile": IA_DRAGONFLY_RULES, "conftest": IA_DRAGONFLY_RULES, "test_api": IA_DRAGONFLY_RULES}
+    # 줄 끝 그대로 읽는다 — read_text는 CRLF · CR을 LF로 바꿔 끝 줄바꿈 · CR 판정을 가린다
+    acl_text = ACL_FILE.read_bytes().decode("utf-8")
+    assert acl_text == IA_ACLFILE_TEXT, f"{ACL_FILE.name} 전체가 세 줄 정본(default · admin · {POD_NAME} 줄, 끝 LF 하나)과 다르다"
 
 
 def test_ia_helper_modules_are_assert_rewritten() -> None:

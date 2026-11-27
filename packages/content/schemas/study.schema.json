@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://joshuatech.dev/content/study/frontmatter/v1",
+  "title": "study 노트 프런트매터",
+  "description": "content/study/*.mdx 프런트매터의 파생 사본이다. 정본은 packages/content/src/schema.ts(zod)이고, 이 파일은 pnpm --filter @jt/content --fail-if-no-match schema가 만든다 — 손으로 고치지 않는다. pattern은 ECMA-262(u) 정규식이다 — Python 등 다른 소비자는 뜻이 같은지 다시 확인한다(zod가 정하는 날짜 pattern에는 숫자 축약 클래스와 끝 앵커 $가 남는다). zod 밖 규칙(series · seriesOrder 짝 · updatedDate ≥ pubDate · sources 원소의 path · url 정확히 하나 · url 원 문자열(공백 · 제어 문자 · 역슬래시 0) · url userinfo 0 · 언어 변형의 pubDate · change 일치 · 파일 이름 · ko 파일 필수 · 본문 규칙)과 url host 규칙(점이 있는 도메인 이름 꼴 — zod domain · 런타임 전용)은 이 스키마에 없다 — 이 스키마 통과 ≠ 로더 통과.",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "[^\\u0009-\\u000d\\u0020\\u00a0\\u1680\\u2000-\\u200a\\u2028-\\u2029\\u202f\\u205f\\u3000\\ufeff]"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "[^\\u0009-\\u000d\\u0020\\u00a0\\u1680\\u2000-\\u200a\\u2028-\\u2029\\u202f\\u205f\\u3000\\ufeff]"
+    },
+    "pubDate": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+    },
+    "updatedDate": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "[^\\u0009-\\u000d\\u0020\\u00a0\\u1680\\u2000-\\u200a\\u2028-\\u2029\\u202f\\u205f\\u3000\\ufeff]"
+      }
+    },
+    "series": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "[^\\u0009-\\u000d\\u0020\\u00a0\\u1680\\u2000-\\u200a\\u2028-\\u2029\\u202f\\u205f\\u3000\\ufeff]"
+    },
+    "seriesOrder": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991
+    },
+    "draft": {
+      "type": "boolean"
+    },
+    "change": {
+      "type": "string",
+      "pattern": "^[0-9]{3}-[a-z0-9-]+$(?!\\n)"
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "[^\\u0009-\\u000d\\u0020\\u00a0\\u1680\\u2000-\\u200a\\u2028-\\u2029\\u202f\\u205f\\u3000\\ufeff]"
+          },
+          "path": {
+            "type": "string",
+            "pattern": "^(?:[A-Za-z0-9_-][A-Za-z0-9._-]*|\\.[A-Za-z0-9_-][A-Za-z0-9._-]*|\\.\\.[A-Za-z0-9._-]+)(?:\\/(?:[A-Za-z0-9_-][A-Za-z0-9._-]*|\\.[A-Za-z0-9_-][A-Za-z0-9._-]*|\\.\\.[A-Za-z0-9._-]+))*$(?!\\n)"
+          },
+          "url": {
+            "type": "string",
+            "pattern": "^[Hh][Tt][Tt][Pp][Ss]?:\\/\\/",
+            "format": "uri"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "title",
+    "description",
+    "pubDate",
+    "tags",
+    "draft",
+    "change",
+    "sources"
+  ],
+  "additionalProperties": false
+}

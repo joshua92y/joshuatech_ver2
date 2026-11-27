@@ -5191,3 +5191,661 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
   - **컨트롤러 검증**(해시 대조 뒤): H `66 passed, 0 failed` · rc 0 · 198 s · SKIP 0 · actionlint 0 · zizmor offline 「No findings」(5 suppressed) · gitleaks 0. 컨트롤러 GET: 두 저장소 모두 compare identical의 `files` = 빈 배열 · ahead = 배열(F8이 정상 경로를 막지 않는다).
   - 계약 gr:83 아래 「수정 라운드 2 보정」 두 줄(판정 세부 · 받아들인 대가) · 설계 D8 「수정 라운드 2 보정」 · D14(pp-18 · 23 · 26 · 28 · px-26 · 29 · 38) · §9 위험 두 줄(가드의 대가 · 취소의 정리 창).
   - **집중 확인(리뷰 B · A의 RN-2–4 포함) — approve**: L1–L8 · SIGINT 권고 · RN-2 · RN-3 · RN-4 모두 해결(파일:줄 · 단언 · 탐침 증거). 리뷰 B 변이 39개를 지금 정적 계층으로 다시 돌려 39개 전부 FAIL(지난번 PASS 8개 포함) · 실제 워크플로 정적 `28 passed, 0 failed`(블록 머리 `|` 규칙이 정상 꼴을 거짓 FAIL시키지 않음) · px-26 · 27 · 29 · 38 선택 실행 `4 passed, 0 failed`(fork 오류 0) · mono 탐침(같은 이름 `mono`가 env에 export돼 있어도 자식 env에 0개 · compare 한 줄에만 전달). 회귀 점검(remote_state 파싱 · `declare +x` · unset 순서 · SHOW_TOK 경계 · on_signal 갈래 순서 — ⑦에서 merged를 읽은 직후의 신호는 닫기 실패 → 재조회 → 머지 확인으로 빠져 머지된 PR의 브랜치를 지우지 않음) 이상 없음. 남은 것은 라이브(실제 러너의 취소 신호 · compare 응답 꼴 · 모노레포 토큰의 compare 권한 — VD-T074-1 · 통합 세션).
+- **구현 커밋** `85b3c81e4f0e7ef985e38109953f7bba2ee536eb`(10파일 +3,686 · 파일 이름으로 스테이징 · tasks 체크 없음).
+
+### T074 push · VD-T074-1 결과(2026-11-17)
+
+- **push**: 사용자 「지금 push (권장)」(2026-11-17) → `bb9faef..85b3c81`(설계 `308342e` + 구현 `85b3c81`) · 초안 PR #1.
+- **VD-T074-1 PASS**(publish-pod `pull_request` 실행 · job build-check · arm64 러너): job 46 s(02:56:50–02:57:36Z). 그중 적재 빌드 21 s(캐시 없음 — `uv sync --locked --no-install-project --no-dev --no-editable` 4.3 s · docker 형식 내보내기 10.3 s) · 이미지 단언(local) 5 s → 「결과: 통과 — local 모드 이미지 단언(exit 0)」.
+  - 단언 관찰: `linux/arm64` · `10001:10001` · revision 라벨 = `EXPECT_SHA` = PR merge 커밋(`pull_request`의 `github.sha` — metadata-action `type=sha`와 같은 값) · Env `APP_GIT_SHA` · `APP_VERSION` 각각 하나 · `/src = {apps}` · `/src/apps = {identity-admin}` · pod 디렉터리 = {.venv, identity_admin, manage.py, pyproject.toml, uv.lock}.
+  - publish · bump job은 skipped(main 조건). 실행 아티팩트 0(`DOCKER_BUILD_RECORD_UPLOAD: false` — 빌드 기록은 러너 임시 디렉터리로 내보내고 요약만 쓴다).
+- **ci 실행**(같은 커밋): 7 job 모두 success — 가장 긴 것은 identity-admin 4분 · test 5분. PR #1 체크 = pass 8 · skipping 3(publish · bump · GitGuardian).
+- **관찰(조치 없음)**: build-push의 「Metadata」 로그 그룹에 buildx 메타데이터의 provenance(`buildx.build.provenance.invocation.environment.github_event_payload`)가 찍혀 GitHub 이벤트 본문 전체가 공개 로그에 남는다(이번은 PR 본문 · 사용자 공개 필드). main의 publish job에서는 push 이벤트 본문(커밋 작성자 · 커미터 · pusher 이메일)이 남는다. 그 이메일은 이미 공개 저장소의 main 커밋 메타데이터에 있으므로 새로 드러나는 개인 정보는 없다(2026-11-17 확인). 로그 잡음을 줄이는 수단(buildx 메타데이터 provenance 끄기 — 환경 변수 이름 · 동작은 확인하지 않음)은 T116 후보. BuildKit 컨테이너 로그의 「using host network as the default」는 docker-container 드라이버의 기본 동작이다(RUN의 의존성 내려받기에 네트워크가 필요하다).
+
+### T074 결과(2026-11-17 · 통합 · VD-5 옵션 A · tick)
+
+- **전제(통합 전)**: U0 App 설치 범위 = platform-gitops 하나(사용자 UI — API 확인 불가 · 토큰 로그가 platform-gitops만 발급) · U1a required check `identity-admin` — 처음 출처가 null(Any source)이라 사용자가 GitHub Actions로 고침 → 15368 되읽음 · seed PR #59 운영자 squash 머지 03:09:49Z(gitops main `2f6f396` · main push validate success) · GHCR에 같은 이름 패키지 없음(사용자 UI) · 저장소 `delete_branch_on_merge` false. seed 작업 트리 · 로컬 브랜치 `t074-seed`(끝 `7c85fb2`)는 머지 확인 뒤 정리했다(공유 gitops 클론은 main 그대로).
+- **U1b(통합)**: 사용자 「머지해」 → 컨트롤러가 infra.md 「Credentials」(T047 — 머지 결정 동작은 운영자 전용)를 들어 확인 → 사용자 **「이번만 제가 실행」**(1회 예외 · 결정 기록 B7). 컨트롤러가 `gh pr ready 1` → `gh pr merge 1 --merge --match-head-commit 85b3c81… --body-file`(본문 「T074 단계 통합(UD-1)」) → MERGED 03:30:17Z · merge commit `9fd9f2c766059f1f4f0ab87718156ff3a6c0964d`(부모 `93c7469` · `85b3c81`) · 기능 브랜치 유지. 규칙은 그대로다(bump PR의 실행 승인 · 사람 머지 · revert 머지는 운영자 전용).
+- **첫 main 실행(O2 — 컨트롤러 관찰)**: publish-pod `44010688210`(push · 03:30:26–03:33:41Z · success) — build-check skipped · publish 67초(적재 빌드 → 단언 local → push 빌드 → 단언 registry(단일 매니페스트 · digest pull) → attest → 자기 검증 모두 success) · bump 116초(Environment `production`의 배포 상태 waiting 1초 → 자동 진행 · 승인 0). 같은 커밋의 ci(push)도 success. 발행 digest `sha256:faf55a5752533dffb3b5e93e3b8d8857890d4a0690945de70c526de50be057dd`(태그 `sha-9fd9f2c…` · 적재 · push 빌드 digest 같음 · attestation 1건 · Rekor 기록).
+- **VD-5 = 옵션 A(2026-11-17 사용자 확정)**: 증거 워크플로 `wf_8271cb8d-1ff`(에이전트 3 · 읽기 전용 — 기록자 · 사람 행동 반증 · 무결성 반증 · 판정 셋 다 A · 원본 `.superpowers/t074/vd5/workflow-output.txt`).
+  - a Environment `production` 승인 기록 0 · 보호 규칙 = 브랜치 정책 하나 · App 토큰 발급(platform-gitops 한정 · job 끝 폐기) — Environment 시크릿 동작 · gitops 단독 설치에서도 발급.
+  - b gitops PR #60 작성자 `joshuatech-gitapp-1[bot]`(323873425) · `pull_request_creation_policy: collaborators_only` 그대로(U-a 안 씀).
+  - c validate 실행 `44010878946` attempt 1 · action_required 0 · `validate` · `prod-approval` success(classify 판정 skip · gate skipped).
+  - d GraphQL AutoSquashEnabledEvent actor = 봇(03:32:00Z) · REST `auto_merge.enabled_by` = 봇 · squash.
+  - e 머지 03:33:30Z(생성 93초 뒤 · 마지막 required check 10초 뒤) · merged_by 봇 · 브랜치 자동 삭제 · gitops main `f920df6`(squash · 부모 `2f6f396` · dev kustomization +1/−1) · dev digest = 발행 digest · main push validate `44011058907` success · bump 로그 「결과: 통과」.
+  - f sender · actor · triggering_actor = 봇 · 검사 6 PASS(봇 PR) · g ruleset main(squash만 · `require_extra_approval_for_unattributed_changes: true` · 승인 0 · strict · bypass 없음) 아래에서 막히지 않음.
+  - 반증 시도(사람 행동 렌즈): 환경 승인 · approve and run · 사람 커밋 · push · 리뷰 · 편집 · 라벨 · auto-merge 해제와 재설정 · 사람 머지 · 수동 dispatch · 재실행 · 세션 중 설정 변경 — 모두 0(설정의 updated_at은 모두 세션 이전).
+- **VD-T074-2**: publish job 전부 success · 패키지 생성 즉시 **Public**(사용자 UI — 확인) · 연결 저장소 `joshuatech_ver2` → UD-2 소멸 · 문면의 「Public 전환」은 「확인」(편차 10). **VD-T074-3**: paths 필터가 main push에서 불렀다(U-d 안 씀). **VD-T074-4 PASS**: 익명 토큰 200 · 매니페스트 HEAD 200(03:41:36Z). **VD-T074-5**: 하지 않음(선택) → T115. **VD-T074-6**: 앞 절(PASS).
+- **관찰 · 인계**
+  - **T115**: 봇 경로의 출처 검증(받아들인 위험 — 경로 lint는 hex 꼴만 본다) · promote ③ 목표 플래그 · gitops Actions 설정 `can_approve_pull_request_reviews: true`(워크플로 토큰이 PR을 승인할 수 있다 — `require_extra_approval_for_unattributed_changes`가 요구할 추가 승인을 채울 수 있는 경로 · 점검 후보) · 봇 커밋 서명 없음(ruleset에 서명 규칙 없음) · App 탐침(D15 ③).
+  - **T116**: BuildKit v0.34.2(2026-11-17 12:56Z부터 14일 원칙 충족 · digest `c5f8862f…`) · Renovate pinGitHubActionDigests · build-push 「Metadata」 로그의 이벤트 본문(buildx 메타데이터 provenance — 끄는 수단 미확인) · 패키지 「Manage Actions access」 · App 키 전용 Environment.
+  - 기록 공백: bump 요약(Summary 탭)의 두 줄은 API로 못 읽는다(같은 사실은 REST · GraphQL · 로그로 확인) · 자기 검증 스텝의 출력 줄 없음(exit 0만 — 증거를 남기려면 T115에서 출력 꼴 검토) · 패키지 화면의 「Latest」 = attestation 태그 `sha256-<digest>`(그 `docker pull` 예시는 이미지가 아니다 — 배포는 digest 고정이라 무해).
+- **tick**: tasks:191 [X] + 결과 한 줄(C10 · D13 꼴). 계약 C11(gr VD-5 · ① PR 생성 실측 · 발신자 값) · 런북 C12(머리 「완료」 · 기록 칸) · 학습 로그 `content/tmp/003-t074/2026-11-17.md`. **report.md 한 줄 대기**(T117 초안 · /finish — 「VD-5 옵션 A 확정(2026-11-17 · bump PR #60 · 사람 행동 0)」).
+- **다음**: T075(gitops에 identity-admin Application · dev 배포 — 첫 이미지 digest는 위 값). 대기 사용자 결정: UD-9(T075 전 — Dragonfly `+@all`) · UD-10(T098) · UD-11(T081) 등은 build-notes 각 절 · 설계 §8. 이 브랜치의 다음 CI용 초안 PR은 사용자 확인 뒤 연다(PR #1은 머지됨 — 재통합은 새 PR · D17).
+
+## T075 (2026-11-17 설계 — US6 · platform-gitops `apps/identity-admin`(base · overlays · Argo Application) + dev · prod 배포 · 세션 모델 Opus 5.5)
+
+### T075 설계(조사 · 초안 · 비판 · 사용자 결정 · 확정 · 2026-11-17)
+
+- **조사 · 초안 · 비판** `wf_b2a8b7db-736`(에이전트 8 · 4,202,842 토큰 · 6,781 s): 조사 다섯(R1 명세 · 계약 · 순서 / R2 deploy/base · env / R3 gitops 실물 / R4 외부 사실 / R5 UD-9 로컬 실측) → 초안 835줄 → 비판 A(계약 · 실행 가능성 — medium 6 · low 9) · B(k8s 보안 — high 3 · medium 7 · low 4). 둘 다 approve_with_fixes. 원본 `.superpowers/t075/{research,reviews}/` · `design-draft.md`.
+- **UD-9 근거(R5 — 운영과 같은 Dragonfly v1.40.1 이미지 · 운영 aclfile 꼴 · 앱 · Celery 실제 워커 · 기존 시험)**
+  - (a) 지금 `+@all`: pod 자격 하나로 자기 키 패턴 넓히기 · 사용자 생성 · CONFIG SET · FLUSHALL · **MONITOR(다른 사용자 · admin의 `HELLO … AUTH` 비밀번호가 평문)** · `SORT … GET`(남의 값) · `RM 0 MATCH`(남의 키 삭제) · CLIENT KILL/PAUSE · sample-pod `%R~` 자가 해제 · REPLICAOF(DRYRUN 허용)가 된다.
+  - (b) `-@admin -@dangerous`만으로는 CLIENT KILL · PAUSE(쓰기 307 ms 정지)가 남는다 — Dragonfly의 `CLIENT`는 하위 명령 구분 없는 `CONNECTION|SLOW` 한 명령이다(Dragonfly 문서는 CLIENT KILL을 `@admin @dangerous`로 적는다 — 문서 ≠ 실측).
+  - (b2) = (b) + `-client`: 위 전부 NOPERM · 앱 경로 · Celery(실제 워커 · beat · 따뜻한 종료 복원) · 시험(4파일 127 + 포함 관계로 C의 521) 통과. 남는 것 = SCAN · DBSIZE(키 이름) · Lua(안 명령은 ACL 재검사) · 자기 패턴 안 쓰기 · 삭제.
+  - (c) 허용 목록 19 명령 + `@transaction`: 가장 좁지만 `+brpop` 하나만 빼도 Celery 워커가 `auth:NoPermissionError`로 죽는다(음성 대조).
+  - aclfile 토큰 오류(`cmd|sub` · `reset` · Redis 카테고리 이름 `@hyperloglog`): 실행 중 `ACL LOAD`면 옛 규칙 유지(안전) · **기동이면 무인증(+PONG)**.
+  - 앱 · Celery가 쓰는 채널 명령 0(gitops dragonfly README §6 :354 인계를 닫는 근거).
+- **사용자 결정(2026-11-17)**: UD-9 = **B2**(`+@all -@admin -@dangerous -client` · dev 첫 배포 전 · 템플릿 · sample-pod도 · data-assert `acl-list` = NOPERM 기대 · 새 렌더 블록 = 재렌더 정본) · UD-12 = **로컬 실 브로커** · UD-13 = **T075 뒤 · US4 전 정비 단계**(Argo CD v3.5.7 · K3s v1.36.6 → Traefik 3.7.15 · Traefik ≥ 3.7.18은 T084 전제) · UD-14 = **승인 관문 넓힘**(classify need += `apps/*/base/**` · `clusters/oci-k3s/apps/*-prod.yaml` · `clusters/oci-k3s/projects/prod.yaml` — 같은 날 보완으로 `clusters/oci-k3s/projects/**` · `bootstrap/argocd/**`).
+- **컨트롤러 결정**: CD-1–30(비판 29건) · VR-1–16(검증 K1 · K2) · R-1–6(집중 확인) — `.superpowers/t075/decisions-controller.md` B2 · B4 · B6. 굵은 것: dev/prod AppProject를 namespaceResourceWhitelist로 바꾼다(CD-16) · 앱 Application의 project · destination · syncPolicy · 파일 이름을 검사로 고정(CD-2 · VR-4) · hook 허용 목록 = {PreSync}(CD-17 · GHSA-fmxq) · ES 원격 키 · template를 pod 표로 고정(VR-11 · R-6) · kustomization 경로 가둠(VR-5 · R-1) · 7.1 argocd 갈래 좁힘 + AppProject 렌더 검사(R-2) · owner Secret 상주는 받아들인 위험 + 실측(CD-20) · `/session/check` 양성 탐침(CD-4).
+- **원문으로 다시 확인한 사실**: data ns `allow-egress-external-443` = `podSelector: {}`(gitops policies-external.yaml:148-156) · T057 `op1-seed-dragonfly.ps1:137`이 `+@all`을 글자로 고정 · 런북 bs:1624–1667이 그 블록을 가리킨다 · D7 범위 = 사용자 결정(gr:246-249) · `/session/check` = Access 전용 경로(ia:27 · :56) · Traefik 액세스 로그 = 상태 400–599만(traefik-config.yaml:188-189 — UD-10 표본은 400 요청).
+- **외부 사실(GitHub GET 2026-11-17)**: Argo CD v3.5.4(10-06)가 critical 4(GHSA-fmxq · m3vr · fw5c · 9v9p) + high 2(j6cw · 4439) 수정 · 3.5.x 최신 v3.5.7(11-02) · Traefik v3.7.18(11-10 · cp28 · p956 · x5pf 등) · v3.7.19(11-13) · K3s v1.36.6+k3s1(11-03)의 번들 Traefik = v3.7.15 · SUC Plan 채널은 14일 원칙을 지키지 않는다.
+
+### T075 UD-12 결과(로컬 실 브로커 · relay Kafka ACL · T069 M6 · 2026-11-17)
+
+- **워크플로** `wf_32816872-6d6`(측정 08:47–09:24Z + 독립 반증 09:42–10:11Z · 에이전트 2 · 963,867 토큰 · 6,412 s). 보고 `.superpowers/t075/ud12/{measure,refute}.md`.
+- **환경**: `apache/kafka:4.3.1@sha256:77e3df90…`(commitId 26b251a4 = 태그 4.3.1) · KRaft · metadata 4.3-IV0 · SASL_SSL SCRAM-SHA-512 · StandardAuthorizer DefaultDeny(Strimzi 1.2.0 simple과 같음 — 소스 대조) · ACL은 gitops KafkaUser `dev-identity-admin`에서 변형 · relay = HEAD `4a40835`를 실제 `apps/identity-admin/Dockerfile`로 빌드(amd64 · confluent-kafka 2.16.1 · librdkafka 2.16.0) · PG 18.6 TLS verify-full · 행은 `publish_owned` 앱 경로.
+- **결과 = M1 가정 성립 · relay 수정 불필요 · UD-1 재질문 조건 없음**
+  - Write 전무 → 갈래 **(i) 치명**: 브로커 INIT_PRODUCER_ID errorCode 31 → stderr `%0|…|FATAL|identity-admin#producer-N| … Cluster authorization failed: Failed to acquire idempotence PID …` + `outbox_relay.producer_fatal KafkaException kafka_error=CLUSTER_AUTHORIZATION_FAILED published=0 failed=0 dead=0` · GETPID 재시도 0줄.
+  - 생성 → 치명 L 0.517–0.554 s · 유휴 재생성 간격 **2.007 · 3.007 · 6.015 · 12.009 s** → 24 · 48 · 96 · 192 · 384 · 556 · 600 s(반증 재현 2.014 · 3.013 · 6.002 · 12.013 s · 유지 대기 1 · 2 · 4 · 8 … 256 s).
+  - 행 있음: `producer_fatal ProducerFatalError … failed=N` · last_error `_PURGE_QUEUE` · attempts > 10이어도 DLQ로 가지 않음(dead_at NULL).
+  - 회복 (a) 행을 둔 채 Write 복구 → `pass published=3`까지 291.9 s(반증 294.9 s = 마지막 치명 패스 + 300.07 s) · (b) 상한에서 고친 뒤 행 → 592.0 s(공식 = 남은 유지 대기 + 치명 백오프 · 반증은 한 단계 앞 변형으로 예측 ±0.05 s 일치).
+  - 일부 토픽만 Write 없음 → 행마다 `TOPIC_AUTHORIZATION_FAILED`(비치명) · DLQ Write가 있으면 10번째 패스에 dead=1 · DLQ도 막히면 failed=1 · dead_at NULL(DLQ 시도는 브로커 거부 기록으로 확인).
+- **새 사실 · 정정**
+  - **M1이 깨지는 경계**: relay ↔ 브로커 왕복 지연이 꾸준히 약 31–35 ms 넘게 늘면 L ≥ 1.0 s가 되어 간격이 약 2.5 s로 고정된다(지연 주입 실측 — +20 ms면 L 0.8 s = SP-2 검토 기준). 클러스터 안 왕복은 1 ms 미만이라 결론은 유지 · 일시 지연은 그 주기만 사다리를 되돌린다.
+  - L 구조 = T_boot + 0.500 s(PID 타이머 재시작) + T_b1 + 2 RTT. 그래서 유휴 첫 간격은 **2.0 s**다 — 위 T069 절 :1939 · :1996과 독스트링 `outbox_relay.py:30`의 「약 1.5 · 3 · 6 · 12 s」는 2.0 · 3 · 6 · 12 s로 읽는다(독스트링은 T075 조각 ③에서 고친다 — 이미지 내용 · 동작 무관).
+  - InitProducerId 거부는 브로커 authorizer 로그에 남지 않는다(0줄) — 진단 근거는 클라이언트 stderr FATAL 줄 · 필요하면 `kafka.request.logger=DEBUG`(25분에 약 690 KB — 상시 부적합).
+  - Write를 고친 뒤에도 `producer_fatal` 한 줄이 더 나올 수 있다(고치기 전에 만든 프로듀서가 유지 대기를 마칠 때 · `published=0`) — 「아직 고장」이 아니다.
+  - 부분 ACL에서는 패스마다 stderr NOTICE `%5|…|PARTCNT|… partition count changed from 3 to 0`.
+  - Write가 어느 토픽이든 하나만 있으면 InitProducerId가 허용된다(KIP-679 — 없는 리터럴 토픽이어도). 운영에서 결론이 뒤집히는 조건 = `allow.everyone.if.no.acl.found=true` 또는 어느 토픽이든 Write(`User:*` 포함) — 지금 gitops에는 없다.
+  - 행이 있을 때 L이 0.05–0.13 s로 짧아지는 갈래 = produce 시점(부트스트랩 Metadata 뒤)에 따른 경합(유인은 `CONN_MAX_AGE` 60 s 뒤 DB 재연결 — 정황) · 유휴 경로가 아니라 M1과 무관.
+- **인계**: T114(incident-response의 Kafka ACL 두 갈래 — 줄 꼴 · authorizer 0줄 · 고친 뒤 한 줄 · 진단 로거) · T071(stderr 줄 꼴 PARTCNT) · T097(노드 간 배치 · 브로커 이전 때 RTT 경계 약 30 ms).
+
+### T075 조각 ② · ③ · ④ · GP-A 결과(빌드 · 리뷰 · 2026-11-17..18)
+
+- **배정**(설계 커밋 `a8d2475` 뒤 · 파일 겹침 없음 · 빌더 커밋 금지 · opus): M(api-builder — 조각 ② 동기화 하네스 + ③ 모노레포 UD-9 · 독스트링 + argo-3) · K(infra-builder — ③ 블록 W-6 · O-6 + ④ O-1–O-5 + 하네스 + 런북 C24–C26) · GA(infra-builder — GP-A · worktree `t075/gpa-dragonfly-acl`) · G(infra-builder — GP-1 · worktree `t075/gp1-app-checks` · 진행 중). 리뷰는 조각마다 두 렌즈(설계 · 계약 / 품질 · 보안 — GA는 한 명이 두 렌즈) · 수정 라운드는 같은 빌더에 이어서.
+- **M**(3라운드): `tests/scripts/gitops-base-sync.tests.ps1`(새 · 자기 시험 33 · run-all 1b7 `gitops-base-sync`) — 기준 = 두 저장소 `origin/main` blob(이름 · object id · mode 정확 일치 · 빈 base FAIL) · 작업 트리 차이 INFO 「발행 대기」 · 형제 = `--git-common-dir`의 주 체크아웃 부모(`.worktrees`에서도 같은 형제 · 마지막 이름이 `.git`이 아니면 FAIL) · 원격 URL `github.com/joshua92y/platform-gitops`만(호스트 고정 · userinfo `[^@/?#\\]+` — `#@` · `?@` 우회 차단) · 부분 클론 FAIL · `--no-optional-locks --no-replace-objects` · `GIT_TERMINAL_PROMPT=0` · 호출당 60 s 상한 · 홈 경로 가림 · 읽기 전용(trace2로 단언 · fetch 0). UD-9 B2 — 템플릿 넷 · identity-admin 일곱 · django-common 둘 · 하네스(kafka job-d-2 = VD-4 근거 reader-get · reader-set-denied + acl-list PASS 근거 `NOPERM identity-admin ` 표지 · kafka-tests 745/0). argo-3 = 허용 목록 8쌍 정확 · 금지 ⊇ 6(비교 키 = group 원문 + TAB + kind — group 글자 `""`가 core로 접히던 거짓 PASS를 RED로 보이고 고침) + cluster-tests F07(19행). ia-24가 compose · conftest · 상수 · test_api 사본 넷 + aclfile 전체 세 줄을 대조. 템플릿 gen-39(생성 aclfile 토큰 허용 목록 · conftest 일치 · 파일 전체 정확히 세 줄 — default 줄 변조는 로컬 compose 무인증이 됨을 리뷰어가 v1.40.1로 실측). 독스트링 outbox_relay.py(UD-12 결과 · 「(1 s + L)을 폴링 단위로 올린 값」). 시험: IA 461 · django-common 501 · 템플릿 하네스 전체 918(arm64 binfmt 등록 뒤) · 컨트롤러 재실행(11-18) 동기화 33 + 실제 대조 RED 1(GP-2 전 — 기대) · ia-24 · 템플릿 `-k "aclfile or gen_39"` 34.
+- **K**(3라운드): `design/t075-blocks/` 블록 12(W-6 렌더 = 재렌더 정본(T057 op1 파생) · `w6-acl-delete`(acl 두 경로만 · 키 집합 · 재타자 — T057 7경로 삭제 블록 대신) · `w6-acl-load`(admin 비밀번호를 kv에서 읽어 `kubectl exec -i` stdin으로만) · O-6 사전/사후 · O-1 · O-2 · W-2 · O-3 · O-4 · O-5) + harness.ps1(354 시나리오 · 11,241 단언) + README. 공통: 4키 가드 + 실효 확인(Utility · Security · Management 모듈 · Core 스냅인 LogPipelineExecutionDetails · 시스템/사용자 powershell.config.json에 ModuleLogging · 역슬래시-u가 있으면 값과 무관하게 멈춤 — 리뷰어가 `-SettingsFile`로 레지스트리 밖 우회를 실측) · curl `-q`(`.curlrc` trace · cookie jar 누출 실측) · CURL_CA_BUNDLE · SSL_CERT_* · SSLKEYLOGFILE · *_PROXY · TF_LOG* · TF_CLI_ARGS* · TF_WORKSPACE · TF_DATA_DIR면 멈춤 · VAULT_TOKEN은 kv 읽은 직후 지움(kubectl 전) · 응답 문자열 제어 문자 치환 · `$env:` · `$script:` · `$global:` 대입 정적 제한. 변이: 리뷰어 묶음 셋 + 빌더 A1–A12 · M01–M51 전부 죽음. 런북 bs §3 T075(C24) · §4 T075(C25 — A kv 시드 · B UD-9 재렌더) · §4 T057 안내 줄(C26 — op1 판별 문구 하나) · vault-unseal §0 체크리스트 한 줄. 컨트롤러 재실행(11-18) 354/354 · 11,241 · exit 0 · 닫힌 T057 하네스 152/152(K 재실행) · t057-blocks 변경 0.
+  - **VD-T075-17 PASS**(로컬 · 운영 digest Dragonfly v1.40.1 · 운영 인자 · 가짜 비밀번호 · W-6 렌더 바이트 그대로 dev 420 B · prod 274 B): aclfile 오류 0 · 무인증 `-NOAUTH` · admin `ACL LOAD` OK · pod 사용자 REPLICAOF NO ONE · SLAVEOF NO ONE · SAVE · CLIENT KILL(+ CLIENT LIST/PAUSE · ACL LIST/SETUSER · CONFIG SET · FLUSHALL) NOPERM · 앱 경로 OK(Celery worker NOPERM 0) · DRYRUN 거부 5 · 허용 2. 증거 `.superpowers/t075/vd17/`.
+  - **받아들인 편차(설계 D20 정정)**: W-6은 op1처럼 7경로를 함께 판정한다 → kv 단계(acl 삭제 · 재렌더)는 두 env 한 번 · 라이브 반영(ESO · kubelet · `ACL LOAD` · O-6 사후)만 env마다 dev 먼저. 2단계부터 prod O-6 사후 PASS까지 두 env Dragonfly 재시작 요인 보류(L6 전 SUC 일정 확인). 렌더는 VD-17 실물 기동으로 검증됨.
+  - KA-10 소유: m2m 호스트 404 넷 = T076 정식 단언 · 신선도 키 35 s 관찰 = 신선도 경보와 함께 T098.
+- **GA**(2라운드): gitops `ec071d2`(로컬 커밋 · 5파일) — data-assert ② acl-list = identity-admin `ACL LIST` → `NOPERM identity-admin `이면 PASS(원 응답을 근거로) · AUTH failed · ACL 행 응답 · 그 밖(중립 · 응답 표시)은 FAIL · 옛 EVIDENCE 삭제 · 잡는 범위 = dev identity-admin 줄의 `-@admin` · `-@dangerous`가 모두 빠진 꼴(옛 판 재실행)뿐(`-client` 단독 · 다른 pod 줄 · prod는 W-6 · O-6 사후) — 모노레포 계약 dl:71 · qs:74도 같은 범위로 고침. 로컬 확인: 운영 digest Dragonfly + 렌더 Job 스크립트 — B2 = 7 PASS(근거가 모노레포 픽스처와 바이트 같음 · job-d-2 · data job-2 PASS) · `+@all` = acl-list FAIL · 갈래 21경우(dash · BusyBox ash) BAD 0 · 누출 0 · validate PASS 39/0. **머지 선행**: 이 모노레포 커밋 push(문서가 가리키는 블록 · 런북) · L6 끝 · 머지 뒤 data-assert Job 삭제.
+- **인계(빌드에서 나온 것)**: T116 — 템플릿 · 생성 pod의 aclfile 검사는 이제 있음(gen-39) · 다른 원격의 `remote.<name>.promisor`는 동기화 하네스 밖 · git 2.43은 `GIT_NO_LAZY_FETCH`를 읽지 않음(부분 클론 판별로 대신). 라이브에서 처음 재는 것: 실물 `vault kv patch -cas` · `kv metadata delete` 뒤 문구(블록은 되읽기 · 재판정으로 fail-closed) · `kubectl exec -i` stdin 바이트 전달(어긋나면 AUTH 실패 → LOAD 미실행).
+
+### T075 조각 ① GP-1 결과(빌드 · 리뷰 · 2026-11-17..18)
+
+- **빌드**(infra-builder G · worktree `t075/gp1-app-checks` · 기준 gitops origin/main `f920df6` · 4라운드): validate.sh 3.9 · 7.1(argocd 갈래 = `bootstrap/argocd` 하나) · 7.5 · 13.7 · 14.0–14.9 · 11.6 · 11.7 + classify `is_gated`(UD-14 다섯 갈래 + 보완 한 갈래) + AppProject dev/prod 허용 목록 8종 + positive 재배치(base = 모노레포 B/ 9파일 blob 같음 · platform-apps 22문서 → 22파일) + validate job timeout 15 → 30분. 최종 해시 vsh `bb81378` · vts `c449c01` · validate.yml `bb8fa29` · diff 20 files +3418/−465 + 새 파일 33.
+- **리뷰 경과**(두 렌즈 — A 설계 · 계약 / B 우회 · 견고성 · 보안 — 같은 리뷰어를 이어 씀):
+  - 라운드 0: A approve_with_fixes(G1A-1 high 범위 한정 — 14.8 원격 꼴 열거가 kustomize 판정보다 좁음 · G1A-2 인라인 통째 건너뜀) · **B reject** — G1B-1 HIGH kustomization 키를 kustomize는 `encoding/json`으로 대소문자 · 유니코드 접기(`ſ` · 켈빈 K) 매칭 → prod overlay `Components:`가 관문 밖 `overlays/dev/**` Component로 prod에 명령 주입(14.x 전부 PASS) · G1B-2 HIGH `clusters/oci-k3s/apps/`에 Kustomization 한 장이면 Argo가 kustomize 렌더로 바꿔 `evil.txt` 속 prod Application이 7.1 · 14.0 · 관문을 모두 비켜 감. 전제: ruleset 사람 리뷰 0 — 「validate 통과 + classify skip」 PR은 사람 행동 0으로 머지된다.
+  - 라운드 1(계약 먼저 — 11.7 FMT-kust-keys(처음 11.5로 적어 기존 `11.5 FMT-symlink`와 겹침 → 11.7 정정) · 14.9 APP-kust-keys · 11.6 FMT-dirsource-files · 14.0 project 이름 규칙 · 14.8 실재 경로 · 구조 인라인 판정 · classify 보완): 리뷰어 트리 셋 · 탐침 셋이 새 코드로 FAIL. 재검토 — **B reject · A가 독립 재현** G1B-4 / G1A-7 HIGH: 중첩 구조체 필드 `patches[].Path: <URL>`을 kustomize가 가져와 렌더(RootOnly load restrictor는 로컬 경로만 막음 — `fileloader.go` `Load`는 원격이면 restrictor 전에 GET) · G1A-8 tests 범위 원격 셋(같은 디렉터리 transformer 설정 파일 안 `path: https://` · `helmCharts[].valuesFile` · 중첩).
+  - 라운드 2: 11.7 중첩(경로를 받는 구조체 항목 8자리 직속 키 — 비ASCII · 접기 변형 · 중복 FAIL · 정본 = 5.8.1 소스) · 14.9 모든 깊이(앱 — images {name, newName, digest} · patches {target, patch} · target 7키 · 그 밖 FAIL — 리뷰 B 권고로 좁힘) · tests 범위 최상위 키 ⊆ {apiVersion, kind, namespace, resources} · 네트워크 없는 렌더(apps · tests 렌더만 프록시 닫힌 포트 · ssh 차단 — helm 하위 프로세스까지 닿음 실측). 마지막 재검토 A · B approve_with_fixes — G1B-5 LOW 렌더 겹 `GIT_ALLOW_PROTOCOL=file`이 `file://` 로컬 저장소를 렌더 · G1B-6 LOW tests resources 디렉터리 항목이 KUST_FILES 밖(루트 `tests/`) kustomization을 끌어옴 · G1A-12 계약 문장.
+  - 라운드 3: `GIT_ALLOW_PROTOCOL=none`(끝-끝: 옛 코드 렌더 · 새 코드 `transport 'file' not allowed`) · tests resources = 같은 디렉터리 파일만. RED 4/4 → GREEN 17/0 · 실트리 PASS 54/0/WARN 4(기존 4b).
+- **시험 합계**: 라운드 0 전체 자기검사 266/0(Windows 약 3시간) · 라운드 1 141/0 · 라운드 2 176/0(T075 앱 사례 110 전부) · 라운드 3 17/0 · 실트리 · GP-2 꼴 · GP-3 꼴 트리 PASS 54/0(라운드 2). 전체 자기검사(약 315 케이스)는 PR CI(Linux)가 처음 돈다 — job 30분 한도 실측은 그때.
+- **계약 보정**(gitops-repo.md 「T075 보정 2026-11-18 — GP-1 리뷰」 · 「재검토 G1B-4」 · 「재검토 G1A-8」 · 「마지막 재검토」): 14.0 행 끝 · 14.8 행(실재 경로 · 인라인 · `configurations` · tests 키 집합 · 같은 디렉터리 파일) · 표 밖 새 검사 셋(11.7 · 14.9 · 11.6) · 「빌더 해석 · 코드가 계약 글자보다 넓은 자리」 ①–⑦(①은 라운드 2 대조 뒤 코드에 맞춰 「객체 1개 이상」) · 네트워크 없는 렌더 · §8 classify 보완 갈래.
+- **받아들인 한계**: 네트워크 없는 렌더는 루프백 HTTP를 막지 못한다(Go `net/http`가 loopback에 프록시를 쓰지 않음 — 키 검사가 닫음) · platform/** 하위 구조체(target · options · source/targets) 철자 변형은 남는다(관문 밖 admin 등가 — D7) · 11.7 중첩의 정본 밖 키는 kustomize `DisallowUnknownFields`가 렌더 실패로 떨어뜨린다(리뷰 B 실측).
+- **PR #62 첫 CI(2026-11-18 · run 44294309191 · ubuntu arm)**: validate job 18분 3초(4 전체 검사 1분 · 5 자기검사 16분 51초 · 6 gitleaks 3초) — 30분 한도 안(옛 15분 한도였다면 초과) · classify = need · gate 운영자 승인 대기 · GitGuardian 초록.
+- **인계**: UD-13 정비 단계(Argo CD 판 올림) — Argo 내장 kustomize 판을 확인하고 `KUST_FIELDS` · `KUST_NESTED`(kustomize 5.8.1 고정)를 그 판 소스로 다시 대조 · 자기검사가 더 늘면 job 한도(지금 30분 · 실측 18분) · 금지 env 목록 갈라짐(FORWARDED_ALLOW_IPS · SCRIPT_NAME — T116) · `clusters/oci-k3s/apps/README.md` 절차는 14.0 · 11.6 반영됨.
+
+### T075 O-5 탐침 자격 꼴 수정(L4 · 2026-11-19)
+
+- **1차(O-5a dev · 모드 a — 운영자)**: 판정 불가 · 보낸 것 0 — `자격을 꺼내지 못했다(tester-m2m — tofu output exit=0 · client_id ^[0-9a-f]{32}\.access$ · client_secret ^[0-9a-f]{64}$ 꼴 아님 — 값 미출력) · 아무것도 보내지 않았다`(앞 줄 = INFO curl 8.22 · curl · tofu 실행 파일 경로 · `OK env = dev · 모드 = a · 자격 = tester-m2m(값 미출력)`).
+- **진단 d5**(운영자 · 읽기 전용 · 값 0 — `.superpowers/t075/live/d5-service-token-shape.ps1` · 가짜 tofu 모의 7/7과 값 노출 0을 먼저 확인): `tofu output` exit 0 · stdout 1줄 · stderr 0줄 · JSON 해석 성공 · 토큰 넷(tester-k8s · tester-m2m · web-bff-dev · web-bff-prod) · 속성 셋(client_id · client_secret · expires_at). 넷 모두 `client_id` 꼴 OK(길이 39 · 소문자 hex + `.access`) · **`client_secret` 꼴 아님(길이 54 · 영숫자 · `_` · `-` — hex 밖 글자 있음)** · expires_at 2027-09-03. tofu 상태는 정상(비밀 있음).
+- **근본 원인**: 설계 D11(t075-design.md:516 — 정정 노트를 넣기 전 줄 번호 · 이 절의 설계 줄 번호는 모두 그렇다) 「서비스 토큰 `client_secret`도 64 hex 꼴」은 측정 없는 가정이었다(문서 예시 꼴). 자체 조사 research.md R12 :4256(`cfast_[40자][8자 checksum]` — 2026-08 이후 신규 발급분 · 기존 64자 hex도 유효) · :4633과 대조하지 않았다 — 6 + 40 + 8 = 54 = 실측(리뷰 O5fix-r0 F3). O-5 블록이 그 가정을 판정 `\A[0-9a-f]{64}\z`로 옮겼고, 하네스 모의(`Hex-Lower` = 소문자 hex 64)도 같은 가정이라 PASS였다. 설계 정정 노트는 D11(아래 「T075 결과」).
+- **수정**(컨트롤러 · TDD): RED — 하네스 모의 `client_secret`을 실측 꼴(`'MOCK-'` + SHA-512 base64url = 54자 · 접두 `cfast_`는 재지 않아 흉내 내지 않았다)로 → B부 FAIL 14(O5a · O5b · O5c · O5-12 · O5-21 — 자격이 필요한 사례 전부 · 사유 = 라이브와 같은 「자격을 꺼내지 못했다」 30줄) · PASS 5342/5404. GREEN — `o5-probe-identity-m2m.ps1` 판정 `'\A[0-9A-Za-z_-]{54}\z'`(`-cnotmatch` · 오류 문구도) → B부 PASS 5450/5450 · 시나리오 195(새 O5-09b = 64 소문자 hex(옛 꼴) → 중단 · O5-09c = 맞는 54자 + 끝 LF → 중단(`\z`)). 변이 `\z` → `$`(`-Dir` 사본) → O5-09c만 FAIL(5448/5450 — 변이 블록은 LF 든 헤더로 요청을 보냈다) — 사본 삭제. `o1-cf-values.ps1`은 주석만(전제 정정 · 동작 변경 0) · 하네스 O1-02 설명 정정.
+- **리뷰 O5fix-r0**(독립 1 · 읽기 전용): **승인** · 라이브 차단 0 · low 넷 — F1 헤더 안전 성질을 고정하는 사례가 없다(변이 `'\A.{54}\z'` · `-notmatch`가 살아남았다 · 실해 주입 경로는 값 **가운데** CR — 루프백 `curl.exe --libcurl` 탐침(가짜 값)에서 헤더 셋으로 나뉨 · 끝 LF는 curl이 버린다 → O5-09c는 `\z` 고정일 뿐 주입 사례가 아니다) · F2 모의 꼴을 바꾸며 O1-02가 cn 공통 꼴 변이를 놓쳤다 · F3 근거 = research.md R12 · F4 낡은 문서(설계 :516 · :518 · 블록 README D11 행 · O-5 사례 · 수 · §1 줄 수 — 런북 §3 T075 O-5 :1112–1115는 비밀 꼴을 적지 않아 고칠 것 없음). 참고 I1 — 성공한 `-cnotmatch`가 `$Matches`에 값을 블록 범위로 남긴다(수정 전과 같다 · 위협 모형 밖 — 기록만) · I2 — 길이 54 고정은 `cfast_` 형식상 고정이라 과한 제약이 아니다(형식이 바뀌면 보내기 전에 멈춘다).
+- **r1**(하네스 · 주석): O5-09c 설명 정정 · O5-09d(54자 가운데 CR — 유효 26 + CR + 유효 27) · O5-09e(맞는 53자 + U+212A Kelvin — 대소문자 무시 매치면 `[A-Za-z]`에 맞는다) · O1-02b(cn 자리에 64 소문자 hex — 옛 꼴) · 주석 셋(o5 · o1 · 하네스 모의)에 R12 근거 → B부 **PASS 5522/5522 · 시나리오 198** · exit 0 · 리뷰어 변이 셋 모두 죽음(mA-dot → O5-09d · O5-09e FAIL 5518/5522 · mB-ci → O5-09e 5520/5522 · mD-o1common → O1-02b 5518/5522).
+- **2차(O-5a dev · prod — 운영자 · 고친 블록) — PASS**: `PASS o5a dev tester-m2m GET /health → 404(Traefik — 라우터 없음 · 토큰 · DNS · AOP 정상)` · `INFO o5a dev 헤더 없음 GET /health → 401(기록 — 합격선 없음 · C11)` · `o5a dev=PASS 1/1` · prod 같은 꼴 `o5a prod=PASS 1/1`. 무헤더 401은 컨트롤러 무자격 탐침(06:44Z(15:44 KST) · `curl -q` · dev · prod 401 · text/html · redirect 없음)과 같다 → C11 = 「Access 401」(T076 문면 403 → 편차 6).
+- **하네스 수(2026-11-20 마감 재실행 — 마감 문서 빌더 · `pwsh -NoProfile -File` 한 번)**: 시나리오 PASS 359/359 · 단언 PASS 11359/11359 · exit 0 · 61.9초(03:56:45Z–03:57:48Z(12:56:45–12:57:48 KST)) — A부 161 · 5837(그대로) · B부 198 · 5522(11-18 라운드 2의 193 · 5404 + O1-02b · O5-09b–e) · 실물 vault · kubectl · tofu 호출 0 · 저장소에 남은 임시 파일 0(`git status --ignored` 전후 같음). 블록 README §1 줄 수 · §2 D11 · D16 행 · §4 결과를 이 수로 고쳤다.
+- **미커밋 파일 셋 — 이 마감 커밋에 든다**: `design/t075-blocks/o5-probe-identity-m2m.ps1`(+5 −2 · 215줄) · `harness.ps1`(+30 −4 · 3252줄) · `o1-cf-values.ps1`(+2 · 134줄).
+
+### T075 조각 ⑤ GP-2 · 조각 ⑥ GP-3 결과(빌드 · 리뷰 · PR · 2026-11-19..20)
+
+- **GP-2 빌드**(2026-11-19 · 워크플로 `wf_65fbe1d5-8e6` — infra-builder → 리뷰 A 설계 · 계약 / B 운영 · 보안 · 적대 · worktree `.superpowers/t075/gitops-gp2` 브랜치 `t075/gp2-dev` · 기준 = 미머지 GP-1 head `b7fd0c8` · 빌더 커밋 · push 0 · 보고 `.superpowers/t075/build/G2-r0-report.md` · `reviews/G2A-r0.md` · `G2B-r0.md`): 빌더 **DONE_WITH_CONCERNS**(보고 파일 규칙 · m2 동반 FAIL · GP-1 미머지 · 범위 밖 문서 후보). base 9 바이트 사본 — 출처 모노레포 origin/main `9fd9f2c` · blob(configmap `66feebf5` · deployment-celery `2264619b` · deployment `5338f01a` · externalsecret-env `7bb62232` · externalsecret-migrate `0454011e` · ingress `af874830` · kustomization `a7c40064` · migrate-job `1383a6c9` · service `41f729f7` — `hash-object --no-filters` 9/9 · CR 0 · D2) · overlays/dev(ns jt-dev · Ingress op test → replace · ConfigMap replace 3 + add `JT_PLACEHOLDER_EXEMPT` · images 세 줄 그대로) · Application `identity-admin-dev` · `identity-admin-prod`(빈 overlay) · README 행(C29). 렌더(kustomize 5.8.1) dev 8객체 전부 jt-dev · 컨테이너 5 `…@sha256:faf55a57…` · ConfigMap 17키 = D5 dev 열 · Ingress 1(경로 5) · admin Ingress · Middleware · Secret 0 · prod 0바이트. vsh(실 트리) PASS 54 · FAIL 0 · WARN 4(기존 4b) · 1074 s · 변이 넷 모두 FAIL(m1 CN replace 삭제 → 14.2 ×2 · 14.4 / m2 Ingress op test 값 → 1 KUST + 13.0 RBAC-render fail-closed 동반(설계된 동작) / m3 dev prune false → 14.0 / m4 dev ADMIN_HOST → 14.2 · 14.4) · gitleaks 8.30.1 540파일 no leaks · `gitleaks:allow` 0.
+- **GP-2 리뷰**: A **approve**(LOW 2 · NIT 4 — G2A-1 루트 README.md:40 「지금 상태」가 머지 순간 거짓 · G2A-2 설계 D5 문장(replace = 없는 키 add — 아래 「T075 결과」 설계 정정) · G2A-3 Application 머리 주석의 면제 표시 · G2A-4 gitops 주석이 가리키는 모노레포 자리가 main에 아직 없다(선택) · G2A-5 추가 절차의 앱 갈래 · G2A-6 절차 메모) · B **approve**(LOW 4 · NIT 2 — G2B-1 README.md:40 · tests/README.md:81 · G2B-2 미머지 GP-1 위 브랜치(rebase 때 dev digest 충돌을 잘못 풀면 dev가 조용히 되돌아간다 — 확인 셋) · G2B-3 앱 렌더의 Traefik · Argo 어노테이션 키가 열려 있다(g4 변이 PASS 54) · G2B-4 앱 객체 이름이 묶이지 않았다(공유 ns jt-dev · g4) · G2B-5 Degraded 경로 문장이 좁다 · G2B-6 절차). 리뷰 B 자체 확인: 실 트리 사본 vsh PASS 54/0(20분 19초) · 변이 15개 묶음(gall) 전부 해당 검사 FAIL · 라이브(agent-view) 쿼터 · NP · PSA · CA 미러 · 데이터 의존 정적 판정 통과.
+- **GP-2 처리(컨트롤러)**: 반영 = G2A-1 · G2B-1(루트 README.md:40 — GP-2 뒤 사실) · G2A-3(Application 머리 주석 면제 표시 dev · prod) · G2B-5(Degraded 대표 경로 + 그 밖 경로 한 줄 dev · prod) · G2A-5(clusters/oci-k3s/apps/README.md 추가 절차에 앱 갈래 한 줄) — 확인: yq 구조 그대로 · dev 렌더 = 빌더 사본 바이트 같음 · prod 렌더 0바이트 · CR 0. 미룸 = 「T075 결과」 인계(문서 정합 PR · 계약 후속) · G2A-4(선택 — 하지 않음).
+- **GP-2 rebase 경과**: 커밋 `dfe5991`(b7fd0c8 위) → GP-1 squash(14efe66) 뒤 `git rebase --onto origin/main b7fd0c8` → `b50457f`(b7fd0c8 ↔ 14efe66 트리 차이 0) · G2B-2 확인 셋(① 모노레포 origin/main = 9fd9f2c ② gitops main dev digest = faf55a57 · GP-2의 digest 줄 변화 0 ③ `diff --stat origin/main...HEAD` = 15파일 +829 −15 — 루트 README 1 더함) → GP-A 머지(6729cf0) 뒤 `git rebase origin/main` → **`a42aceb`**(충돌 0 · diff 15파일 그대로 · digest 줄 변화 0 · dev 렌더 = 빌더 사본).
+- **GP-2 PR #63**(사용자 「push · PR 열기」 뒤 · 새 브랜치 push — force-push 0): head a42aceb(6729cf0 위) · 본문 = blob 9 · 렌더 · 검사 · 관문 need · 선행 조건 체크리스트 → checks gate 4s · prod-approval 3s · validate 1m12s(10:10:46Z(19:10:46 KST) CLEAN) → 관문 승인 · 머지 `ada0600`(L9). PR CI run id · 렌더 코멘트 내용은 기록 없음.
+- **GP-A #61 갱신**(사용자 「지금 갱신」 확인 뒤): gitops main ruleset `strict_required_status_checks_policy = true`(required = validate · prod-approval)라 base가 뒤처진 PR은 머지 전에 갱신해야 한다 — #61(merge-base f920df6 · behind 1)을 `gh pr update-branch 61`(merge 커밋 · force-push 아님)로 → head `d76a5d98` · behind 0 · 파일 5 그대로 · CI run 44490680703(classify 5s · validate 1m12s · render-diff 20s · render-comment 8s · prod-approval 3s · gate skipping · GitGuardian pass · 08:50:15Z(17:50:15 KST) CLEAN · 초안) → L6 끝에 머지 `6729cf0`.
+- **GP-3 빌드**(2026-11-20 · 워크플로 `wf_dd1b8874-520` — 빌더 1 → 리뷰 A · B · 에이전트 3 · 도구 330회 · 약 98분 · worktree `.superpowers/t075/gitops-gp3` 브랜치 `t075/gp3-prod` · 기준 ada0600 · 보고 `.superpowers/t075/build/G3-r0-report.md` · `reviews/G3A-r0.md` · `G3B-r0.md`): 빌더 **DONE** — 파일 5(overlays/prod kustomization 7 → 157줄 · `ingress-admin.yaml` · `middleware-admin.yaml` 새 · prod Application 주석만 · 루트 README :40) · patches 넷(Ingress test → replace · ConfigMap replace 9 + add 1 · ES env store + test/replace 12쌍 · ES migrate store + 2쌍). 렌더 prod 10객체 전부 jt-prod(ConfigMap · Service · Deployment 2 · Job · ES 2 · Ingress 2 · Middleware) · 컨테이너 5 = seed digest · ES `prod/` 키 14(prod 밖 0 · store vault-prod 2 · validate APP_ES_TABLE prod 열과 같다) · ConfigMap 17키 = D5 prod 열 · Secret 0 · dev 재렌더 = gp2-dev 바이트 같음. vsh PASS 54 · FAIL 0 · WARN 4(02:34:04Z–02:40:10Z(11:34:04–11:40:10 KST)) · 변이 m1–m7 모두 FAIL(m1 AUD_ADMIN replace 삭제 · m2 WRITES "false" · m7 prod CN = dev 값 → 14.4 / m4 admin 경로 더함 · m5 prefixes 더함 → 14.3 / m6 data[3] key → 3.9 / m3 op test 맞바꿈 → 1 KUST + 13.0 fail-closed 동반) · gitleaks 542파일 no leaks · kubeconform `-strict` 10 valid(Middleware도 datreeio 카탈로그로) · promote ④ 재현(워크플로 스텝 3 본문을 잘라 실행 — 그대로 = 「할 일 없음」 notice · 가짜 bump = 22행 digest 한 줄 · numstat 1/1).
+- **GP-3 리뷰**: A **approve**(LOW 3 · NIT 1 — G3A-1 D5 문장(= G2A-2 · mut-d · mut-e 실측) · G3A-2 GP-3 뒤 낡은 문장 넷 · G3A-3 첫 sync 일시 Traefik 오류가 L15 「middleware 오류 0줄」을 거짓 FAIL로 만들 수 있다(추론) · G3A-4 overlay :16 괄호) · B **approve**(LOW 3 · NIT 1 — G3B-1 같은 wave면 Ingress가 Middleware보다 먼저 선다(→ Middleware wave -1 · X1 변이 vsh PASS 54) · G3B-2 L15 정적 GET이 Cloudflare 캐시로 흔들린다(`cf-cache-status` 기록 · nonce · web 로그) · G3B-3 14.3에 어노테이션 허용 목록이 없다(X2 — prod admin `router.observability.accesslogs: "false"`도 PASS) · G3B-4 낡은 주석). 리뷰 B의 첫 prod sync 추적 ①–⑩(적용 순서 · AppProject · 쿼터 최악 1344Mi/2944Mi · NP · PSA · 공개 값 · ⑦-a 쓰기 플래그 · L15 경로 · CN 검사 · 되돌림) 문제 없음.
+- **GP-3 처리(컨트롤러 r1)**: G3B-1 · G3A-3 = `middleware-admin.yaml`에 `argocd.argoproj.io/sync-wave: "-1"` + 머리 주석 2줄 · G3A-4 = overlay :16 괄호(「첫 항목(promote ④의 전제)은 …」) — 확인: prod 렌더 diff = annotations 2줄뿐 · dev 렌더 = gp2-dev 바이트 같음 · CR 0 · BOM 없음 · 끝 줄바꿈 · `sha256:` 1줄 · vsh r1(03:14:37Z–03:20:47Z(12:14:37–12:20:47 KST)) PASS 54 · FAIL 0 · WARN 4 · SKIP 0 · 14.3 = Ingress 3(m2m 2 · admin 1) · Middleware 1. 미룸 = 아래 「T075 결과」의 설계 정정(D5 · D6 · VD-T075-12 · L15) · 문서 정합 PR(G3A-2 · G3B-4) · 계약 후속(G3B-3 = G2B-3과 합침) · T081 · T083 인계(G3B ⑦-a). 리뷰 사본 · 스크래치(g3a-tmp · g3b-copy · gl-gp3 · gl-all.txt) 삭제.
+- **GP-3 커밋 · PR #64**: `741e405`(ada0600 위 · 파일 이름으로 스테이징 5 · +229 −18) → 사용자 「push · PR 열기」 → 새 브랜치 push · PR #64(base main ada0600) · CI run 44667517651(classify 6s · validate 1m9s · render-diff 26s · render-comment 7s · GitGuardian pass · gate pending · BLOCKED) · 렌더 코멘트(03:26:32Z(12:26:32 KST) · github-actions[bot]) = main ada0600 ↔ PR head 741e405(merge ref c2bf67f) · 바뀐 디렉터리 2 · 렌더 실패 0 · `apps/identity-admin/overlays/prod` 추가 10 · 삭제 0 · 변경 0(+676/−0) · `clusters/oci-k3s/apps` 객체 변경 0(+15/−12 = 주석) · attestation 확인(L13 — 결과는 PR #64 본문 「attestation 확인(L13)」 절에 남겼다(2026-11-20 `gh pr view`로 확인)) → 관문 승인 · 머지 `9a234b8`(L14).
+
+### T075 라이브 결과(L0–L16 · 2026-11-19..20)
+
+- **기록 정본**: `.superpowers/t075/live/L1-o0-20261119.md`(gitignore · 절 이름으로 찾는다). 관찰과 변경을 섞지 않았다 — 변경 단계는 사용자 「진행」 · 「머지」 확인 뒤 운영자가 실행했다. 컨트롤러의 관찰은 agent-view · GitHub GET · 무자격 `curl -q`(L4 · L15)였고, GitHub 쓰기(push · `gh pr create` #63 · #64 · `gh pr update-branch` #61)는 사용자 확인 뒤에만 했다.
+- **L0–L1 O-0**(2026-11-19 13:44–13:50 KST(04:44–04:50Z) · agent-view 토큰 만료 21:42 KST(12:42Z)): Applications 23행(root + 자식 22) 전부 Synced/Healthy · AppProject dev/prod 허용 목록 없음 · 금지 6 · ClusterSecretStore 5 Ready · jt-dev(ES 4 · NP 9 · RQ pods 0/20 · LR) · jt-prod(ES 2 · NP 9 · RQ pods 0/30 · LR) · data(DatabaseRole 6 · Database 4 · KafkaUser 2 Ready) · data-assert 13/0(옛 꼴) · 열린 봇 PR 0 — 기대대로. 기록: K3s 두 노드 v1.36.6+k3s1(SUC가 이미 올렸다 — UD-13의 K3s 몫 적용 · SUC 채널은 14일 원칙을 지키지 않는다 → T116) · Argo CD v3.5.2(digest 핀) · Traefik 3.7.15(`allowCrossNamespace` 인자 없음 · 액세스 로그 400–599 · keep 헤더 CF-Connecting-IP · CF-Ray · User-Agent — T084 전제 ≥ 3.7.18 미충족은 UD-13) · Reloader v1.4.21 · SUC 창 일요일 03:00–05:00 KST(다음 2026-11-22).
+- **L2 O-1**(13:55 KST 무렵(04:55Z 무렵)): `o1=PASS 5/5`(OpenTofu 1.12.6 · 값 다섯은 비밀이 아니다 — 런북 기록 칸 O-1 행).
+- **L3 O-2 · O-4**(06:44Z(15:44 KST) 전): O-2 판정 20줄 = 런북 §4 T075 A 「지금(기록)」 열과 행마다 일치 · `o2 W-2 전제: dev 10/10 · prod 10/10` · `o4=PASS 14/14`(Vault CLI 2.1.0 · server 2.0.4 · seal ocikms).
+- **L4**: 무헤더 401 · O-5a 1차 판정 불가 → d5 → 수정 → 2차 PASS(위 절 「T075 O-5 탐침 자격 꼴 수정」).
+- **L5 GP-1**: PR #62 렌더 코멘트(main f920df6 ↔ head b7fd0c8 · 바뀐 디렉터리 3 · 렌더 실패 0) · 관문 승인(deployment 7882205870) · `validate/validate` 18m3s · 머지 `14efe66`(07:57:38Z(16:57:38 KST)) → root · platform-argocd 14efe66 Synced/Healthy · Succeeded 08:03:01Z(17:03:01 KST · ≈ 5분 23초) · AppProject 허용 목록 8 · 금지 6 · `cluster.tests.ps1` argo-1–5 PASS(43 passed · 3 failed = backup-1..3 OCI `svc-verify` 세션 만료 — 변경과 무관 · 9 skipped).
+- **L6 UD-9**(08:07Z–09:45Z(17:07–18:45 KST)): 전 확인(SUC 창 · Dragonfly 두 pod Running · 재시작 0) → O-6 사전 FAIL(옛 규칙 — 기대) → acl 2경로 삭제 → W-6 재렌더(생성 2 · live-ok 5 · 끝 08:13:32Z(17:13:32 KST)) → dev ES REFRESH 08:15:35Z → kubelet `..data` 08:15:45Z → `acl-load dev = OK` → `o6-post dev=PASS 7/7` → prod `o6-pre … PASS(B2)` · `..data` 08:13:47Z → `acl-load prod = OK` → `o6-post prod=PASS 5/5` → GP-A 머지 `6729cf0`(09:43:44Z(18:43:44 KST)) → platform-tests ComparisonError(아래 발견) → 운영자 Job 삭제(§4 T075 B 8단계에 예정된 명령 그대로 · 18:45 KST 무렵(09:45Z 무렵)) → data-assert 09:45:33Z–09:45:38Z(18:45:33–18:45:38 KST) `SUMMARY: pass=13 fail=0`(acl-list = NOPERM). 08:14:06Z(17:14:06 KST) · 08:22:31Z(17:22:31 KST) 관찰에서 Dragonfly 재시작 0 · prod ACL LOAD 뒤 확인은 기록 없음 · 두 ES lastTransitionTime 2026-10-22 그대로(SecretSyncedError 전이 0) · 앞 절의 받아들인 편차(kv 단계 두 env 한 번)대로 했다 · 「재시작 요인 보류」 해제.
+- **L7 W-2 dev → L8 O-3 dev**(2026-11-19 · 시각 기록 없음 — L6 끝 18:45:38 KST(09:45:38Z) 뒤 · GP-2 머지 19:10:47 KST(10:10:47Z) 전): PLAN 4 → authentik `patch v2`(보존 client_id · client_secret · api_token) · webhooks 덮어씀 v2 · django 생성 v1 · sentry 생성 v1 · 되읽기 일치 · `판정: dev 4경로 준비 완료` → `gate=PASS 21/21` → GP-2 머지 선행 조건 전부 충족.
+- **L9 GP-2**: 안내 첫 줄 「선행 조건 충족 확인됨(O-3 dev PASS · L6 · data-assert 7 PASS)」 · 관문 승인(deployment 7909824540) · 머지 `ada0600`(10:10:47Z(19:10:47 KST)) · 운영자 root refresh.
+- **L10 dev 기동**: operation 10:11:19Z–10:11:45Z(26초) → identity-admin-dev Synced/Healthy 10:12:05Z(19:12:05 KST · 머지 뒤 ≈ 78초) · identity-admin-prod 리소스 0으로 Synced/Healthy · 전체 25 Applications Synced/Healthy · jt-dev ES 2 SecretSynced · Job Complete(21s) · Deployment 1/1 둘 · Ingress host identity-m2m-dev · ConfigMap 17키 · 이미지 전부 faf55a57 · 노드 joshtech-api · 재시작 0 · 로그 오류 0(init `startup_check: OK` · web `/healthz` · `/ready` 200 · relay `outbox_relay.start` · celery `reconcile_denylist` 성공 반복) · Traefik 10분 identity 오류 0.
+- **L11 dev**(2026-11-20 · agent-view 토큰 갱신 — 만료 18:18 KST(09:18Z)): `o5b dev=PASS 8/8`(git_sha 9fd9f2c…) · `o5c dev=PASS 5/5`(200 = 10:21:32 KST(01:21:32.22Z) · request_id e171b800… · 687 ms · UD-10 400 표본 보낸 시각 01:21:32Z(10:21:32 KST) · 도착 01:21:34.12Z · x-request-id 665e1fb9-1e3e-4252-8fb8-21702b40af0f) · UD-10 대조(아래 발견) · O-7 `identity-admin-env` 11키 · `identity-admin-migrate` 1키 · middlewares 0 · tlsoption · tlsstore default · exec 탐침 web 로그 0줄(C16) → prod seed digest = dev 확인을 통과한 faf55a57(D4).
+- **L12 W-2 prod → O-3 prod**: 쓰기 넷 같은 꼴(VD-T075-11 두 번째 실측) · `판정: prod 4경로 준비 완료` · `gate=PASS 23/23`(dev와 같은 21 + webhooks · django dev 해시 ≠ prod 해시).
+- **L13**(01:26:45Z–01:26:52Z(10:26:45–10:26:52 KST) · L12보다 먼저 돌렸다 — 순서 무관 관찰): `gh attestation verify`(gh 2.93.0 · 런북 글자 그대로) exit 0 · `--format json` 요약 = attestation 1 · predicateType SLSA provenance v1 · subject = identity-admin@faf55a57… · buildSignerURI `…/publish-pod.yml@refs/heads/main` · buildSignerDigest = sourceRepositoryDigest = 9fd9f2c · github-hosted · push · run 44010688210 attempt 1 → PR #64 본문 「attestation 확인(L13)」 절에 남겼다(2026-11-20 `gh pr view`로 확인).
+- **L14 GP-3**: 안내 첫 줄 「선행 조건 충족 확인됨(dev L10·L11 PASS · W-2 prod · O-3 prod gate=PASS 23/23 · attestation exit 0)」 · 관문 승인(deployment 7932433255) · 머지 `9a234b8`(03:33:46Z(12:33:46 KST)) · 운영자 `identity-admin-prod` refresh=hard.
+- **L15 prod**: operation 03:33:55Z–03:34:07Z(12초 · automated) → Synced/Healthy 03:34:29Z(12:34:29 KST · 머지 뒤 ≈ 43초) · 적용 순 PreSync ES → PreSync Job → wave -1 ConfigMap · ES -env · Middleware → wave 0 Service · Deployment 2 · Ingress 2 · jt-prod ES 2 SecretSynced(앱 ES의 첫 vault-prod 사용) · Job 6s · 재시작 0 · quota 544Mi/1216Mi · pods 2 · 로그 오류 0 · Traefik(03:33:00Z 뒤) TLS multiple 0 · middleware 오류 0 · `o5b prod=PASS 8/8`(x-request-id bbad9901-1d6c-4421-b1c0-178b3d09370c) · `o5c prod=PASS 5/5`(200 request_started 03:38:01.76Z(12:38:01 KST) · request_id 8884d36e… — web 로그 · 라이브 기록 「마감 확인」 · UD-10 400 표본 03:38:02Z(12:38:02 KST) · x-request-id ab5d5515-f989-4def-afe0-61cdaaa218ca) · admin 정적 GET → web 로그 200(아래 발견) · 익명 → 302 Access 로그인 리다이렉트(무자격 curl · 03:42:02Z(12:42:02 KST) · AC6 문면 403과 다르다 → 편차 6) · Middleware 1 · tlsoption · tlsstore default 각 1.
+- **L16 하네스**(03:43–03:47Z(12:43–12:47 KST) · 컨트롤러가 gitops 공유 클론을 fetch — origin/main → 9a234b8): cluster 45/3/7(argo-1 25 Applications · argo-3 허용 목록 정확히 8 · 금지 6 · argo-5 · limits-1 · limits-2 PASS) · data 14/2/0(env-1 SKIP → PASS — Deployment 4개 · `*-migrate` Secret 참조 0) · kafka 17/0/0(job-d-2 PASS · 근거 `NOPERM identity-admin `) · 동기화 하네스 PASS — 환경 FAIL 5 = OCI `svc-verify` 세션 만료(backup-1..3 · bucket-1/2 — 결함 아님 · 마감 run-all 전 운영자 갱신) · SKIP 7 = 운영자 수동 5 · np-2-authz-assert(T085) · mon-1(T098).
+- **VD 보충**(03:51Z(12:51 KST)): VD-T075-7 · 8의 dev · prod 몫(아래 표).
+- **VD 표**(설계 §6 「T075 안에서 실측」 순서 · 결과 = PASS / 기록(합격선 없음) / 부분):
+
+| VD | 결과 | 근거(단계 · 줄) | 메모 |
+|---|---|---|---|
+| VD-T075-1 렌더 단언 | PASS | 조각 ⑤ · ⑥ 로컬 kustomize 5.8.1 — dev 8 · prod 10객체 · 전부 그 ns · 컨테이너 5 `…@sha256:faf55a57…` · prod ES `prod/` 14 + store vault-prod 2 · ConfigMap = D5 표 · admin Ingress · Middleware는 prod만 | `op: test` 변이 → 렌더 실패(GP-2 m2 · GP-3 m3 · 리뷰 G2B · G3A mut-a–c) |
+| VD-T075-2 vsh · 변이 · gitleaks | PASS | GP-2 vsh 54/0/WARN 4 · 변이 넷 FAIL · gitleaks no leaks / GP-3 vsh 54/0/WARN 4(r1 다시) · 변이 일곱 FAIL · gitleaks no leaks | m2 · m3은 13.0 fail-closed 동반(설계된 동작) · 합격선 「변이 셋」보다 많다 |
+| VD-T075-3 GP-1 RED → GREEN · 실트리 | PASS | 앞 절 「T075 조각 ① GP-1 결과」(RED 4/4 → GREEN 17/0 · 실트리 54/0) · L5 `validate/validate` 18m3s | CI 자기검사 전체 초록 = PR #62 첫 CI |
+| VD-T075-4 동기화 하네스 RED → GREEN | PASS | 앞 절 조각 ②(11-18 실제 대조 RED 1 — GP-2 전 기대) → L16 03:47:17Z `PASS sync-identity-admin`(9fd9f2c `deploy/base` == 9a234b8 `base` · 9항목 이름 · blob · mode) | 두 커밋 출력 · 전체 자기 시험은 마감 run-all 1b7 |
+| VD-T075-5 hook 순서 · owner Secret 수명 · hook 삭제 시점 | 부분 | L10 · L15 operation — PreSync ES `identity-admin-migrate` → PreSync Job → Sync 단계(dev ConfigMap · ES -env · Service · Deployment 2 · Ingress / prod wave -1 ConfigMap · ES -env · Middleware → wave 0) · L11 O-7(2026-11-20) `identity-admin-migrate` Secret 키 1 = sync 뒤에도 있다 | 순서 · 상주는 IR:455-461 · D14 문장과 같다(C14 — 관찰만 적는다) · 재생성 · hook 삭제 시점은 미관찰(두 번째 전체 sync 없음) · Secret 생성 시각 기록 없음 |
+| VD-T075-6 ES 2 · `trimSuffix` · 빈 dsn | PASS | L10 · L15 ES 2 SecretSynced(dev vault-dev · prod vault-prod) · migrate Job Complete · `startup_check: OK` · L11 O-7 `-env` 11키(SENTRY_DSN 포함) · `-migrate` 1키 | `trimSuffix`로 조립한 DATABASE_URL로 web이 붙었다(O-5b `checks.db` ok · `/ready` 200) → C12 |
+| VD-T075-7 기동 | PASS | L10 · L15 · VD 보충 — init `startup_check: OK` 1줄 · retry 0 · web `invalid_host` · `DisallowedHost` 0 · PodSecurity 이벤트 0 · 모든 pod 재시작 0 · GHCR digest pull 정상 | dev 이벤트는 11-19라 보존 창 밖(prod는 배포 17분 뒤 창 안) |
+| VD-T075-8 Kafka · relay · Celery(B2 아래) | PASS | O-5b dev · prod `checks.kafka_producer` ok · relay `FATAL` · `producer_fatal` 0 · celery NOPERM 0 · `reconcile_denylist` 30초마다 succeeded(prod failed 0 · dev 성공 반복) | (선택) 신선도 값 전진은 하지 않았다 → T098(KA-10) |
+| VD-T075-9 `/health` 게이트 dev | PASS | L11 `o5b dev=PASS 8/8` | prod는 L15 `o5b prod=PASS 8/8`(VD-T075-12) |
+| VD-T075-10 무헤더 코드 · exec 로그 | 기록 | L4 무헤더 401(dev · prod) · L11 exec 탐침 → web 로그 307줄 중 0줄 | C11 「Access 401」(편차 6) · C16 |
+| VD-T075-11 `vault kv patch` 꼴 | PASS | L7 `authentik patch v2 · 되읽기 일치(jwks_url·issuer = 계약 값 · 보존 client_id·client_secret·api_token)` · L12 prod 같은 줄 | 두 번 실측 · 블록 정정 0 |
+| VD-T075-12 prod | PASS | L13 attestation exit 0 · L15 ES 2(첫 vault-prod) · 빈 Application(L10) → 10객체 Synced/Healthy · `o5b prod=PASS 8/8` · admin 정적 GET web 로그 200 · 익명 302(AC6 문면 403 — 편차 6) · Middleware 1 · tlsoption · tlsstore default 각 1 · Traefik TLS multiple 0 · middleware 오류 0 | 판정 보정 셋(정적 GET = web 로그 · Traefik = sync 뒤 창 · 익명 = 무자격 curl) — 설계 §6 정정 노트 · 런북 L15 |
+| VD-T075-13 UD-9 B2 라이브 | PASS | L6 `acl-load dev = OK` · `acl-load prod = OK` · `o6-post dev=PASS 7/7` · `o6-post prod=PASS 5/5` · data-assert `SUMMARY: pass=13 fail=0` · celery NOPERM 0 | Dragonfly 재시작 0(08:14:06Z(17:14:06 KST) · 08:22:31Z(17:22:31 KST) 관찰 · prod ACL LOAD 뒤 확인은 기록 없음) · L16 job-d-2 PASS |
+| VD-T075-14 relay ACL(로컬 실 브로커) | PASS | 앞 절 「T075 UD-12 결과」(조각 ③′ · 2026-11-17) | M1 성립 · 라이브 단계 없음 |
+| VD-T075-15 O-5c 양성 · UD-10 | PASS · 기록 | L11 `o5c dev=PASS 5/5` · L15 `o5c prod=PASS 5/5` · 400 표본 줄 RequestPath에 쿼리 원문(dev · prod) | 앱 로그 쿼리 0 · 결정은 T098 전(UD-10) |
+| VD-T075-16 AppProject 허용 목록 | PASS | L5 허용 목록 8 · 금지 6 · platform-argocd 14efe66 Synced/Healthy · argo-1–5 PASS | L16 argo-3 PASS 다시 |
+| VD-T075-17 UD-9 최종 aclfile 로컬 | PASS | 앞 절 「T075 조각 ② · ③ · ④ · GP-A 결과」(조각 ③) | 같은 렌더를 L6에서 실물에 적용(O-6 사전 PASS(B2)) |
+
+- **발견**
+  - **서비스 토큰 꼴**: Access 서비스 토큰 `client_secret` = 54자 `[A-Za-z0-9_-]`(토큰 넷 모두 — 길이가 research.md R12의 2026-08 이후 발급 꼴 `cfast_` + 40 + 8 = 54와 맞는다 · 접두는 재지 않았다) — 설계 D11 「64 hex」는 문서 예시 가정이었고 자체 조사와 대조하지 않았다(위 절 · 학습 로그 11-19 — 외부 서비스는 시험으로 검증).
+  - **Argo CD v3.5.2 서버 측 diff의 불변 Job**: GP-A 머지 뒤 platform-tests = sync **Unknown** · 조건 `ComparisonError … serverSideDiff error: error running server side apply in dryrun mode for resource Job/data-assert: Job.batch "data-assert" is invalid: spec.template: Invalid value …` · operationState는 옛 것 그대로(새 operation 0). gitops platform/policies/tests/README.md §재실행 모델 「Job 스펙을 바꾸는 PR」 ②의 글(`field is immutable` · Running/Retrying · 재시도 창 ≈ 5분)과 다르다 — Job을 지울 때까지 Unknown이 이어지고 시간 압박이 없다 · 예정된 8단계 Job 삭제(§4 T075 B 8단계의 명령 그대로 — 운영자 · 18:45 KST 무렵(09:45Z 무렵))로 풀렸다(같은 README 「미확인」의 VD-3 첫 실측 · gitops 문서 정정 후보).
+  - **gitops ruleset strict**: main ruleset `strict_required_status_checks_policy = true` — base가 뒤처진 PR은 머지 전 갱신(`gh pr update-branch` = merge 커밋 · force-push 아님 — #61). GP-2는 PR을 열기 전에 로컬 rebase(새 브랜치 push)라 force-push가 없었다.
+  - **ESO 데이터 변화 동기화 ≠ REFRESH**: ES `refreshTime`은 데이터가 바뀌지 않은 주기 갱신에도 전진하고, kubelet의 새 `..data`는 데이터가 바뀐 동기화 뒤에만 생긴다 — prod는 데이터가 바뀐 동기화 08:13:28Z(17:13:28 KST · 그 시각 SecretSynced 성공에서 추론) → `..data` 08:13:47Z(19초 뒤 — 추론 확인) · 다음 REFRESH 08:18:28Z는 데이터 변화 없음 → 새 `..data` 없음 · dev는 REFRESH 08:15:35Z → `..data` 08:15:45Z(10초). `SYNCED_RV`는 ES 객체 기준이라 데이터와 무관하게 같다. 런북 §4 T075 B 5단계의 옛 기준 「4단계 `REFRESH`보다 뒤」를 글자대로 읽으면 prod에서 어긋난다 → 「데이터가 바뀐 동기화(그 env의 acl을 W-6이 쓴 직후의 첫 `SecretSynced`)보다 뒤」로 고쳤다(런북 보정 · 4단계 문구는 그대로 — 「ESO가 쓰기 뒤 한 번 돌았다」를 보이는 충분 조건이고 prod도 08:18:28Z(17:18:28 KST)로 충족).
+  - **UD-10**: dev(StartUTC 01:21:34Z(10:21:34 KST)) · prod(03:38:03Z(12:38:03 KST)) 모두 Traefik 액세스 로그(400–599만)의 `/session/check` 400 줄 RequestPath에 쿼리 원문(`sub` · `sid` 가짜 값)이 실린다 · 200 양성은 남지 않는다 · 앱 로그(django_structlog)는 `"request": "GET /session/check"` 쿼리 없음 → 노출 면 = Traefik 4xx–5xx 액세스 로그뿐. 같은 줄의 `request_Cf-Connecting-Ip`(설계대로 keep)는 옮기지 않았다 · TLSClientSubject `CN=origin-pull.cloudflare.net`(AOP mTLS) · TLS 1.3 · HTTP/2.0. 결정은 T098 전(그대로).
+  - **cf-cache-status HIT**: admin 정적 GET(`…/identity-admin/static/admin/css/base.css?t=l15a`)의 운영자 응답이 HIT(다시 읽은 응답)라 판정에 쓰지 않았다 → web 로그 `GET /static/admin/css/base.css` request_finished code 200 · 1.6 ms · request_id c19d3c47-782f-4df7-92b2-3abc06c06630 · 03:38:18.96Z(12:38:18 KST) · Chrome UA(stripPrefix 뒤 경로 · AdminHostMiddleware → static serve)로 원점 도달을 확인했다(G3B-2).
+  - **admin favicon 404**: 03:38:20Z(12:38:20 KST) 브라우저 자동 요청 `admin.joshuatech.dev/favicon.ico` → Traefik 404 — admin Ingress 경로가 `/identity-admin/admin` · `/identity-admin/static`뿐이라(D6 좁힌 경로) 정상 · INFO.
+  - **api 호스트 /healthz 404**: Traefik 액세스 로그 `api.joshuatech.dev /healthz` 404(python-httpx · 라우터 없는 호스트) — T075 밖 · INFO.
+  - **첫 배포 시간**: prod = 머지 03:33:46Z → Synced/Healthy 03:34:29Z(≈ 43초 · operation 12초 · 운영자 hard refresh) · dev = 머지 10:10:47Z → 10:12:05Z(≈ 78초 · operation 26초 · 운영자 root refresh) · GP-1 → platform-argocd 반영 ≈ 5분 23초(08:03:01Z(17:03:01 KST)).
+
+### T075 결과(2026-11-20 · 마감)
+
+- **머지 넷**(모두 운영자 squash · `--match-head-commit` · 머지 명령은 선행 조건 출력을 받은 뒤): GP-1 #62 → `14efe66`(2026-11-19 07:57:38Z(16:57:38 KST) · 관문 deployment 7882205870 · 55파일 +4229 −465) · GP-A #61 → `6729cf0`(09:43:44Z(18:43:44 KST) · 관문 skip · 5파일 +136 −47) · GP-2 #63 → `ada0600`(10:10:47Z(19:10:47 KST) · 관문 deployment 7909824540 · 15파일 +829 −15) · GP-3 #64 → `9a234b8`(2026-11-20 03:33:46Z(12:33:46 KST) · 관문 deployment 7932433255 · 5파일 +229 −18).
+- **〈실측 뒤〉 C11–C16**(설계 §4 표 · 이 마감 커밋에서 고쳤다 — 자리(설계 §4 표의 보정 전 줄 번호)와 적은 사실): C11 ha:26 · ha:7 = 무헤더 「Access 401」(L4 dev · prod — T076 문면 403과 다르다 → 편차 6) + ha admin 행 = 무자격 302 Access 로그인 리다이렉트(L15 — 설계 §4 표 밖에 더함 · 편차 6) · C12 gr:133 「`trimSuffix` — T075 라이브 확인」 → 결과(VD-T075-6 — 조립한 DATABASE_URL로 dev · prod web이 DB에 붙었다) · C13 dm:169 · :176 = 시드 기록(W-2 dev 2026-11-19 · prod 2026-11-20 — 같은 꼴: authentik patch v2 · webhooks v2 · django v1 · sentry v1 · O-3 dev 21/21 · prod 23/23 · 값 0) · C14 IR:455-461 = 관찰(hook 순서 · owner Secret 상주가 문장과 같다 — 문장 변경 없음 · 관찰만 적는다 · 재생성 · hook 삭제 시점 미관찰) · C15 vu:294-308 표 아래 = T075 덮어쓰기 기록(남은 sentinel 키 = 면제 셋 `api_token` · openfga `store_id` · `key` + 판정 밖 `client_id` · `client_secret`) · C16 ia:140 = exec 탐침 결과(L11 · 2026-11-20 — 운영자 exec 출력 1줄 → web 로그 0줄 · 탐침 시각은 기록 없음) · ia:35 = CN = Client ID 첫 양성 = T075 O-5c `/session/check` 200 — dev L11 `web-bff-dev`(10:21:32 KST(01:21:32.22Z) · request_id e171b800… · 687 ms — 같은 실행의 UD-10 400 표본보다 앞) · prod L15 `web-bff-prod`(12:38:01 KST(03:38:01.76Z) · request_id 8884d36e…) · T076은 음성(tester-m2m 403).
+- **설계 정정**(t075-design.md — 결정 본문은 그대로 · 노트 넷 「(정정 2026-11-20 — bn 「T075 결과」)」): D11(서비스 토큰 `client_secret` = 54자 `[A-Za-z0-9_-]` — R12 · L4 d5 · 키별 정규식 결론은 그대로) · D5(JSON6902 `replace`는 없는 map 키를 더한다 — G2A-2 · G3A-1 · 드리프트는 14.2 키 집합이 잡고 두 overlay가 모두 replace하는 키 셋의 base 삭제는 가려진다) · D6(Middleware `argocd.argoproj.io/sync-wave: "-1"` — G3B-1 · G3A-3 · L15 일시 줄 0) · §6 VD-T075-12(판정 보정 셋 — G3B-1 · G3B-2 · L15).
+- **런북 보정**(bs · 이 마감 커밋에서 고쳤다 · 표식 「T075 보정 2026-11-20」): §3 T075 L15 판정(admin 정적 GET은 요청마다 새 nonce를 붙이고 첫 응답의 `cf-cache-status`를 기록 — HIT면 web 로그 `request_finished` 200으로 원점 도달 확인 · Traefik 로그는 sync 뒤 창(첫 sync · Traefik 재시작 직후 일시 줄은 INFO) · 익명 리다이렉트는 무자격 curl도 된다) · §4 T075 B 5단계 `..data` 기준(이전 문구 「4단계 `REFRESH`보다 뒤」 → **데이터가 바뀐 동기화**(그 env의 acl을 W-6이 쓴 직후의 첫 `SecretSynced`)보다 뒤 — 위 발견 · 4단계 문구는 그대로) · 기록 칸(O-1 행의 CF 값 다섯은 비밀이 아니다 — bn에는 옮기지 않는다). O-5 자격 꼴은 런북이 적지 않아 고칠 것 없음(O5fix-r0 F4).
+- **report 편차**(설계 §1 끝 후보 18 — 모두 실현): 1–5 · 7–18은 설계대로 실현(앞 절의 받아들인 편차 — W-6 kv 단계 두 env 한 번 · D20 정정 — 도 L6에서 그대로) · **편차 6 = 무헤더 실측: m2m 401(L4) · admin 302 Access 로그인 리다이렉트(L15 · 12:42:02 KST(03:42:02Z)) — spec:109 AC6 문면은 두 호스트 모두 403**(T076 단언 대상 · 계약 보정 C11). 새 후보 셋 — 19 익명 → Access 리다이렉트를 운영자 시크릿 창 대신 컨트롤러 무자격 `curl -q`로 확인(L15 — 같은 무자격 조건 · 확인 방법의 편차이고 응답 코드 302는 편차 6) · 20 admin 정적 GET 200을 브라우저 응답(`cf-cache-status` HIT) 대신 web 로그 원점 도달로 판정(L15 · G3B-2) · 21 Middleware `argocd.argoproj.io/sync-wave: "-1"`(설계 D6 · C5에 없던 어노테이션 — G3B-1 · G3A-3 · 14.3은 Middleware 어노테이션을 보지 않는다). report.md 반영은 T117 초안 · /finish.
+- **인계**
+  - **T076**(US6 E2E — tester): dev · prod가 떠 있다(25 Applications Synced/Healthy) · 무헤더 = m2m Access 401(C11 — T076 문면 403은 편차 6) · AC6 admin 호스트 무자격 = 302(GitHub IdP 앱 — 403 아님 · 편차 6) · tester-m2m 자격 = tofu `service_tokens`(`client_secret` 54자 — O-5 블록이 stdin 헤더로 쓰는 꼴 · Vault 미시드 — T077 시드를 앞당길지는 T076 설계) · m2m 호스트 404 넷(KA-10) · `/apix` · `/sessionsX` = 403 `access_required`(설계 §7) · CN 양성은 O-5c가 증명했다(T076의 tester-m2m 403은 음성).
+  - **T081 · T083**: kv `api_token` 실값 투입 = prod Authentik 쓰기 활성화다 — prod ConfigMap `AUTHENTIK_WRITES_ENABLED "true"` · 지금은 sentinel이라 호출 0(위임 = WARNING `calls_disabled` · 일 1회 대조 WARNING 1줄 — G3B ⑦-a · t073 D18 「T083이 실값을 넣는 순간 동작한다」) · 실값 투입 때 면제 셋에서 거둔다(14.4 표 · prod 관문).
+  - **T084**: admin forward-auth Middleware(14.3 표 `router.middlewares`) + 어노테이션 키 허용 목록(아래 계약 후속) · Traefik ≥ 3.7.18 전제(라이브 3.7.15 — L1) · CN 완화 조건(C23) · 회전 = T075 블록.
+  - **T097**: 쿼터 실사용 기준선 jt-prod 평상 544Mi/1216Mi · pods 2(L15) · 설계 §7 T097 행 그대로.
+  - **T098**: UD-10 결정 입력 = dev · prod 측정값(위 발견) · 신선도 키 35 s 관찰(KA-10) · mon-1 SKIP · OTEL 엔드포인트 · celery 경보(설계 §7).
+  - **T115**: GP-3 seed = 지금 dev digest라 promote는 지금 「할 일 없음」(GP-3 빌드의 promote ④ 재현) — 다음 dev bump 뒤 첫 승격 PR에서 실연 · 봇 경로 출처 검증.
+  - **T116**: SUC 채널 14일 원칙(L1 — K3s v1.36.6을 SUC가 창에서 올렸다) · 아래 계약 후속을 하지 않으면 편차 14에 받아들인 위험으로 적는 길 · 설계 §7 T116 행.
+  - **UD-13 정비 단계**(T075 뒤 · US4 전 · tasks.md 밖): Argo CD v3.5.7(`bootstrap/argocd` — 관문 대상 · 내장 kustomize 판으로 `KUST_FIELDS` · `KUST_NESTED` 재대조) · Traefik ≥ 3.7.18(다음 K3s 패치 — K3s v1.36.6 · 번들 3.7.15는 이미 적용).
+  - **T075 뒤 gitops 문서 정합 PR**(tests/ 자기검사 17분을 T075 임계 경로 밖으로 · `clusters/oci-k3s/projects/*` 줄은 관문 대상): 「GP-2 처리」 미룸 — tests/README.md:81 · clusters/oci-k3s/projects/dev.yaml:19 · prod.yaml:10 · tests/README.md:67 · platform/traefik/README.md:203 · clusters/oci-k3s/apps/platform-tests.yaml:21 · platform/policies/tests/README.md:154 / 「GP-3 빌드」 미룸 — .github/workflows/promote.yml:48-49 · tests/README.md:520-521(:81 · projects/prod.yaml:10과 겹침) / L6 발견 — platform/policies/tests/README.md §재실행 모델 「Job 스펙을 바꾸는 PR」 ②(서버 측 diff = ComparisonError · operation 0 · Job 삭제까지 Unknown · 시간 압박 없음 · 「미확인」 VD-3 실측).
+  - **계약 후속**(계약 먼저 — T084 또는 T116): G2B-3 + G3B-3 = 14.3 앱 렌더 객체의 어노테이션 키 허용 목록(`traefik.ingress.kubernetes.io/*` m2m = {router.entrypoints, router.tls} · admin = + router.middlewares · `argocd.argoproj.io/*` = {sync-wave, hook, hook-delete-policy} · 그 밖 FAIL + 부정 픽스처 — 지금은 관문 밖 dev PR의 다른 ns Middleware · ServersTransport · `Delete=false`도, prod admin `router.observability.accesslogs: "false"`도 PASS — 리뷰 g4 · X2 실측) · G2B-4 = 14.7 「앱 overlay 렌더의 모든 객체 이름 = `<pod>` 또는 `<pod>-*`」(공유 ns jt-dev의 platform-tests Job과 이름 겹침 — g4) · G2B-5 = 계약 gr:53 「Degraded 경로 = hook ES kv 누락」 → 대표 경로 + 그 밖(migrate Job 실패 · 기동 실패) 한 줄(Application 머리 주석은 GP-2에서 고쳤다).
+- **tick**: tasks:192 [X] — 결과 줄 없음(D17)
+- **run-all**: 2026-11-20 14:33:22–15:22:11 KST(05:33:22–06:22:11Z · 49분 · KUBECONFIG = agent-view · 운영자 OCI `svc-verify` 재인증 뒤) — 슬롯 38 중 **37 PASS · 1 FAILED = `platform` ← `infra tests` 34/27**(`tofu plan`이 운영자 OCI 자격 · `budget_alert_email`을 요구 — T053 · T054 · T058 · T059와 같은 기대 FAIL · gitops-base-sync는 전체 자기 시험 + 실제 대조 PASS). 러너가 infra 단계에서 멈춰 라이브 시험 파일은 run-all 밖에서 직접 돌렸다(15:24:46–15:28:31 KST(06:24:46–06:28:31Z) · agent-view · 같은 OCI 세션): cluster 48/0/7(backup-1..3 PASS · SKIP = 운영자 수동 5 · T085 · T098) · data 16/0/0(bucket-1 · 2 · env-1 PASS) · ingress 12/0/0 · kafka 17/0/0 · reboot 3/0/4(수동 트리거 전용 SKIP) — 합계 96 PASS · 0 FAIL · 11 SKIP. L16의 환경 FAIL 5(OCI 세션 만료)는 이 실행에서 모두 PASS.
+- **학습 로그**: `content/tmp/003-t075/2026-11-19.md`(라이브 첫날 — L1–L10) · `content/tmp/003-t075/2026-11-20.md`(둘째 날 — L11–L16).
+- **다음**: T076(US6 E2E — tester · AC1–AC6 · dev · prod `/health` 200 · 무헤더 · m2m 호스트 404 · ES 2개) → UD-13 정비 단계 → Phase 7 US4(T077–). 대기 사용자 결정: UD-1(다음 main 통합 — T075는 main 발행 없음 · 모노레포 origin/main 9fd9f2c 그대로 · gitops 주석이 가리키는 런북 §3 · §4 T075 · 동기화 하네스는 003 브랜치에만 있다 — G2A-4) · UD-10(T098 전) · UD-11(T081 전) · T073 설계 §8의 UD-2 · UD-4(T081) · UD-3(T083) · UD-7 · UD-8(T089). OCI `svc-verify` 세션은 마감 run-all 전에 운영자가 갱신했다(L16 환경 FAIL 5 → 위 run-all 줄의 직접 실행에서 PASS).
+
+## T076 (2026-11-20 설계 확정 — US6 E2E · 템플릿 로컬 경로 + identity-admin 라이브 · tester-m2m 자격 UD-15 · UD-16 · 세션 모델 Opus 5.5)
+
+- **과제 문면**: tasks.md :196(설계 머리에 그대로). 설계 정본 = `design/t076-design.md`(D1–D16 · VD-T076-1–9 · report 편차 후보 6–12 · 비판 반영표 §9).
+- **T075 뒤 정리(2026-11-20)**: gitops 문서 정합 PR #65(T075 「인계」의 「T075 뒤 gitops 문서 정합 PR」 — 7파일 · 주석 · Markdown만 · 바꾼 YAML 넷의 `yq -o=json` = 9a234b8) → CI validate 17분 30초(자기검사 포함) · 렌더 객체 변경 0 → 운영자 관문 승인 · squash 머지 **08:26:25Z(17:26:25 KST) → main `cb3ba13`** · Applications 25 Synced/Healthy(08:26:52Z — 라이브 변화 0). 「T075 결과」 인계의 그 행은 이것으로 끝났다.
+- **조사**(`wf_27f519b7-892` · 3명 · 읽기 전용 — `.superpowers/t076/research/{r1,r2,r3}.md`): R1 명세 · 계약 · 인계(사실 53) · R2 템플릿 로컬 경로(40) · R3 라이브 증거 경로(31 — agent-view 읽기 08:35–08:46Z: 25 Synced/Healthy · ES 4 SecretSynced · Ingress 3 · `startup_check: OK`).
+- **사용자 결정**
+  - **UD-15**(18:2x KST): tester-m2m 자격 경로 = 「tester에게 자격 부여」(질문: 운영자 블록 출력(권장) vs tester에게 자격 부여 → 후자). `kv/platform/access/tester-m2m` 시드를 T077에서 앞당기고 e2e-reader 정책에 그 경로를 더한다 · T085도 같은 길.
+  - **UD-16**(18:5x KST): Vault 로그인 토큰 = **vault 전용 1시간 JWT**(운영자가 라이브 창마다 1번 발급 · 저장소 밖 DPAPI 파일 · 1시간 안 재시도 자유 · 계약 :80 값 그대로). 경위: 첫 질문 「단기 1회용 JWT(권장) vs agent-view 8h 확장」에 사용자가 설명 요청 → 사용자 제안 「8시간으로 빠르게 개발하고 마무리 때 1회용으로」 → 컨트롤러 답(블록 개발은 모의 시험이라 토큰이 필요 없다 · 8h는 K3s API audience 실측과 계약 :59 · FR-044 · gitops README 발급 명령을 바꿨다 되돌리는 일 · 두 벌 구현 · 모든 에이전트 8h 노출(회수 불가)) + 대안 「vault 전용 1시간 재사용」 → 표 질문 → 「vault 전용 1시간 (권장)」. 1회용으로 조일지는 `/finish` 전에 다시 여쭙는다.
+- **비판**(`wf_56448da6-2d3` · 읽기 전용 — `.superpowers/t076/reviews/critique-{A,B}*.md`): A 정합 · 실행 approve_with_fixes(HIGH 1 · MEDIUM 5 · LOW 6 · NIT 2 — A-1 tester 블록이 Read-Host를 물려받으면 비대화형 셸에서 멈춘다 · A-5 렌더 단언 목록 없음 등) · B 자격 · 보안 approve_with_fixes(HIGH 1 · MEDIUM 6 · LOW 4 · NIT 1 — B-01 8h 이중 audience = 모든 에이전트에 Vault 능력 · B-06 eso-platform이 `kv/data/platform/*`를 읽어 「ESO 밖」이 관례뿐 등). 처리 = 설계 §9(전부 채택 · B-03 ⑧의 tester 전용 PreToolUse 훅만 이연 — 받아들인 위험 4).
+- **컨트롤러 실측(09:43Z · 자격 0)**: 라우터 없는 공개 호스트 `api.joshuatech.dev` 무자격 `curl -q` 3건 = 404 · `text/plain; charset=utf-8` · 19 B(`404 page not found` + LF · sha256 `b16e1576…4793`) · `cf-cache-status` DYNAMIC — O-8 404 판정 기준값(설계 D10 · VD-T076-6). agent-view 토큰은 18:18 KST에 만료(이후 라이브 읽기 0).
+- **주요 컨트롤러 결정**(설계 §2): 정책 = e2e-reader +1 정확한 경로 · **eso-platform에 `platform/access/*` deny 두 줄**(「ESO 밖」을 Vault ACL로 강제 — B-06 강화) · 컨트롤러 Vault 로그인 0(권한 판정은 O-8이 읽기 전에 `sys/capabilities-self`) · 음성 대조 O-10(audience 없는 토큰 거부)을 정책 · 시드 전에 · tester 블록은 Read-Host 0 · param만 · vault CLI 0(curl → HTTP API) · port-forward는 블록 소유 · tester 디스패치 두 번(1차 Vault 0 · 2차 1시간 JWT) · 렌더 단언은 배포된 객체(L-8)로 · gitops 변경 0.
+- **다음**: 빌드 조각 ①–④(설계 §6) → 리뷰 세 렌즈 → 컨트롤러 커밋 → push(사용자 확인) → 라이브 창 ①(O-10 · plan/apply · W-7) · ②(agent-view · svc-verify · O-7) → tester 1차 → O-9 → tester 2차 → 기록 · tick.
+- **빌드 r0**(`wf_e3aec507-a04` · 2026-11-20 · 빌더 B1–B4 opus · 라이브 0 — 보고 `.superpowers/t076/build/B{1-4}-r0-report.md`):
+  - B1 Vault 정책: `infra/vault/policies.tf`(e2e-reader에 `kv/data/platform/access/tester-m2m` read 추가 · eso-platform에 `kv/data/platform/access/*` · `kv/metadata/platform/access/*` deny) · `roles.tf`(주석 앵커) · `tests/infra/tofu.tests.ps1`(vt-14 · 새 vt-14b · vt-16 — 단언 61 → 62) · 계약 `gitops-repo.md` · `data-model.md` · `vault-unseal.md` §12 · 역할 표. 빨강 32 passed / 30 failed → 초록 35 / 27(남은 27 = [plan] 게이트 `budget_alert_email` — 기준선) · vt 18 / 0 · 변이 13 / 13 · restore-drill 28 / 0 · gitleaks 0.
+  - B2 운영자 블록 `t076-blocks/{w7-seed-tester-m2m,o9-issue-vault-jwt,o10-vault-audience-negative}.ps1` + `harness-op.ps1` — 140 / 140 · 단언 3963 · T075 하네스 359 / 359 그대로 · 변이 46 / 46.
+  - B3 tester 블록 `{o8-probe-identity-m2m,c8-correlate-logs,l8-live-identity-admin}.ps1` + `harness-tester.ps1` — 134 / 134 · 단언 3476 · 변이 32 / 32 · 실물 curl 17 / 17(mingw 8.4.0 · System32 8.23.0 · 127.0.0.1 로컬 서버만).
+  - B4 에이전트 층 · 문서: `tester.md` 「Credentials」 · `infra.md`(UD-15 문장) · approval-review k8s-security 경계(UD-15 예외) · `infra-builder.md` · KR 미러 · `.claude/settings.json` deny 끝 두 줄(`Bash(vault *)` · `PowerShell(vault *)`) · codex-parity deny 단언 27 → 29 · 계약 `hostnames-and-access.md` · `quickstart.md` · 런북 §3 · §4 T076 · publish-pod 주석 — codex-parity 11 / 1(`.agents` 사본 누락 — 아래 C-01) · agent-layer 72 / 0 · hook 23 / 0 · publish-pod 66 / 0.
+- **r0 리뷰**(같은 워크플로 · `.superpowers/t076/reviews/R-{S,C,O}-r0.md` — 셋 다 approve_with_fixes):
+  - R-S: MEDIUM 3(S-01 Vault 로그인 자료 경계 문장 · S-02 하네스 노출 검사가 헤더 이름을 보지 않는다 — User-Agent에 비밀 20자를 실은 변이 M5 생존 · S-03 「1회용」 정의) · LOW 4 · NIT 4.
+  - R-C: HIGH 1(C-01 `.agents` k8s-security 사본 미동기 — codex-parity 빨강) · MEDIUM 1(C-02 문서의 O-9 `-Clear` 인자 ↔ 블록 param 0) · LOW 7 · NIT 6.
+  - R-O: HIGH 1(RO-01 = C-01) · MEDIUM 4(RO-02 = C-02 · RO-03 W-7 창 정리 줄 · RO-04 Git Bash cp949에서 블록 한글이 깨진다 · RO-05 migrate Job TTL 기한) · LOW 6 · NIT 1.
+- **컨트롤러 결정**(`.superpowers/t076/decisions-controller.md` 「r0 리뷰 처리」 — r1 지시의 정본 · 설계 「## 정정 노트」 20항목):
+  - 블록 · 판정: 문서를 블록에 맞춘다(모드 = 정지점 단어 `issue` · `clear`, 남는 인자 = 외부 호출 0 STOP — O-9 · O-10 · W-7) · W-7 `cluster_name` 판정(S-09) · 창 정리 줄(RO-03) · aud 두 꼴(문자열 · 원소 하나 배열 — 새 VD-T076-10) · 블록 여섯의 첫 해석 = Application(S-10) · InvariantCulture 날짜 꼴(C-12) · port-forward `--address 127.0.0.1 svc/vault :8200` + Forwarding 한 줄(S-04) · 헤더 이름 집합 · 자격의 길(S-02) · `$note` code · ct · cfc(C-05).
+  - 문서 · 운영: tester 실행 꼴 `chcp.com 65001`(RO-04) · S-01 · S-05 · S-06 문장 · 1회용 정의(S-03) · 기한 · 사전 확인(C-08 · RO-05) · RO-07 – RO-12.
+  - 기록만: C-04 · C-10 · C-11 · S-08 · S-11(AMSI — 받아들인 위험).
+- **수정 r1**(`wf_9869a254-23f` · F1–F4 opus · 보고 `.superpowers/t076/build/F{1-4}-r1-report.md` — 넷 다 DONE_WITH_CONCERNS):
+  - F1: `vault-unseal.md`만(§12 · 역할 표 · 앵커 · 1회용 정의) — restore-drill 28 / 0 · gitleaks 0.
+  - F2 운영자 블록: harness-op **174 / 174 · 단언 5220**(두 번) · 변이 **71 / 71**(r0 재구성 46 + 새 25 · 정적 관문으로만 잡히는 것 MO10 · MT12 · MO25) · T075 하네스 359 / 359 · `t075-blocks` diff 0. r0에 숨어 있던 결함 — 겹 배열 `[["vault"]]`가 aud 판정을 통과했다 — 을 원소 형 판정으로 고쳤다.
+  - F3 tester 블록: harness-tester **161 / 161 · 단언 4364**(두 번) · 변이 65 중 64 잡힘(생존 RS-M4 = 7자 조각 — 허용 · S-08 · **M5 잡힘**) · 실물 curl 25 / 25 × 2. 고친 잠복 결함 둘: r0 seal 고리가 `Start-ThreadJob` 직후의 NotStarted를 실패로 봤다(경합) · 하네스 모의가 th-TH에서 `String.IndexOf(":")` = 0으로 헤더를 잘못 읽었다(문화권). O-8 최악 ≈ 515 → 535 s(추론).
+  - F4 에이전트 층 · 문서 8파일: agent-layer 72 / 0 · hook 23 / 0 · publish-pod 66 / 0 · 미러 ALL PASS · restore-drill 28 / 0 · codex-integration 12 / 0 · origin-pull-ca 17 / 0.
+- **컨트롤러 보정(r1 뒤)**: `.agents/skills/approval-review/boundaries/k8s-security.md` 바이트 복사 → codex-parity **12 / 0** · O-10 머리 「창 ①」 → 「런북 §3 T076 ①-2 · 창 D」(harness-op 174 / 174 그대로) · `vault-unseal.md` §12 aud 문구 · O-8 최악 535 s(런북 · quickstart · 정정 노트 8) · 런북 기록 칸 ④-1에 aud 꼴 INFO(VD-T076-10) · 런북 §4 실패 표의 남는 인자 · `cluster_name` 행을 끝 줄 꼴로 · 첫 해석 가림 · publish-pod pp-21 단언 이름의 줄 번호 → 변수 이름(66 / 0). 스크래치(변이 · 실물 확인 · 실측 스크립트)는 `.superpowers/t076/build/scratch/`에 보존했다.
+- **확인 리뷰**(`wf_74e3244a-e55` — README 작성 1 + 3렌즈 · 보고 `.superpowers/t076/build/README-rv2-report.md` · `.superpowers/t076/reviews/R-{S,C,O}-rv2.md`): README `t076-blocks/README.md`(494줄 — 끝 줄 · 정지점 · 하네스 결과의 정본 · 작성자가 하네스 174 / 174 · 161 / 161을 직접 확인) · R-S **approve**(r0 11 = 해소 9 · 기록만 2 · 새 NIT 4) · R-C **approve**(r0 15 = 해소 12 · 기록만 3 · 새 LOW 2 · NIT 3) · R-O **approve_with_fixes**(r0 12 해소 · 새 MEDIUM 1 = RO2-01 O-8이 Forwarding 줄을 15 s만 기다린다 — 같은 터널 경로의 port-forward 수립 실측 10–23 s(T048 F19) · LOW 1 = RO2-02 W-7 창 정리 줄이 STOP에서도 「창 C 종료」를 낸다 · NIT 2). 컨트롤러 결정 = `decisions-controller.md` 「rv2 확인 리뷰 처리」(Forwarding 기다림 45 s · 90회 · O-8 최악 ≈ 565 s · W-7 창 정리 줄 결과별 두 꼴 · 런북 실패 갈래 보강 · 1차 FAIL을 사유로 분류 · O8-84b 등).
+- **수정 r2**(`wf_45257927-465` — G1 블록 · 하네스 · README · 정정 노트 / G2 런북 · quickstart · vault-unseal → 검증 V1 블록 렌즈 · V2 문서 렌즈 · 68분 · 보고 `.superpowers/t076/build/G{1,2}-r2-report.md` · `.superpowers/t076/reviews/V{1,2}-r2.md`): 둘 다 DONE_WITH_CONCERNS · 테스트 먼저(하네스를 r2 기대로 바꿔 빨강 — tester O8 93 / 98 · op 110 / 174 — 확인 뒤 블록을 고침).
+  - G1: O-8 Forwarding 줄 기다림 **45 s · 90회**(seal-status 15 s · 30회 그대로 · 새 사례 O8-19b 출력 40회 지연 → PASS · O8-84b 남는 인자 1개) · W-7 끝 창 정리 줄 결과별 두 꼴(`$winClose = $false` 기본값 = 창 C 유지 — OK · SKIP일 때만 닫기) · O-10 머리 줄 「§4 T076 기록 칸」 · README r2 절 · 정정 노트 8 · 9 고쳐 씀 + 21–23. harness-op **174 / 174 · 5289** · harness-tester **163 / 163 · 4421**(각 두 번) · T075 359 / 359 · r2 변이 14 / 14 · r1 묶음 재실행 F2 71 / 71 · F3 64 / 65(RS-M4 허용).
+  - G2: 런북 §3 · §4 T076 · quickstart · vault-unseal — 565 s · ④-2 Forwarding 45 s 갈래 · W-7 결과별 창 C 처리(①-5 · §4 3 · 세션 끝 · 재오픈) · O-9 ④-1 예외 · 새 ④-3 clear 실패 갈래 · O-10 실패 표(5xx · 200 · 4xx · aud 사유 · 남는 인자) · W-7 두 요약 행 · 1차 FAIL을 사유로 분류(③-1에 「라이브 창 동안 gitops main 머지 0」) · 노출 의심 수단(Vault 쪽 · K8s 쪽) · rv2C-04 · 05 · 결정 밖 보강 8곳(V2가 블록 · 결정과 맞는다고 판정).
+  - 검증: V1 **approve**(rv2 지적 14 모두 resolved · 독립 변이 18 / 18 · 추가 경계 3 생존 → LOW 1 = V1-01 대기 간격 0.5 s를 하네스가 고정하지 않는다 · NIT 4) · V2 **approve**(14 모두 resolved · 블록 글자 조립 대조 24 / 24 · NIT 4). 처리 = `decisions-controller.md` 「r2 검증 처리」.
+- **컨트롤러 보정 r2**(2026-11-21): harness-tester ST-O8에 기다림 고리 단언 하나(각 고리 바로 앞 문장 = 제 `$deadline` 대입 · 고리 본문의 대기 `Start-Sleep -Milliseconds 500` 각 하나 · o8의 `Start-Sleep` 2곳뿐 — V1-01 · V1-02 · ST-O8 46 → 47) → V1 변이 실행기 사본 21 / 21 잡힘(V-19 · V-20 · V-21 포함) · 대조 3 / 3 · 런북 §4 실패 표 W-7 「그 밖」 행(원인 = 창 정리 줄 **아래**의 pwsh 오류 글자 — V1-04 = V2-01 · 블록 끝 줄의 「위 오류」 글자는 T075 관례대로 둠 · README §5.0 기록) · 세션 끝 창 C 문장 일반형(V2-02) · ④-3 직접 삭제 `-Force` · 그래도 남으면 멈추고 보고(V2-03) · README(§2a 「r2 검증 → 컨트롤러 보정 r2」 · §3 35 · §4 · §5.0 · §5.7 · §7) · 설계 정정 노트 8 한정어(V1-03) · 24(1차 FAIL 사유 분류 — V2-04). 재확인: harness-tester **163 / 163 · 4422**(두 번) · harness-op 174 / 174 · 5289 · T075 359 / 359 · 11359(t075-blocks diff 0) · codex-parity 12 / 0 · hooks 23 / 0 · publish-pod 66 / 0 · agent-layer 72 / 0 · restore-drill 28 / 0 · codex-integration 12 / 0 · tofu.tests vt 18 / 0(그 밖 27 FAIL = OCI 자격이 필요한 plan 계열 — 이전과 같음) · 바이트 · 형식 13파일 0 문제. 스크래치 `r2-G1` · `r2-G2` · `r2-V1` · `r2-V2` · `r2-C`는 `.superpowers/t076/build/scratch/t076/`에 보존.
+- **인계 · 후속**: ① 다음 gitops 문서 PR — `platform/cnpg-databases/README.md` P2 행 · `externalsecrets.yaml` 주석의 eso-platform 요약에 deny 두 줄(B1 우려) ② `kv/{env}/authentik/web-bff`의 「ESO 밖」은 관례뿐 → web-bff 시드 과제에서 eso-dev · eso-prod deny 검토 ③ UD-16 1회용 전환 = `/finish` 전 사용자 결정(S-03 정의) ④ VD-T076-10 = O-9 첫 실행의 `INFO aud 꼴=` 줄 ⑤ 라이브 기한(migrate Job TTL — dev ≈ 2026-11-26 19:1x KST · prod ≈ 2026-11-27 12:3x KST · 추론) ⑥ W-7 `cluster_name`은 `vault status -format=json` 필드라는 추론 위에 있다 — 없으면 fail-closed(①-5 첫 실행에서 확인) ⑦ T077 · T085: S-01 문장(`tester.md` · `infra.md` 「Credentials」 + KR 미러 · k8s-security · infra-builder)은 T076 O-8 블록 하나만 지명하고 그 밖의 Vault 요청을 무자격 seal-status로 한정한다 — Playwright의 `kv/platform/authentik/e2e` 읽기(T077) · T085 블록은 검토된 블록을 두고 그 블록을 예외에 더하는 문장 개정(UD-15 범위 확장 = 사용자 결정 · approval-review)이 먼저다(rv2 S2-01 · rv2C-02).
+- **커밋 · push(라이브 전)**: `072bc8e`(2026-11-21 · 33파일 · tick 없음) → 사용자 확인 뒤 push(`929204d..072bc8e`) · 초안 PR #2 CI 전부 통과(GitGuardian 포함). 라이브 시작 = 사용자 「지금 시작」.
+
+### T076 라이브 결과(창 ① – ⑤ · 2026-11-23 10:28–12:1x KST)
+
+라이브 기록 정본 = `.superpowers/t076/live/L1-20261123.md`(gitignore). tester 보고 · 판정 정본 = `research/2026-11-23-e2e-us6-t076.md`. 증거 사본 = `.superpowers/t076/evidence/tester1/`. 런북 §3 · §4 T076 기록 칸을 채웠다.
+
+- **창 ①(운영자 · 10:28–10:4x KST)**
+  - ①-1: 창 C port-forward 10:28:05 KST. 리스너 `127.0.0.1` · `[::1]` 둘 다 같은 kubectl이다. 운영자 화면에는 IPv4 한 줄만 있었고, 컨트롤러가 `Get-NetTCPConnection`으로 둘을 확인했다.
+  - ①-2 O-10: `o10=PASS 로그인 거부(코드 403 · invalid audience (aud) claim: audience claim does not match any expected audience)`.
+    - errors 첫 줄 = audience 거부 → **VD-T076-1 PASS**(10:31 KST).
+    - audience를 주지 않은 TokenRequest의 aud는 K3s 기본 둘(`https://kubernetes.default.svc.cluster.local` · `k3s`)이었다.
+  - ①-3 plan: in-place 2 · 그 밖 0. `policies.tf`와 줄 단위로 같고, refresh 15 · drift 0. 컨트롤러 「plan 확인됨」 10:35 KST.
+  - ①-4 apply: `Apply complete! Resources: 0 added, 2 changed, 0 destroyed.` · plan 파일 · `Env:VAULT_*` 삭제.
+  - ①-5 W-7: **`w7=OK absent→v1`**.
+    - tofu 꼴 판정 OK.
+    - `cluster_name` OK — seal ocikms · server 2.0.4. 설계 D16 인계 ⑥의 추론(`vault status`에 그 필드가 있다)이 성립했다.
+    - absent → `seed` → v1 · 되읽기 해시 일치.
+    - 창 정리 = 닫기 꼴. 창 C는 10:49–11:07 KST 사이에 닫혔다.
+- **창 ②(운영자 · 11:0x KST)**
+  - ②-1 agent-view 8h: 운영자 로컬 갱신 · `--audience` 없음 · exp 10:04:27Z · whoami agent-view · aud에 vault 없음.
+  - ②-3 O-7: dev · prod 모두 `-env` 11키 · `-migrate` 1키다. T075에서 비어 있던 prod 기록을 채웠다.
+  - ②-2 svc-verify: 만료 12:05:10 KST. 1 h를 tester 1차에 남기려고 ②-3 뒤에 돌렸다.
+- **③-1 디스패치 준비(컨트롤러 · 11:07–11:15 KST)**
+  - binfmt `installing: arm64 OK` · `qemu-aarch64`.
+  - `-ExpectedRevision` = cb3ba13(11-20 이후 머지 0).
+  - `-ExpectedSha` = 9fd9f2c. dev = prod overlays digest(`faf55a57…`)이고, 그 digest를 낸 봇 PR #60의 원천 커밋이다.
+  - migrate Job 완료: dev 11-19 10:11:43Z · prod 11-20 03:34:04Z(기한 dev 11-26 19:11 · prod 11-27 12:34 KST — 추론과 일치).
+- **③-2 tester 1차(11:11–11:37 KST)**
+  - AC1–AC4 · AC5(로그) PASS
+    - 템플릿 하네스 949 passed · skipped 0 · 7분 38초 · 단계 42줄 전부 ok
+    - 생성물 165 passed · 수집 7파일
+    - arm64 `linux/arm64 10001:10001`
+    - identity-admin 521 passed
+  - AC3 대리 측정: relay call 2.26 s.
+  - AC5 OTLP: SKIP.
+  - AC6 1차 몫: `l8=PASS 24/24` · O-7 일치 · data env-1 PASS.
+  - 무헤더: 401(편차 6).
+  - 플랫폼 러너: infra [plan] 27 기준선 FAIL로 멈췄다. 라이브 파일을 직접 돌려 96 PASS · 0 FAIL · 11 SKIP(T075와 같은 수).
+  - **제품 · 구성 FAIL 0.** 컨트롤러가 증거 로그의 요약 줄 · 개수로 대조했다.
+- **④(11:50–12:0x KST)**
+  - O-9 `issue`: `INFO aud 꼴=배열` → **VD-T076-10 = 배열 `["vault"]`** · exp 03:50:33Z.
+  - tester 2차
+    - O-8 **`o8=PASS 10/10`**. 35 s로 끝났고, Forwarding 줄 기다림 문제는 없었다.
+    - C-8 **`c8=PASS 10/10`**.
+    - 재디스패치 0 · `vault token revoked(204)` · kubectl 0.
+    - django-common iss 두 시험 `2 passed`(AC4 보충 — 1차 관찰 ①).
+  - O-9 `clear`: `o9 cleared`.
+- **VD**: 1 · 2 · 7 · 9 PASS. 3 · 4 · 5 · 6은 설계와 같다(D10 정정 불필요). 8 = 가짜 자격 401 · text/html · 61212 B(Access 엣지 · 기록). 10 = 배열(설계 정정 노트 27).
+- **⑤ 세션 끝**
+  - JWT 파일 · plan 파일 · `.vault-token` 없음 · kubectl 0 · 캐시 토큰 삭제.
+  - **발견 — T075 세션(2026-11-20 13:54:53 KST)에 띄운 cloudflared 터널이 3일 동안 떠 있었다.**
+    - T075 세션 끝 정리에서 빠졌고, 오늘 창들도 그 6443 리스너를 썼다.
+    - 컨트롤러가 정리 확인 뒤 `Get-NetTCPConnection`과 프로세스 시작 시각으로 찾았다 → 운영자가 멈췄다. 컨트롤러 확인 12:32:58 KST — cloudflared 0 · 6443 리스너 0 · 토큰 파일 0.
+    - 런북 세션 끝 블록에 `Get-Process cloudflared` 줄을 더했다.
+- **tester 쪽 기록**
+  - 1차는 Git Bash `/tmp`에 임시 파일 하나를 만들었다가 지웠다(비밀 0 · 자진 보고).
+  - 2차는 O-8 seal-status 줄(루프백 주소:포트)을 가렸다. 지시의 「IP 꼴」 규칙을 넓게 적용한 것이고 편차가 아니다.
+
+### T076 결과(2026-11-23 · 마감)
+
+- **tick**: tasks:196 [X] — 결과 줄 없음(spec VD 측정 아님) · 82/119.
+  - 설계 D15 조건: §1 합격선 전부 PASS이고, SKIP(AC5 OTLP) · 편차 후보 6–12가 §1 표 그대로다.
+  - 새 편차는 없다. 아래 두 실행 메모는 증거를 얻는 꼴의 보완이고, 합격선은 그대로다.
+    - 러너 대신 라이브 파일 직접
+    - AC4 iss 증거 자리(공통 라이브러리 시험)
+- **report 편차**(설계 §1 후보 6–12 — 모두 실현). report.md 반영은 T117 초안 · /finish.
+  - 6: 무헤더 m2m 401 · admin 302
+  - 7: 생성 경로 `tests/fixtures/generated/apps/sample-pod`
+  - 8: testcontainers(compose 아님)
+  - 9: AC3 대리 측정 2.26 s
+  - 10: AC5 OTLP SKIP
+  - 11: e2e-reader 두 경로 — vt-16 · 권한 관문 실물 VD-T076-9
+  - 12: Authentik 비밀 sentinel — 설계대로 · 이번에는 키 이름만 관측
+- **설계 정정**: t076-design.md 「2026-11-23 — 라이브 반영」 노트 25–29(러너 대체 · 창 ② 순서 · VD 결과 · AC4 iss 증거 자리 · W-7 `cluster_name`).
+- **런북 보정**(표식 「T076 보정 2026-11-23」)
+  - §3 T076 ③-2 ⓐ: 러너가 infra [plan] 기준선에서 멈추면 라이브 파일 다섯을 같은 꼴로 직접.
+  - 세션 끝 블록: `Get-Process cloudflared` — 이전 세션 잔여 터널.
+  - 기록 칸 §3 · §4 T076.
+- **run-all**: 2026-11-23 12:12:27–13:06:38 KST(03:12:27–04:06:38Z · 54분).
+  - 조건: KUBECONFIG 없음. 터널을 닫는 중이었고, 플랫폼 라이브 파일은 tester 1차가 11:13–11:18 KST에 이미 돌렸다(96/0/11).
+  - 결과: 슬롯 줄 PASS 30 · 구조 검사 PASS 9 · **1 FAILED = `platform` ← `infra tests` 35/27**.
+    - 실패 원인은 `tofu plan`이 운영자 OCI 자격 · `budget_alert_email`을 요구하는 것이다. T053 · T054 · T058 · T059 · T075와 같은 기대 FAIL이다.
+    - vt-1–17 · vt-14b는 PASS다.
+  - 그 밖 슬롯은 전부 PASS: hooks · codex-* · scripts · harness 여섯 · ci-* · gitops-base-sync · specs-index-fresh · agent-layer · codex-parity · kernel-trial 235/0 · restore-drill 28/0 등.
+  - 로그 사본: `.superpowers/t076/evidence/run-all-20261123.log`.
+- **학습 로그**: `content/tmp/003-t076/2026-11-23.md`(라이브 날).
+- **인계 · 후속**
+  - UD-16 1회용 전환 — `/finish` 전 사용자 결정.
+  - T077 · T085 전 S-01 문장 개정 — UD-15 범위 확장 · 사용자 결정 · approval-review · 정정 노트 23.
+  - UD-13 정비 — Argo CD 3.5.7 · Traefik ≥ 3.7.18 · 다음 단계.
+  - 다음 gitops 문서 PR — cnpg-databases README P2 · externalsecrets.yaml 주석 deny 두 줄.
+  - web-bff 시드 과제의 eso-dev · eso-prod deny 검토.
+  - T084 tester-m2m 회전 — Cloudflare(tofu) → Vault `-cas=<n>`.
+  - GitGuardian 38849990 오탐 표시 — 운영자.
+  - 플랫폼 러너의 infra [plan] 게이트를 KUBECONFIG 단계와 떼는 개선 — 후보 · 소유 미정.
+  - tester-m2m 1년 토큰 만료 2027-09-03 — T084 회전 매트릭스.
+- **다음**: UD-13 정비 단계 → Phase 7 US4(T077–).
+  - 대기 사용자 결정: UD-1(다음 main 통합) · UD-10(T098 전) · UD-11(T081 전) · UD-2 · UD-4(T081) · UD-3(T083) · UD-7 · UD-8(T089) · UD-16(1회용 — `/finish` 전).
+
+## UD-13 정비 단계(2026-11-23 결정 — T076 뒤 · US4 전 · tasks.md 밖)
+
+- **근거**: 사용자 결정 UD-13(2026-11-17 — `.superpowers/t075/decisions-controller.md`) 「Argo CD v3.5.7 + K3s v1.36.6(Traefik 3.7.15) — 14일 원칙 충족 · 스냅샷 3종 · 노드 순차 · Traefik ≥ 3.7.18은 다음 K3s 패치에서 — T084의 전제」.
+  - K3s v1.36.6은 SUC가 이미 적용했다(T075 L1).
+- **조사**(워크플로 `wf_1cd6b6be-93f` · 렌즈 4 + 독립 재조회 2 · 읽기 전용 — `.superpowers/ud13/research/{argocd-upstream,traefik-k3s,gitops-impact,monorepo-impact}.md` · `*-verify.md`).
+  - 핵심 외부 사실은 모두 CONFIRMED다.
+  - REFUTED는 부수 2건이고 결론을 바꾸지 않는다: Traefik 권고 일부에 CVE 번호가 있다(hrpp = CVE-2026-121966 · xv5x = CVE-2026-130732) · 차트 키 철자가 `kubernetesIngressNGINX`이고 기본 false다.
+  - 결정 문서 = `.superpowers/ud13/decisions-controller.md`.
+- **Argo CD 사실**
+  - 3.5.x 패치는 v3.5.3–v3.5.8이다. v3.5.7은 published 2026-11-02T20:14:51Z로 14일이 지났다. v3.5.8은 2026-11-18T19:54:30Z — **14일 = 2026-12-03 04:54 KST**. v3.6.x가 있지만 범위 밖이다.
+  - v3.5.7은 annotated 태그다(v3.5.0 · rc도) → URL에는 `^{}` 줄의 커밋을 쓴다(태그 객체 SHA로 쓰면 raw 404). v3.5.8은 lightweight다(커밋 `71576a24e898f50c9bf5e31b6930d81d4ac7717d`). gitops `bootstrap/argocd/kustomization.yaml` 머리 주석의 핀 절차를 「`^{}` 줄이 있으면 그 SHA · 없으면 태그 줄 SHA」로 고친다.
+  - install.yaml v3.5.2 → v3.5.7 차이는 argocd 이미지 태그 8줄뿐이다. 문서 59 · CRD · RBAC · 인자 · ConfigMap은 같다. 내장 kustomize 5.8.1 · helm 4.2.1도 같다 → `KUST_FIELDS` · `KUST_NESTED`를 다시 대조해도 바뀌는 것이 없다. v3.5.8은 PR 때 다시 확인한다.
+  - gitops PR 자리: `bootstrap/argocd/kustomization.yaml` `:56` URL SHA · `:72` argocd digest · 판 표기 주석. redis digest는 그대로다. 렌더 변화는 이미지 6줄이다.
+  - 적용 경로: `platform-argocd` Application(source `bootstrap/argocd` · automated selfHeal · SSA · wave -20)이 Argo 자신을 갱신한다. `bootstrap/argocd/**`는 prod-approval 관문 대상이다.
+  - 보안: v3.5.2는 Argo 공개 권고 10건(critical 4 · high 4 · medium 2)에 해당하고, ≤ v3.5.7이 모두 고친다. critical은 저장소 내용을 쥔 공격자를 전제한다 — T075 GP-1 완화책(원격 ref · jsonnet · helmGlobals 금지 · hook 허용 목록)이 막는 꼴이다(추론). v3.5.7에 남는 의존성 CVE(git-lfs · go-jose · regexp2 · Go 1.26.11)는 v3.5.8이 고친다.
+  - spec FR-048: Argo CD · 플랫폼 차트 업그레이드는 「유지보수 창(일요일 03:00–05:00 KST)에서만 머지」 · 「스냅샷 3종 확인」.
+    - 스냅샷 3종 = Vault raft · K3s SQLite(`platform-backup.sh --pre-upgrade`) + CNPG 수동 Backup(restore-drill §1-4).
+    - 런북 §6 사후 확인 목록은 K3s용이다(Argo용은 PR 때 더한다).
+  - 모노레포: 판 올림과 함께 고칠 자리는 없다. `CLAUDE.md:61`은 bn:17 계획대로 /finish · archive 때 고친다. 판을 단언하는 시험은 0이다.
+- **Traefik · K3s 사실**
+  - Traefik 3.7.18 = ForwardAuth 권고 GHSA-hrpp(→ 3.7.16) · 그 불완전 수정 GHSA-p956(→ 3.7.18)과 경로 인가 우회 GHSA-cp28(→ 3.7.18)을 모두 고친 첫 판이다.
+  - **라이브 3.7.15는 무인증 DoS GHSA-xv5x(→ 3.7.17)에도 걸린다.**
+  - Traefik ≥ 3.7.18을 번들한 K3s v1.36.x는 아직 없다. release-1.36 브랜치에 3.7.19가 실렸다(11-19 · 3.7.18은 건너뜀). v1.36.7은 태그도 RC도 없다.
+  - gitops SUC Plan은 채널 v1.36 + 일요일 창뿐이다 → **14일 원칙은 구현돼 있지 않다**(v1.36.5는 공개 ≈ 3.1일 뒤에 적용 — T075 편차 14 후보와 같은 사실).
+- **사용자 결정**
+  - **UD-13a = 「12-06 창에 v3.5.8 한 번」**(선택지: 창 2번 v3.5.7 → v3.5.8(권장) · 12-06 창 v3.5.8 한 번 · 이번 주 창 밖 v3.5.7 → 12-06 v3.5.8).
+  - **UD-13b = 「SUC 자동 + T080 · T084 전 관문」**(권장 · 선택지: SUC 판 핀(14일 원칙 구현) · HelmChartConfig로 3.7.19 지금 고정 — 정적 계약 x-10 개정 필요).
+- **일정 · 할 일**
+  1. 11-29(일) 창: v1.36.7이 그 전에 나오면 SUC가 적용한다. 그 뒤 런북 §6 사후 확인과 K3s · Traefik 판 기록(운영자 터널 + agent-view).
+  2. 12-03 04:54 KST 뒤: Argo CD v3.5.8 gitops PR을 준비한다.
+     - digest를 다시 조회하고, install.yaml 차이 · 내장 도구 판을 다시 확인한다.
+     - 머리 주석의 `^{}` 규칙을 고친다.
+     - PR 템플릿의 스냅샷 3종 확인 칸을 채운다.
+     - 런북 §6에 Argo 사후 확인 목록을 더한다.
+  3. 12-06(일) 03:00–05:00 KST(운영자): 스냅샷 3종 → 관문 승인 → 머지 → 사후 확인. 그 창에서 SUC가 K3s를 올리면 그 뒤에 머지한다.
+     - 사후 확인: Applications Synced/Healthy · argocd 이미지 v3.5.8 · `cluster.tests.ps1` argo-1–5.
+  4. **T080 · T084 시작 전 관문**: 라이브 Traefik ≥ 3.7.18(agent-view `kubectl -n kube-system get deploy traefik -o jsonpath='{.spec.template.spec.containers[0].image}'`). 아니면 그 과제를 시작하지 않고 사용자에게 다시 여쭙는다.
+- **받아들인 위험**
+  - v3.5.2의 critical 4건이 12-06까지 열려 있다(GP-1 완화).
+  - Traefik xv5x · cp28 등 — 지금 Access 없이 백엔드에 닿는 공개 경로가 없다(추론). T080이 Authentik 공개 경로를 열기 전에 관문 4가 닫는다.
+  - K3s 14일 원칙 미구현 — T116.
+- **기록 자리**(UD-13c — 컨트롤러 기본값 · 선례 T035/T036 「후속」 절 · T072 절 안 판 올림 · T048 학습 로그)
+  - 이 절에 기록한다.
+  - 런북 §6 「실행 기록」에 창마다 한 항목을 남긴다.
+  - 학습 로그는 그날 진행 중인 과제 디렉터리에 둔다.
+  - 문서 보정 표식은 「UD-13 보정 YYYY-MM-DD」로 단다.
+
+## T077 · T078 · T079 (2026-11-23 설계 확정 — US4 시험 먼저 · 자격 없이 빨강 · 세션 모델 Opus 5.5)
+
+- **과제 문면**: tasks.md :210 · :211 · :212(설계 머리에 그대로). 설계 정본 = `design/t077-design.md`(T077–T079 한 문서 — 세 과제가 Playwright 기반 · env 계약 · 노출 0 설계를 함께 쓴다).
+- **조사**(`wf_7661f2eb-532` · 3명 · 읽기 전용 — `.superpowers/t077/research/{spec-contract,e2e-harness,cred-path}.md`)
+  - 대응: T077 = AC1 · T078 = AC2 · AC5 · AC6 · T079 = AC3 · AC4. 초록 = T080–T083 · T092 · T094 뒤(T079는 US5 뒤).
+  - 저장소에 Playwright 실행 기반이 없다(`e2e/` README뿐 · lockfile 0 · 브라우저 캐시는 옛 chromium-1179).
+  - 올바른 빨강 이유 = Authentik 없음 → 「도달 확인 → 자격」 순서면 빨강 확인에 자격이 필요 없다.
+  - 문면대로는 성립하지 않는 단언 셋: T079 tester-m2m 401은 실제로 CN 관문 403 · T078 `admin.` 무헤더 403은 실측 302 · 세션 삭제 웹훅은 2026.8에 없음(UD-4).
+  - Playwright trace에는 값 가림이 없고, HTML 리포트에 `fill` 값이 평문으로 실린다.
+  - T078 · T079 문면은 tester 자격 밖 비밀(web-bff(-dev))을 전제한다.
+- **사용자 결정**(2026-11-23 — 결정 문서 `.superpowers/t077/decisions-controller.md`)
+  - **T077-a = 「첫 자격 실행 전에」**(S-01 개정 시점): T077–T079는 자격 없이 시험 작성 + 빨강 확인만 한다. 자격 블록 · S-01 · approval-review는 T080–T081 무렵 실물 블록과 함께 한다(T076 정정 노트 23과 순서가 다르다 — 설계 §0-1).
+  - **T077-b = 미룸**: web-bff(-dev) 자격 경로는 S-01과 한 묶음이다(권고 (a) dev 한정 · `kv/*/access/web-bff` 영구 제외).
+  - **T077-c = (A) BFF 프록시**: T079는 `/api/proxy/identity-admin/tenants/me` → logout `all_devices: true` → 1 s 뒤 401 `session_revoked`로 잰다.
+  - **T077-d = 루트 devDependency**(권고였던 e2e 워크스페이스 패키지 대신): `@playwright/test` 1.65.1 정확 핀 + `--only-shell chromium` · dry-run 먼저 · 해시 기록.
+  - **T077-e · f = 둘 다 이관**: tester-k8s 시드 → T084 · 「면제 셋 밖 PLACEHOLDER- 0」 → T081.
+- **설계 경과**: 초안 + 비판 2렌즈(`wf_62857a17-17f` — A 정합 · 실행 approve_with_fixes MEDIUM 7 · B 자격 · 보안 approve_with_fixes HIGH 1(B-1 APIRequestContext call log에 쿠키 · Set-Cookie 평문) · MEDIUM 9) → r1(`wf_017fdc40-48a` — 31건 처리 · 대조 28 resolved · 3 partial · 새 MEDIUM 2) → r2(`wf_874c655b-42c` — 14항목 14/14 resolved · 새 LOW 1 · NIT 4) → 컨트롤러 보정 N-1–N-5(needle-control 대조 값 읽기 · 시점 칸 · ASCII 줄 `INFO auth-residue 0` · `.url(` 전용 helper · T094 뒤 `[product]`). 보고 `.superpowers/t077/design/`.
+- **빌드 계획**(설계 D12)
+  - ①a T077 기반 + 로그인(web-builder) → ①b T079(같은 빌더) · ② T078(infra-builder · 병렬).
+  - run-all 슬롯 `e2e-selftest` · `identity-harness`는 컨트롤러가 등록한다.
+  - 리뷰 세 렌즈(A 정합 · 문면 · B 노출 · 자격 · C 하네스 변이 · lockfile · events-test · CI install).
+  - 커밋은 과제마다 하나다. tick은 빨강 관찰 뒤에 한다(T078은 운영자 창 — agent-view).
+- **설치 승인 지점**(D2-5): 0–4단계(env 가드 · `pnpm add -D -w --save-exact --ignore-scripts @playwright/test@1.65.1` · frozen install · lockfile 검사 · `playwright install --dry-run --only-shell chromium`)는 컨트롤러가 돌린다. dry-run 결과를 사용자에게 보인 뒤 5단계(내려받기) · 6단계(해시 기록) · 7단계(events-test)를 한다. 설계는 「빌더 ①a가 실행」이었지만, 승인 대기 때문에 컨트롤러가 대신 한다.
+- **설치 실행(컨트롤러 · 2026-11-23 17:3x–17:45 KST)**
+  - 0: env 가드 이름 0 · `pnpm config get registry` = `https://registry.npmjs.org/` · pnpm 10.34.5 · node v24.11.1 · `minimumReleaseAge: 4320`(3일).
+  - 1: `pnpm add -D -w --save-exact --ignore-scripts @playwright/test@1.65.1` → exit 0 · `devDependencies: + @playwright/test 1.65.1` · Packages +3.
+  - 2: `pnpm install --frozen-lockfile --ignore-scripts` → 「Lockfile is up to date」 exit 0.
+  - 3: 루트 `package.json`에 `"devDependencies": {"@playwright/test": "1.65.1"}`. lockfile 차이 30+/1−는 루트 importer `{}` → devDependencies와 새 패키지 정확히 {`@playwright/test@1.65.1` · `playwright@1.65.1` · `playwright-core@1.65.1`}뿐이다. 모두 sha512 integrity가 있고, `tarball:` 0 · integrity 없는 resolution 0 · 다른 importer · 기존 스냅숏 변화 0.
+  - 4: `pnpm exec playwright --version` = 1.65.1. `install --dry-run --only-shell chromium`이 보인 것(VD-T077-3):
+    - Chrome Headless Shell 159.0.8154.6(chromium-headless-shell v1255 · 123.8 MB)
+    - FFmpeg v1013(1.6 MB) · Winldd v1007(0.1 MB)
+    - 모두 `cdn.playwright.dev`에서 받는다(크기는 CDN HEAD Content-Length) → 사용자 승인 「내려받기」.
+  - 5: `pnpm exec playwright install --only-shell chromium` 17:44:09–17:44:20 KST exit 0 → `%LOCALAPPDATA%\ms-playwright\{chromium_headless_shell-1255, ffmpeg-1013, winldd-1007}`.
+    - **발견 — Playwright가 설치하면서 「unused browser」를 자동으로 지웠다**: `chromium-1179` · `chromium_headless_shell-1179` · `ffmpeg-1011`. 설계 D2-4 · 사용자 안내 「기존 chromium-1179는 건드리지 않는다」와 다르다 — 설치 때 미사용 브라우저를 정리하는 Playwright 기본 동작을 확인하지 못했다(설계 정정 · 학습 로그 사고 항목). 다른 곳에서 그 판을 쓰면 다시 받아야 한다.
+  - 6: 해시 기록(§5-1 G-3 대조용)
+    - `chrome-headless-shell.exe`(`chromium_headless_shell-1255\chrome-headless-shell-win64\`) 226,079,232 B · sha256 `b23921f57bcff971495917b208b63df393788525120c6ce23a79c1e3e1583114`.
+    - 디렉터리 목록 290파일 · 합 300,652,590 B. 목록 sha256 = `17b28ef03296a267b2ffc87ff884188425e1b210d32f4e0956de27c03d829b6e` — 줄 = 「상대 경로(`/`) 크기 sha256(소문자)」 · 줄 Ordinal 정렬 · LF 결합 · 끝 LF 없음 · UTF-8. 사본은 `.superpowers/t077/headless-shell-1255.manifest.txt`.
+  - 7: `pnpm --filter @jt/events --fail-if-no-match test` → 2 files · 267 passed · exit 0.
+
+### T077 · T078 · T079 빌드 · 리뷰 · 빨강 관찰(2026-11-23)
+
+- **빌드 r0**(`wf_ebfd861d-425` · 빌더 opus — 보고 `.superpowers/t077/build/{1a,1b,2}-r0-report.md`)
+  - ①a T077(web-builder): 새 파일 34
+    - `playwright.config.ts` · `e2e/{auth.spec,global-setup,global-teardown}.ts`
+    - `e2e/lib/` 12 · `e2e/selftest/` 14 · `e2e/selftest-browser/` 2 · `e2e/needle/` 2
+    - `.gitignore` D4 다섯 줄 · `e2e/README.md`
+    - 결과: selftest 107/0 · selftest-browser 11/0 · `needle=PASS`(실행 1 hits 0 · 대조 바늘 로그 면 13) · list live 1 · events 267.
+  - ①b T079(web-builder): `e2e/revocation.spec.ts` · `e2e/lib/{bff,kubectl-log}.ts` · BFF 분류 selftest → selftest 148/0 · list live 3(누적).
+  - ② T078(infra-builder): `tests/platform/identity.tests.ps1` · 짝 `tests/scripts/identity-tests.tests.ps1`
+    - 짝 하네스 빨강 126/196 → 355/0 × 2 · 변이 21/21.
+    - 오늘 상태 픽스처 C01 모의 출력: 6 PASS(gate 3 · tool-1 · acc-2 302 · acc-3 401) · 12 FAIL(전부 `[gate] … until T080/T082`) · 4 SKIP(xchg-1 · 2 자격 블록 전용 · man-1 · 2 운영자 수동).
+  - 실측: 1.65.1은 실패 때 outputDir에 `error-context.md`(코드 프레임 + aria snapshot)를 쓴다 → `PLAYWRIGHT_NO_COPY_PROMPT=1` · `captureGitInfo` off. env 가드는 `PLAYWRIGHT_*` · `PW_*` 전부 차단(허용 둘).
+- **리뷰 r0**(`.superpowers/t077/reviews/{A,B,C}-r0.md` — 셋 다 approve_with_fixes · HIGH 0)
+  - A 정합 · 문면: MEDIUM 2(A-1 로그아웃 완료 판정이 무효화 페이지 접두 → 빈 PASS · A-2 잔여 검사가 가드 뒤 → `[state]` 소실) · LOW 6 · NIT 3.
+  - B 노출 · 자격: MEDIUM 4(needle 양성 증거 공백 · static-gate가 값 싣는 API를 놓침 · 파일 단위 `test.use()` 우회 · 잠금 표식 실행 중간) · LOW 2 · NIT 3.
+  - C 변이 · lockfile · CI: MEDIUM 3(static-gate 목록 · screenshot 대소문자 · evidence mask 시험) · LOW 2 · NIT 2.
+- **수정 r1**(`wf_92b7426c-261` — 보고 `F1-e2e-r1-report.md` · `F2-t078-r1-report.md`)
+  - e2e: 전부 반영 → selftest 171/0 · selftest-browser 23/0 · `needle=PASS`(실행 1 의도 실패 9 · needle-control 7 — 노출 경로별 양성 대조) · list live 3 · events 267.
+    - 새 lib `test-base.ts` · `authentik-flow.ts`.
+    - 발견: Node v24.11.1 Windows 비재귀 `fs.rmSync`가 한글 경로에서 파일을 남기거나 프로세스를 중단한다 → `unlinkSync` + 확인.
+  - T078: C-5(I01–I05 · I07) · B-9(`[guard] curl-env-not-allowed`) · A-11 → 짝 하네스 475/0 × 2.
+- **검증 r1**(`.superpowers/t077/reviews/V{1,2}-*-r1.md`)
+  - V1(e2e): approve_with_fixes · 16/16 resolved(MEDIUM 9 모두 변이 → 빨강 → 복원 초록으로 실증) · 새 LOW 2 · NIT 4. G-4(첫 자격 실행) 전에 닫을 것 → 설계 정정 노트 11.
+  - V2(T078): approve · 6/6 resolved · 변이 17 잡힘 · NIT 3.
+- **run-all 슬롯**(컨트롤러): `tests/run-all.ps1` 1b2a5 `identity-harness`(data-harness 꼴) · 1b2a6 `e2e-selftest`(`node e2e/lib/launch.mjs selftest` — `@playwright/test` 없으면 SKIP 허용 · 그 밖 `N passed, 0 failed`). 슬롯 명령 실측: 21:04:14 KST · `171 passed, 0 failed` · exit 0 · 약 6 s.
+- **라이브 빨강 관찰**(컨트롤러 · T077 · T079 — 설계 D9 ④ · 공개 HTTP만 · 자격 env 0)
+  - 실행: `node e2e/lib/launch.mjs live-red` · 2026-11-23T12:04:30Z–12:04:38Z(21:04 KST) · exit 1.
+  - 출력
+    - `INFO child-env names=JT_E2E_EVIDENCE_DIR,JT_E2E_LIVE,JT_E2E_OUTPUT_DIR,JT_E2E_ROOT,JT_E2E_RUN_ID,LOCALAPPDATA,PATH,SystemRoot,TEMP,TMP,USERPROFILE` — 허용 목록 그대로이고, `KUBECONFIG` · `JT_E2E_SECRET_*` · `JT_E2E_BLOCK` · `JT_E2E_NEEDLE_SET`은 0이다.
+    - `T077 reach FAIL [gate] authentik-absent until T080 — Traefik 404 signature (T076 D10) matched`
+    - `T079 reach-auth FAIL [gate] …`(같은 꼴 ×2) · `INFO reach-control status=401 — edge response - not origin evidence`(대조 호스트 · INFO).
+    - 끝 줄 `live-red passed=0 failed=3 gate-reach=3/3 child-exit=1 auth-residue=ok root=removed`.
+  - 로그 IP 꼴 0. 뒤 확인: `e2e/.auth` 없음 · `%TEMP%\jt-e2e` 0 · 잠금 표식 0 · 무시된 산출물 0 · git 상태 = 지정 파일뿐.
+- **tick**: T077 · T079 = 설계 §1-1 세 조건(오프라인 초록 · needle PASS · list · live-red `[gate]` 3/3) 충족 → [X] 83 · 84/119. T078 = 짝 하네스 초록이지만 라이브 줄(운영자 터널 + agent-view 창)이 아직이라 tick하지 않는다 — 다음 운영자 창에서 관찰한 뒤 tick만 담은 문서 커밋(설계 D9 · D12).
+- **커밋**(설계 정정 노트 2): T078(하네스 둘 + `identity-harness` 슬롯) → T077 · T079 한 커밋(e2e · 루트 config · 의존성 · `e2e-selftest` 슬롯 · 기록 · tick).
+
+## T086 · T087 · T088 · T089 (2026-11-24 설계 확정 — US5 시험 먼저 · 라이브 0 · 자격 0 · 세션 모델 Opus 5.5)
+
+- **설계 정본** = `design/t086-design.md`(r2 본문 + §7 확정 보정 N-1–N-19). 컨트롤러 결정 기록 = `.superpowers/t086/decisions-controller.md`(gitignore) · 조사 · 비판 · 검증 = `.superpowers/t086/{research,design}/`.
+- **경과**(워크플로)
+  - 조사 3 → 초안 r0 → 비판 2렌즈(`wf_830b6e89-a19` — 둘 다 approve_with_fixes).
+  - UD-7 동향 조사(`wf_869711dc-082` — 표준 · 보안 지침 · 업계: 최신 기본값 = 「그 기기만」).
+  - 설계 r1 + 검증 2렌즈(`wf_0b42edd3-9ab` — 둘 다 approve_with_fixes · HIGH 0 · r1이 UD-7c 발견).
+  - 콘텐츠 로더 오픈 소스 조사(`wf_565e05f3-de5` — 요구를 통째로 덮는 것 없음 · MDX 실행 차단 내장 0).
+  - 설계 r2 + 검증 2렌즈(`wf_2b68f4c0-bad` — 둘 다 approve_with_fixes · HIGH 0) → 컨트롤러 확정 보정 N-1–N-19.
+- **사용자 결정(2026-11-24)**
+  - **UD-7 = 기본 로그아웃 「그 기기만」**(사용자: 「관례대로 기기 단위로 하고 결함 고쳐 관례 기준으로 기준 조금 내려도 좋아」). 「이 기기」 = BFF 경유 2 s 안에 401(편차 〔86-22〕 · 〔86-23〕) · 「모든 기기」 = AC3 그대로(T079가 명시 `all_devices: true`로 잰다).
+  - **UD-7a = ① 둘 다**: (ㄱ) 로그아웃이 그 브라우저의 Authentik 세션도 끝낸다(RP-Initiated Logout · User Logout 단계 — T080 · T081 VD) · (ㄴ) `revoked:sid` 값 = 폐기 시각 + 세션 단위 하한 `identity-admin:sid-floor:{sid}`(W35 수정 — 조각 ⑤ · 재배포 때 UD-1 재확인).
+  - **UD-8 = 관례(한계 수용)**: callback은 identity-admin을 부르지 않는다.
+  - **T086-a = A**: 사용자가 노트 001 · 002를 검토 · 승인한 뒤 `draft: false`(T091 ~ T093 전에 다시 여쭌다).
+  - **T086-e = (A) 자체 로더 + 순수 마크다운**: `.mdx`를 Markdown + GFM으로만 파싱하고 거부 플러그인이 `html` 노드 · `import`/`export` 줄 · `{}` · 허용 목록 밖 URL을 파일 · 줄 · 규칙 이름과 함께 빌드 실패로 만든다(ADR 0004 D19 그대로 · 새 ADR 0).
+  - **B-6 = 쿠키 접두 채택**: `__Host-jt_session` · `__Host-jt_csrf` + (N-9 컨트롤러 정밀화) `__Host-jt_pkce; Path=/`.
+- **나중에 여쭐 것**(설계 §5-3 · §7 끝)
+  - **UD-7c**(r1 발견): 우리 end-session의 Authentik `logout` 이벤트가 웹훅(UD-4 B) · 대조(UD-2)를 거쳐 사용자 단위 폐기로 번진다(dev · prod 교차 포함). T080 블루프린트 전에 UD-4와 함께 여쭌다.
+    - **순서 제약**: 해소 조각이 라이브에 들기 전에는 어느 BFF(prod · preview · 로컬)든 end-session과 웹훅 logout Rule · 대조 권한을 동시에 켜지 않는다.
+  - T090 착수 때 로더 새 의존 설치 승인.
+  - T091 전 곁가지 셋
+    - @opennextjs/cloudflare 1.20.18 peer `next >=16.4.5`(Next 16.3.4 고정과 충돌 — 2026-11-03 Next 보안 릴리스)
+    - Workers 압축 크기 한도 폐지(2026-09-04 — 2.5 MiB 게이트 근거)
+    - OpenNext #1334 수정판
+- **빌드 조각**(설계 D14): ⓪ 기반(컨트롤러 — apps/web 최소 매니페스트 · vitest 5.0.5 재사용 · lock 검사) → ① T086 + T088 · ② T089 · ③ T087(web-builder opus 셋) · ⑤ UD-7a(ㄴ)(api-builder opus) 병렬 → 리뷰 4렌즈 → 컨트롤러 빨강 관찰 → 과제마다 커밋.
+
+### T086–T089 빌드 · 리뷰 · 수정(2026-11-24 · 11-26)
+
+- **빌드 r0**(`wf_af201538-c48` · 빌더 opus 5 — 보고 `.superpowers/t086/build/{1-t086-t088,2-t089,3-t087,5-ud7a,docs}-r0-report.md`)
+  - ① T086 + T088(web-builder): `loader.test.ts` 47 사례 + 픽스처 · `bundle-budget.test.mjs` 15 사례. 빨강 = 수집 실패(`../src/index` · `./bundle-budget.mjs`). 저장소 밖 참조 구현 47/47 · 15/15 · 던지는 · 관대한 스텁 passed 0 · 가드 없는 · 과잉 가드 스텁 → ld-13 금지 · 대조 passed 0 · T088 변이 7(8변형) 모두 검출.
+  - ② T089(web-builder): `gateway.test.ts` 318 사례 + `src/lib/__tests__/` 7파일. gateway 318/318 실패(원인 2종 — gateway · image-loader 부재) · oracles 22 passed · 부분 참조 89 passed · 전체 참조 318/318 · 누출 변이 7 검출.
+  - ③ T087(web-builder): `e2e/hello.spec.ts` 9건 + `e2e/lib/{site,site-probe}.ts` + selftest. selftest 211 · selftest-browser 30 · `needle=PASS` · `list site=9` · `site-red gate-site=8/8` · 계약 스텁 양성 8 PASS + 변이 10.
+  - ⑤ UD-7a(ㄴ)(api-builder): 시험 먼저 빨강 → 구현 → 초록(아래 「UD-7a(ㄴ) 조각 ⑤」).
+  - 문서: 설계 §4-1 「지금」 보정(content.md · web.md · bff-api.md · quickstart · 새 규칙 `.claude/rules/e2e.md` · AGENTS 행 · codex-parity · ⑤ 계약 · 규칙) + t077 정정 노트 ①(UD-7). ②(B-6)는 원문만 돌려받아 T087 커밋에 넣는다.
+- **리뷰 r0**(4렌즈 — 보고 `.superpowers/t086/reviews/{A,B,C,D}-r0.md` · 모두 approve_with_fixes · HIGH 0): A 정합 MEDIUM 1(A-1 본문 5절 검증 ↔ T090) · B 노출 MEDIUM 1(B-1 오류 객체 `cause` 누출 미검사) · C 하네스 MEDIUM 1 = D 파드 MEDIUM 1(C-1 · D-1 템플릿 하네스 이미지 6건 — arm64 binfmt 미등록 · 환경).
+  - C-1 · D-1 해소(컨트롤러 · 11-24 18:5x–19:01 KST): R0-1 등록(`installing: arm64 OK` · `qemu-aarch64`) → 6 노드 `6 passed, 943 deselected in 195.76s` · exit 0 → 빌더 943과 합쳐 949.
+- **수정 r1**(F1 T086 · F2 T089 · F3 T087 · F5 ⑤ · FD 문서 → 검증 V1 · V2)
+  - 첫 시도 `wf_1ad3683a-0cd`는 **11-24 19:14 KST 주간 사용 한도로 7명 모두 보고 없이 끊겼다**(작업 트리에 r1 일부만 남음).
+  - 11-26 재개 `wf_7d09bb68-946`: 수정자마다 트랜스크립트 도구 기록에서 뽑은 「첫 시도 흔적」을 지시문에 싣고 남은 것만(중복 0 · before 사본이 r0 상태인지 확인) → 7/7 · 48분. 보고 `.superpowers/t086/build/{F1-t086,F2-t089,F3-t087,F5-ud7a,FD-docs}-r1-report.md`.
+  - 검증 V1(web): approve_with_fixes — 11건 resolved 10 · partial 1(B-2) · claim-false 0 · 새 LOW 1(V1-1) · NIT 1(V1-2). 검증 V2(파드 · 문서): approve_with_fixes — 9건 resolved 8 · partial 1(README) · 새 NIT 2(V2-1 · V2-2 pre_existing). 처리 결정 = `.superpowers/t086/decisions-controller.md` 「r1 검증 처리」.
+- **수정 r2**(`wf_476382ab-567`): G1 T089(V1-1 G8-3 라우트별 하류 바늘 · FD ④-d 주석) · G2 T086(V1-2 ja 변형 픽스처) → 검증 V3 **approve**(새 NIT 3 — 기록 · 인계). 같은 워크플로의 문서 담당이 정정 노트 초안을 커밋별로 묶어 썼다 → 설계 「정정 노트」 1–35(커밋마다 그 묶음을 옮긴다).
+- **증거 보존**(리뷰 C-7 · 정정 노트 30): 참조 구현 · 스텁 · 변이 · 검사기 · 재관찰 로그를 스크래치에서 `.superpowers/t086/evidence/`(gitignore)로 옮겼다 — `robocopy /E /XJ /XD node_modules` · 17,811파일 · reparse point 0 · 「검증 전용 · 구현 참조 금지」 README.
+- **하위 에이전트 규칙 위반 자진 신고**(저장소 영향 0): Bash `cd <절대 경로> && …`(F1 · F5 · 문서 담당) · `/tmp` 한 번(V2) · 스크래치 스크립트 heredoc(V3) · 스크래치 검사기의 `\u` 이스케이프(G1). 저장소 밖 부산물: `%TEMP%\playwright-transform-cache`(V1 — 삭제 권한 거부) · 저장소 루트 `node_modules/.vitest-cache/` 캐시 파일 둘(G1 · G2 — gitignore · V3-2).
+- **공통 확인(컨트롤러 · 2026-11-26)**: `pnpm install --frozen-lockfile --ignore-scripts` → `Lockfile is up to date, resolution step is skipped` · `Already up to date` · exit 0 · lock · 매니페스트 4개 `51e9b74` 대비 변경 0(새 의존 0) · `pnpm --filter @jt/events --fail-if-no-match test` → `Tests  267 passed (267)` · exit 0.
+
+### T086 빨강 관찰 · tick(2026-11-26)
+
+- **재관찰**(컨트롤러 16:21:55 KST — 정정 노트 7의 꼴): `pnpm --filter @jt/content --fail-if-no-match test` → `FAIL  tests/loader.test.ts` · `Error: Cannot find module '../src/index' imported from D:/code/joshuatech_ver2/packages/content/tests/loader.test.ts` · `Test Files  1 failed (1)` · `Tests  no tests` · exit 1 — §1-2 그대로.
+- **합격선 §1-1**: ① 위 빨강 ② 인프라 vitest 5.0.5(⓪ · 빌드 r0 임시 스모크 1 passed 뒤 삭제) ③ 공허 검사 — 참조 구현 48/48 · 던지는 · 관대한 스텁 48 failed · 가드 없는 · 과잉 가드 스텁 → ld-13 금지 · 대조 passed 0 · 변이(B-1 넷 · B-4 일곱 · A-7 셋 · V1-2 `v-komissing-per-slug`) 모두 잡힘(수정 r1 F1 · r2 G2 · 검증 V1 · V3 재현) ④ frozen · events(위 공통) ⑤ 새 의존 0 ⑥ git status = 지정 파일.
+- **사례**: 47(r0) → 48(r1 — ld-10 파일 이름 code 사례 +1) → 48(r2 — ld-4를 en · ja 두 triple로 교체 · 픽스처 디렉터리 `en-only` → `ko-missing`).
+- **함께 든 것**: `.claude/rules/content.md` · KR(T086-e 본문 규칙 · `sources` 꼴) · `data-model.md` §11 `sources` 행(덩어리 단위 스테이징 — 같은 파일의 ⑤ 몫은 ⑤ 커밋) · 설계 정정 노트 1–6 · 학습 로그 `content/tmp/003-t086/2026-11-26.md`.
+- **tick**: T086 [X] 85/119.
+
+### T088 빨강 관찰 · tick(2026-11-26)
+
+- **재관찰**(컨트롤러 16:21:5x KST): `pnpm --filter @jt/web --fail-if-no-match exec vitest run scripts/bundle-budget.test.mjs` → `FAIL  scripts/bundle-budget.test.mjs` · `Error: Cannot find module './bundle-budget.mjs' imported from D:/code/joshuatech_ver2/apps/web/scripts/bundle-budget.test.mjs` · `Test Files  1 failed (1)` · `Tests  no tests` · exit 1 — §1-2 그대로.
+- **합격선 §1-1**: ① 위 빨강 ② 저장소 밖 참조 구현 15/15 + 변이 7(8변형) 각각 검출(빌드 r0 · 리뷰 C 재실행) ③–⑤ T086과 같다(공통 확인). 리뷰 · 수정에서 T088 시험 변경 0 — T088 몫 지적은 명령 꼴(C-2 · 정정 노트 7)과 규칙 주입 범위(C-8 · 정정 노트 8 — T093 전 문서 담당).
+- **함께 든 것**: 설계 정정 노트 7–8 · 학습 로그 `content/tmp/003-t088/2026-11-26.md`.
+- **tick**: T088 [X] 86/119. 초록은 T093 측정부(VD-2와 같은 과제 — §1-3).
+
+### T089 빨강 관찰 · tick(2026-11-26)
+
+- **재관찰**(컨트롤러 16:22:08 KST)
+  - `pnpm --filter @jt/web --fail-if-no-match exec vitest run src/lib/gateway.test.ts --reporter=json --outputFile=<스크래치>` → exit 1 · 329 사례 전부 실패 · passed 0 · 원인(JSON 분류 — 실패 메시지의 모듈 이름) = `Cannot find module '/src/lib/gateway'` 323 · `'/src/lib/image-loader'` 6 · 그 밖 0.
+  - `pnpm --filter @jt/web --fail-if-no-match exec vitest run src/lib/__tests__/oracles.test.ts` → `Test Files  1 passed (1)` · `Tests  22 passed (22)` · exit 0.
+  - web 전체 `pnpm --filter @jt/web --fail-if-no-match test` → `Test Files  2 failed | 1 passed (3)` · `Tests  329 failed | 22 passed (351)` · exit 1 · 서로 다른 오류 3종(`./bundle-budget.mjs` 1 · `/src/lib/gateway` 93블록 · `/src/lib/image-loader` 6블록 — 블록 수는 판정에 쓰지 않는다 · 정정 노트 9).
+- **합격선 §1-1**: ① 위 빨강 + oracles 전부 통과 ② 던지는 스텁 329 failed · 관대한 스텁 passed 0(빌드 r0 · 검증 V3) ③ 부분 참조 + 누출 변이 7 검출(빌드 r0) · 전체 참조 329/329(수정 r2 G1 · V3 — 거짓 빨강 0) ④ CI 꼴 gitleaks `dir --redact --ignore-gitleaks-allow` → `no leaks found`(검증 V1 · G1 · V3 — 카나리아 양성) · `gitleaks:allow` 0 ⑤ frozen · events(공통) ⑥ git status. 렌즈 A가 G3 · G11을 결정과 대조했다(리뷰 A r0).
+- **사례**: 318(r0) → 326(r1 — A-10 경계 둘 · B-2 바늘 · B-3 옛 이름 라우트) → 329(r2 — G8-3 라우트별 하류 바늘 셋). 검증 V1 변이 넷 · G1 변이 18 · V3 독립 변이 8이 G8-3에서 잡힌다(r1 시험에서는 모두 `326 passed` 생존).
+- **인계**: V3-1 → T092 착수 때 G8-3에 갈래 두 행(logout `all_devices: true` · `/api/session` inactive)을 시험 먼저(정정 노트 14).
+- **함께 든 것**: `contracts/bff-api.md` T089 보정(B-6 이름 · A-4 세 문장) · `.claude/rules/web.md` + KR · `quickstart.md`(폐기 = 모든 기기 꼴) · t077 정정 노트 ①(UD-7) · 설계 정정 노트 9–18 · 학습 로그 `content/tmp/003-t089/2026-11-26.md`(⑤ 절 포함).
+- **tick**: T089 [X] 87/119. 초록은 image-loader = T091 · gateway = T092(§1-3).
+
+### T087 빨강 관찰 · tick(2026-11-26)
+
+- **재관찰**(컨트롤러 16:22:32–16:23:51 KST · 루프백만 · 공개 호스트 요청 0)
+  - `node e2e/lib/launch.mjs selftest` → `213 passed, 0 failed` · exit 0
+  - `node e2e/lib/launch.mjs selftest-browser` → `30 passed, 0 failed` · exit 0
+  - `node e2e/lib/launch.mjs needle` → `needle=PASS run1-exit=1 run1-failed=9 run1-messages=9/9 run1-hits=log:0,root:0,test-results:0,auth:0,tmp-playwright:0,git-status:0 run1-artifacts=0 run2-exit=1 run2-passed=6 run2-failed=1 run2-messages=1/1 controls=log@log:13,inp@log:13,req@log:13,sck@log:13,url@log:26,nav@log:26,pgs@root:13 …` · exit 0
+  - `node e2e/lib/launch.mjs list` → `list live=3 needle=9 needle-control=7 site=9 selftest=213 selftest-browser=30 result=ok`
+  - `node e2e/lib/launch.mjs site-red` → 첫 단계 줄 `T087 reach FAIL [gate] site-absent until T091 — loopback refused and apps/web scaffold absent (next.config.ts)` × 8 · `INFO T087 health skipped mode=local` · 끝 줄 `site-red passed=0 failed=8 skipped=1 gate-site=8/8 child-exit=1 root=removed` · exit 1 · `[env]` · `[guard]` · `[product]` 0 — §1-2 그대로.
+  - 잔여: `e2e/.auth` 없음 · `%TEMP%\jt-e2e` 없음 · e2e 무시된 산출물 0.
+- **합격선 §1-1**: ① selftest · selftest-browser 실패 0 · `needle=PASS` · `list site=9` ② `site-red gate-site=8/8` · skipped 1(h-7) · passed 0 ③ 저장소 밖 계약 스텁 양성 8 PASS + 변이 10(빌드 r0) · A-2 · B-5 · B-6 변이(수정 r1 F3 · 검증 V1 재현) ④ 잔여 0 ⑤ B-6 상수 개정 뒤 selftest 초록.
+- **selftest 수**: 171(T077 · T079) → 211(빌드 r0) → 213(수정 r1 — h-7 degraded 두 사례) · selftest-browser 23 → 30.
+- **agent-layer · parity**: RULES · MIRRORS에 e2e(리뷰 C-4) → `tests/agents/agent-layer.tests.ps1` 72 → 79 · `tests/agents/codex-parity.tests.ps1` 12/0(`$ruleDocs`에 `e2e.md`). tasks.md T108 문면(규칙 5개)은 불변이다 — 하네스는 이제 6개를 본다(FD ④-c · 과거 기록의 「72/0」은 이력이라 그대로).
+- **함께 든 것**: 새 규칙 `.claude/rules/e2e.md` + KR · AGENTS.md 행(+ KR — e2e 라우팅 · vitest · 런처 명령) · web-builder 에이전트 영역(+ KR · Codex toml) · `playwright.config.ts` `site` 프로젝트 · T079 쿠키 상수 · selftest · README · `revocation.spec.ts` 주석(B-6) · t077 정정 노트 ②(B-6) · 설계 정정 노트 19–23 · 학습 로그 `content/tmp/003-t087/2026-11-26.md`.
+- **tick**: T087 [X] 88/119. 초록은 로컬 = T090 · T091 · T092 + T086-a · CI = T093 · prod = T094 뒤 T095(§1-3).
+
+### UD-7a(ㄴ) 조각 ⑤(2026-11-24 빌드 · 11-26 커밋 — tasks.md 밖 · tick 0)
+
+- **결정**: `revoked:sid:{sid}` 값 = 폐기 시각(nbf) · pod 미들웨어는 값 > 토큰 `iat`만 거부 · `/session/check`는 `issued_at < nbf`만 inactive · 세션 단위 하한 `identity-admin:sid-floor:{sid}`(30 d · `/session/check`만) · 네 값 모두 정규 꼴(ASCII 숫자 1–19자)로 판독하고 밖이면 503(N-16) — W35(같은 브라우저 재로그인 때 같은 sid가 새 세션까지 막힘) 수정(설계 §0-2 · D15 · CD T-c).
+- **시험 먼저 빨강**(빌드 r0): django-common 바뀐 노드 `19 failed, 7 passed` · identity-admin 22 노드 `20 failed, 2 passed` → 구현 → 초록. 표 예측과 다른 빨강 원인은 정정 노트 24.
+- **수정 r1 F5**: ia-33 (b)에 같은 세 시각의 sid 행 + 덮은 보존 상수 아래 `apply_sid` 직접 호출(리뷰 D-2) — 30일 리터럴 변이 넷(창+TTL · 창 · TTL · `apply_sid`)이 각자 다른 단언에서 잡힌다(검증 V2가 출하 코드 글자에서 만든 변이로 재현 · 대조 green · 양성 대조 api-30) · README ⑮ 두 자리 보정(A-5 · D-4) → V2-1 순서는 컨트롤러가 이 커밋에서(정정 노트 26).
+- **컨트롤러 재확인(2026-11-26)**
+  - django-common `uv run --directory packages/django-common --locked pytest -q -p no:cacheprovider` → `779 passed in 107.40s` · exit 0(15:33:57–15:35:46 KST).
+  - identity-admin `uv run --directory apps/identity-admin --locked pytest -q -p no:cacheprovider` → `526 passed in 340.84s (0:05:40)` · exit 0(16:21:55–16:27:41 KST — README V2-1 순서 수정 뒤).
+  - 템플릿 하네스 949(빌드 r0 943 + R0-1 등록 뒤 이미지 6 노드 — 11-24) · recopy 뒤 렌더본 diff = 의도한 줄뿐(빌드 r0 — r1 · r2는 템플릿 · 렌더본 변경 0).
+- **기록만(/finish 인계)**: V2-2 — 요청 경로 사용자 단위 하한 `apply_user`의 TTL 리터럴 변이 생존(pre_existing · T073 코드 · 정정 노트 33).
+- **함께 든 것**: `contracts/denylist.md` · `contracts/identity-admin-api.md` · `contracts/pod-template.md`(:108 좁힘 — D-3 (가)) · `data-model.md`(T086 덩어리 밖 전부) · `.claude/rules/django-pod.md` + KR · 템플릿 `test_auth_middleware.py.jinja` · 설계 정정 노트 24–35 + 대조표.
+- **라이브 변경 0**: identity-admin · django-common 재배포는 main 발행 지점이라 UD-1을 다시 여쭌다 — BFF가 처음 identity-admin을 부르기 전(D15-8 · VD-UD7a-1 시점 = 정정 노트 28).
+
+### T086–T089 run-all(2026-11-26 · 마감)
+
+- **run-all**(컨트롤러 · KUBECONFIG 없음 · 17:00:04–18:01:54 KST): `pwsh -NoProfile -File tests/run-all.ps1` → `1 FAILED` · exit 1. FAIL = `platform` ← `infra tests`(`35 passed, 27 failed` — `tofu plan`이 변수 `budget_alert_email` 값 없음으로 멈춘다 · T076 마감 run-all과 같은 기준선). 그 밖 슬롯 전부 PASS — `identity-harness` · `e2e-selftest` · `agent-layer`(79) · `codex-parity` · `ci-gitleaks` · `specs-index-fresh`(재생성 변경 0) 등 · 작업 트리 변경 0. 사본 `.superpowers/t086/evidence/run-all-20261126.log`.
+- push = 사용자 확인(「run-all 뒤 push」) — `55de003` · `51e9b74` · 과제 커밋 다섯 · 이 기록 커밋.
+
+## T090 (2026-11-26 조사 · 11-27 설계 확정 — US5 구현 · `packages/content` 로더(schema · mdx · loader · index) → T086 48 PASS · 세션 모델 Opus 5.5)
+
+- **설계 정본** = `design/t090-design.md`(r2 본문 + §6 확정 보정). 컨트롤러 결정 기록 = `.superpowers/t090/decisions-controller.md`(gitignore) · 조사 · 비판 · 검증 = `.superpowers/t090/{research,design,reviews}/` · 증거 = `.superpowers/t090/evidence/`.
+- **경과**(워크플로)
+  - 조사 3(계약 · 의존 · 통합) → 초안 r0 → 비판 2렌즈(`wf_128be064-a32` — 둘 다 approve_with_fixes · HIGH 0).
+  - 사전 해석(저장소 밖 사본 · `--lockfile-only` — 코드 실행 0): 정확 기대 lock(+1020/−9) · 새 패키지 110 = 비판 B 정확 목록과 name@version + sha512 110/110.
+  - 설계 r1 + 검증 2렌즈 → r2 + r2 검증(`wf_a012c1b3-72a`). r1 검증: A approve_with_fixes · B revise(MEDIUM 1 = 링크 따라가기 변이를 잡는 사례가 없음). r2 검증: approve_with_fixes · HIGH 0 · MEDIUM 2. 판정 정규식이 굵은 표기 `**MEDIUM**`을 놓쳐 r2 단계가 한 번 건너뛰어졌고, 정규식을 고쳐 같은 run을 이어서 돌렸다.
+  - ① 실물 remark 대조(탐침 — 로더 코드 전): T086 기대값 전부 일치(ld-13 EXPECTED 30행 · 정정 노트 5 꼴 일곱 · 실제 노트 후보 0 · ld-1 · ld-8 · 울타리 줄 LF/CRLF/CR) → 시험 고치기 0. 설계 어긋남 둘(산문 `xmpp:` 자동 링크 · 위치 없는 노드의 줄)은 §6 확정 보정으로 넣었다.
+- **사용자 결정(2026-11-27)**
+  - **〔90-1〕 = 모듈 메모**: 과제 문면 「`React.cache` 1회」(출처 research/2026-08-28-brainstorm-decisions.md:57 — v1 「페이지당 3회 재스캔」 방지)를 생성 단계의 모듈 수준 Map(키 = 해석된 root · 컬렉션)으로 구현한다. react 의존 0 · 코드 주석으로 문면과 잇는다 · report 편차.
+  - **설치 승인 = 권고 세트**: 런타임 12 정확 판 + dev ajv 둘. 관문 = 사전 해석 lock과 바이트 동일 · frozen 두 번 · `@jt/events` 267 · content 빨강 원인 그대로 → 2026-11-27 10:15 KST 설치 · 관문 전부 충족.
+- **컨트롤러 결정**(마감 보고에서 한 줄씩 알림): 〔90-2〕 스캔 = `readdir`(문면 「`glob`」 — 편차 후보) · 〔90-3〕 blog · projects 잠정 계약(한쪽만 `change` = `variant-mismatch`) · B-5 http(s) URL userinfo 거부 · A-1 정규 파일이 아닌 `*.mdx` = `not-regular`(따라가지 않음) · A-9 CRLF 정상 · 따옴표 키 허용 · V2-1 JSON Schema url `format: "uri"` 되살림 · ① 산문 `xmpp:` 허용(실측 사실) · 위치 없는 노드 줄 대체 규칙.
+- **나중에 여쭐 것**: B-13(pnpm `trustPolicy` · `blockExoticSubdeps` — T090 밖 별도 커밋) — 마감 보고 때.
+- **빌드 조각**(설계 D12 · D15): ⓪ 기반(컨트롤러 — 커밋 ②) → ① 실물 대조(끝) → ② schema.ts · ③ mdx.ts · ④ loader.ts + index.ts(web-builder opus · 조각마다 빨강 → 초록) → ⑤ 변이(사본) → 문서 보정 · run-all 슬롯 → 리뷰 3렌즈 → 컨트롤러 빨강 · 초록 관찰 → 커밋 ③ · tick 89/119.
+
+### T090 빌드(2026-11-27)
+
+- **빌드 직전 빨강**(컨트롤러 · HEAD `4233ed1`): `pnpm --filter @jt/content --fail-if-no-match test` → `FAIL tests/loader.test.ts` · `Error: Cannot find module '../src/index'` · `Test Files 1 failed (1)` · `Tests no tests` · exit 1 — T086 §1-2 그대로(`evidence/red-green/red-before-build.log`).
+- **빌드 워크플로 `wf_82eccd85-f14`**(web-builder opus 4 · 순차 · 약 2시간 15분 · 보고 `.superpowers/t090/reviews/build-{s2,s3,s4,mu}.md`). 조각마다 설계 표와 다른 FAIL · 막힌 것 0.
+  - ② `src/schema.ts` + `tests/schema.test.ts`(sx 124) + `schemas/study.schema.json`(3,799 B — `schema` 스크립트 산출)
+    - 빨강: R1 모듈 없음 → R2 검증 함수만(77 실패) → R3 url `format` 되살림 없음(13 실패 — §6-2가 예상한 sx-1 · sx-5 · sx-7 JSON 쪽 8건) → R4 커밋 산출물 전(2 실패 — 신선도 가드)
+    - 초록 124.
+  - ③ `src/mdx.ts` + `tests/mdx.test.ts`(mx 138)
+    - 빨강: R1 모듈 없음 → R2 `compile` · `readingTime` 없음(48 실패) → R2' 프로그래머 오류 사례의 공허 통과를 양성 짝으로 막음
+    - 초록 138.
+    - VD-T090-2: 첫 하이라이터 146 · 177 ms. VD-T090-5 · 6 · 7: 실물과 일치.
+  - ④ `src/loader.ts` · `src/index.ts`(재수출 — 값 넷 · 형 여섯) + `tests/loader-extra.test.ts`(lx 70) · `src/.gitkeep` 삭제
+    - 빨강: R1 모듈 없음 → R2 표면 뼈대(64 실패 — 모두 단언 실패)
+    - 초록: **T086 `loader.test.ts` 48/48(시험 · 픽스처 변경 0)** · 패키지 380/380.
+    - VD-T090-2: ld-13 대조 163 · 192 ms. VD-T090-3: Node 24.11.1 타입 스트리핑 · 자식 stderr 0.
+  - ⑤ 변이(사본 `.superpowers/t090/evidence/mutants/` · junction 0으로 정리)
+    - 변이 99 + 기준 1 → killed 95 · 동등 3(mu-23 · mu-37 · 보조 mu-59b) · 생존 1(보조 mu-56b).
+    - D13 78행 = killed 76 · 동등 2.
+- **컨트롤러 초록 관찰**(HEAD `4233ed1` + 작업 트리)
+  - `pnpm --filter @jt/content --fail-if-no-match test` → `Test Files  4 passed (4)` · `Tests  380 passed (380)` · exit 0(`evidence/red-green/green-after-build.log`).
+  - T086 시험 · 픽스처 `git diff HEAD --stat` 0.
+- **컨트롤러 결정 K-1–K-5**(설계 정정 노트 1–5 · `decisions-controller.md` 「빌드 결과 · 컨트롤러 결정」)
+  - K-1: YAML 1.1 태그를 모르는 태그로 본다(`resolveKnownTags: false`). 변이 ⑤의 관찰을 컨트롤러 탐침 `evidence/known-tags/`로 재현했다.
+  - K-2: D5의 union 근거 문구를 고친다(zod `handleUnionResults`).
+  - K-3: D13 기대를 정정하고 동등을 기록한다.
+  - K-4: issue 순서를 정하는 자리를 고치고, 계약 키 순은 하나만 둔다.
+  - K-5: 빌더 해석을 받아들인다.
+  - K-1 · K-2 · K-4의 코드 반영은 리뷰 고침 단계(시험 먼저)가 맡는다.
+- **하위 에이전트 규칙 위반 자진 신고**(저장소 영향 0)
+  - ③: 초반 Bash `cd`(읽기 전용 탐침 + R1 빨강 실행 1회).
+  - ⑤: `cd` 1회 · `.superpowers/t090/evidence/` 디렉터리 이름 한 번 나열(내용 0).
+  - ④: 확장 3사례를 초록 뒤에 썼다(변이로 빨강을 대신 확인).
+
+### T090 리뷰 · 고침 · 재확인(2026-11-27)
+
+- **리뷰 워크플로 `wf_e3dfab6e-529`**(에이전트 5/5 · 오류 0 · 약 59분 · 보고 `.superpowers/t090/reviews/review-{A,B,C}.md` · `fix-review.md` · `recheck.md`)
+  - 3렌즈 판정은 모두 approve_with_fixes이고 HIGH는 0이다.
+    - A 정합(LOW 1 · NIT 4): 머리 주석 · D16 「해석 · 확장」 열 · 〔90-n〕 · §6 반영 · 문서 보정 · T086 불변을 행마다 대조했다. 뜻이 다른 곳은 정정 노트 1(이미 결정)뿐이다. 남은 것은 사람 계약 문면이다 — seriesOrder 양수 · 문자열 공백만 금지가 계약 문서에 없음 · KR 한 구 · url host 한계 · code 어휘 · updatedDate 행.
+    - B 노출 · 보안 · 공급망(LOW 1 · NIT 2): 입력 값 바늘 40종이 오류 객체 · 출력 · 경고 어디에도 0이었다. Shiki 자식 프로세스의 네트워크 호출 0, lock · 매니페스트는 HEAD와 같고 기대 lock과 바이트 동일. 지적은 셋이다 — 「공개 도메인」 문구가 실제 판정(꼴 검사)보다 많이 약속함 · lx-18 패턴 빈틈 · issue에 실리는 파일 이름 · 키 이름.
+    - C 하네스 · 변이(MEDIUM 1 · LOW 2 · NIT 3): 조각별 빨강 · D13 78행 · 동등 판단 · 신선도 · run-all 슬롯 네 상태를 재현했다. 지적은 blog · projects 로더 경로의 본문 · 필드 검증을 고정하는 사례 없음(MEDIUM — 변이 둘 생존 · 그 변이에서 `javascript:` href가 html로 나감) · 위치 없는 노드의 CRLF/CR 셈 · 자르기 사례 없음 · 슬롯 FORCE_COLOR 거짓 FAIL · description url host · lx-15 미래 공허 · 노트 1 문구.
+  - 고침(web-builder opus · 시험 먼저): K-1(`resolveKnownTags: false`) · K-2(주석) · K-4(`CONTRACT_KEYS` 하나 — 보고 표기는 「K-3」) · RB-1 주석 · RB-2 · RC-1 · RC-2 · RC-4 · RC-5. 빨강 → 초록: mx-2 5 실패 · lx-x2 2 실패 · sx-9 1 실패 → 초록. 수는 380 → 397(schema 125 · mdx 151 · loader 48 · loader-extra 73).
+  - 재확인(approve_with_fixes · 새 지적 NIT 2): 고침의 파일:줄 · 빨강 · 변이 주장을 스크래치 사본에서 모두 재현했다(기준 제외 24 실행 — 재생성 · 노트 draft 변형 포함). RR-1 = loader의 `CONTRACT_KEYS` 소비 자리를 고정하는 사례가 없다(k3-loader-rank 생존 · 이번 고침 전부터) · RR-2 = K 번호 어긋남(보고 「K-3」 = 결정 K-4).
+- **컨트롤러 결정 K-6–K-11**(설계 정정 노트 6–11 · `decisions-controller.md` 「리뷰 · 고침 · 재확인 결과」)
+  - K-6: url host는 문구만 실제 판정대로 고친다(점이 있는 도메인 이름 꼴 · 꼴 검사라 내부 이름 통과). 특수 용도 TLD 거부 목록은 새 계약 규칙이라 미룬다 = 〔90-11〕(마감 보고 알림).
+  - K-7: RR-1 사례를 더한다(후속 빌더). K-8: run-all 슬롯이 판정 전에 ANSI를 지운다(컨트롤러). K-9: RB-2의 좁힌 패턴을 받아들인다. K-10: 문서 몫은 컨트롤러가 한다.
+  - K-11(컨트롤러 관찰): 시험 자식 env에서 `FORCE_COLOR`를 지운다. `NO_COLOR` + `FORCE_COLOR`가 함께 있으면 Node 24가 자식 stderr에 env 충돌 경고를 찍어 mx-6 확장이 거짓 실패했다(탐침으로 재현 — 하나만이면 stderr 0).
+- **후속 빌더 ①**(web-builder opus · K-7 · K-6 · 보고 `.superpowers/t090/reviews/followup-rr1.md`)
+  - K-7: lx-13에 「변형 change · sources 동시 누락 → change variant-mismatch → sources missing」 사례(지금 동작을 고정 — 저장소에서 처음부터 초록). 스크래치 사본 + 변이 k3-loader-rank → `1 failed | 397 passed (398)`(그 사례만 · 순서가 뒤집힘) → 되돌림 398.
+  - K-6: description 「점이 있는 도메인 이름 꼴」 · schema.ts 주석. 재생성 전 sx-2 · sx-3 FAIL(신선도 가드가 문구 변경을 잡음 · 메시지에 재생성 명령) → `content-schema wrote=study.schema.json bytes=3810` → 125 초록.
+  - 컨트롤러 재관찰: content `Tests  398 passed (398)` · events 267 · T086 시험 · 픽스처 diff 0(`evidence/red-green/green-after-review.log`).
+- **후속 빌더 ②**(web-builder opus · K-11 · 보고 `.superpowers/t090/reviews/followup-k11.md`): 시험 도우미 셋(mdx · loader-extra · schema의 `childEnv`)이 `FORCE_COLOR`도 지운다.
+  - 빨강(고치기 전): `NO_COLOR=1 FORCE_COLOR=1` → `Tests  1 failed | 397 passed (398)` — mx-6 확장 「자식 stderr 0」 하나(다른 자식 사례 mx-3 · lx-15 · lx-16 · sx-3 · sx-4는 통과).
+  - 초록(고친 뒤): 둘 다 · 둘 다 없음 · FORCE_COLOR만 · NO_COLOR만 · `NODE_DISABLE_COLORS=1 FORCE_COLOR=1` 모두 398.
+  - 경고 출처: Shiki `engine-oniguruma` `wasm-inlined.mjs`의 `new Response(...)` → Node 내장 undici 지연 적재 → 색 깊이 측정(`--trace-warnings`). T091 인계: 생성 단계가 「stderr 0」을 단언하면 같은 env 정리가 필요하다(설계 정정 노트 11).
+- **컨트롤러 최종 관찰**(HEAD `4233ed1` + 작업 트리)
+  - content `Tests  398 passed (398)` · events `Tests  267 passed (267)` · T086 시험 · 픽스처 diff 0(`evidence/red-green/green-final.log`).
+  - run-all `content` 슬롯 모의(슬롯 블록을 run-all.ps1에서 글자 그대로 떼어 같은 Check로 실행): env 없음 · `FORCE_COLOR`만(출력에 ESC) · `NO_COLOR` + `FORCE_COLOR` 셋 다 `PASS content` · 다음 줄 계속(`evidence/red-green/slot-mock-*-after-k11.log`). K-11 전 둘 다 켠 실행은 FAIL이었다(`slot-mock-forcecolor.log`).
+
+### T090 VD-T090-8 · 합격선 · tick(2026-11-27)
+
+- **VD-T090-8 Linux 1회**(컨트롤러 · 16:44 KST · 91 s · `.superpowers/t090/evidence/vd-t090-8/` — `run.log` · `install.log` · `vitest-canonical.log` · `vitest-verbose.log`)
+  - 이미지 `node@sha256:49f7adaf…`(`node:24` · Linux x86_64 · Node 24.22.3 · corepack pnpm 10.34.5). 저장소를 읽기 전용으로 붙여 별도 clone(HEAD `4233ed1`)한 뒤 작업 트리를 겹쳤다(복사 22 · 삭제 1 — Windows git 목록 `overlay.txt` · `deleted.txt`).
+  - `pnpm install --frozen-lockfile --filter @jt/content` → exit 0(154 해석 · 154 추가).
+  - 정본 명령 `pnpm --filter @jt/content --fail-if-no-match test` → `Test Files  4 passed (4)` · `Tests  398 passed (398)` · exit 0.
+  - 소요(VD-T090-2 x86 Linux · 한도 vitest 기본 5 s): mx-6 첫 하이라이터 128 ms · ld-13 금지 46 ms · 대조 135 ms.
+  - 파일 심볼릭 링크 탐침(저장소 밖 정규 파일을 가리키는 `study/001-x.mdx` 링크 · 출력은 code만): `ContentValidationError` · issues 1 = `(study/001-x.mdx, file, not-regular)` → PASS. Windows 판(리뷰 B — 파일 링크 · junction)과 같다.
+- **합격선 §1-1(D15 — 1–9를 모두 채워야 tick)**
+  1. T086 48: `pnpm --filter @jt/content --fail-if-no-match exec vitest run tests/loader.test.ts` → `Test Files  1 passed (1)` · `Tests  48 passed (48)` · exit 0(`evidence/red-green/t086-48-final.log`). 패키지 전체 `Test Files  4 passed (4)` · `Tests  398 passed (398)` · 건너뜀 0 · exit 0(N = 48 + 350).
+  2. 정정 노트 35 root 우선순위: lx-1–lx-3 시험 먼저 → 빨강 → 초록(조각 ④ · `reviews/build-s4.md`).
+  3. 실물 remark 대조: 설치 직후 · 로더 코드 전에 끝냈고 전부 일치(「T090」 경과 ①).
+  4. 실제 노트 2편: ld-1 세 사례 · lx-15(자식 · 픽스처 root 기본 호출 → `001-public`만 · 실제 노트 기본 호출 → draft 항목 0 · `includeDrafts: true` → slug ⊇ {001, 002}) 초록.
+  5. JSON Schema 산출물: 스테이징 뒤 `pnpm --filter @jt/content --fail-if-no-match schema` 두 번(`content-schema wrote=study.schema.json bytes=3810` ×2) → `git diff --exit-code -- packages/content/schemas/` = 0(멱등). sx-1–sx-7 초록.
+  6. 공허 · 변이: 조각별 빨강(§1-2 이유 그대로) · D13 78행 + 보조 · 리뷰 변이 — 살아남은 것은 사례를 더해 잡았거나 동등을 기록했다(정정 노트 3 · 10). 참조 구현 0 · t086 증거 0(빌더 · 리뷰 자진 신고).
+  7. 설치 관문: 충족(2026-11-27 10:15 KST · 「⓪ 기반 설치」).
+  8. run-all(컨트롤러 · KUBECONFIG 없음 · 16:47:48–17:51:23 KST · 64분): `pwsh -NoProfile -File tests/run-all.ps1` → `1 FAILED` · exit 1. 슬롯 34 중 33 PASS · 구조 검사 9 PASS. FAIL = `platform` ← `infra tests`(`35 passed, 27 failed` — `tofu plan`이 변수 `budget_alert_email` 값 없음으로 멈춘다 · T086–T089 마감 run-all과 같은 기준선). `PASS content`(`Tests  398 passed (398)`) · `agent-layer` 79/0 · `codex-parity` 12/0 · `ci-gitleaks` 14/0 · `ci-events-compat` 117/0 · `e2e-selftest` 213/0 · `identity-harness` 475/0 · `specs-index-fresh`(재생성 변경 0) · run-all이 만든 작업 트리 변경 0. 로그 `.superpowers/t090/evidence/run-all/run-all-20261127-164748.log`. 슬롯 갈래(손 확인 — 슬롯 블록 그대로): 의존 없는 사본 → `SKIP content -- allowed (packages/content dependencies not installed)` · PATH에 pnpm 없음 → `FAIL content -- pnpm not found on PATH`(다음 줄 계속 — `evidence/red-green/slot-mock-state-d-skip.log` · `slot-mock-no-pnpm.log`) · vitest만 있고 로더 의존 없음 → `Test Files  4 failed (4)` · `FAIL content -- exit=1; …`(리뷰 C 실측 — 바꾸지 않은 갈래) · 설치됨 → `PASS content`(env 세 꼴).
+  9. 위생: CI 꼴 gitleaks staged → `no leaks found`(exit 0) · 스테이징 diff에 로컬 절대 경로 · 사설 IP 0 · `git status` = 지정 파일 · 부산물은 gitignore 자리(`node_modules/.vite` · `.superpowers/t090/`)뿐.
+  10. (권고) Linux 1회 — 위 VD-T090-8.
+- **tick**(2026-11-27): 합격선 1–9 충족 · (권고) 10 충족 → `tasks.md` **T090 `[X]` → 89/119**. **T090 닫힘** — 기록 · tick · 학습 로그 `content/tmp/003-t090/2026-11-27.md`는 커밋 ③에 함께 싣는다.
+- **컨트롤러 문서 몫**
+  - content.md · KR: seriesOrder 양의 정수 · 문자열 값 공백만 금지 · YAML 1.1 태그 = 모르는 태그 · 오류는 값을 싣지 않음(모르는 키는 이름으로) · url host 꼴(내부 이름은 손으로 뺀다) · KR 「어기면 로더가 실패한다」.
+  - data-model §11: updatedDate 행 · 공백만 금지 · seriesOrder ≥ 1 · 오류 어휘 줄.
+  - 설계 정정 노트 6–11(노트 1 허용 짝 문구는 제자리에서 고침).
+  - run-all 슬롯 ANSI 제거: 리뷰 C가 저장한 FORCE_COLOR 출력으로 정규식을 먼저 확인했다(원문 불일치 → 제거 뒤 일치 · 남은 ESC 0 · 실패 요약 줄은 계속 불일치).
+- **과정 편차**(기록): 고침 빌더가 변이를 저장소 작업 트리 제자리에서 돌렸다(sha256 복원 · 재확인이 mu-00 사본 대비 잔여 0 확인 · 후속 지시는 사본 강제). 리뷰 A · C가 Bash `cd`를 1회씩 썼다(변경 0).

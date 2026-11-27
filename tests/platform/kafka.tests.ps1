@@ -19,8 +19,8 @@
 #   - Secret 값은 읽지 않는다: KafkaUser의 비밀번호 Secret · Dragonfly aclfile Secret은 이름만 본다(status.secret). kcat · redis-cli처럼 자격이
 #     필요한 검사는 클러스터 안 Job 로그로 읽는다(R30): `kubectl -n jt-dev logs job/kafka-assert` · `job/data-assert` --tail=50.
 #   - 비밀 · 토큰 · kubeconfig 내용 · 개인 경로는 출력하지 않는다. 네이티브 stdout/stderr는 반환 전에 kubeconfig 경로 → <KUBECONFIG>, 홈 → ~ 로
-#     마스킹한다(Mask-Text, ordinal). data-assert의 `EVIDENCE:` 줄(ACL LIST — 비밀번호 해시는 Job이 지운 뒤)은 읽기만 하고 내용은 출력하지 않는다
-#     (job-d-2 사유에는 패턴 유무만 적는다).
+#     마스킹한다(Mask-Text, ordinal). data-assert의 `EVIDENCE:` 줄(UD-9 전 Job의 ACL LIST — 비밀번호 해시는 Job이 지운 뒤)은 판정에 쓰지 않고
+#     출력하지도 않는다(T075 UD-9 — identity-admin은 ACL LIST를 읽지 못한다) · acl-list 근거는 FAIL 사유에 싣지 않는다(ACL 행이 들어 있을 수 있다).
 #   - 임시 파일(stderr 리다이렉트)은 호출마다 재시도 삭제한다 — %TEMP%\kafka-tests-* 잔존 0.
 #   - agent-view RBAC(라이브 전제): gitops platform/policies/rbac-agent-view.yaml의 ClusterRole agent-view-extra가 nodes와 kafka.strimzi.io resources "*"
 #     (get/list/watch)를 주고, 기본 view ClusterRole(aggregate-to-view)이 pods · pods/log · services · deployments.apps · jobs.batch를 준다(준수 리뷰가
@@ -80,9 +80,14 @@
 #              5 s(메시지 경로)와 다른 양이다(적대 리뷰 F1 · T051 시점 Job은 컨슈머 --timeout-ms 20000 유휴 대기까지 들어 항상 ≥ 20 s였다). Get-ElapsedSeconds는 사유 표기용으로만 남긴다. Job 자체의 30 s 벽시계 판정은 별개다.
 #   job-d-1    jobs.batch jt-dev/data-assert 존재 · status.succeeded ≥ 1 (T050 data.tests.ps1과 같은 Job — 각 파일이 자체 완결이라 중복 허용)
 #   job-d-2    `logs job/data-assert --tail=50`에 Dragonfly 검사 id acl-list · noperm · noauth · writer-set · reader-get · reader-set-denied ·
-#              reader-cross-denied 일곱이 각각 정확히 1개이고 전부 PASS · acl-list 근거 또는 `EVIDENCE:   user sample-pod …` 행에 %R~revoked:* 가 있다
-#              (VD-4 — 유무만 적는다; 다른 사용자 행의 패턴은 세지 않는다) · SUMMARY 줄 정확히 1개이고 pass/fail 수가 보이는 RESULT 줄 수(pg 절 포함)와
-#              같다(fail=0은 요구하지 않는다 — pg 절의 판정은 T050 data.tests.ps1 몫)
+#              reader-cross-denied 일곱이 각각 정확히 1개이고 전부 PASS · acl-list PASS 근거에 'NOPERM identity-admin '(끝 공백 포함 — Job의 NOPERM
+#              판정 접두와 같은 꼴)이 있다 · SUMMARY 줄 정확히 1개이고 pass/fail 수가 보이는 RESULT 줄 수(pg 절 포함)와 같다(fail=0은 요구하지 않는다 —
+#              pg 절의 판정은 T050 data.tests.ps1 몫).
+#              T075 UD-9(B2 — 설계 design/t075-design.md D20 · contracts/denylist.md §ACL): pod 사용자 꼬리 `-@admin -@dangerous -client` 뒤로
+#              identity-admin은 `ACL LIST`를 쓸 수 없다 → acl-list의 뜻 = 「identity-admin `ACL LIST` → NOPERM identity-admin」(id는 그대로 · B2 꼬리가
+#              빠지면 FAIL하는 회귀 탐지기 — 근거에 그 표지가 없는 PASS는 ACL LIST를 읽던 UD-9 전 Job(gitops GP-A 전)이라 FAIL이다). VD-4 근거는 행동
+#              단언 reader-get(sample-pod GET → probe = %R~ 키 패턴 적재) · reader-set-denied(→ NOPERM sample-pod)의 PASS다(이전: ACL LIST의
+#              sample-pod 행에 %R~revoked:* — EVIDENCE 줄은 더는 보지 않는다).
 #   job-k-2 · job-k-3 · job-d-2는 Job 상태(succeeded)와 무관하게 로그만 본다 — Job 상태는 job-k-1 · job-d-1이 따로 판정한다(각 단언이 자기 증거만).
 #   단언 수: 17 = gate 3 + kafka 2 + pool 2 + topic 1 + user 2 + df 2 + job-k 3 + job-d 2.
 #
@@ -162,8 +167,8 @@ $kafkaJob = 'kafka-assert'; $kafkaJobIds = @('roundtrip', 'cross-env-denied'); $
 $dataJob = 'data-assert'
 $dataJobIds = @('acl-list', 'noperm', 'noauth', 'writer-set', 'reader-get', 'reader-set-denied', 'reader-cross-denied')
 $dataJobNewIds = @('noauth', 'writer-set', 'reader-get', 'reader-set-denied', 'reader-cross-denied')   # T057 슬라이스(지금 Job에 없음)
-$aclReadOnlyPattern = '%R~revoked:*'
-$sampleEvidenceRow = '\AEVIDENCE:\s+user sample-pod\s'   # data-assert EVIDENCE 블록의 sample-pod 행(`EVIDENCE:   user sample-pod on #<redacted> …`)만 VD-4 증거로 센다
+# acl-list PASS 근거의 표지(T075 UD-9): identity-admin `ACL LIST`가 B2 꼬리에 막힌 응답 — Dragonfly 문구 `NOPERM <user> has no ACL permissions`의 접두
+$aclListNoperm = 'NOPERM identity-admin '
 
 # ---------- 결과 헬퍼(출처: tests/platform/cluster.tests.ps1 §결과 헬퍼) ----------
 function Clip([string]$s, [int]$max = 400) {
@@ -842,14 +847,15 @@ ClusterAssert 'job-d-2' {
     }
     # SUMMARY 1줄 · pass/fail 수 = 보이는 RESULT 줄 수(pg 절 포함; fail=0 은 pg 절의 몫이라 요구하지 않는다)
     $bad += @(Test-SummaryLine $parsed $logTail $false)
-    # VD-4: 패턴 유무만 적는다 — acl-list 근거 또는 EVIDENCE: 블록의 sample-pod 행(다른 사용자 행은 세지 않는다; 내용은 출력하지 않는다)
-    $present = $false
-    foreach ($h in @(@($parsed.results) | Where-Object { Eq ([string]$_.id) 'acl-list' })) { if ((IndexOrd ([string]$h.evidence) $aclReadOnlyPattern) -ge 0) { $present = $true } }
-    foreach ($e in @($parsed.evidence)) { if ([regex]::IsMatch($e, $sampleEvidenceRow) -and (IndexOrd $e $aclReadOnlyPattern) -ge 0) { $present = $true } }
-    if (-not $present) { $bad += "pattern $aclReadOnlyPattern absent from the acl-list evidence and from the EVIDENCE: lines on the sample-pod row ($(@($parsed.evidence).Count) EVIDENCE: line(s); other users' rows do not count) (VD-4)" }
+    # UD-9: acl-list가 PASS 한 줄이면 그 근거에 NOPERM identity-admin 표지가 있어야 한다(없으면 ACL LIST를 읽던 UD-9 전 Job — 근거는 싣지 않는다).
+    #   VD-4는 reader-get · reader-set-denied의 PASS다(위 id 판정이 이미 요구한다). EVIDENCE: 줄은 보지 않는다.
+    $acl = @(@($parsed.results) | Where-Object { Eq ([string]$_.id) 'acl-list' })
+    if ($acl.Count -eq 1 -and (Eq ([string]$acl[0].status) 'PASS') -and (IndexOrd ([string]$acl[0].evidence) $aclListNoperm) -lt 0) {
+        $bad += "acl-list PASS evidence lacks '$aclListNoperm' (identity-admin ACL LIST must be refused by the UD-9 B2 tail -- a Job that still reads ACL LIST predates T075 GP-A, or the tail is missing)"
+    }
     if ($bad.Count -gt 0) { return @('FAIL', "Job $assertNs/$dataJob log (Dragonfly section): $(Format-Problems $bad)") }
     $sums = @($parsed.summaries)
-    return @('PASS', "$($dataJobIds -join ', ') PASS; pattern $aclReadOnlyPattern present on the sample-pod row (VD-4); SUMMARY pass=$($sums[0].pass) fail=$($sums[0].fail) matches $(@($parsed.results).Count) RESULT line(s)")
+    return @('PASS', "$($dataJobIds -join ', ') PASS; acl-list evidence carries '$aclListNoperm' (identity-admin ACL LIST refused -- UD-9 B2 tail); VD-4 = reader-get, reader-set-denied PASS; SUMMARY pass=$($sums[0].pass) fail=$($sums[0].fail) matches $(@($parsed.results).Count) RESULT line(s)")
 } 1000
 
 # ---------- 요약 ----------

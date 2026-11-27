@@ -36,6 +36,9 @@ __pycache__/
 .open-next/
 .wrangler/
 
+# Next.js build output (apps/web — T086–T089 설계 ⓪)
+.next/
+
 # Environment files (commit only *.example)
 .env
 .env.*
@@ -44,3 +47,10 @@ __pycache__/
 # Test artifacts
 e2e/.auth/
 tests/fixtures/generated/
+# Playwright 산출물(깊이 무관 — T077 D4: 기본 outputDir = test-results/ · 리포트는 쓰지 않지만 생기면 무시)
+test-results/
+playwright-report/
+blob-report/
+# wrangler 로컬 비밀(사전 방어 — T077 D4)
+.dev.vars
+.dev.vars.*

@@ -1,0 +1,35 @@
+---
+title: "본문 규칙 — 대조(허용 구문)"
+description: "거부 규칙이 건드리면 안 되는 구문을 모았다."
+pubDate: 2026-03-02
+tags: ["fixture"]
+draft: false
+change: "099-control"
+sources: []
+---
+
+## 코드
+
+코드 스팬 `<script>` 와 `{a}` 와 `<!-- c -->` 는 글자로 남는다.
+
+```js
+import x from 'y'
+export const z = {}
+const el = '<div>'
+```
+
+## 링크
+
+[a](https://example.com) · [b](mailto:a@example.com) · [c](./rel) · [d](#top) · [e](/ko)
+
+[y](HTTPS://example.com) · [z](MAILTO:a@example.com) · 자동 링크 https://example.com 끝.
+
+문자 참조 &lt;b&gt; 는 글자다.
+
+| 열 | 값 |
+|---|---|
+| a | 1 |
+
+각주를 단다[^1].
+
+[^1]: 각주 내용.

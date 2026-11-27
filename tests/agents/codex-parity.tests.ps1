@@ -177,7 +177,7 @@ if (-not ($testerAgent -and $testerAgent -match '(?m)^sandbox_mode\s*=\s*"worksp
 Assert 'agents-1: four unpinned Codex agents preserve scopes and tester hook' ($agentErrors.Count -eq 0) ($agentErrors -join ', ')
 
 # ---------- Path router and command policy ----------
-$ruleDocs = @('content.md', 'django-pod.md', 'docs.md', 'events.md', 'fastapi-pod.md', 'infra.md', 'specs.md', 'web.md')
+$ruleDocs = @('content.md', 'django-pod.md', 'docs.md', 'e2e.md', 'events.md', 'fastapi-pod.md', 'infra.md', 'specs.md', 'web.md')
 $routeErrors = @($ruleDocs | Where-Object { -not $agents.Contains(".claude/rules/$_") })
 Assert 'router-1: AGENTS routes every Claude path rule for Codex' ($routeErrors.Count -eq 0 -and $agents -match 'before (reading or )?editing') ($routeErrors -join ', ')
 
@@ -211,7 +211,8 @@ Assert 'command-hook-1: handler is wired and Windows dispatch limitation is expl
 # ---------- Claude remains semantically intact ----------
 $settings = if (Test-Path -LiteralPath '.claude/settings.json') { Get-Content -LiteralPath '.claude/settings.json' -Raw | ConvertFrom-Json } else { $null }
 $overrideNames = if ($settings -and $settings.skillOverrides) { @($settings.skillOverrides.PSObject.Properties.Name) } else { @() }
-$claudeOk = $settings -and @($settings.permissions.deny).Count -eq 27 -and
+# deny 29 = 27 + T076 `Bash(vault *)` · `PowerShell(vault *)`(UD-15, 2026-11-20 — 심층 방어: 에이전트는 vault CLI를 쓰지 않는다)
+$claudeOk = $settings -and @($settings.permissions.deny).Count -eq 29 -and
     (Same-Set $overrideNames $speckitSkills) -and
     @($overrideNames | Where-Object { $settings.skillOverrides.$_ -cne 'name-only' }).Count -eq 0 -and
     @($settings.hooks.UserPromptSubmit).Count -ge 1 -and @($settings.hooks.PreToolUse).Count -ge 1

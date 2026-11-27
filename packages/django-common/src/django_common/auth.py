@@ -83,18 +83,21 @@ Bearer(④ ⑤ — 공개하지 않는다)
   T070 r6 X2)에 기댄다 — PyJWT를 올리면 test_auth_contract를 돌린다.
 
 Denylist(⑥ · 공개 — T073 /session/check가 재사용)
-- lookup(sub, sid=None) -> DenylistRecord(sub_nbf: int | None, sid_revoked: bool) · DenylistRecord.revokes(iat)
-  = (sub_nbf가 있고 > iat) 또는 sid_revoked. sub는 비지 않은 str · sid는 None 또는 비지 않은 str(아니면 TypeError ·
-  ValueError — 호출자 오류).
+- lookup(sub, sid=None) -> DenylistRecord(sub_nbf: int | None, sid_nbf: int | None) · DenylistRecord.revokes(iat)
+  = (sub_nbf가 있고 > iat) 또는 (sid_nbf가 있고 > iat) — 같으면 폐기가 아니다(UD-7a 보정 — revoked:sid 값도 폐기 시각 nbf다 ·
+  이전 꼴 sid_revoked = 키 존재: 로그아웃 직후 같은 sid로 다시 발급된 토큰까지 330 s 거부했다 · W35). sub는 비지 않은 str ·
+  sid는 None 또는 비지 않은 str(아니면 TypeError · ValueError — 호출자 오류).
 - 호출마다 DRAGONFLY_URL을 읽고 URL별 클라이언트를 인스턴스 안에 둔다(같은 인스턴스가 바뀐 URL을 따른다). 클라이언트 =
   Redis.from_url(url, socket_timeout=0.2, socket_connect_timeout=0.2, retry=Retry(NoBackoff(), 0)) — 지연 생성 · 생성할 때
   연결 · PING 없음. URL에 쿼리가 있으면 조회하지 않는다(redis-py는 URL 쿼리가 키워드 인자를 덮어써 0.2 s · 재시도 0이
   무너진다).
-- 파이프라인 1회(transaction=False — GET revoked:sub:{sub} + sid가 있으면 EXISTS revoked:sid:{sid}). 값이 정수가 아니거나
-  (int() 실패) 어떤 예외든 DenylistUnavailable(503) — 예외 메시지(키 = sub · URL)는 응답 · 로그 · 연쇄에 싣지 않는다.
-  결과를 캐시하지 않는다.
+- 파이프라인 1회(transaction=False — GET revoked:sub:{sub} + sid가 있으면 GET revoked:sid:{sid} · EXISTS 0). 두 값 모두
+  정규 꼴(ASCII 숫자 1-19자 — _DENYLIST_VALUE fullmatch)만 받는다: 밖(음수 · 앞뒤 공백 · `+` · 밑줄 · 빈 값 · 20자리 이상 ·
+  단어)이거나 어떤 예외든 DenylistUnavailable(503 · 로그 error=ValueError) — int()로 읽으면 음수 · 공백 꼴 손상이 조용히
+  「폐기 아님」(열린 쪽)이 된다(UD-7a 보정 · N-16 — 이전 문구 「int() 실패」). 예외 메시지(키 = sub · URL)는 응답 · 로그 ·
+  연쇄에 싣지 않는다(값 꼴 실패도 메시지 없는 ValueError다). 결과를 캐시하지 않는다.
 - 지표 denylist_lookup_seconds(Histogram · 레이블 result — ok: 키 없음 · revoked: 폐기 키가 있었다(sub 키 또는 sid 키 —
-  거부 여부는 호출자의 revokes(iat)가 정한다) · error: 조회 실패). 조회 1회 = 관측 1회 · 모듈 수준 1회 등록.
+  키 존재다 · 거부 여부는 호출자의 revokes(iat)가 정한다) · error: 조회 실패). 조회 1회 = 관측 1회 · 모듈 수준 1회 등록.
 
 시간 상한(키 fetch 2 s · 거부 목록 0.2 s)은 연결 · 읽기 소켓 동작마다 걸린다 — 요청 전체의 상한이 아니다. DNS 해석
 (getaddrinfo)은 시간 제한 밖이고, 연결 시간 초과는 해석된 주소(A · AAAA)마다 따로 걸린다(socket.create_connection이 주소를
@@ -208,6 +211,10 @@ _KEYS_BACKOFF_MAX_S = 30.0
 _ACCESS_REQUIRED_CLAIMS = ["exp", "iat", "aud", "iss"]
 _BEARER_REQUIRED_CLAIMS = ["exp", "iat", "sub", "aud", "iss"]
 _DENYLIST_TIMEOUT_S = 0.2
+# 거부 목록 값(revoked:sub · revoked:sid = nbf)의 정규 꼴 — ASCII 숫자 1-19자(fullmatch · 클라이언트는 bytes를 준다 · 쓰는 쪽
+# identity-admin은 str(nbf)만 쓴다 — UD-7a 보정 · N-16). identity-admin session_floor.FLOOR_VALUE_PATTERN과 같은 꼴이다. `\d`를
+# 쓰지 않는다(str 패턴에서는 비ASCII 숫자까지 맞는다 — 한 가지 꼴로 둔다).
+_DENYLIST_VALUE = re.compile(rb"[0-9]{1,19}")
 _REQUEST_ATTRIBUTES = ("access_claims", "auth_claims", "tenant_id")
 # fullmatch로 쓴다 — `$`는 끝 줄바꿈 앞에서도 맞는다. 소문자 hex만(계약 — 대문자 hex는 거부).
 _WEBHOOK_SIGNATURE = re.compile(r"sha256=[0-9a-f]{64}")
@@ -255,7 +262,7 @@ class AccessRequired(AuthError):
 
 
 class SessionRevoked(AuthError):
-    """거부 목록이 이 토큰을 폐기했다(revoked:sub nbf > iat 또는 revoked:sid 존재) — 401 session_revoked."""
+    """거부 목록이 이 토큰을 폐기했다(revoked:sub nbf > iat 또는 revoked:sid nbf > iat — UD-7a 보정) — 401 session_revoked."""
 
     slug = "session_revoked"
     status = 401
@@ -655,15 +662,15 @@ def _canonical_uuid(value: object) -> uuid.UUID | None:
 
 @dataclass(frozen=True)
 class DenylistRecord:
-    """거부 목록 원시 조회 결과 — sub_nbf = revoked:sub:{sub} 값(정수 · 키가 없으면 None) · sid_revoked = revoked:sid:{sid}
-    존재(sid를 묻지 않았으면 False)."""
+    """거부 목록 원시 조회 결과 — sub_nbf = revoked:sub:{sub} 값 · sid_nbf = revoked:sid:{sid} 값(둘 다 정수 nbf · 키가
+    없거나 sid를 묻지 않았으면 None — UD-7a 보정: 이전 필드 sid_revoked = 키 존재)."""
 
     sub_nbf: int | None
-    sid_revoked: bool
+    sid_nbf: int | None
 
     def revokes(self, iat: int) -> bool:
-        """iat에 발급된 토큰을 거부하는가 — sub_nbf가 있고 iat보다 크거나(같으면 아니다) sid가 폐기됐다."""
-        return (self.sub_nbf is not None and self.sub_nbf > iat) or self.sid_revoked
+        """iat에 발급된 토큰을 거부하는가 — sub_nbf 또는 sid_nbf가 있고 iat보다 크다(같으면 아니다)."""
+        return (self.sub_nbf is not None and self.sub_nbf > iat) or (self.sid_nbf is not None and self.sid_nbf > iat)
 
 
 class Denylist:
@@ -695,7 +702,7 @@ class Denylist:
             _LOOKUP_SECONDS.labels(result="error").observe(elapsed)
             logger.warning("auth.denylist_unavailable source=denylist error=%s", error)
             raise DenylistUnavailable() from None
-        result = "revoked" if record.sid_revoked or record.sub_nbf is not None else "ok"
+        result = "revoked" if record.sub_nbf is not None or record.sid_nbf is not None else "ok"  # 키 존재 — 판정 아님
         _LOOKUP_SECONDS.labels(result=result).observe(elapsed)
         return record
 
@@ -711,12 +718,21 @@ class Denylist:
         with self._client(url).pipeline(transaction=False) as pipe:
             pipe.get(f"revoked:sub:{sub}")
             if sid is not None:
-                pipe.exists(f"revoked:sid:{sid}")
+                pipe.get(f"revoked:sid:{sid}")
             values = pipe.execute()
-        raw_nbf = values[0]
-        sub_nbf = None if raw_nbf is None else int(raw_nbf)
-        sid_revoked = sid is not None and int(values[1]) > 0
-        return DenylistRecord(sub_nbf=sub_nbf, sid_revoked=sid_revoked)
+        sub_nbf = _denylist_value(values[0])
+        sid_nbf = None if sid is None else _denylist_value(values[1])
+        return DenylistRecord(sub_nbf=sub_nbf, sid_nbf=sid_nbf)
+
+
+def _denylist_value(raw: object) -> int | None:
+    """거부 목록 값 하나(GET 결과)의 판독 — 키가 없으면 None · 정규 꼴(ASCII 숫자 1-19자 bytes)이면 정수 · 그 밖은 메시지 없는
+    ValueError(값을 싣지 않는다 — lookup이 503으로 접는다 · UD-7a 보정 · N-16)."""
+    if raw is None:
+        return None
+    if not isinstance(raw, bytes) or _DENYLIST_VALUE.fullmatch(raw) is None:
+        raise ValueError
+    return int(raw)
 
 
 def _url_has_query(url: str) -> bool:

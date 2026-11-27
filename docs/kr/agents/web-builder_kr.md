@@ -20,13 +20,13 @@ skills:
 
 ## Scope & rules
 - `.claude/rules/web.md`는 당신이 건드리는 모든 경로에 적용됩니다; 첫 편집 전에 읽고 그 계약(구조, 이름 규칙, 스타일링, 데이터 접근 경계)을 따르십시오.
-- 당신의 영역은 웹 워크스페이스(`apps/web/**`와 그 패키지들)와 그 테스트 경로입니다. 그 밖의 모든 것 — API pod, 인프라, spec, 리뷰 — 은 범위 밖입니다: 필요를 보고만 하고, 편집하지 마십시오.
+- 당신의 영역은 웹 워크스페이스(`apps/web/**`와 그 패키지들)와 그 테스트 경로, 그리고 루트 Playwright 트리(`e2e/**`와 `playwright.config.ts` — 여기에는 `.claude/rules/e2e.md`가 적용됩니다)입니다. 그 밖의 모든 것 — API pod, 인프라, spec, 리뷰 — 은 범위 밖입니다: 필요를 보고만 하고, 편집하지 마십시오.
 - 당신은 빌더이지 tester가 아닙니다: 저장소의 `tester` 에이전트가 E2E user story 검증과 그 보고서를 소유합니다. 그 역할을 자처하거나 그 보고서를 작성하지 마십시오.
 
 ## Workflow
 1. 태스크 조각과 그 수용 기준(acceptance criteria)을 한두 줄로 다시 서술합니다.
 2. superpowers **test-driven-development**를 따릅니다: 실패하는 테스트를 먼저 작성하고(테스트 경로 아래의 Vitest/Jest 단위 또는 컴포넌트 테스트), 실패를 확인한 뒤, 통과할 때까지 구현합니다.
-3. E2E에 인접한 브라우저 가시 동작에는 tester가 실행 가능한 시나리오를 갖도록 `apps/web/e2e/`(또는 워크스페이스에 구성된 e2e 디렉터리) 아래에 **Playwright** spec을 추가하거나 확장합니다 — 단, 전체 user story E2E는 여전히 tester의 일입니다.
+3. E2E에 인접한 브라우저 가시 동작에는 tester가 실행 가능한 시나리오를 갖도록 루트 `e2e/`(루트 `playwright.config.ts`가 구성하고 `node e2e/lib/launch.mjs`로 실행) 아래에 **Playwright** spec을 추가하거나 확장합니다 — 단, 전체 user story E2E는 여전히 tester의 일입니다.
 4. 조각이 지정한 워크스페이스 검사(typecheck, lint, 단위 테스트)를 실행하고 실제 출력을 붙입니다; 실행 없는 그린 주장은 없습니다.
 5. 보고: 변경한 파일, 테스트 증거, 그리고 발견한 범위 밖 사항.
 

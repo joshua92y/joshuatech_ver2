@@ -97,7 +97,7 @@
 #     있던 동안 TF_VAR_operator_email 없는 셸의 apply 가 admin-github·admin-github-ssh 의 include 이메일을 T011 값(GitHub 기본 이메일)
 #     에서 기본값으로 조용히 바꿨다(운영자 잠금 위험) — validate 는 이를 잡지 못하므로 원문으로 고정한다(cf-vars-1, 블록 부재도 FAIL).
 #
-# 단언 수: 61 (tool 1, enc 1, dir 3, validate 6, plan 2, nsg 4, sl 1, inst 3, bucket 4, iam 7, dg 2, kms 3, lc 2, budget 1, access 1, cf-vars 1, tunnel 2, vt 17)
+# 단언 수: 62 (tool 1, enc 1, dir 3, validate 6, plan 2, nsg 4, sl 1, inst 3, bucket 4, iam 7, dg 2, kms 3, lc 2, budget 1, access 1, cf-vars 1, tunnel 2, vt 18 — T076에서 vt-14b 추가)
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -1278,7 +1278,7 @@ try {
     # 최상위 블록 키워드 행 직전까지다(tofu fmt 정렬 전제 — fmt -check와 validate-vault-1이 그 전제를 지킨다). 중괄호 균형은 세지 않는다.
     # 0회 단언은 파일이 비어 있으면 공허해지므로 양성 앵커(해당 리소스 블록이 정확히 1개)를 함께 요구한다(fail closed).
     # 계약: contracts/gitops-repo.md §ClusterSecretStore(마운트 kv · role 이름 = SA 이름 · audience vault · TTL 1h/4h) + 설계 D4(role 6)·
-    #       D5(vault_audit 0)·D8(kv 값 리소스 0). 비교는 전부 ordinal.
+    #       D5(vault_audit 0)·D8(kv 값 리소스 0) + T076 설계 D2-2(e2e-reader 두 경로 · eso-platform deny 두 줄 — UD-15). 비교는 전부 ordinal.
     $vaultExpectedRoles = @('eso-platform', 'eso-dev', 'eso-prod', 'eso-data', 'vault-backup', 'e2e-reader')
     $vaultEsoDataPaths = @(
         'kv/data/dev/db/*', 'kv/data/dev/kafka/*', 'kv/data/dev/dragonfly/*', 'kv/data/dev/openfga/*', 'kv/data/dev/authentik/webhooks/*',
@@ -1573,22 +1573,64 @@ try {
         Assert 'vt-13: eso-data heredoc lists exactly 20 path lines whose set equals the 10 kv/data + 10 kv/metadata enumerated paths (dev|prod x db, kafka, dragonfly, openfga, authentik/webhooks); no kv/data/dev/*, kv/data/prod/*, or kv/(data|metadata)/+/ wildcard [tf-text]' ($bad.Count -eq 0) "bad: $($bad -join ' | ')"
     }
 
+    # vt-14 · vt-14b (T076 설계 D2-2 · UD-15): 「capabilities 정확히 ["read"]」 규칙의 예외는 정확히 하나 — eso-platform의 deny 두 줄
+    # (`kv/data/platform/access/*` · `kv/metadata/platform/access/*`). 「ESO 밖」(tester Access 서비스 토큰 `kv/platform/access/*`)을 관례가
+    # 아니라 Vault ACL로 강제한다 — 첫 glob이 더 뒤에 있는(= 더 긴) 경로 규칙이 이기므로 나머지 `platform/*` 읽기는 그대로다.
+    # 경로와 capabilities는 줄 단위로 짝지어 본다: 정책 줄은 한 줄 꼴 `path "<p>" { capabilities = [<c>] }`만 받는다(다른 꼴 = FAIL).
+    $vaultDenyPolicy = 'eso-platform'
+    $vaultDenyPaths = @('kv/data/platform/access/*', 'kv/metadata/platform/access/*')
     Test-Group 'vt-14' {
         $bad = @()
         $capRx = [regex]'capabilities[ \t]*=[ \t]*\[([^\]]*)\]'
+        $lineRx = [regex]'(?m)^[ \t]*path[ \t]+"([^"]*)"[ \t]*\{[ \t]*capabilities[ \t]*=[ \t]*\[([^\]]*)\][ \t]*\}[ \t]*$'
         $seen = @()
+        $denySeen = @()
         foreach ($n in $vaultExpectedRoles) {
             if (-not $vaultPolicyBodies.ContainsKey($n)) { $bad += "policy '$n' heredoc not found"; continue }
             $pbody = $vaultPolicyBodies[$n]
             $pathLines = Get-RxCount $pbody '(?m)^[ \t]*path[ \t]+"'
             $caps = @($capRx.Matches($pbody) | ForEach-Object { $_.Groups[1].Value.Trim() })
+            $blocks = @($lineRx.Matches($pbody))
             if ($caps.Count -eq 0) { $bad += "policy '$n': no capabilities = [...] (fail closed)" }
             if ($caps.Count -ne $pathLines) { $bad += "policy '$n': capabilities=$($caps.Count) path lines=$pathLines (every path block must carry exactly one capabilities list)" }
-            $notRead = @($caps | Where-Object { -not [string]::Equals($_, '"read"', [StringComparison]::Ordinal) })
-            if ($notRead.Count -gt 0) { $bad += "policy '$n': capabilities not exactly [`"read`"]: $($notRead -join ' ; ')" }
+            if ($blocks.Count -ne $pathLines) { $bad += "policy '$n': one-line path blocks=$($blocks.Count) path lines=$pathLines (each path block must be the one-line form path `"<p>`" { capabilities = [...] })" }
+            foreach ($m in $blocks) {
+                $p = $m.Groups[1].Value
+                $c = $m.Groups[2].Value.Trim()
+                if ([string]::Equals($c, '"read"', [StringComparison]::Ordinal)) { continue }
+                $excPolicy = [string]::Equals($n, $vaultDenyPolicy, [StringComparison]::Ordinal)
+                $excCap = [string]::Equals($c, '"deny"', [StringComparison]::Ordinal)
+                $excPath = (@($vaultDenyPaths | Where-Object { [string]::Equals($_, $p, [StringComparison]::Ordinal) }).Count -eq 1)
+                if ($excPolicy -and $excCap -and $excPath) { $denySeen += $p }
+                else { $bad += "policy '$n': path `"$p`" capabilities [$c] (want exactly [`"read`"]; the only exception is $vaultDenyPolicy [`"deny`"] on $($vaultDenyPaths -join ' and '))" }
+            }
             $seen += "$n=$($caps.Count)"
         }
-        Assert 'vt-14: every capabilities list in eso-platform, eso-dev, eso-prod, eso-data, e2e-reader, vault-backup is exactly ["read"] (ordinal on the bracket content -- not a subset check), one per path block [tf-text]' ($bad.Count -eq 0) "lists: $($seen -join ', '); bad: $($bad -join ' | ')"
+        if ($denySeen.Count -ne $vaultDenyPaths.Count) { $bad += "$vaultDenyPolicy deny lines=$($denySeen.Count) (want exactly $($vaultDenyPaths.Count))" }
+        $d = Get-SetDiff $vaultDenyPaths $denySeen
+        if (-not $d.equal) { $bad += "$vaultDenyPolicy deny path set mismatch: missing=[$($d.missing -join ', ')] extra=[$($d.extra -join ', ')]" }
+        Assert 'vt-14: every capabilities list in eso-platform, eso-dev, eso-prod, eso-data, e2e-reader, vault-backup is exactly ["read"] (ordinal on the bracket content -- not a subset check), one per one-line path block -- with exactly one exception: eso-platform ["deny"] on exactly kv/data/platform/access/* and kv/metadata/platform/access/* (a deny in another policy, on another path, or a different deny line count = FAIL; UD-15) [tf-text]' ($bad.Count -eq 0) "lists: $($seen -join ', '); deny: [$($denySeen -join ', ')]; bad: $($bad -join ' | ')"
+    }
+
+    Test-Group 'vt-14b' {
+        $bad = @()
+        $want = @(
+            'path "kv/data/platform/*" { capabilities = ["read"] }',
+            'path "kv/metadata/platform/*" { capabilities = ["read"] }',
+            'path "kv/data/platform/access/*" { capabilities = ["deny"] }',
+            'path "kv/metadata/platform/access/*" { capabilities = ["deny"] }'
+        )
+        $lines = @()
+        if (-not $vaultPolicyBodies.ContainsKey($vaultDenyPolicy)) { $bad += "policy '$vaultDenyPolicy' heredoc not found" }
+        else {
+            $lines = @(($vaultPolicyBodies[$vaultDenyPolicy] -split "`n") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+            if ($lines.Count -ne $want.Count) { $bad += "non-empty lines=$($lines.Count) (want exactly $($want.Count))" }
+            $distinct = [Collections.Generic.HashSet[string]]::new([string[]]@($lines), [StringComparer]::Ordinal)
+            if ($distinct.Count -ne $lines.Count) { $bad += "duplicate lines: $($lines.Count - $distinct.Count)" }
+            $d = Get-SetDiff $want $lines
+            if (-not $d.equal) { $bad += "line set mismatch: missing=[$($d.missing -join ' ; ')] extra=[$($d.extra -join ' ; ')]" }
+        }
+        Assert 'vt-14b: eso-platform heredoc is exactly these 4 lines (trimmed, ordinal set): read kv/data/platform/*, read kv/metadata/platform/*, deny kv/data/platform/access/*, deny kv/metadata/platform/access/* -- the deny pair keeps kv/platform/access/* (tester Access service tokens) outside ESO by Vault ACL, the longer path rule winning over platform/* (UD-15) [tf-text]' ($bad.Count -eq 0) "bad: $($bad -join ' | ')"
     }
 
     Test-Group 'vt-15' {
@@ -1601,18 +1643,27 @@ try {
         Assert 'vt-15: no vault_generic_secret / vault_kv_secret* / vault_audit* resource / data / ephemeral block (any nesting) -- kv values and the audit device are not managed here [tf-text]' ($bad.Count -eq 0) "resource types=[$($types -join ', ')]; bad: $($bad -join ' | ')"
     }
 
+    # vt-16 (T076 설계 D2-2 · UD-15): e2e-reader = 정확히 두 경로 — authentik/e2e(T077 Playwright) + access/tester-m2m(T076 O-8 블록).
     Test-Group 'vt-16' {
         $bad = @()
+        $want = @('kv/data/platform/authentik/e2e', 'kv/data/platform/access/tester-m2m')
+        $paths = @()
         if (-not $vaultPolicyBodies.ContainsKey('e2e-reader')) { $bad += 'policy e2e-reader heredoc not found' }
         else {
             $pbody = $vaultPolicyBodies['e2e-reader']
             $pathLines = Get-RxCount $pbody '(?m)^[ \t]*path[ \t]+"'
             $paths = @(Get-VaultPolicyPaths $pbody)
-            if ($pathLines -ne 1 -or $paths.Count -ne 1) { $bad += "path lines=$pathLines (want exactly 1)" }
-            elseif (-not [string]::Equals($paths[0], 'kv/data/platform/authentik/e2e', [StringComparison]::Ordinal)) { $bad += "path='$($paths[0])' (want kv/data/platform/authentik/e2e)" }
-            if (@($paths | Where-Object { $_ -match '[*+]' }).Count -gt 0) { $bad += 'wildcard (* or +) in e2e-reader path' }
+            if ($pathLines -ne $want.Count -or $paths.Count -ne $want.Count) { $bad += "path lines=$pathLines parsed=$($paths.Count) (want exactly $($want.Count))" }
+            $distinct = [Collections.Generic.HashSet[string]]::new([string[]]@($paths), [StringComparer]::Ordinal)
+            if ($distinct.Count -ne $paths.Count) { $bad += "duplicate paths: $($paths.Count - $distinct.Count)" }
+            $d = Get-SetDiff $want $paths
+            if (-not $d.equal) { $bad += "path set mismatch: missing=[$($d.missing -join ', ')] extra=[$($d.extra -join ', ')]" }
+            $wild = @($paths | Where-Object { $_ -match '[*+]' })
+            if ($wild.Count -gt 0) { $bad += "wildcard (* or +) in e2e-reader paths: $($wild -join ', ')" }
+            $meta = @($paths | Where-Object { $_ -cmatch '^kv/metadata/' })
+            if ($meta.Count -gt 0) { $bad += "kv/metadata path in e2e-reader: $($meta -join ', ') (the tester reads values only)" }
         }
-        Assert 'vt-16: e2e-reader policy has exactly one path, literally kv/data/platform/authentik/e2e (no wildcard) [tf-text]' ($bad.Count -eq 0) "bad: $($bad -join ' | ')"
+        Assert 'vt-16: e2e-reader policy has exactly two paths whose set equals (ordinal) {kv/data/platform/authentik/e2e, kv/data/platform/access/tester-m2m} -- no wildcard (* or +), no kv/metadata path, no duplicate (UD-15) [tf-text]' ($bad.Count -eq 0) "paths: [$($paths -join ', ')]; bad: $($bad -join ' | ')"
     }
 
     Test-Group 'vt-17' {

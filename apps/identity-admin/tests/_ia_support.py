@@ -113,6 +113,11 @@ def floor_key(sub: str) -> str:
     return f"identity-admin:session-floor:{sub}"
 
 
+def sid_floor_key(sid: str) -> str:
+    """세션 단위 하한 키 `identity-admin:sid-floor:{sid}`(UD-7a(ㄴ) — t086-design.md D15 T-c)."""
+    return f"identity-admin:sid-floor:{sid}"
+
+
 # --- 픽스처 --------------------------------------------------------------------------------------------------------------
 
 

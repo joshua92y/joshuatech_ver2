@@ -6,8 +6,9 @@
 # (본체는 T109 rules 5·T110 builder 3·T112 kr 미러에서 작성; 그 전까지 이 스위트는 RED가 정상).
 # 기존 .claude/rules/{specs,docs,content}.md는 검사 대상이 아니다.
 #
-# 검사 계약 — 단언 수: rules 4×5 + agents 6×3 + boundary 7 + mirrors 3×9 = 72
-#   RULES  .claude/rules/{web,django-pod,fastapi-pod,infra,events}.md
+# 검사 계약 — 단언 수: rules 4×6 + agents 6×3 + boundary 7 + mirrors 3×10 = 79
+#   (e2e 규칙 · 미러는 T087 — t086 리뷰 C-4 2026-11-24 · 이전 72)
+#   RULES  .claude/rules/{web,django-pod,fastapi-pod,infra,events,e2e}.md
 #     -1 파일 존재  -2 닫힌 '---' frontmatter 블록
 #     -3 최상위 paths: 키 1개 + 비어 있지 않은 glob 항목 >= 1(블록 목록 또는 인라인 flow 시퀀스)
 #     -4 모든 glob이 저장소 상대 패턴으로 타당: 출력 가능 ASCII(공백 없음)·백슬래시 없음·
@@ -19,7 +20,7 @@
 #     -1 .claude/skills/approval-review/boundaries/k8s-security.md 존재 + 내용 비어 있지 않음
 #     -2..-7 approval-review/SKILL.md가 경계 파일 6개 이름을 모두 언급
 #        (security.md는 k8s-security.md의 부분 문자열이므로 앞 문자를 lookbehind로 배제)
-#   MIRRORS docs/kr/rules/{web,django-pod,fastapi-pod,infra,events}_kr.md ·
+#   MIRRORS docs/kr/rules/{web,django-pod,fastapi-pod,infra,events,e2e}_kr.md ·
 #           docs/kr/agents/{web-builder,api-builder,infra-builder}_kr.md ·
 #           docs/kr/skills/approval-review_kr.md (.claude/rules/docs.md 미러 규약)
 #     -1 파일 존재
@@ -117,18 +118,19 @@ function Get-KeyValue([string[]]$fm, [string]$key) {
     return @{ Present = $true; NonEmpty = $false; Detail = "'${key}:' has no inline value and no list item on the next line" }
 }
 
-# ---------- RULES: .claude/rules/{web,django-pod,fastapi-pod,infra,events}.md ----------
-foreach ($r in @('web', 'django-pod', 'fastapi-pod', 'infra', 'events')) {
+# ---------- RULES: .claude/rules/{web,django-pod,fastapi-pod,infra,events,e2e}.md ----------
+foreach ($r in @('web', 'django-pod', 'fastapi-pod', 'infra', 'events', 'e2e')) {
     Test-Group "rule-$r" {
         $rel = ".claude/rules/$r.md"
         $path = Join-Path $repo $rel
+        $writtenIn = if ($r -eq 'e2e') { 'T087' } else { 'T109' }
         $names = @{
             2 = "rule-$r-2: closed '---' frontmatter block"
             3 = "rule-$r-3: frontmatter paths: with >= 1 non-empty glob"
             4 = "rule-$r-4: every paths glob is a plausible repo-relative pattern"
         }
         $exists = Test-Path -LiteralPath $path -PathType Leaf
-        Assert "rule-$r-1: $rel exists" $exists "missing: $rel (written in T109)"
+        Assert "rule-$r-1: $rel exists" $exists "missing: $rel (written in $writtenIn)"
         if (-not $exists) {
             foreach ($k in 2..4) { Assert $names[$k] $false 'precondition failed (file missing)' }
             return
@@ -218,13 +220,14 @@ Test-Group 'boundary' {
     }
 }
 
-# ---------- MIRRORS: docs/kr/ 미러 9개 ----------
+# ---------- MIRRORS: docs/kr/ 미러 10개 ----------
 $mirrors = @(
     @{ Id = 'rules-web';               Rel = 'docs/kr/rules/web_kr.md';                 Task = 'T112' }
     @{ Id = 'rules-django-pod';        Rel = 'docs/kr/rules/django-pod_kr.md';          Task = 'T112' }
     @{ Id = 'rules-fastapi-pod';       Rel = 'docs/kr/rules/fastapi-pod_kr.md';         Task = 'T112' }
     @{ Id = 'rules-infra';             Rel = 'docs/kr/rules/infra_kr.md';               Task = 'T112' }
     @{ Id = 'rules-events';            Rel = 'docs/kr/rules/events_kr.md';              Task = 'T112' }
+    @{ Id = 'rules-e2e';               Rel = 'docs/kr/rules/e2e_kr.md';                 Task = 'T087' }
     @{ Id = 'agents-web-builder';      Rel = 'docs/kr/agents/web-builder_kr.md';        Task = 'T112' }
     @{ Id = 'agents-api-builder';      Rel = 'docs/kr/agents/api-builder_kr.md';        Task = 'T112' }
     @{ Id = 'agents-infra-builder';    Rel = 'docs/kr/agents/infra-builder_kr.md';      Task = 'T112' }

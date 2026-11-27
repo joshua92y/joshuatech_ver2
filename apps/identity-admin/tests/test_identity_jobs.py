@@ -86,6 +86,16 @@
 - J7: `…Z` 소수 초 없는 created · 재확인 미끼 넷(tz 없음 · 정수 created · user.pk `"301"` · `True`) · 실패 갈래 로그의 URL 부재.
 - J8: 단언 꼴(지역 변수) · P1의 POSIX 멈춤 단언 · 머리 독스트링 정정.
 
+UD-7a(ㄴ) 조각 ⑤(t086-design.md D15 · §7 N-4 — `revoked:sid` 값 = 행의 nbf · 세션 단위 하한 `identity-admin:sid-floor:{sid}` =
+sid별 nbf 최댓값 · 수명 그 행 expires_at + 30 d · 반환 floors = 두 하한 SET 수의 합 · rows의 뜻은 그대로):
+- ia-9: `revoked:sid` 값 = 큰 nbf(이전 b"1") · floors 1 → 2.
+- ia-10: skipped 1 = 그 `revoked:sid` · 그 sid의 세션 단위 하한은 쓰인다 · floors = 지금까지의 sid 행 수 + 1.
+- ia-32: 세션 단위 하한 둘(값 · TTL · 두 번째 실행의 TTL 비증가 · FLUSHALL 뒤 복원) · floors 2 → 4.
+- ia-33 (b)(리뷰 D-2 — 세션 단위 하한도 상수 하나): 같은 세 시각의 sid 행 셋 → 세션 단위 하한은 셋째에만 · TTL = 10 d 기준(DB
+  시계) · floors 1 → 2 · purge 2 → 4 / 같은 덮기 아래 `apply_sid` 직접 호출 → 세션 단위 하한 TTL = 10 d 기준(프로세스 시계).
+- ia-38: floors = 두 하한 키 수의 합(3).
+- ia-45(새): purge 경계 = 세션 단위 하한 수명의 끝(purge 대상 ⇔ 하한 대상 아님) · 셋째 SQL의 TTL < 1 건너뜀.
+
 DB에 닿는 시험의 마크는 `_ia_support.DB`다. 구현 모듈은 시험 함수 안에서 `impl`로 가져온다. 단언 꼴: 결과를 지역 변수에 묶은
 뒤 단언한다(자격 · 토큰 · 비밀 · URL을 assert 식 안의 호출 인자로 두지 않는다 — build-notes R0-2 · 규칙 §Tests).
 """
@@ -128,6 +138,7 @@ from tests._ia_support import (
     read_ttl,
     scan_keys,
     send,
+    sid_floor_key,
     sid_key,
     signed_webhook,
     sub_key,
@@ -269,7 +280,8 @@ def test_ia_11_enqueue_conditions_over_http(
         ),
         # 웹훅은 위임하지 않는다(출처가 Authentik이다 · 설계 D16 「위임 조건」 — 조각 ③-b2)
         "webhook": ({}, signed_logout_webhook),
-        # sid 단위는 마지막이다 — 기본 sid(sid-1)의 revoked:sid 키가 생겨 뒤의 기본 sid Bearer 사례가 401이 된다.
+        # sid 단위는 마지막이다 — 기본 sid(sid-1)의 revoked:sid 키(값 = nbf · UD-7a 보정)가 생겨 뒤에 같은 초 안에 발급된 기본
+        # sid Bearer 사례가 401이 된다(iat < nbf — 다음 초부터 발급된 토큰은 통과한다).
         "sid-scope": ({}, revoke_with({"all_devices": False, "reason": "logout"})),
     }
     token = settings.AUTHENTIK_API_TOKEN
@@ -492,6 +504,15 @@ def _floor_ttls(client: redis.Redis, subs: tuple[str, ...]) -> dict[str, int]:
     return {sub: read_ttl(client, floor_key(sub)) for sub in subs}
 
 
+def _sid_floor_state(client: redis.Redis, sids: tuple[str, ...]) -> dict[str, int | None]:
+    """sid별 세션 단위 하한 값(없으면 None — UD-7a(ㄴ) T-c)."""
+    return {sid: read_int(client, sid_floor_key(sid)) for sid in sids}
+
+
+def _sid_floor_ttls(client: redis.Redis, sids: tuple[str, ...]) -> dict[str, int]:
+    return {sid: read_ttl(client, sid_floor_key(sid)) for sid in sids}
+
+
 def _drifts(actual: dict[str, int], expected: dict[str, int]) -> dict[str, int]:
     """키별 |실제 TTL − 기대 TTL|."""
     return {name: abs(actual.get(name, -2) - value) for name, value in expected.items()}
@@ -501,8 +522,9 @@ def _drifts(actual: dict[str, int], expected: dict[str, int]) -> dict[str, int]:
 def test_ia_9_reapply_last_row_wins(ia73_df_admin: redis.Redis) -> None:
     """ia-9(D14 첫 SQL `ORDER BY nbf, expires_at` · 같은 키는 마지막 행) — 같은 sub의 활성 사용자 단위 행 둘을 nbf 역순으로 넣는다
     (큰 nbf = 지금 − 10 먼저 · 작은 nbf = 지금 − 200 뒤) → `revoked:sub` 값 = 큰 nbf · TTL = 그 행의 ⌊expires_at − DB now⌋ ± 5 /
-    같은 sid의 행 둘(역순 — 지금 − 20 · 지금 − 250) → `revoked:sid` 키 하나 · TTL은 큰 nbf 행 기준 · `revoked:*` 키 정확히 둘 ·
-    반환 rows 4 · keys 2 · floors 1(sid 행은 하한이 없다)."""
+    같은 sid의 행 둘(역순 — 지금 − 20 · 지금 − 250) → `revoked:sid` 키 하나 · 값 = 큰 nbf(지금 − 20 — UD-7a 보정: 이전 값 "1") ·
+    TTL은 큰 nbf 행 기준 · `revoked:*` 키 정확히 둘 · 반환 rows 4 · keys 2 · floors 2(사용자 단위 하한 하나 + 세션 단위 하한 하나 —
+    UD-7a(ㄴ) T-c: 이전 문구 「sid 행은 하한이 없다」 · floors 1)."""
     base = _epoch_floor(db_now())
     big_user = insert_log_row("ia9-sub", nbf=_at(base - 10))
     insert_log_row("ia9-sub", nbf=_at(base - 200))
@@ -518,22 +540,25 @@ def test_ia_9_reapply_last_row_wins(ia73_df_admin: redis.Redis) -> None:
     counts = {name: result.get(name) for name in ("rows", "keys", "floors")}
 
     assert keys == [sid_key("ia9-sid"), sub_key("ia9-sub")]
-    assert values == (base - 10, b"1")
+    assert values == (base - 10, str(base - 20).encode())
     drifts = _drifts(ttls, expected_ttls)
     assert all(drift <= TTL_TOLERANCE_S for drift in drifts.values()), f"TTL {ttls} · 기대 {expected_ttls}"
-    assert counts == {"rows": 4, "keys": 2, "floors": 1}
+    assert counts == {"rows": 4, "keys": 2, "floors": 2}
 
 
 @DB
 def test_ia_10_reapply_skips_ttl_below_one(ia73_df_admin: redis.Redis) -> None:
-    """ia-10(D14 「TTL < 1 건너뜀」 — `EX 0`은 오류다) — 만료 0.4 s 전 sid 행 → 그 키 없음 · 오류 0(failed 0 · 작업 성공) · 반환
-    skipped 1 · 다른 활성 행의 키(revoked:sub)는 그대로 있다. 조회 시점에 그 행이 (0, 1)초 창 안이었는지는 반환 rows로 가른다(2 =
-    다른 행 + 그 행이 활성으로 읽혔다 · 1 = 이미 만료돼 창을 놓쳤다) — 놓쳤으면 새 sid로 행을 다시 넣고 다시 한다(최대 5회)."""
+    """ia-10(D14 「TTL < 1 건너뜀」 — `EX 0`은 오류다) — 만료 0.4 s 전 sid 행 → 그 `revoked:sid` 키 없음 · 오류 0(failed 0 · 작업
+    성공) · 반환 skipped 1(= 그 `revoked:sid`) · 다른 활성 행의 키(revoked:sub)는 그대로 있다. 조회 시점에 그 행이 (0, 1)초 창
+    안이었는지는 반환 rows로 가른다(2 = 다른 행 + 그 행이 활성으로 읽혔다 · 1 = 이미 만료돼 창을 놓쳤다 — rows의 뜻은 「첫 SQL의
+    활성 행 수」 그대로다) — 놓쳤으면 새 sid로 행을 다시 넣고 다시 한다(최대 5회). UD-7a(ㄴ) T-c: 그 sid의 세션 단위 하한은
+    쓰인다(수명 = expires_at + 30 d) · floors = 다른 행의 사용자 단위 하한 1 + 지금까지 넣은 sid 행마다 세션 단위 하한 1(창을 놓친
+    앞 시도의 행도 보존 창 안이다)."""
     base = _epoch_floor(db_now())
     insert_log_row("ia10-other", nbf=_at(base - 10))
     _celery_app()
     attempts: list[dict[str, Any]] = []
-    hit: tuple[dict[str, Any], int] | None = None
+    hit: tuple[int, dict[str, Any], int, int] | None = None
     for attempt in range(IA10_ATTEMPTS):
         sid = f"ia10-sid-{attempt}"
         expires = db_now() + timedelta(seconds=IA10_LEAD_S)
@@ -541,13 +566,14 @@ def test_ia_10_reapply_skips_ttl_below_one(ia73_df_admin: redis.Redis) -> None:
         result = _reconcile()
         attempts.append(result)
         if result.get("rows") == 2:
-            hit = (result, ia73_df_admin.exists(sid_key(sid)))
+            hit = (attempt, result, ia73_df_admin.exists(sid_key(sid)), ia73_df_admin.exists(sid_floor_key(sid)))
             break
     other = read_int(ia73_df_admin, sub_key("ia10-other"))
 
     assert hit is not None, f"{IA10_ATTEMPTS}회 모두 (0, 1)초 창을 놓쳤다(rows {[a.get('rows') for a in attempts]})"
-    result, present = hit
-    assert (result.get("skipped"), result.get("failed"), present) == (1, 0, 0)
+    attempt, result, present, floor_present = hit
+    counts = tuple(result.get(name) for name in ("rows", "floors", "skipped", "failed"))
+    assert (counts, present, floor_present) == ((2, attempt + 2, 1, 0), 0, 1)
     assert other == base - 10
 
 
@@ -588,8 +614,11 @@ def test_ia_10_reapply_skips_floor_ttl_below_one(ia73_df_admin: redis.Redis) -> 
 def test_ia_32_reapply_restores_session_floors(ia73_df_admin: redis.Redis) -> None:
     """ia-32(D29 재적용의 하한 · 불변식 3) — 창 경계: expires_at = DB now − 30 d + 1 h(안쪽 → 하한 · TTL ≈ 3600) · − 30 d − 1 h
     (바깥 → 없음) / sub별 최댓값: 사용자 단위 행 둘(지금 − 2 h · 지금 − 100 → 하한 = 지금 − 100)과 같은 sub의 더 큰 nbf sid 행
-    (지금 − 10 — 하한에 들지 않는다) / sid 행만 있는 sub → 없음 / TTL = ⌊그 행 expires_at + 30 d − DB now⌋ ± 5 / 두 번 돌려도
-    (사이 1.2 s) 값은 같고 TTL이 늘지 않는다 / admin FLUSHALL 뒤 한 번 더 → 같은 값으로 복원 · 반환 floors 2."""
+    (지금 − 10 — 사용자 단위 하한에 들지 않는다) / sid 행만 있는 sub → 사용자 단위 하한 없음 / TTL = ⌊그 행 expires_at + 30 d − DB
+    now⌋ ± 5 / 두 번 돌려도(사이 1.2 s) 값은 같고 TTL이 늘지 않는다 / admin FLUSHALL 뒤 한 번 더 → 같은 값으로 복원.
+    세션 단위 하한(UD-7a(ㄴ) T-c): 두 sid 행(ia32-max-sid 지금 − 10 · ia32-only-sid 지금 − 20)마다 `identity-admin:sid-floor:{sid}`
+    = 그 nbf · TTL = ⌊그 행 expires_at + 30 d − DB now⌋ ± 5 · 두 번째 실행에서 TTL이 늘지 않는다 · FLUSHALL 뒤 복원 · 반환 floors 4
+    (사용자 단위 둘 + 세션 단위 둘 — 이전 2)."""
     base = _epoch_floor(db_now())
     hour = timedelta(hours=1)
     inside_expires = _at(base) - RETENTION + hour
@@ -598,38 +627,51 @@ def test_ia_32_reapply_restores_session_floors(ia73_df_admin: redis.Redis) -> No
     insert_log_row("ia32-outside", nbf=outside_expires - REVOCATION_TTL, expires_at=outside_expires)
     insert_log_row("ia32-max", nbf=_at(base - 7200))
     top = insert_log_row("ia32-max", nbf=_at(base - 100))
-    insert_log_row("ia32-max", nbf=_at(base - 10), sid="ia32-max-sid", reason="logout")
-    insert_log_row("ia32-sidonly", nbf=_at(base - 20), sid="ia32-only-sid", reason="logout")
+    max_sid = insert_log_row("ia32-max", nbf=_at(base - 10), sid="ia32-max-sid", reason="logout")
+    only_sid = insert_log_row("ia32-sidonly", nbf=_at(base - 20), sid="ia32-only-sid", reason="logout")
     subs = ("ia32-inside", "ia32-outside", "ia32-max", "ia32-sidonly")
+    sids = ("ia32-max-sid", "ia32-only-sid")
     expected = {
         "ia32-inside": _epoch_floor(inside.nbf),
         "ia32-outside": None,
         "ia32-max": base - 100,
         "ia32-sidonly": None,
     }
+    expected_sid = {"ia32-max-sid": base - 10, "ia32-only-sid": base - 20}
     _celery_app()
     now = db_now()
     first = _reconcile()
     first_values, first_ttls = _floor_state(ia73_df_admin, subs), _floor_ttls(ia73_df_admin, subs)
+    first_sid_values, first_sid_ttls = _sid_floor_state(ia73_df_admin, sids), _sid_floor_ttls(ia73_df_admin, sids)
     expected_ttls = {
         "ia32-inside": _remaining(inside.expires_at + RETENTION, now),
         "ia32-max": _remaining(top.expires_at + RETENTION, now),
     }
+    expected_sid_ttls = {
+        "ia32-max-sid": _remaining(max_sid.expires_at + RETENTION, now),
+        "ia32-only-sid": _remaining(only_sid.expires_at + RETENTION, now),
+    }
     time.sleep(1.2)
     _reconcile()
     second_values, second_ttls = _floor_state(ia73_df_admin, subs), _floor_ttls(ia73_df_admin, subs)
+    second_sid_values, second_sid_ttls = _sid_floor_state(ia73_df_admin, sids), _sid_floor_ttls(ia73_df_admin, sids)
     ia73_df_admin.flushall()
     _reconcile()
-    restored = _floor_state(ia73_df_admin, subs)
+    restored = (_floor_state(ia73_df_admin, subs), _sid_floor_state(ia73_df_admin, sids))
 
-    assert first_values == expected
-    assert first.get("floors") == 2
+    assert (first_values, first_sid_values) == (expected, expected_sid)
+    assert first.get("floors") == 4
     drifts = _drifts(first_ttls, expected_ttls)
     assert all(drift <= TTL_TOLERANCE_S for drift in drifts.values()), f"하한 TTL {first_ttls} · 기대 {expected_ttls}"
-    assert second_values == expected
+    sid_drifts = _drifts(first_sid_ttls, expected_sid_ttls)
+    assert all(drift <= TTL_TOLERANCE_S for drift in sid_drifts.values()), (
+        f"세션 단위 하한 TTL {first_sid_ttls} · 기대 {expected_sid_ttls}"
+    )
+    assert (second_values, second_sid_values) == (expected, expected_sid)
     grew = [sub for sub in expected_ttls if second_ttls[sub] > first_ttls[sub]]
+    grew += [sid for sid in expected_sid_ttls if second_sid_ttls[sid] > first_sid_ttls[sid]]
     assert grew == [], f"두 번째 재적용이 TTL을 늘렸다: {grew}"
-    assert restored == expected
+    assert restored == (expected, expected_sid)
 
 
 def _purge_log() -> int:
@@ -673,31 +715,129 @@ def test_ia_33_purge_target_is_never_a_floor_target(ia73_df_admin: redis.Redis) 
 def test_ia_33_retention_constant_moves_purge_and_floor_window(
     ia73_df_admin: redis.Redis, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """ia-33(D29 「상수 하나」 · 이음매 `session_floor.REVOCATION_LOG_RETENTION`) — 이음매를 10일로 덮는다. 세 사용자 단위 행
-    (expires_at = DB now − 10 d − 1 h · − 20 d · − 10 d + 1 h): 재적용 → 하한은 셋째에만(− 20 d는 30일 창이면 하한 대상 — SQL에
-    30일 리터럴이 남아 있으면 깨진다) · 반환 floors 1 · skipped 0(창이 10일로 움직였다 — 창에만 30일 리터럴이 남아 앞 둘을 읽고
-    TTL < 1로 건너뛰는 구현도 잡는다) · 셋째 TTL = ⌊expires_at + 10 d − DB now⌋ ± 5 / purge → 2행 삭제 · 남은 sub = 셋째(purge에
-    30일 리터럴이 남아 있으면 − 20 d 행이 남는다)."""
+    """ia-33(D29 「상수 하나」 · 이음매 `session_floor.REVOCATION_LOG_RETENTION`) — 이음매를 10일로 덮는다. 같은 세 시각
+    (expires_at = DB now − 10 d − 1 h · − 20 d · − 10 d + 1 h)에 사용자 단위 행 셋과 sid 행 셋(sid마다 하나 · 한 sub — 리뷰 D-2:
+    UD-7a(ㄴ) 세션 단위 하한도 같은 상수 하나다)을 넣는다. 재적용 → 사용자 단위 하한은 셋째 sub에만 · 세션 단위 하한은 셋째 sid에만
+    (값 = 그 행 nbf · − 20 d는 30일 창이면 하한 대상 — 둘째 · 셋째 SQL에 30일 리터럴이 남아 있으면 깨진다) · 반환 floors 2(사용자
+    단위 1 + 세션 단위 1) · skipped 0(창이 10일로 움직였다 — 창에만 30일 리터럴이 남아 앞 둘을 읽고 TTL < 1로 건너뛰는 구현도
+    잡는다) · 두 셋째 TTL = ⌊expires_at + 10 d − DB now⌋ ± 5(TTL 식에만 리터럴이 남은 구현을 잡는다) / 같은 덮기 아래
+    `denylist_writer.apply_sid`를 직접 부른다(ia-28 ② 꼴 — 만료된 sid 행 값: nbf = 지금 − 400 · expires_at = nbf + 330 s) → ok ·
+    그 `revoked:sid` 없음(TTL < 1) · 세션 단위 하한 = nbf · TTL = ⌊expires_at + 10 d − 프로세스 시각⌋ ± 5(요청 경로 쓰기는 프로세스
+    시계 — apply_sid에 30일이 박혀 있으면 깨진다) / purge → 4행 삭제 · 남은 (sub, sid) = 셋째 둘(purge에 30일 리터럴이 남아 있으면
+    − 20 d 행이 남는다)."""
     short = timedelta(days=10)
     base = _at(_epoch_floor(db_now()))
     hour = timedelta(hours=1)
     insert_log_row("ia33b-gone", nbf=base - short - hour - REVOCATION_TTL, expires_at=base - short - hour)
     insert_log_row("ia33b-mid", nbf=base - timedelta(days=20) - REVOCATION_TTL, expires_at=base - timedelta(days=20))
     kept = insert_log_row("ia33b-kept", nbf=base - short + hour - REVOCATION_TTL, expires_at=base - short + hour)
+    owner, kept_sid = "ia33b-sid-owner", "ia33b-kept-sid"
+    sid_expires = {  # 같은 세 시각의 sid 행(리뷰 D-2 — sid마다 하나 · 한 sub)
+        "ia33b-gone-sid": base - short - hour,
+        "ia33b-mid-sid": base - timedelta(days=20),
+        kept_sid: base - short + hour,
+    }
+    for sid, expires in sid_expires.items():
+        insert_log_row(owner, nbf=expires - REVOCATION_TTL, sid=sid, reason="logout", expires_at=expires)
     subs = ("ia33b-gone", "ia33b-mid", "ia33b-kept")
+    sids = tuple(sid_expires)
     monkeypatch.setattr(impl("session_floor"), "REVOCATION_LOG_RETENTION", short)
     _celery_app()
     now = db_now()
     reapplied = _reconcile()
     floors = {sub for sub, value in _floor_state(ia73_df_admin, subs).items() if value is not None}
+    sid_floors = {sid: value for sid, value in _sid_floor_state(ia73_df_admin, sids).items() if value is not None}
     kept_drift = abs(read_ttl(ia73_df_admin, floor_key("ia33b-kept")) - _remaining(kept.expires_at + short, now))
+    sid_kept_drift = abs(
+        read_ttl(ia73_df_admin, sid_floor_key(kept_sid)) - _remaining(sid_expires[kept_sid] + short, now)
+    )
+    direct_sid = "ia33b-direct-sid"
+    direct_nbf = int(time.time()) - 400
+    direct_expires = _at(direct_nbf) + REVOCATION_TTL
+    direct = impl("denylist_writer").apply_sid(direct_sid, direct_nbf, direct_expires)
+    direct_keys = (ia73_df_admin.exists(sid_key(direct_sid)), read_int(ia73_df_admin, sid_floor_key(direct_sid)))
+    direct_expected = math.floor(direct_expires.timestamp() + short.total_seconds() - time.time())
+    direct_drift = abs(read_ttl(ia73_df_admin, sid_floor_key(direct_sid)) - direct_expected)
     purged = _purge_log()
-    remaining = _log_subs()
+    remaining = set(model("session_revocation_log").objects.values_list("sub", "sid"))
 
     assert floors == {"ia33b-kept"}
-    assert (reapplied.get("floors"), reapplied.get("skipped")) == (1, 0)
+    assert sid_floors == {kept_sid: _epoch_floor(sid_expires[kept_sid] - REVOCATION_TTL)}
+    assert (reapplied.get("floors"), reapplied.get("skipped")) == (2, 0)
     assert kept_drift <= TTL_TOLERANCE_S
-    assert (purged, remaining) == (2, {"ia33b-kept"})
+    assert sid_kept_drift <= TTL_TOLERANCE_S, f"세션 단위 하한 TTL 차이 {sid_kept_drift}"
+    assert (direct, direct_keys) == ("ok", (0, direct_nbf))
+    assert direct_drift <= TTL_TOLERANCE_S, f"apply_sid 세션 단위 하한 TTL 차이 {direct_drift}"
+    assert (purged, remaining) == (4, {("ia33b-kept", None), (owner, kept_sid)})
+
+
+@DB
+def test_ia_45_purge_target_is_never_a_sid_floor_target(ia73_df_admin: redis.Redis) -> None:
+    """ia-45(UD-7a(ㄴ) T-c — 세션 단위 하한 수명 = 그 행 expires_at + 30 d = purge 경계와 같은 식 · 같은 상수) — 같은 sub의 sid 행
+    셋(sid마다 하나 · expires_at = DB now − 30 d − 1 h · − 30 d + 1 h · + 100 s): purge 앞의 재적용 → 세션 단위 하한은 뒤 둘에만(값 =
+    그 행 nbf) / purge → 1행(첫째) 삭제 · 남은 sid = 뒤 둘 / FLUSHALL 뒤 재적용 → 세션 단위 하한은 여전히 뒤 둘에만(purge 대상 ⇔
+    하한 대상 아님 — 하한이 사는 동안 그 행은 DB에 있다)."""
+    base = _at(_epoch_floor(db_now()))
+    hour = timedelta(hours=1)
+    rows = {
+        "ia45-old": base - RETENTION - hour,
+        "ia45-recent": base - RETENTION + hour,
+        "ia45-active": base + timedelta(seconds=100),
+    }
+    for sid, expires in rows.items():
+        insert_log_row("ia45-sub", nbf=expires - REVOCATION_TTL, sid=sid, reason="logout", expires_at=expires)
+    sids = tuple(rows)
+    expected = {
+        "ia45-old": None,
+        "ia45-recent": _epoch_floor(rows["ia45-recent"] - REVOCATION_TTL),
+        "ia45-active": _epoch_floor(rows["ia45-active"] - REVOCATION_TTL),
+    }
+    _celery_app()
+    _reconcile()
+    before = _sid_floor_state(ia73_df_admin, sids)
+    purged = _purge_log()
+    remaining = set(model("session_revocation_log").objects.values_list("sid", flat=True))
+    ia73_df_admin.flushall()
+    _reconcile()
+    after = {sid for sid, value in _sid_floor_state(ia73_df_admin, sids).items() if value is not None}
+
+    assert before == expected
+    assert (purged, remaining) == (1, {"ia45-recent", "ia45-active"})
+    assert after == remaining
+
+
+@DB
+def test_ia_45_sid_floor_ttl_below_one_is_skipped(ia73_df_admin: redis.Redis) -> None:
+    """ia-45 옆(UD-7a(ㄴ) — 셋째 SQL도 「TTL < 1 건너뜀」 · ia-10 옆과 같은 재는 법) — 대조용 활성 sid 행(다른 sid · keys 1 · floors
+    1)을 먼저 넣고, sid 행 하나를 expires_at = DB now − 30 d + 0.4 s(nbf = expires_at − 330 s)로 넣은 뒤 재적용한다. 그 행은 첫 SQL의
+    활성 행이 아니고 셋째 SQL 창의 끝 0.4 s 안이다 — 세션 단위 하한 TTL = ⌊(0, 1)⌋ = 0. 창 판정: 반환 `skipped + failed == 1`이면
+    조회 시점에 창 안이었다(가드가 있으면 skipped 1 · 없으면 `EX 0` 오류로 failed 1 · 창을 놓쳤으면 둘 다 0) — 놓쳤으면 새 sid로
+    다시 한다(최대 5회). 단언: 대조용 행의 `revoked:sid` = 세션 단위 하한 = 그 nbf(먼저 본다) · keys 1 · floors 1 · skipped 1 ·
+    failed 0 · 그 sid의 세션 단위 하한 키 없음."""
+    base = _epoch_floor(db_now())
+    insert_log_row("ia45f-other", nbf=_at(base - 10), sid="ia45f-other-sid", reason="logout")
+    _celery_app()
+    attempts: list[dict[str, Any]] = []
+    hit: tuple[dict[str, Any], str] | None = None
+    for attempt in range(IA10_ATTEMPTS):
+        sid = f"ia45f-sid-{attempt}"
+        expires = db_now() - RETENTION + timedelta(seconds=IA10_LEAD_S)
+        insert_log_row("ia45f-sub", nbf=expires - REVOCATION_TTL, sid=sid, reason="logout", expires_at=expires)
+        result = _reconcile()
+        attempts.append(result)
+        if result.get("skipped", 0) + result.get("failed", 0) == 1:
+            hit = (result, sid)
+            break
+    other_sid = "ia45f-other-sid"
+    other = (read_int(ia73_df_admin, sid_key(other_sid)), read_int(ia73_df_admin, sid_floor_key(other_sid)))
+
+    assert other == (base - 10, base - 10)
+    windows = [(a.get("floors"), a.get("skipped"), a.get("failed")) for a in attempts]
+    assert hit is not None, f"{IA10_ATTEMPTS}회 모두 (0, 1)초 창을 놓쳤다((floors, skipped, failed) {windows})"
+    result, sid = hit
+    present = ia73_df_admin.exists(sid_floor_key(sid))
+    counts = tuple(result.get(name) for name in ("keys", "floors", "skipped", "failed"))
+    assert (counts, present) == ((1, 1, 1, 0), 0)
 
 
 class PlantedPurgeError(Exception):
@@ -757,7 +897,8 @@ def test_ia_38_freshness_key_and_result_contract(ia73_df_admin: redis.Redis) -> 
     """ia-38(D14 신선도 키 · 반환 계약) — 행 0에서 재적용 → 반환 = 다섯 건수 전부 0 · `revoked:*` 키 0 · 신선도 키
     `identity-admin:denylist:reapplied-at` 값 = 작업 시각(epoch 초 · 앞뒤로 잰 [t0, t1]) · TTL ∈ [290, 300] / 행 셋(활성 사용자 단위
     · 활성 sid · 창 안이지만 만료된 사용자 단위)을 넣고 재적용 → 반환 dict의 키가 정확히 다섯이고 값이 정수(bool 아님) · keys =
-    `revoked:*` 실제 키 수(2) · floors = 하한 실제 키 수(2) · rows 2 · skipped 0 · failed 0."""
+    `revoked:*` 실제 키 수(2) · floors = 두 하한의 실제 키 수 합(사용자 단위 2 + 세션 단위 1 = 3 — UD-7a(ㄴ) T-c: 필드는 그대로이고
+    뜻이 「두 하한 SET 수의 합」이다 · 이전 2) · rows 2(첫 SQL의 활성 행 수 — 뜻 그대로) · skipped 0 · failed 0."""
     t0 = int(time.time())
     empty = _reconcile()
     t1 = int(time.time())
@@ -770,10 +911,12 @@ def test_ia_38_freshness_key_and_result_contract(ia73_df_admin: redis.Redis) -> 
     insert_log_row("ia38-past", nbf=_at(base - 7200))
     filled = _reconcile()
     shape = (sorted(filled), {name: type(value).__name__ for name, value in filled.items()})
+    floor_keys = scan_keys(ia73_df_admin, "identity-admin:session-floor:*")
+    sid_floor_keys = scan_keys(ia73_df_admin, sid_floor_key("*"))
     actual = {
         "rows": 2,
         "keys": len(scan_keys(ia73_df_admin, "revoked:*")),
-        "floors": len(scan_keys(ia73_df_admin, "identity-admin:session-floor:*")),
+        "floors": len(floor_keys) + len(sid_floor_keys),
         "skipped": 0,
         "failed": 0,
     }
@@ -783,7 +926,7 @@ def test_ia_38_freshness_key_and_result_contract(ia73_df_admin: redis.Redis) -> 
     assert fresh is not None and t0 <= fresh <= t1, f"신선도 값 {fresh} · 작업 앞뒤 [{t0}, {t1}]"
     assert FRESHNESS_TTL_MIN_S <= fresh_ttl <= FRESHNESS_TTL_S, f"신선도 키 TTL {fresh_ttl}"
     assert shape == (sorted(RESULT_KEYS), dict.fromkeys(RESULT_KEYS, "int"))
-    assert (actual["keys"], actual["floors"]) == (2, 2)
+    assert (actual["keys"], len(floor_keys), sid_floor_keys) == (2, 2, [sid_floor_key("ia38-sid")])
     assert filled == actual
 
 

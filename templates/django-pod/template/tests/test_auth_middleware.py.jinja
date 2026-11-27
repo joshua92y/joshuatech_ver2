@@ -6,8 +6,9 @@
 
 - 인증 행렬(보호 경로 = /api/openapi.json · 실제 미들웨어 사슬 · 로컬 키 서버 · 시험 Dragonfly pod 사용자): 유효 200 · Bearer 만료 ·
   aud 불일치 401 invalid_token · Access 없음 · common_name 불일치 · aud 밖 403 access_required · ACCESS_AUD_ADMIN은 설정했을 때만
-  허용 · AUTH_ACTOR_SUB 미설정이면 act 무관 200, 설정하면 일치 200 · 불일치 · 없음 401 · revoked:sub(nbf > iat) · revoked:sid 401
-  session_revoked(nbf = iat는 200) · Dragonfly 다운 → 업무 경로 503 denylist_unavailable(0.5 s 안 · 응답에 자격 없음) · 헬스 3종
+  허용 · AUTH_ACTOR_SUB 미설정이면 act 무관 200, 설정하면 일치 200 · 불일치 · 없음 401 · revoked:sub(nbf > iat) · revoked:sid(nbf
+  > iat — UD-7a) 401 session_revoked(nbf = iat는 200 · 정규 꼴 밖 값은 503 denylist_unavailable) · Dragonfly 다운 → 업무 경로 503
+  denylist_unavailable(0.5 s 안 · 응답에 자격 없음) · 헬스 3종
   200 · JWKS · certs fetch 실패 → 503 auth_keys_unavailable · 면제는 정확 일치(/healthzz · /health/x · /ready/ → 403).
 - 호스트: ALLOWED_HOSTS 밖 호스트는 인증 전에 400 invalid_host(자격 없는 요청도 403이 아니라 400 · 헬스 경로도).
 - Django 자체 오류(pod가 라우팅하는 urlconf마다 — 처리기 선언 + probe urlconf로 실제 응답): 400 validation_error(BadRequest ·
@@ -365,7 +366,9 @@ def test_actor_sub_checked_only_when_configured(jwks_server: JwksInfo, settings:
 @pytest.mark.usefixtures("auth_settings", "dragonfly_clean")
 def test_revoked_subject_and_session_are_401(jwks_server: JwksInfo, df_admin: redis.Redis) -> None:
     """revoked:sub:{sub} 값 nbf > iat → 401 session_revoked · nbf = iat → 200(같은 Client — 결과를 캐시하지 않는다) /
-    revoked:sid:{sid} 있음 → 401 session_revoked · sid 클레임 없는 토큰은 200."""
+    revoked:sid:{sid} 값 nbf > iat → 401 session_revoked · nbf = iat → 200(값은 폐기 시각 — 로그아웃 뒤 같은 sid로 다시 발급된
+    토큰은 통과한다 · UD-7a) · 정규 꼴(ASCII 숫자 1–19자)이 아닌 값 `-5` → 503 denylist_unavailable(int()로 읽으면 조용히
+    「폐기 아님」이다) · sid 클레임 없는 토큰은 그 키와 무관하게 200."""
     iat = int(time.time())
     access = _access(jwks_server)
     headers = _headers(access=access, bearer=_bearer(jwks_server, iat=iat))
@@ -378,8 +381,15 @@ def test_revoked_subject_and_session_are_401(jwks_server: JwksInfo, df_admin: re
         same_instant = _get(client, OPENAPI_PATH, headers)
         assert same_instant.status_code == 200
         df_admin.delete(sub_key)
-        df_admin.set(sid_key, 1, ex=DENYLIST_TTL_S)
+        df_admin.set(sid_key, iat + 60, ex=DENYLIST_TTL_S)
         assert_problem(_get(client, OPENAPI_PATH, headers), 401, "session_revoked")
+        df_admin.set(sid_key, iat, ex=DENYLIST_TTL_S)
+        same_session_instant = _get(client, OPENAPI_PATH, headers)
+        assert same_session_instant.status_code == 200
+        df_admin.set(sid_key, "-5", ex=DENYLIST_TTL_S)
+        malformed = _get(client, OPENAPI_PATH, headers)
+        assert malformed.status_code == 503
+        assert_problem(malformed, 503, "denylist_unavailable")
         without_sid = _headers(access=access, bearer=_bearer(jwks_server, sid=None))
         sidless = _get(client, OPENAPI_PATH, without_sid)
         assert sidless.status_code == 200

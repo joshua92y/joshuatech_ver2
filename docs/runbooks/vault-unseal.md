@@ -51,6 +51,7 @@ try { Stop-Transcript } catch {}      # "현재 전사 중이 아닙니다" 오�
 foreach ($r in 'HKLM', 'HKCU') { foreach ($f in 'Transcription', 'ModuleLogging', 'ScriptBlockLogging') { Get-ItemProperty "${r}:\SOFTWARE\Policies\Microsoft\PowerShellCore\$f" -ErrorAction SilentlyContinue | Select-Object @{ n = 'key'; e = { "$r PowerShellCore\$f" } }, EnableTranscripting, EnableModuleLogging, EnableScriptBlockLogging, UseWindowsPowerShellPolicySetting } }   # 출력 없음 = 키 없음(정상)
 # 위 출력에 UseWindowsPowerShellPolicySetting = 1 이 하나라도 있으면 pwsh 7 이 그 기능의 Windows PowerShell 키를 따른다 → 그 키도 읽는다(값 없음/0). 없으면(0 또는 키 없음) 이 줄은 건너뛴다
 foreach ($r in 'HKLM', 'HKCU') { foreach ($f in 'Transcription', 'ModuleLogging', 'ScriptBlockLogging') { Get-ItemProperty "${r}:\SOFTWARE\Policies\Microsoft\Windows\PowerShell\$f" -ErrorAction SilentlyContinue | Select-Object @{ n = 'key'; e = { "$r Windows\PowerShell\$f" } }, EnableTranscripting, EnableModuleLogging, EnableScriptBlockLogging } }
+Import-Module Microsoft.PowerShell.Utility, Microsoft.PowerShell.Security, Microsoft.PowerShell.Management; foreach ($m in Get-Module Microsoft.PowerShell.Utility, Microsoft.PowerShell.Security, Microsoft.PowerShell.Management) { "$($m.Name) LogPipelineExecutionDetails=$($m.LogPipelineExecutionDetails)" }; "Microsoft.PowerShell.Core(snap-in) LogPipelineExecutionDetails=$((Get-Command ForEach-Object -CommandType Cmdlet).PSSnapIn.LogPipelineExecutionDetails)"; foreach ($f in (Join-Path $PSHOME 'powershell.config.json'), (Join-Path (Split-Path -Parent $PROFILE.CurrentUserAllHosts) 'powershell.config.json')) { if ((Test-Path -LiteralPath $f) -and ((Get-Content -Raw -LiteralPath $f) -cmatch '(?i:ModuleLogging)|\x5Cu')) { "모듈 로깅 정책 있음(설정 파일 — 값과 무관하게 멈춘다): $f" } }   # T075 보정 2026-11-17(리뷰 KB-2 · 라운드 2 KB2-1): 정책 키가 비어도 powershell.config.json · pwsh -SettingsFile 로 켜질 수 있다 — 실효 상태 4줄(Utility · Security · Management · Core 스냅인) 모두 =False · 「정책 있음」 줄 0 이어야 한다(설정 파일은 텍스트로만 · 값과 무관 — 낱말 ModuleLogging(대소문자 무관)이나 역슬래시-u 이스케이프가 보이면 멈춘다 · -SettingsFile 로 준 파일은 실효 4줄이 잡는다 · T075 블록도 스스로 본다)
 (Get-ItemProperty HKCU:\Software\Microsoft\Clipboard -ErrorAction SilentlyContinue).EnableClipboardHistory   # 0 이어야 비밀 취급 진행
 $env:KUBECONFIG = "$HOME\.kube\joshuatech-admin.yaml"; kubectl config current-context                        # default (빈 컨텍스트면 create token이 localhost:8080 404)
 ```
@@ -76,9 +77,10 @@ vault status; $LASTEXITCODE                                                     
 ```
 
 - Service `vault`는 `publishNotReadyAddresses: true`라 **미초기화·봉인 중(파드 NotReady, `Running 0/1`)에도 엔드포인트가 남는다** — port-forward와 Ingress가 장애 시점에 끊기지 않는 근거. `vault-active`/`vault-standby` Service는 만들지 않는다(봉인 중 엔드포인트 0).
-- **agent-view는 seal-status 읽기만**: 같은 port-forward(agent-view kubeconfig — ns `vault` `pods/portforward` 허용, hostnames-and-access.md :59)로 `GET /v1/sys/seal-status`(인증 불요). `exec`·Secret get·`serviceaccounts/token` create 없음(§12).
+- **agent-view는 seal-status 읽기만**: 같은 port-forward(agent-view kubeconfig — ns `vault` `pods/portforward` 허용, contracts/hostnames-and-access.md §클러스터(K8s) `agent-view` 항목 · 「Vault seal 상태 확인」 항목)로 `GET /v1/sys/seal-status`(인증 불요). `exec`·Secret get·`serviceaccounts/token` create 없음(§12).
+  - (T076 보정 2026-11-20 · UD-15) 예외는 tester의 검토된 O-8 블록 하나뿐이다 — 블록이 소유한 port-forward로 운영자 O-9 JWT(vault 전용 1시간)를 써서 role `e2e-reader` 로그인 → `sys/capabilities-self` → `kv/data/platform/access/tester-m2m` 읽기 → `revoke-self`(HTTP API · vault CLI 0 — §12 「tester 읽기」). 위 괄호의 줄 번호 참조는 절 앵커로 바꿨다(이전 문구 「hostnames-and-access.md :59」).
 - `platform-backup.sh`(노드 A)는 자체 port-forward(18200–18299 중 빈 포트)로만 Vault에 닿는다 — 공개 호스트·파드 IP 금지(`.claude/rules/infra.md`).
-- 계약 :59의 `port-forward svc/vault 8200`(로컬 8200)과 이 문서의 `18200:8200`은 로컬 포트만 다르다. 이 문서는 18200으로 통일한다(워크스테이션의 다른 도구와 8200 충돌 회피 — converge에서 계약 :59 표기 정합 후보).
+- 계약(hostnames-and-access.md §클러스터(K8s) 「Vault seal 상태 확인」 항목)의 `port-forward svc/vault 8200`(로컬 8200)과 이 문서의 `18200:8200`은 로컬 포트만 다르다. 이 문서는 18200으로 통일한다(워크스테이션의 다른 도구와 8200 충돌 회피 — converge에서 그 항목 표기 정합 후보). (T076 보정 2026-11-20 — 이전 문구 「계약 :59」 두 곳)
 - 검증: seal-status HTTP **200**. `400`이면 XFF 스탠자(`x_forwarded_for_*`)가 들어간 설계 위반(설계 D9 — 헤더 없는 경로 readinessProbe·port-forward·백업·ESO·metrics가 전부 거절) → 즉시 중단하고 gitops values를 대조한다.
 - 되돌리기: 해당 없음(규칙). 규칙을 어긴 값(히스토리·파일에 남은 토큰)은 **폐기 대상**으로 간주하고 회전한다(`secret-rotation.md`, T084). port-forward 종료는 라이브 영향 없음(CRI 스트리밍 loopback — NetworkPolicy 미경유).
 
@@ -266,9 +268,9 @@ if ($ok -eq 4 -and $rootOk) {
 | 신원 | 종류 | 발급 | 정책(요지) | TTL | 보관·폐기 |
 |---|---|---|---|---|---|
 | **root** | init 산출 | 이 절 1회 | 전권. 사용 범위는 위 | 없음 | PM 오프라인. revoke = T084 + break-glass 드릴 뒤(D4). 사용은 항상 `Read-Host -AsSecureString` → env |
-| `eso-platform` · `eso-dev` · `eso-prod` · `eso-data` | K8s auth role | ESO 컨트롤러가 TokenRequest(T045) | 각 scope의 `kv/data/<scope>/…` + `kv/metadata/<scope>/…` **read만**(eso-data는 열거 접두 20개 `…/<component>/*` — env·세그먼트 와일드카드 `kv/data/dev/*`·`kv/data/+/db/*`는 없음) | token 1h / max 4h · `service` | 저장 없음. bound SA = `external-secrets/<role 이름>` · audience `vault` |
+| `eso-platform` · `eso-dev` · `eso-prod` · `eso-data` | K8s auth role | ESO 컨트롤러가 TokenRequest(T045) | 각 scope의 `kv/data/<scope>/…` + `kv/metadata/<scope>/…` **read만**(eso-data는 열거 접두 20개 `…/<component>/*` — env·세그먼트 와일드카드 `kv/data/dev/*`·`kv/data/+/db/*`는 없음). eso-platform은 `kv/data/platform/access/*` · `kv/metadata/platform/access/*` **deny**(tester Access 서비스 토큰 「ESO 밖」 강제 — T076 보정 2026-11-20 · UD-15) | token 1h / max 4h · `service` | 저장 없음. bound SA = `external-secrets/<role 이름>` · audience `vault` |
 | `vault-backup` | K8s auth role | 노드 A `platform-backup.sh`: `k3s kubectl -n vault create token vault-backup --audience vault --duration=10m` → `auth/kubernetes/login` | `sys/storage/raft/snapshot` **read**(= `snapshot save`) · `snapshot-force` deny · 복원 불가(VD-18 실측 read/deny) | 1h / 4h | 스크립트가 `revoke -self`. bound SA = `vault/vault-backup`(K8s RBAC 0) |
-| `e2e-reader` | K8s auth role | 운영자 `kubectl create token agent-view -n kube-system --audience vault --duration=1h`(§12) | `kv/data/platform/authentik/e2e` read 1줄 | 1h / 4h | tester env로만. bound SA = `kube-system/agent-view` |
+| `e2e-reader` | K8s auth role | tester용 = 운영자 블록 O-9 정지점 `issue`(**vault 전용 1시간** `agent-view` JWT — audience `vault` · UD-16, 정본 = O-9 블록 판정 `exp − iat` = 3600 ± 10 → 저장소 밖 DPAPI 파일 · 라이브 창마다 1번 · §12) · 운영자 수동 읽기 = §12 절차 | `kv/data/platform/authentik/e2e` · `kv/data/platform/access/tester-m2m` read 2줄(와일드카드 · metadata 0) | 1h / 4h | JWT = DPAPI 파일(세션 끝에 O-9를 다시 실행해 정지점에 `clear` 입력 → 끝 줄 `o9 cleared` · 이미 없으면 `o9 nothing-to-clear`) · 비밀 값은 tester O-8 블록 프로세스 메모리에만. bound SA = `kube-system/agent-view`. (T076 보정 2026-11-20 · UD-15 · UD-16 — 이전 문구 「운영자 `kubectl create token agent-view -n kube-system --audience vault --duration=1h`(§12)」 · 「read 1줄」 · 「tester env로만」) |
 | (예정) OIDC `admin` | Authentik OIDC auth | T084(US4 뒤) | 관리 경로(정례 plan·kv 실값 교체·게이트 1) | 단기(기본 1h) | 상시 토큰 없음 — 토큰 표 ⑥ 원칙의 본 모습 |
 | (예정) `vault-break-glass` | K8s auth role(7번째 — **converge 추가 task**, 아직 없음) | admin kubeconfig `kubectl create token vault-break-glass -n vault --audience vault` | `sys/generate-root/*` · `sys/rekey/*` update만 | 단기 | 저장 토큰 0(비root 토큰은 max TTL 32일이라 오프라인 보관 불가). quorum 드릴은 §5 |
 
@@ -306,9 +308,22 @@ tofu -chdir=D:/code/joshuatech_ver2/infra/vault plan          # 기대: No chang
 | `kv/dev/openfga/preshared` | `key` |
 | `kv/prod/openfga/preshared` | `key` |
 
-- **불변식: sentinel 잔존 0 = consumer 활성화 전제.** `kv/{env}/openfga/preshared`는 US6에서 `kv/platform/openfga/preshared`와 같은 값으로 교체하고 회전은 둘을 함께 한다.
-- 실값 투입 형식: 키당 1회 호출 또는 JSON stdin(`… | vault kv put <path> -`) — `key=-` 다중 사용 금지(stdin은 한 키만 받는다 → 나머지가 빈 값). 실값을 명령줄 리터럴로 적지 않는다.
-- **게이트 1(운영자 — 실값 주입 뒤·consumer 활성화 전, 실행은 T075·T081)**: 토큰 = T084 뒤 OIDC admin, 그 전 root(e2e-reader 정책은 `kv/data/platform/authentik/e2e` 1줄이라 8경로를 읽을 수 없다).
+- **T075 덮어쓰기 기록**(T075 보정 2026-11-20 — 값 · 해시 0 · 실행 기록 정본은 `bootstrap.md` §4 T075 기록 칸 A · 블록 정본 `specs/003-platform-foundation/design/t075-blocks/`): W-2 dev 2026-11-19 · prod 2026-11-20.
+  - `kv/{env}/authentik/identity-admin` → `vault kv patch` v2: `jwks_url` · `issuer` = 계약 값 · `api_token` · `client_id` · `client_secret`은 sentinel 그대로 보존(되읽기 일치 — VD-T075-11 dev · prod).
+  - `kv/{env}/authentik/webhooks/identity-admin` → 덮어씀 v2(`secret` = CSPRNG 43자 base64url · 되읽기 해시 일치).
+  - 이 표 밖의 새 경로: `kv/{env}/django/identity-admin` 생성 v1(`secret_key`) · `kv/{env}/sentry/identity-admin` 생성 v1(`{"dsn": ""}`).
+  - `kv/{env}/openfga/store_id` · `kv/{env}/openfga/preshared` → v1 sentinel 그대로(면제 · 교체는 T082).
+  - 게이트 1 = O-3 dev `gate=PASS 21/21` · prod `gate=PASS 23/23`.
+  - 남은 sentinel 키(env마다 5) = 면제 셋(`api_token` · `openfga/store_id` · `openfga/preshared`) + 판정 밖 `client_id` · `client_secret` — 아래 불변식 그대로다.
+- **불변식: 면제 셋 밖 sentinel 0 = consumer 활성화 전제**(T075 보정 2026-11-17 — 이전 문구 「sentinel 잔존 0」). 면제 셋 = `api_token` · `openfga/store_id` · `openfga/preshared`다(게이트 2 면제 + overlay ConfigMap `JT_PLACEHOLDER_EXEMPT`). `client_id` · `client_secret`은 pod에 매핑하지 않아 판정 밖이다. `kv/{env}/openfga/preshared`를 `kv/platform/openfga/preshared`와 같은 값으로 바꾸는 것은 T082다(US6에서 바꾸지 않는다 — 이전 문구 「US6에서 … 교체」). 회전은 둘을 함께 한다.
+- 실값 투입 형식(T075 보정 2026-11-17 — 이전 문구 「키당 1회 호출 또는 JSON stdin」): 비밀은 JSON stdin으로만 넣는다(`… | vault kv put "-cas=<n>" <path> -`). `key=-` 다중 사용 금지(stdin은 한 키만 받는다 → 나머지가 빈 값). 실값을 명령줄 리터럴로 적지 않는다. 비밀이 아닌 계약 값(`jwks_url` · `issuer`)만 `vault kv patch "-cas=<n>" <path> issuer=<값> jwks_url=<값>`을 허용한다. 일부 키만 바꿀 때는 `kv patch`를 쓴다(`kv put`은 경로를 통째로 바꾼다).
+- **게이트 1(운영자 — 실값 주입 뒤·consumer 활성화 전, 실행은 T075·T081)**: 토큰 = T084 뒤 OIDC admin, 그 전 root(e2e-reader 정책은 `kv/data/platform/authentik/e2e` · `kv/data/platform/access/tester-m2m` 두 줄뿐이라 8경로를 읽을 수 없다 — T076 보정 2026-11-20 · 이전 문구 「`kv/data/platform/authentik/e2e` 1줄이라」).
+  - (T075 보정 2026-11-17) **게이트 1은 키 단위다.** 정본 블록 = T075 O-3(`specs/003-platform-foundation/design/t075-blocks/` — T075 조각 ④에서 생긴다). PASS 조건:
+    - `jwks_url` · `issuer`가 계약 값과 글자까지 같다.
+    - 웹훅 `secret`이 sentinel이 아니고 정확히 43자 `^[A-Za-z0-9_-]{43}$`이며 끝 줄바꿈이 없고, dev 해시 ≠ prod 해시다.
+    - sentinel은 면제 셋과 `client_id` · `client_secret`뿐이고, 그 밖의 `PLACEHOLDER-`는 0이다.
+    - 출력은 `gate=PASS n/n` 한 줄이다(값 · 해시 0).
+  - 아래 경로 단위 블록(`read=8/8 hits=0`)은 T044 판정 기록으로 남긴다. T075 뒤에는 면제 셋이 sentinel이라 hits 0이 될 수 없다 — 판정에 쓰지 않는다.
 ```powershell
 $paths = @(
   'kv/dev/authentik/identity-admin',           'kv/prod/authentik/identity-admin',
@@ -326,8 +341,8 @@ foreach ($p in $paths) {
 Remove-Variable j
 "read=$read/8 hits=$hits"    # PASS = read 8/8 **그리고** hits 0 (fail-closed: 하나라도 못 읽으면 FAIL). hits ≥ 1이면 그 경로의 consumer를 켜지 않는다
 ```
-- 게이트 2(consumer 자체, 무토큰 — T072·T075·T077 인계): django-pod 템플릿 pydantic-settings 검증기가 `PLACEHOLDER-`로 시작하는 값에서 기동 실패(fail-closed) + T077 tester 단언 `PLACEHOLDER-` 0. 범위(T070 r6 — data-model §8): 웹훅 `secret` · `jwks_url` · `issuer`는 범위 안이다 — US6 기동 전에 실값 · 계약 값으로 덮어쓴다(웹훅 비밀은 들어오는 쪽 검증 키라 플레이스홀더를 두지 않는다). US4에서야 실값이 생기는 나가는 쪽 자격(`client_id` · `client_secret` · `api_token` · `kv/{env}/openfga/*` — `preshared`는 위 US6 교체 규칙)을 US6 동안 sentinel로 둘지 — 둔다면 게이트 2 범위에서 빼고 게이트 1을 키 단위로 그 consumer 활성화(T081 · T082) 앞에 둔다 — 는 T075가 T072와 함께 정한다.
-- 검증: role 6 = `vault list auth/kubernetes/role` · 정책 6(+내장) = `vault policy list` · 정례 plan `No changes` · 게이트 1 = `read=8/8 hits=0`.
+- 게이트 2(consumer 자체, 무토큰 — T072·T075·T077 인계): django-pod 템플릿 pydantic-settings 검증기가 `PLACEHOLDER-`로 시작하는 값에서 기동 실패(fail-closed) + T077 tester 단언 「면제 셋 밖 `PLACEHOLDER-` 0」(T075 보정 2026-11-17 — 이전 문구 「`PLACEHOLDER-` 0」). 범위(T070 r6 — data-model §8): 웹훅 `secret` · `jwks_url` · `issuer`는 범위 안이다 — US6 기동 전에 실값 · 계약 값으로 덮어쓴다(웹훅 비밀은 들어오는 쪽 검증 키라 플레이스홀더를 두지 않는다). US4에서야 실값이 생기는 나가는 쪽 자격(`client_id` · `client_secret` · `api_token` · `kv/{env}/openfga/*` — `preshared`의 platform 값 교체는 T082)은 US6 동안 sentinel로 둔다(T075 보정 2026-11-17 — 정했다 · 이전 문구 「sentinel로 둘지 … 는 T075가 T072와 함께 정한다」 · 「`preshared`는 위 US6 교체 규칙」): 면제 셋(`api_token` · `openfga/store_id` · `openfga/preshared`)은 overlay ConfigMap `JT_PLACEHOLDER_EXEMPT`로 게이트 2에서 빼고, 게이트 1은 키 단위로(위 · T075 O-3) 그 consumer 활성화(T081 · T082 · T083) 앞에 둔다. `client_id` · `client_secret`은 pod에 매핑하지 않아 판정 밖이다.
+- 검증: role 6 = `vault list auth/kubernetes/role` · 정책 6(+내장) = `vault policy list` · 정례 plan `No changes` · 게이트 1 = `gate=PASS n/n`(T075 보정 2026-11-17 — 키 단위 · 이전 `read=8/8 hits=0`은 T044 기록).
 - 되돌리기: 잘못된 role/정책은 코드 수정 → 재apply(0 destroy 원칙). kv 마운트 삭제 금지. 플레이스홀더 경로 되돌리기 = `vault kv metadata delete kv/<path>`.
 
 ### T045 실값 시드(2026-09-21 — 요약 · 실행 기록 정본은 `bootstrap.md` §3 T045 절과 §4)
@@ -336,7 +351,7 @@ Remove-Variable j
 | `kv/platform/cloudflare/dns-token` | `token` | v1 · 03:20:12 | 라이브 Secret `cert-manager/cloudflare-dns-token` 키 `api-token`(파이프 복사) | 완료 — G3에서 ES가 인수(2026-09-21) |
 | `kv/platform/cloudflare/tunnel` | `token` | v1 · 03:20:19 | 라이브 Secret `cloudflared/cloudflared-tunnel` 키 `TUNNEL_TOKEN`(파이프 복사) | 완료 — G4에서 ES가 인수 + 파드 1개 드릴(2026-09-22) |
 | `kv/platform/oci/s3` | `access_key` · `secret_key` | v1 · 03:25:45 | 운영자 보관분(비밀번호 관리자) | 완료 — **키 쌍 정합은 미증명**(첫 증명 = T053 백업 복원) |
-| Access 서비스 토큰 4경로(`web-bff` dev·prod · tester 2종) | — | — | — | **이연**(T077 · T092 — `web-bff`는 Workers Secrets 전용이라 T092가 복사) |
+| Access 서비스 토큰 4경로(`web-bff` dev·prod · tester 2종) | — | — | — | **이연**(T077 · T092 — `web-bff`는 Workers Secrets 전용이라 T092가 복사). (T076 보정 2026-11-20 · UD-15) 그중 `tester-m2m`(`kv/platform/access/tester-m2m` · `client_id` · `client_secret`)은 T076 운영자 블록 W-7이 시드한다(T077에서 앞당김 · tofu `infra/cloudflare` 출력 `service_tokens`에서 꼴 판정 → `"-cas=0"` JSON stdin → 되읽기 해시 판정 · 값 · 해시 출력 0 · 기록 = `bootstrap.md` §4 T076 기록 칸). 나머지 셋(`web-bff` dev·prod · `tester-k8s`)은 그대로 이연 |
 | `kv/platform/grafana-cloud` | — | — | — | **이연**(T098) |
 - 값은 화면·파일·argv·클립보드에 나오지 않는다 — 판정은 되읽기 SHA-256 Ordinal 대조뿐이다. 블록 정본: `specs/003-platform-foundation/design/t045-blocks/op1-seed.ps1`(시드) · `kv-correct.ps1`(정정 — 인수 뒤 회전의 1단계).
 - kv 입력 규칙: 값은 **JSON stdin**으로만 넣는다(`vault kv put <path> -` + `{"token":"…"}`) — `key=-`는 쓰지 않는다(stdin 끝 개행이 값에 들어간다). 첫 쓰기는 `"-cas=0"`(이미 있으면 거부 = 덮어쓰기 사고 방지), 정정은 현재 버전 번호로 `"-cas=<n>"`(PowerShell에서는 `-flag=value`를 따옴표로 묶는다). kv v2는 10버전을 보존한다 — `vault kv delete`는 최신 버전을 soft-delete할 뿐이고, 되돌릴 수 없게 지우려면 `destroy`(버전 단위) 또는 `metadata delete`(경로 전체)다.
@@ -537,17 +552,22 @@ README §5 ⑤ "PVC/PV는 지우지 않는다"의 **1회 예외**는 다음 조�
 
 ---
 
-## §12 e2e-reader 토큰(T077)
+## §12 e2e-reader 토큰(T077 · T076) (T076 보정 2026-11-20 — 이전 제목 「§12 e2e-reader 토큰(T077)」)
 
-- 목적: tester(Playwright)가 E2E 사용자 비밀번호·TOTP 시드(`kv/platform/authentik/e2e`)를 읽는 유일한 경로를 고정한다.
-- 전제: role `e2e-reader`(bound SA `kube-system/agent-view`, audience `vault`, 정책 `kv/data/platform/authentik/e2e` read 1줄). `agent-view` ClusterRole에는 `serviceaccounts/token` create가 **없다**(쓰기 동사는 `pods/portforward` create뿐) → tester는 토큰을 **자급할 수 없다**. 실측(VD-20, 2026-09-17): `kubectl --kubeconfig agent-view.yaml auth can-i create serviceaccounts/token -n kube-system` → **`no`**.
+- 목적: role `e2e-reader`로 tester가 읽는 두 비밀 — E2E 사용자 비밀번호·TOTP 시드(`kv/platform/authentik/e2e` — T077 Playwright)와 Access 서비스 토큰 `tester-m2m`(`kv/platform/access/tester-m2m` — T076 O-8 블록) — 에 닿는 유일한 경로를 고정한다(T076 보정 2026-11-20 · UD-15 — 이전 문구 「tester(Playwright)가 E2E 사용자 비밀번호·TOTP 시드(`kv/platform/authentik/e2e`)를 읽는 유일한 경로를 고정한다」).
+- 전제: role `e2e-reader`(bound SA `kube-system/agent-view`, audience `vault`, 정책 = 정확히 두 경로 read — `kv/data/platform/authentik/e2e` · `kv/data/platform/access/tester-m2m`, 와일드카드 · metadata 0 · T076 보정 2026-11-20 — 이전 문구 「정책 `kv/data/platform/authentik/e2e` read 1줄」). `tester-k8s`는 정책 밖이고, `eso-platform`이 `kv/data/platform/access/*` · `kv/metadata/platform/access/*`를 deny하므로 두 tester 토큰은 ExternalSecret으로 K8s Secret이 될 수 없다(「ESO 밖」 강제 — T076). `agent-view` ClusterRole에는 `serviceaccounts/token` create가 **없다**(쓰기 동사는 `pods/portforward` create뿐) → tester는 토큰을 **자급할 수 없다**. 실측(VD-20, 2026-09-17): `kubectl --kubeconfig agent-view.yaml auth can-i create serviceaccounts/token -n kube-system` → **`no`**.
+- 로그인 토큰(T076 보정 2026-11-20 · UD-16 — 이전 절차의 「값은 env로만 tester에 전달(파일 저장 금지)」를 바꿨다): 운영자가 블록 O-9(`specs/003-platform-foundation/design/t076-blocks/o9-issue-vault-jwt.ps1` — 파일로만 실행 · 인자 0, 인자를 주면 아무것도 하지 않고 멈춘다 · 실행 꼴과 창 = 런북 bootstrap.md §3 T076 ④-1(issue) · ④-3(clear))를 실행해 정지점에 `issue`를 입력하면, 관리자 kubeconfig로 **vault 전용 1시간** `agent-view` JWT(audience `vault` — UD-16 · 정본 = O-9 블록 판정 `exp − iat` = 3600 ± 10)를 발급해 변수로만 받고, 클레임(`aud` = `vault` 하나 — 문자열 `"vault"` 또는 원소 하나인 배열 `["vault"]`, 관찰한 꼴은 INFO · VD-T076-10 · `sub` = `system:serviceaccount:kube-system:agent-view` · `exp − iat` · `iat`)을 판정한 뒤 저장소 밖 DPAPI 파일(CurrentUser) `%LOCALAPPDATA%\jt-e2e\vault-e2e-reader.jwt`에 쓴다(덮어쓰기). JWT · 암호문은 출력하지 않는다 — 끝 줄은 `o9 issued exp=<UTC> file=~\AppData\Local\jt-e2e\vault-e2e-reader.jwt`(`exp`(UTC)와 `~`로 줄인 파일 경로)다. 라이브 창마다 1번 발급하고, 그 1시간 안에서는 O-8을 다시 돌릴 수 있다. 세션 끝(노출이 의심되면 바로)에는 O-9를 다시 실행해 정지점에 `clear`를 입력한다 — 끝 줄 `o9 cleared`, 파일이 이미 없으면 `o9 nothing-to-clear`(정상)다. 그 밖의 끝 줄 `o9=STOP <사유>`는 멈춤이다. 이 JWT는 K8s API에 쓸 수 없다(audience 불일치).
+- 「1회용」 정의(T076 보정 2026-11-20 · UD-16 · T076 r0 리뷰 S-03): 짧은 `--duration`(예: 10–15분 · tester 2차 직전 발급) + 사용 뒤 운영자 `clear`다. JWT 사본은 `exp`까지 유효하므로 파일 삭제만으로는 1회용이 아니다(실제 노출 창 = `--duration`). 지금의 1시간을 1회용으로 바꿀지는 `/finish` 전 사용자 결정이다(UD-16 · `/finish` 차단 항목 — 런북 bootstrap.md §3 T076 「기록 칸」).
+- tester 읽기(T076 보정 2026-11-20 · UD-15): tester는 vault CLI를 쓰지 않는다. `tester-m2m`은 검토된 O-8 블록(`specs/003-platform-foundation/design/t076-blocks/o8-probe-identity-m2m.ps1`) 안에서만, 컨트롤러 지시문이 그 블록을 지명할 때만 읽는다. 흐름(정본 = 블록 · 어느 단계든 판정이 어긋나면 거기서 멈추고 다음 단계로 가지 않는다): agent-view kubeconfig로 `kubectl -n vault port-forward --address 127.0.0.1 svc/vault :8200`(블록 소유 · ns `vault` `pods/portforward` 허용 — §0 도달 경로 · 로컬 포트는 kubectl이 고르고 작업 출력의 `Forwarding from 127.0.0.1:<n> -> 8200` 줄 정확히 하나로 확인 — 없음 · 둘 이상 · `[::1]` 줄 · 다른 꼴 · 45 s 안에 안 나옴(터널 경유 수립 10–23 s 실측 — `specs/003-platform-foundation/design/t048-design.md` §8.1 F19 · T076 보정 2026-11-20 · 리뷰 RO2-01)이면 JWT를 보내지 않는다) → 무자격 `GET /v1/sys/seal-status`(`sealed` = false · `cluster_name` = `vault-cluster-d3b29227`) → HTTP API 로그인 `POST /v1/auth/kubernetes/login`(role `e2e-reader` · JWT는 본문 stdin) → `sys/capabilities-self` 관문(아래 검증 줄과 다르면 읽지 않는다 · VD-T076-9) → `GET /v1/kv/data/platform/access/tester-m2m` → `finally`에서 `revoke-self` · port-forward 종료. 값(JWT · Vault 토큰 · `client_id` · `client_secret`)은 그 블록 프로세스의 변수에만 있다(환경 변수 · 출력 · 파일 · argv · 보고 0). `kv/platform/authentik/e2e`는 Playwright가 프로세스 안에서 읽는다(T077).
+- 운영자 수동 읽기(T076 보정 2026-11-20 — 새 줄): 아래 절차(vault CLI는 운영자만 · 값 출력 0 — 키 이름만 확인).
 
-### 절차
+### 절차(운영자 수동 읽기 — T076 보정 2026-11-20 · 이전 제목 「절차」 · 이전 문구 「tester 세션(agent-view kubeconfig로 port-forward …)」)
+- 한 창에서(§0 창 시작 체크리스트 · `$env:KUBECONFIG` = 관리자 · root `VAULT_TOKEN` 없음) 위에서 아래로 실행한다(T076 보정 2026-11-20). 발급 줄이 만든 `$env:E2E_VAULT_JWT`를 같은 창의 로그인 줄이 쓰고, 로그인 줄이 `VAULT_TOKEN`을 덮어쓰며 끝의 `vault token revoke -self`는 그때 `VAULT_TOKEN`에 든 토큰을 폐기한다 — root 토큰을 넣은 창(§0 절대 규칙 1 · 창 D)에서는 돌리지 않는다. Vault 도달 = §0 창 C port-forward(18200).
 ```powershell
-# 운영자(admin kubeconfig) — E2E 세션 직전, 값은 env로만 tester에 전달(파일 저장 금지)
+# 운영자(admin kubeconfig) — 수동 확인 직전에 발급, 값은 env로만(파일 저장 금지)
 $env:E2E_VAULT_JWT = (kubectl create token agent-view -n kube-system --audience vault --duration=1h)
 
-# tester 세션(agent-view kubeconfig로 port-forward svc/vault 18200:8200 — ns vault pods/portforward 허용)
+# 같은 창에서 이어서(도달 = §0 창 C port-forward svc/vault 18200:8200 · 이 창에는 root VAULT_TOKEN이 없다 — 아래 줄이 VAULT_TOKEN을 덮어쓰고, 끝의 revoke -self가 이 창의 토큰을 폐기한다)
 $env:VAULT_ADDR  = 'http://127.0.0.1:18200'
 $env:VAULT_TOKEN = ($env:E2E_VAULT_JWT | vault write -field=token auth/kubernetes/login role=e2e-reader jwt=-)
 # 문서화된 읽기 명령은 `vault read kv/data/platform/authentik/e2e`로 고정한다. ⚠ 원시 JSON을 콘솔에 출력하지 않는다(에이전트 대화 로그에 남는다) —
@@ -557,9 +577,9 @@ $e2e = vault read "-format=json" kv/data/platform/authentik/e2e | ConvertFrom-Js
 Remove-Variable e2e
 ```
 - **VD-19 실측(2026-09-17)**: e2e-reader 토큰으로 `vault read kv/data/platform/authentik/e2e`와 `vault kv get kv/platform/authentik/e2e` **둘 다 정책을 통과**한다(경로가 아직 없어 `No value found` exit 2 — 403 아님). kv v2 preflight(`sys/internal/ui/mounts/kv`)는 마운트 하위 접근 유무만 보므로 최소권한 토큰도 통과한다 — 초안·계약 :79의 "preflight 403" 단정은 오류였고 계약 괄호절은 T044 M2에서 정정했다. 문서화된 명령은 그래도 `vault read`로 고정한다(정책 경로와 1:1 대응, preflight 의존 없음).
-- SA 토큰(JWT)은 1h, Vault 토큰은 1h/4h·`service`. 세션 종료 시 `vault token revoke -self`(default 정책에 있음) → `Remove-Item Env:VAULT_TOKEN, Env:E2E_VAULT_JWT`.
+- 운영자 수동 읽기의 SA 토큰(JWT)은 1h(위 `--duration=1h`), Vault 토큰은 1h/4h·`service`. 끝나면 같은 창에서 `vault token revoke -self`(default 정책에 있음) → `Remove-Item Env:VAULT_TOKEN, Env:E2E_VAULT_JWT`(T076 보정 2026-11-20 — 이전 문구 「SA 토큰(JWT)은 1h」 · 「세션 종료 시」 — tester용 JWT의 수명은 위 「로그인 토큰」 · UD-16).
 
-- 검증: `vault read` JSON에 `data.data` 키가 있고 값은 출력·기록하지 않는다(T045 시드 뒤). 다른 경로(`kv/data/platform/access/*` 등)는 403.
+- 검증: `vault read` JSON에 `data.data` 키가 있고 값은 출력·기록하지 않는다(T045 시드 뒤). e2e-reader 토큰의 capabilities(`sys/capabilities-self`): `kv/data/platform/authentik/e2e` · `kv/data/platform/access/tester-m2m` = `read` · `kv/data/platform/access/tester-k8s` · `kv/metadata/platform/access/tester-m2m` = `deny` · 그 밖의 경로 읽기는 403(T076 보정 2026-11-20 — 이전 문구 「다른 경로(`kv/data/platform/access/*` 등)는 403」 · tester 쪽은 O-8이 읽기 전에 같은 판정을 한다 — VD-T076-9).
 - 되돌리기: 토큰 revoke. role/정책 변경은 `infra/vault` PR.
 
 ---
@@ -574,5 +594,5 @@ Remove-Variable e2e
 | `infra/vault/` (모노레포) | kv v2 마운트 · kubernetes auth · 정책 6 · role 6 · `main.tf` 주석(sudo 경계·read 전용 정책 경로) · `backend.tf` 헤더의 운영자 전용 절차(3b 부분 적용 복구) |
 | `infra/bootstrap/platform-backup.sh` | Raft 스냅샷(role `vault-backup` · `vault/vault-<UTC>.snap.age`) · `--pre-upgrade` 게이트(Service `vault` 감지 시 vault 스냅샷 필수) · 스킴 http 고정(T044 확정) |
 | `docs/decisions/0010-secrets.md` | 결정과 불변식. §4 "sealed 대기"·"삭제 유예 30일", §6 "generate-root뿐"·⑥ revoke 시점은 이 런북(§2·§5·§6·§4)이 정정(ADR 0011 예정 — supersede) |
-| `specs/003-platform-foundation/contracts/hostnames-and-access.md` | :31 `vault.joshuatech.dev` Access 앱 · :59 seal 확인 = port-forward(로컬 8200 표기 — 이 문서는 18200) · :79 e2e-reader 발급 절차 + VD-19 정정 |
+| `specs/003-platform-foundation/contracts/hostnames-and-access.md` | §호스트 표 `vault.joshuatech.dev` 행(Access 앱) · §클러스터(K8s) 「Vault seal 상태 확인」 항목 = port-forward(로컬 8200 표기 — 이 문서는 18200) · §클라우드·SaaS 읽기 자격 「Vault」 항목 = e2e-reader 정책(두 경로) · 로그인 토큰 O-9 발급(vault 전용 1시간 — UD-16) + VD-19 정정. (T076 보정 2026-11-20 — 줄 번호 셋을 절 앵커로 바꿨다 · 이전 문구 「:31」 · 「:59」 · 「:79 e2e-reader 발급 절차」) |
 | `docs/runbooks/secret-rotation.md` · `incident-response.md` · `break-glass.md` (T084·T114) | 회전 매트릭스(root 보관·revoke 시점 등재) · 사고 대응 · break-glass 절차(`vault-break-glass` role + quorum 드릴) |

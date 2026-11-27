@@ -15,6 +15,11 @@ T072 조각 ③ r2(리뷰 r1 반영 — 파일 끝 절 · design/t072-design.md 
 감시 파일 기록(M2b) · build-arg 배선(M4) · compose config 내용(M5 — gen-35) · copier 예약 이름(M11 — gen-37). gen-33 기존 검사는
 RUN uv sync에 --no-dev와 따옴표 셸 꼴(M3) · CMD = 이미지 CMD 상수(tests/_render.py WEB_COMMAND — M6) · 탐침의 *.crt · *.p12 · *.pfx와
 dev 전용 배포(M1 · M3)를 더했다.
+
+T075(UD-9 B2 · 수정 라운드 1 RB-7 — 파일 끝 절 · design/t075-design.md D20): 렌더한 compose/dragonfly-dev.acl의 허용 토큰
+(check_aclfile_tokens — `cmd|sub` · reset · 다른 카테고리 · 명령 · 비밀번호 토큰 · 주석 · CR 금지)과 pod 줄 ↔ 생성 tests/conftest.py
+DRAGONFLY_USERS[POD_NAME](AST · resetchannels 뺀 것 · B2 꼬리 — check_aclfile_matches_conftest) · 파일 전체 == 정확히 세 줄(default ·
+admin · pod — 순서 · LF · 끝 LF 하나 · 다른 USER 줄 0 — check_aclfile_exact · 수정 라운드 2 RB2-1) — gen-39.
 """
 
 from __future__ import annotations
@@ -1708,3 +1713,209 @@ def check_reserved_pod_names(reserved: frozenset[str] | None, app_labels: Iterab
             "(목록에 더한다)"
         )
     return violations
+
+
+# ---------- T075 compose aclfile ↔ 생성 conftest · aclfile 허용 토큰(gen-39 — UD-9 B2 · 수정 라운드 1 RB-7) ----------
+
+ACLFILE = "compose/dragonfly-dev.acl"
+POD_CONFTEST = "tests/conftest.py"
+# 모든 pod 사용자 줄의 꼬리(contracts/denylist.md §ACL — T075 UD-9: -@admin -@dangerous가 ACL SETUSER · CONFIG · FLUSHALL 등을, -client가
+# CLIENT KILL · PAUSE를 막는다 — Dragonfly의 CLIENT는 하위 명령 토큰이 없는 한 명령이다)
+POD_ACL_TAIL = ("+@all", "-@admin", "-@dangerous", "-client")
+# aclfile 허용 토큰(denylist.md §ACL ③ — 한 토큰이라도 틀리면 Dragonfly가 인증 없이 기동한다): 상태 ON · OFF · nopass · 채널 &* · 카테고리
+# +@all · -@admin · -@dangerous · 명령은 default 줄의 +auth · +hello와 빼기 -client뿐 + 키 패턴(~<패턴> · %R~<패턴>). `cmd|sub` · reset ·
+# 그 밖의 카테고리(Redis 이름 @hyperloglog 포함) · 명령 · 비밀번호(> · #) 토큰은 위반이다(로컬 compose 사용자는 nopass — 비밀 0).
+ACL_FIXED_TOKENS = frozenset({"ON", "OFF", "nopass", "&*", "+@all", "-@admin", "-@dangerous", "+auth", "+hello", "-client"})
+_ACL_KEY_PATTERN_RE = re.compile(r"(?:%R)?~[A-Za-z0-9*:._-]+")
+_ACL_USER_NAME_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?")
+
+
+def _acl_lines(text: str) -> list[str]:
+    """aclfile 줄들 — 끝 줄바꿈 하나 뒤의 빈 조각은 줄이 아니다(CR은 남긴다 — 판정이 본다)."""
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    return lines
+
+
+def _shown_acl_token(token: str) -> str:
+    """위반 문장에 싣는 토큰 — 비밀번호 꼴(> · #로 시작)은 내용 없이 가린다."""
+    return "<비밀번호 토큰>" if token.startswith((">", "#")) else token
+
+
+def check_aclfile_tokens(text: str) -> list[str]:
+    """compose/dragonfly-dev.acl 허용 토큰(gen-39 · T075 UD-9): 줄마다 `USER <이름> <토큰…>`(공백 하나로 나눔 · 빈 줄 · 주석 · CR 없음 —
+    Dragonfly가 aclfile 주석을 받는지 잰 적이 없다) · 이름은 소문자 kebab · 토큰은 ACL_FIXED_TOKENS 또는 키 패턴(~<패턴> · %R~<패턴>)뿐."""
+    violations: list[str] = []
+    for number, raw in enumerate(_acl_lines(text), 1):
+        line = raw
+        if "\r" in line:
+            violations.append(f"{number}번 줄에 CR(\\r)이 있다 — LF만 쓴다(CRLF면 마지막 토큰에 \\r이 붙어 다른 토큰이 된다)")
+            line = line.replace("\r", "")
+        if line.startswith("#"):
+            violations.append(f"{number}번 줄이 주석(#)이다 — aclfile에는 USER 줄만 둔다(Dragonfly가 주석 줄을 받는지 잰 적이 없다)")
+            continue
+        parts = line.split(" ")
+        if parts[0] != "USER" or len(parts) < 3:
+            violations.append(f"{number}번 줄이 `USER <이름> <규칙…>` 꼴이 아니다")
+            continue
+        if "" in parts:
+            violations.append(f"{number}번 줄에 빈 토큰이 있다(공백 하나로만 나눈다)")
+        name = parts[1]
+        if not _ACL_USER_NAME_RE.fullmatch(name):
+            violations.append(f"{number}번 줄 사용자 이름 {_shown_acl_token(name)!r}이 소문자 kebab이 아니다")
+        for token in parts[2:]:
+            if token == "" or token in ACL_FIXED_TOKENS or _ACL_KEY_PATTERN_RE.fullmatch(token):
+                continue
+            if token.startswith((">", "#")):
+                violations.append(f"{number}번 줄({name})에 비밀번호 토큰(> · #)이 있다 — 로컬 compose 사용자는 nopass다")
+            elif "|" in token:
+                violations.append(
+                    f"{number}번 줄({name})의 토큰 {token!r} — `cmd|sub`(하위 명령) 꼴은 금지다(한 토큰이 틀리면 Dragonfly가 인증 없이 기동한다)"
+                )
+            elif token.lower() == "reset":
+                violations.append(f"{number}번 줄({name})의 reset 토큰은 금지다(사용자 규칙을 지운다 — denylist.md §ACL ③)")
+            else:
+                violations.append(
+                    f"{number}번 줄({name})의 토큰 {token!r}이 허용 목록 밖이다(카테고리는 +@all · -@admin · -@dangerous, 명령은 +auth · +hello ·"
+                    " -client만 — Redis 카테고리 이름 · 다른 명령 금지)"
+                )
+    return violations
+
+
+def _conftest_rule_tuple(value: ast.expr, pod_name: str | None) -> tuple[str, ...] | None:
+    """DRAGONFLY_USERS 값 하나 — 문자열 리터럴과 {POD_NAME}만 끼운 f-문자열의 튜플이면 그 값, 아니면 None(읽지 못함)."""
+    if not isinstance(value, ast.Tuple):
+        return None
+    out: list[str] = []
+    for element in value.elts:
+        if isinstance(element, ast.Constant) and isinstance(element.value, str):
+            out.append(element.value)
+            continue
+        if not isinstance(element, ast.JoinedStr):
+            return None
+        pieces: list[str] = []
+        for piece in element.values:
+            if isinstance(piece, ast.Constant) and isinstance(piece.value, str):
+                pieces.append(piece.value)
+            elif (
+                isinstance(piece, ast.FormattedValue)
+                and isinstance(piece.value, ast.Name)
+                and piece.value.id == "POD_NAME"
+                and piece.conversion == -1
+                and piece.format_spec is None
+                and pod_name is not None
+            ):
+                pieces.append(pod_name)
+            else:
+                return None
+        out.append("".join(pieces))
+    return tuple(out)
+
+
+def _conftest_pod_rules(conftest_text: str, pod_name: str) -> tuple[tuple[str, ...] | None, list[str]]:
+    """생성 tests/conftest.py의 DRAGONFLY_USERS[POD_NAME](AST — import하지 않는다 · 모듈 상수 POD_NAME = pod 이름) → (규칙 | None, 위반)."""
+    try:
+        tree = ast.parse(conftest_text)
+    except SyntaxError:
+        return None, [f"생성 conftest({POD_CONFTEST})를 읽지 못했다(파이썬 구문 오류)"]
+    module_pod: str | None = None
+    users: ast.expr | None = None
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            target, value = node.targets[0].id, node.value
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
+            target, value = node.target.id, node.value
+        else:
+            continue
+        if target == "POD_NAME" and isinstance(value, ast.Constant) and isinstance(value.value, str):
+            module_pod = value.value
+        elif target == "DRAGONFLY_USERS":
+            users = value
+    problems: list[str] = []
+    if module_pod != pod_name:
+        problems.append(f"생성 conftest의 POD_NAME = {module_pod!r}(기대 {pod_name!r})")
+    if not isinstance(users, ast.Dict):
+        problems.append(f"생성 conftest({POD_CONFTEST})에 DRAGONFLY_USERS 사전 리터럴이 없다")
+        return None, problems
+    values = [
+        value
+        for key, value in zip(users.keys, users.values, strict=True)
+        if (isinstance(key, ast.Name) and key.id == "POD_NAME") or (isinstance(key, ast.Constant) and key.value == pod_name)
+    ]
+    if len(values) != 1:
+        problems.append(f"생성 conftest DRAGONFLY_USERS의 pod 키(POD_NAME) 수 {len(values)}(기대 1)")
+        return None, problems
+    rules = _conftest_rule_tuple(values[0], module_pod)
+    if rules is None:
+        problems.append("생성 conftest DRAGONFLY_USERS[POD_NAME]가 리터럴 튜플이 아니다(문자열 · {POD_NAME} f-문자열만 — 읽지 못함)")
+    return rules, problems
+
+
+def check_aclfile_matches_conftest(acl_text: str, conftest_text: str, pod_name: str) -> list[str]:
+    """compose/dragonfly-dev.acl의 pod 줄 ↔ 생성 conftest(gen-39 · T075 UD-9): `USER <pod> ON nopass <규칙>`이 정확히 하나 · 규칙이 B2 꼬리
+    POD_ACL_TAIL로 끝난다 · 규칙 토큰 == DRAGONFLY_USERS[POD_NAME]에서 첫 토큰 resetchannels를 뺀 것(시험 사용자와 로컬 compose 사용자가 같은
+    권한 — identity-admin ia-24의 템플릿 쪽 짝)."""
+    violations: list[str] = []
+    rows = [line.replace("\r", "").split(" ") for line in _acl_lines(acl_text)]
+    pod_rows = [parts for parts in rows if parts[:2] == ["USER", pod_name]]
+    if len(pod_rows) != 1:
+        violations.append(f"{ACLFILE}에 `USER {pod_name}` 줄이 {len(pod_rows)}개다(기대 1)")
+    rules, problems = _conftest_pod_rules(conftest_text, pod_name)
+    violations += problems
+    if len(pod_rows) == 1:
+        parts = pod_rows[0]
+        if parts[2:4] != ["ON", "nopass"]:
+            violations.append(f"`USER {pod_name}` 줄의 상태 · 인증 토큰이 `ON nopass`가 아니다(로컬 compose 사용자는 켜져 있고 비밀번호가 없다)")
+        acl_rules = tuple(parts[4:])
+        if acl_rules[-len(POD_ACL_TAIL) :] != POD_ACL_TAIL:
+            violations.append(
+                f"`USER {pod_name}` 줄 규칙이 B2 꼬리 `{' '.join(POD_ACL_TAIL)}`로 끝나지 않는다(contracts/denylist.md §ACL · T075 UD-9)"
+            )
+        if rules is not None:
+            if rules[:1] != ("resetchannels",):
+                violations.append("생성 conftest DRAGONFLY_USERS[POD_NAME]의 첫 토큰이 resetchannels가 아니다(pod 사용자는 채널 권한이 없다)")
+            elif acl_rules != rules[1:]:
+                shown = [_shown_acl_token(token) for token in acl_rules]
+                violations.append(
+                    f"`USER {pod_name}` 줄 규칙 {shown}이 생성 conftest DRAGONFLY_USERS[POD_NAME]에서 resetchannels를 뺀 {list(rules[1:])}과 다르다"
+                )
+    return violations
+
+
+# 렌더 aclfile의 고정 두 줄(템플릿 compose/dragonfly-dev.acl.jinja 1 · 2번 줄 — contracts/denylist.md §ACL): default 사용자는 꺼져 있고 AUTH ·
+# HELLO만 된다(무인증 연결은 다른 명령을 못 한다) · admin은 시험 픽스처 · 운영자용 슈퍼유저(채널 &* 포함). 그 밖의 USER 줄은 없다.
+ACL_DEFAULT_LINE = "USER default OFF +auth +hello"
+ACL_ADMIN_LINE = "USER admin ON nopass ~* &* +@all"
+
+
+def _shown_acl_line(line: str) -> str:
+    """위반 문장에 싣는 aclfile 줄 — 비밀번호 꼴 토큰을 가린 repr(CR · 탭 · BOM이 이스케이프로 보인다)."""
+    return repr(" ".join(_shown_acl_token(token) for token in line.split(" ")))
+
+
+def check_aclfile_exact(acl_text: str, conftest_text: str, pod_name: str) -> list[str]:
+    """compose/dragonfly-dev.acl 전체 == 정확히 세 줄(gen-39 · T075 수정 라운드 2 RB2-1): ACL_DEFAULT_LINE · ACL_ADMIN_LINE ·
+    `USER <pod> ON nopass <생성 conftest DRAGONFLY_USERS[POD_NAME]에서 resetchannels를 뺀 규칙>` — 이 순서 · LF · 끝 LF 하나 · 다른 줄 0.
+    default 줄을 지우거나 켜거나(`ON nopass ~* &* +@all`) 슈퍼유저 줄을 더하면 인증 없이 모든 명령이 열린다(리뷰어가 Dragonfly v1.40.1로
+    무인증 PING · SET · CONFIG GET 실측) — 토큰 허용 목록(check_aclfile_tokens)과 pod 줄 대조(check_aclfile_matches_conftest)만으로는 그
+    줄들이 잡히지 않는다. conftest에서 pod 줄을 만들지 못하면 위반 하나(까닭은 check_aclfile_matches_conftest가 적는다 — fail closed)."""
+    rules, _ = _conftest_pod_rules(conftest_text, pod_name)
+    if rules is None or rules[:1] != ("resetchannels",):
+        return [f"{ACLFILE} 전체를 대조할 pod 줄을 생성 conftest DRAGONFLY_USERS[POD_NAME]에서 만들지 못했다(까닭은 conftest 대조 위반)"]
+    want_lines = (ACL_DEFAULT_LINE, ACL_ADMIN_LINE, f"USER {pod_name} ON nopass {' '.join(rules[1:])}")
+    if acl_text == "\n".join(want_lines) + "\n":
+        return []
+    violations: list[str] = []
+    if not acl_text.endswith("\n") or acl_text.endswith("\n\n"):
+        violations.append(f"{ACLFILE}의 끝 줄바꿈이 LF 정확히 하나가 아니다(마지막 줄 뒤에 LF 하나 — 빈 줄 없음)")
+    got_lines = _acl_lines(acl_text)
+    for number, (role, want) in enumerate(zip(("default", "admin", pod_name), want_lines, strict=True), 1):
+        got = got_lines[number - 1] if number <= len(got_lines) else None
+        if got != want:
+            shown = "(없음)" if got is None else _shown_acl_line(got)
+            violations.append(f"{number}번 줄이 {role} 줄 {want!r}이 아니다(실제 {shown})")
+    for number, extra in enumerate(got_lines[len(want_lines) :], len(want_lines) + 1):
+        violations.append(f"{number}번 줄 {_shown_acl_line(extra)} — 세 줄 밖의 줄이다(default · admin · {pod_name} 밖의 USER 줄 · 빈 줄 금지)")
+    # 위 갈래가 모두 같다고 봐도 전체 문자열이 다르면 위반이다(fail closed — 줄 나눔 규칙이 바뀌어도 통과로 새지 않는다)
+    return violations or [f"{ACLFILE} 전체가 세 줄 정본과 다르다"]

@@ -48,8 +48,11 @@
 # 계약 요약(contracts/network-policy.md · gitops-repo.md · tasks.md T031 문면):
 #   nodes-1..3  노드 정확히 2·전부 Ready, 라벨 role=platform / role=data 하나씩, svccontroller.k3s.cattle.io/enablelb=true는 platform 노드만
 #   argo-1..4   applications 전부 Synced/Healthy($argoExcludedApps 제외), appproject default sourceRepos·destinations 빈 배열,
-#               appproject dev·prod namespaceResourceBlacklist ⊇ {NetworkPolicy, ResourceQuota, LimitRange, Role, RoleBinding, ServiceAccount}
-#               (group도 대조: networking.k8s.io / "" / rbac.authorization.k8s.io, '*' 허용),
+#               appproject dev·prod(argo-3 — Get-AppProjectKindProblems): namespaceResourceWhitelist = 정확히 ""/ConfigMap · ""/Service ·
+#               apps/Deployment · batch/Job · batch/CronJob · networking.k8s.io/Ingress · external-secrets.io/ExternalSecret · traefik.io/Middleware
+#               (group까지 정확 — 빠짐 · 목록 밖(와일드카드 포함) · 중복은 FAIL · T075 보정 2026-11-17 · 계약 gitops-repo.md §Application 규약
+#               AppProject 행 · gitops GP-1 머지 전 라이브는 목록이 없어 FAIL이 정상) + namespaceResourceBlacklist ⊇ {NetworkPolicy, ResourceQuota,
+#               LimitRange, Role, RoleBinding, ServiceAccount}(둘째 겹 — group도 대조: networking.k8s.io / "" / rbac.authorization.k8s.io, '*' 허용),
 #               argocd.argoproj.io/sync-options = "Delete=false,Prune=false"(정확 일치) — 범위별로 나눈다(T049 테스터 발견 2026-10-07):
 #   argo-4      US2 범위: ns vault의 PVC 전부 + 그룹 cert-manager.io · external-secrets.io(또는 .<그룹>으로 끝남) CRD 전부. 항목 0개도 FAIL
 #   argo-4-cnpg-crd  그룹 cnpg.io CRD 전부(게이트 platform-cnpg · T052)    argo-4-pg-main  ns data Cluster pg-main(platform-cnpg-cluster · T053)
@@ -162,6 +165,14 @@ $storeVaultAudience = 'vault'            # vault store의 serviceAccountRef.audi
 # (터널 자격은 SSH·K8s API의 유일한 경로라 운영자 잠금). 목록 자체가 계약이다: gitops `secrets/<ns>/externalsecret-<name>.yaml`.
 $adoptedExternalSecrets = @('cert-manager/cloudflare-dns-token', 'cloudflared/cloudflared-tunnel')
 $caMirrorKeys = @('pg-main-ca', 'jt-kafka-cluster-ca-cert')
+# AppProject dev/prod namespaceResourceWhitelist(T075 보정 2026-11-17 — 계약 gitops-repo.md §Application 규약 AppProject 행): 정확히 이 8쌍
+# (group까지 정확 · core = ""). 목록 밖 kind(TLSOption · TLSStore · IngressRoute · Secret · PVC …)는 sync가 실패한다.
+$whitelistPairs = @(
+    @{ group = ''; kind = 'ConfigMap' }, @{ group = ''; kind = 'Service' }, @{ group = 'apps'; kind = 'Deployment' }, @{ group = 'batch'; kind = 'Job' },
+    @{ group = 'batch'; kind = 'CronJob' }, @{ group = 'networking.k8s.io'; kind = 'Ingress' }, @{ group = 'external-secrets.io'; kind = 'ExternalSecret' },
+    @{ group = 'traefik.io'; kind = 'Middleware' }
+)
+# namespaceResourceBlacklist(둘째 겹 — 허용 목록과 함께 그대로 둔다)
 $blacklistKinds = @('NetworkPolicy', 'ResourceQuota', 'LimitRange', 'Role', 'RoleBinding', 'ServiceAccount')
 # namespaceResourceBlacklist 항목의 group(정확 일치; '*'도 허용). core 그룹은 "" (JSON에 group 키가 없으면 ""로 본다)
 $blacklistGroups = @{ 'NetworkPolicy' = 'networking.k8s.io'; 'ResourceQuota' = ''; 'LimitRange' = ''; 'ServiceAccount' = ''; 'Role' = 'rbac.authorization.k8s.io'; 'RoleBinding' = 'rbac.authorization.k8s.io' }
@@ -531,25 +542,56 @@ ClusterAssert 'argo-2' {
     if ($repos.Count -eq 0 -and $dests.Count -eq 0) { return @('PASS', 'AppProject default: sourceRepos=[] destinations=[]') }
     return @('FAIL', "AppProject default not neutralized: sourceRepos=$($repos.Count) destinations=$($dests.Count)")
 }
+# 표시 전용 <group>/<kind>: core 그룹("")은 계약 표기 ""로, [A-Za-z0-9.*-] 밖 글자가 든 group은 작은따옴표로 감싸 보인다(group 글자 그대로
+#   '""'가 core처럼 보이지 않게). 판정 비교에는 쓰지 않는다 — 비교 키는 Get-AppProjectKindProblems의 group 원문 + TAB + kind다(수정 라운드 1 RB-2).
+function Format-GroupKind([string]$group, [string]$kind) {
+    $g = if ($group.Length -eq 0) { '""' } elseif ([regex]::IsMatch($group, '\A[A-Za-z0-9.*-]+\z')) { $group } else { "'" + $group.Replace("'", "''") + "'" }
+    return "$g/$kind"
+}
+# argo-3 판정(AppProject 객체 하나 → 문제 문자열 배열, 없으면 빈 배열 — kubectl 없음): namespaceResourceWhitelist가 정확히 $whitePairs
+#   (group까지 정확 — 빠짐 · 목록 밖(와일드카드 '*' 포함) · 중복은 문제 · T075 보정 2026-11-17)이고 namespaceResourceBlacklist ⊇ $blackKinds
+#   (group 정확 일치 또는 '*' — 둘째 겹, 예전 규칙 그대로). JSON에 group 키가 없거나 null이면 ""(core)로 본다. 비교는 group · kind 원문(ordinal)이다.
+function Get-AppProjectKindProblems($p, [string]$name, $whitePairs, $blackKinds, $blackGroups) {
+    $bad = @()
+    $want = [System.Collections.Generic.List[string]]::new(); $show = [System.Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
+    foreach ($w in @($whitePairs)) { $k = "$([string]$w.group)`t$([string]$w.kind)"; $want.Add($k); $show[$k] = Format-GroupKind ([string]$w.group) ([string]$w.kind) }
+    $seen = [System.Collections.Generic.List[string]]::new(); $extra = @(); $dup = @()
+    foreach ($e in @(PropArr $p @('spec', 'namespaceResourceWhitelist'))) {
+        $g = Prop $e 'group'; $gs = if ($null -eq $g) { '' } else { [string]$g }; $ks = [string](Prop $e 'kind')
+        $key = "$gs`t$ks"
+        if ($seen.Contains($key)) { if (-not (Contains $dup (Format-GroupKind $gs $ks))) { $dup += Format-GroupKind $gs $ks }; continue }
+        $seen.Add($key)
+        if (-not $want.Contains($key)) { $extra += Format-GroupKind $gs $ks }
+    }
+    $missing = @($want | Where-Object { -not $seen.Contains([string]$_) } | ForEach-Object { $show[$_] })
+    $parts = @()
+    if ($missing.Count -gt 0) { $parts += "missing $($missing -join ', ')" }
+    if ($extra.Count -gt 0) { $parts += "outside the list $($extra -join ', ')" }
+    if ($dup.Count -gt 0) { $parts += "duplicated $($dup -join ', ')" }
+    if ($parts.Count -gt 0) { $bad += "AppProject ${name}: namespaceResourceWhitelist is not exactly the $($want.Count) contract kinds ($($parts -join '; '))" }
+    $entries = @(PropArr $p @('spec', 'namespaceResourceBlacklist'))
+    $missingBlack = @()
+    foreach ($kind in @($blackKinds)) {
+        $wantGroup = [string]$blackGroups[$kind]
+        $hit = @($entries | Where-Object {
+                $g = Prop $_ 'group'; $gs = if ($null -eq $g) { '' } else { [string]$g }
+                (Eq ([string](Prop $_ 'kind')) $kind) -and ((Eq $gs $wantGroup) -or (Eq $gs '*')) })
+        if ($hit.Count -eq 0) { $missingBlack += "$kind(group '$wantGroup' or '*')" }
+    }
+    if ($missingBlack.Count -gt 0) { $bad += "AppProject ${name}: namespaceResourceBlacklist missing $($missingBlack -join ', ')" }
+    return @($bad)
+}
 ClusterAssert 'argo-3' {
     $bad = @()
     foreach ($name in @('dev', 'prod')) {
         $p = Get-KubeOne 'argocd' 'appprojects.argoproj.io' $name
         if ($null -eq $p) { $bad += "AppProject $name not found"; continue }
-        $entries = @(PropArr $p @('spec', 'namespaceResourceBlacklist'))
-        $missing = @()
-        foreach ($kind in $blacklistKinds) {
-            $wantGroup = [string]$blacklistGroups[$kind]
-            $hit = @($entries | Where-Object {
-                    $g = Prop $_ 'group'; $gs = if ($null -eq $g) { '' } else { [string]$g }
-                    (Eq ([string](Prop $_ 'kind')) $kind) -and ((Eq $gs $wantGroup) -or (Eq $gs '*')) })
-            if ($hit.Count -eq 0) { $missing += "$kind(group '$wantGroup' or '*')" }
-        }
-        if ($missing.Count -gt 0) { $bad += "AppProject ${name}: namespaceResourceBlacklist missing $($missing -join ', ')" }
+        $bad += @(Get-AppProjectKindProblems $p $name $whitelistPairs $blacklistKinds $blacklistGroups)
     }
     if ($bad.Count -gt 0) { return @('FAIL', ($bad -join '; ')) }
-    return @('PASS', "AppProject dev/prod namespaceResourceBlacklist covers $($blacklistKinds -join ', ') with matching group")
-}
+    $pairs = @($whitelistPairs | ForEach-Object { Format-GroupKind ([string]$_.group) ([string]$_.kind) })
+    return @('PASS', "AppProject dev/prod: namespaceResourceWhitelist exactly $($pairs -join ', ') (group included); namespaceResourceBlacklist covers $($blacklistKinds -join ', ') with matching group")
+} 1000
 # ---------- argo-4 계열: argocd.argoproj.io/sync-options = "Delete=false,Prune=false" (T049 harness-fix 설계 D1–D5) ----------
 # 왜 나눴나(T049 테스터 발견 2026-10-07): 예전 argo-4 한 단언이 US2 객체(Vault PVC · cert-manager · ESO CRD)와 아직 배포하지 않은 US3 객체
 #   (CNPG · Strimzi · Dragonfly)를 함께 봤고, 첫 조회(Cluster pg-main)의 "리소스 타입 없음" 예외가 단언 전체를 FAIL 한 줄로 끝내 뒤의

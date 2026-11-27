@@ -37,6 +37,10 @@ contracts/pod-template.md §런타임 계약 「인증」 · §django-common 공
   NBSP · 폭 0 · BOM · 한글 채움 문자 · 키릴 동형 글자 → 설정 오류 — ac-5a · ac-5b · ac-5c · ac-23b) · check_settings 순서를 깊은
   오류 값으로 한 번 더(JWKS 스킴 · DRAGONFLY_URL 쿼리 검사의 자리까지 — ac-23d) · 백오프 잠금은 자기 잠금(PyJWT `_client_lock`이
   없거나 재진입 불가 Lock이어도 창이 열리고 · 멈추지 않고 · fetch를 직렬화한다 — ac-24e · ac-24f · ac-24g).
+- UD-7a 보정(t086-design.md D15 · §7 N-4 · N-16): `revoked:sid` 값 = 폐기 시각(nbf) — DenylistRecord(sub_nbf, sid_nbf) ·
+  revokes(iat) = sub_nbf > iat 또는 sid_nbf > iat(같으면 통과 · 재로그인 W35 — ac-13 · ac-13b · ac-20) · 조회 파이프라인 =
+  GET 둘(EXISTS 0 — ac-13) · 지표 revoked = 키 존재(오래된 sid 키 — ac-14) · 두 값의 정규 꼴(ASCII 숫자 1–19자 — 밖이면 조회
+  실패 503 · ac-25).
 - r5 추가(리뷰 r4 반영 · build-notes 「T070 r4 결과 · r5 결정」 W1 · W3): 인증 문자열 설정 값 꼴에 공백이 아닌 ASCII 제어 문자
   ESC · DEL(ac-5a · ac-5b · ac-5c · ac-23b — 「ASCII이고 공백이 아니면 받는다」 규칙과 상한에 DEL을 넣은 범위를 가른다) · 팀
   도메인에 폭 0 · BOM · 한글 채움 문자(ac-4e · ac-23b) · 빈 캐시 + 느린 성공 fetch + 동시 5건 → fetch 1 · 모두 통과(중복 제거는
@@ -1995,7 +1999,8 @@ def test_ac_12_non_integer_denylist_value_is_503(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """ac-12a — revoked:sub 값이 정수가 아니면(int() 실패 — 단어 · 실수 · 빈 값 · 0x · 4300자리 초과) 조회 실패다(D7):
-    503 denylist_unavailable(200 · 401로 접지 않는다) · error 관측 +1 · WARNING 한 줄(error=ValueError)."""
+    503 denylist_unavailable(200 · 401로 접지 않는다) · error 관측 +1 · WARNING 한 줄(error=ValueError). int()가 읽는 꼴이라도
+    정규 꼴(ASCII 숫자 1–19자)이 아닌 값(음수 · 공백 · `+` · 밑줄 · 20자리)과 revoked:sid 값은 ac-25가 넓힌다(UD-7a 보정 · N-16)."""
     writer.set(f"revoked:sub:{BEARER_SUB}", value, ex=DENYLIST_TTL_S)
     caplog.set_level(logging.DEBUG, logger=LOGGER)
     before = _lookup_count("error")
@@ -2004,6 +2009,60 @@ def test_ac_12_non_integer_denylist_value_is_503(
     assert _lookup_count("error") == before + 1
     _assert_warning_lines(caplog, "auth.denylist_unavailable source=denylist")
     assert [record.getMessage().split(" error=")[1] for record in _auth_records(caplog)] == ["ValueError"]
+
+
+# ac-25 사례(UD-7a 보정 · N-16) — 정규 꼴(ASCII 숫자 1–19자 — 쓰는 쪽 identity-admin은 str(nbf)만 쓴다)이 아닌 거부 목록 값.
+# revoked:sid는 설계 D15-2 목록 전부(존재 판정이던 키라 오늘은 401) · revoked:sub는 int()가 읽는 꼴만(단어 · 빈 값은 ac-12a).
+AC25_CASES: dict[str, tuple[str, str]] = {
+    "sid-word": ("sid", "x"),
+    "sid-negative": ("sid", "-5"),
+    "sid-leading-space": ("sid", " 5"),
+    "sid-trailing-space": ("sid", "5 "),
+    "sid-plus": ("sid", "+7"),
+    "sid-underscore": ("sid", "1_000"),
+    "sid-20-digits": ("sid", "1" + "0" * 19),
+    "sid-empty": ("sid", ""),
+    "sub-negative": ("sub", "-5"),
+    "sub-leading-space": ("sub", " 5"),
+    "sub-trailing-space": ("sub", "5 "),
+    "sub-plus": ("sub", "+7"),
+    "sub-underscore": ("sub", "1_000"),
+    "sub-20-digits": ("sub", "1" + "0" * 19),
+}
+
+
+@pytest.mark.parametrize("case", sorted(AC25_CASES))
+def test_ac_25_non_canonical_denylist_value_is_503(
+    case: str,
+    auth_client: Client,
+    writer: redis.Redis,
+    jwks_server: JwksInfo,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """ac-25(UD-7a 보정 · N-16 — t086-design.md D15-2 「값 판독」) — 거부 목록 두 값(revoked:sub · revoked:sid)은 정규 꼴(ASCII
+    숫자 1–19자)만 판정에 쓴다: revoked:sid 값 `x` · `-5` · 앞뒤 공백 · `+7` · `1_000` · 20자리 · 빈 값과 revoked:sub 값 `-5` ·
+    앞뒤 공백 · `+7` · `1_000` · 20자리는 조회 실패다 — 503 denylist_unavailable · error 관측 +1 · WARNING 한 줄(error=ValueError).
+    int()로 읽으면 음수 · 공백 · 밑줄 꼴이 조용히 「폐기 아님」(200 — 열린 쪽)이 되고, 존재 판정은 어느 값이든 401이었다.
+    대조(같은 Client · 같은 토큰 · 값만 바꾼다): 그 키의 정규 꼴 값 iat − 60 → 200."""
+    kind, value = AC25_CASES[case]
+    key = f"revoked:sub:{BEARER_SUB}" if kind == "sub" else f"revoked:sid:{BEARER_SID}"
+    iat = int(time.time())
+    headers = _headers(bearer=_bearer(jwks_server, iat=iat), access=_access(jwks_server))
+    writer.set(key, value, ex=DENYLIST_TTL_S)
+    caplog.set_level(logging.DEBUG, logger=LOGGER)
+    before = _lookup_count("error")
+    response = auth_client.get(PROTECTED, headers=headers)
+    errors = _lookup_count("error") - before
+    error_words = _error_words(caplog)
+    writer.set(key, iat - 60, ex=DENYLIST_TTL_S)
+    canonical = auth_client.get(PROTECTED, headers=headers).status_code
+    outcome = (response.status_code, errors)  # 상태를 먼저 묶는다 — 빨강의 원인(401 · 200)이 실패 출력에 보이게
+
+    assert outcome == (503, 1)
+    assert_problem(response, 503, "denylist_unavailable")
+    _assert_warning_lines(caplog, "auth.denylist_unavailable source=denylist")
+    assert error_words == ["ValueError"]
+    assert canonical == 200
 
 
 def test_ac_12_dragonfly_url_with_query_is_refused(
@@ -2052,33 +2111,48 @@ def test_ac_13_denylist_public_api(
     settings: SettingsWrapper,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """ac-13 — Denylist 공개 API(D7 — T073 /session/check가 재사용): lookup(sub, sid=None) → DenylistRecord(원시 sub_nbf ·
-    sid_revoked) · revokes(iat)(sub_nbf > iat 또는 sid_revoked — 같으면 폐기 아님) · sid가 없으면 sid 키를 보지 않는다
-    (EXISTS 0 — 명령 통계) · 파이프라인 1회 = 비트랜잭션(MULTI · EXEC 0) · 결과 캐시 없음 · 생성은 연결하지 않는다 · 같은
-    인스턴스가 바뀐 DRAGONFLY_URL을 따른다 · 조회 실패 = DenylistUnavailable(연쇄 없음 · 메시지 · 인자 · 응답 · 로그에 sub ·
-    sid(감시 문자열) 없음 — NOPERM 메시지는 키를 싣는다 · 사실 ④) · 인자 검사(sub 비지 않은 str · sid None 또는 비지 않은 str)."""
+    """ac-13 — Denylist 공개 API(D7 — T073 /session/check가 재사용 · UD-7a 보정): lookup(sub, sid=None) →
+    DenylistRecord(원시 sub_nbf · sid_nbf — 두 키의 값 · 키가 없거나 sid를 묻지 않았으면 None) · revokes(iat)(sub_nbf > iat
+    또는 sid_nbf > iat — 같으면 폐기 아님 · None은 폐기 아님 — 진리표) · sid가 없으면 sid 키를 보지 않는다(GET 1) · sid가
+    있으면 GET 2 · EXISTS 0(명령 통계 — 이전 꼴 「GET + EXISTS」) · 파이프라인 1회 = 비트랜잭션(MULTI · EXEC 0) · 결과 캐시
+    없음 · 생성은 연결하지 않는다 · 같은 인스턴스가 바뀐 DRAGONFLY_URL을 따른다 · 조회 실패 = DenylistUnavailable(연쇄 없음 ·
+    메시지 · 인자 · 응답 · 로그에 sub · sid(감시 문자열) 없음 — NOPERM 메시지는 키를 싣는다 · 사실 ④) · 인자 검사(sub 비지
+    않은 str · sid None 또는 비지 않은 str)."""
     before = connections_received(df_admin)
     denylist = Denylist()
     assert connections_received(df_admin) - before == 0
     sub, sid = "ac13-sub", "ac13-sid"
     calls_before = _command_calls(df_admin)
-    assert denylist.lookup(sub) == DenylistRecord(sub_nbf=None, sid_revoked=False)
+    assert denylist.lookup(sub) == DenylistRecord(sub_nbf=None, sid_nbf=None)
     calls_after = _command_calls(df_admin)
     delta = {name: calls_after.get(name, 0) - calls_before.get(name, 0) for name in ("get", "exists", "multi", "exec")}
     assert delta == {"get": 1, "exists": 0, "multi": 0, "exec": 0}
     writer.set(f"revoked:sub:{sub}", 1730000000, ex=DENYLIST_TTL_S)
     record = denylist.lookup(sub)
-    assert record == DenylistRecord(sub_nbf=1730000000, sid_revoked=False)
+    assert record == DenylistRecord(sub_nbf=1730000000, sid_nbf=None)
     assert (record.revokes(1729999999), record.revokes(1730000000), record.revokes(1730000001)) == (True, False, False)
-    writer.set(f"revoked:sid:{sid}", 1, ex=DENYLIST_TTL_S)
+    writer.set(f"revoked:sid:{sid}", 1730000100, ex=DENYLIST_TTL_S)
     calls_before = _command_calls(df_admin)
-    assert denylist.lookup(sub, sid) == DenylistRecord(sub_nbf=1730000000, sid_revoked=True)
+    assert denylist.lookup(sub, sid) == DenylistRecord(sub_nbf=1730000000, sid_nbf=1730000100)
     calls_after = _command_calls(df_admin)
     delta = {name: calls_after.get(name, 0) - calls_before.get(name, 0) for name in ("get", "exists", "multi", "exec")}
-    assert delta == {"get": 1, "exists": 1, "multi": 0, "exec": 0}
-    assert DenylistRecord(sub_nbf=None, sid_revoked=True).revokes(1730000000) is True
-    assert DenylistRecord(sub_nbf=1730000000, sid_revoked=True).revokes(1730000001) is True
-    assert denylist.lookup(sub, "other-sid").sid_revoked is False
+    assert delta == {"get": 2, "exists": 0, "multi": 0, "exec": 0}
+    iat = 1730000000
+    truth = {  # (sub_nbf, sid_nbf) → revokes(iat)
+        (None, None): False,
+        (iat + 1, None): True,
+        (iat, None): False,
+        (iat - 1, None): False,
+        (None, iat + 1): True,
+        (None, iat): False,
+        (None, iat - 1): False,
+        (iat - 1, iat + 1): True,
+        (iat + 1, iat - 1): True,
+        (iat, iat): False,
+    }
+    verdicts = {pair: DenylistRecord(sub_nbf=pair[0], sid_nbf=pair[1]).revokes(iat) for pair in truth}
+    assert verdicts == truth
+    assert denylist.lookup(sub, "other-sid").sid_nbf is None
     writer.delete(f"revoked:sub:{sub}")
     assert denylist.lookup(sub).sub_nbf is None
     settings.DRAGONFLY_URL = _unreachable_url(closed_port())
@@ -2086,7 +2160,7 @@ def test_ac_13_denylist_public_api(
         denylist.lookup(sub)
     _assert_no_chain(excinfo.value)
     settings.DRAGONFLY_URL = dragonfly.reader_url
-    assert denylist.lookup(sub) == DenylistRecord(sub_nbf=None, sid_revoked=False)
+    assert denylist.lookup(sub) == DenylistRecord(sub_nbf=None, sid_nbf=None)
     caplog.set_level(logging.DEBUG, logger=LOGGER)
     caplog.clear()  # 앞의 닫힌 포트 조회가 남긴 WARNING(기대한 것)은 여기서 비운다 — 아래 NOPERM 한 줄만 본다
     settings.DRAGONFLY_URL = dragonfly.noperm_url
@@ -2116,16 +2190,20 @@ def test_ac_13_denylist_public_api(
 def test_ac_13_old_sub_key_with_revoked_sid_is_revoked(
     auth_client: Client, writer: redis.Redis, jwks_server: JwksInfo
 ) -> None:
-    """ac-13b — 거부 판정 조합(D7 · T070 r2 N1 — revokes = sub_nbf > iat 또는 sid_revoked): 전체 로그아웃 → 재로그인 → 단일
-    기기 로그아웃 순서에서는 330 s 동안 두 키가 같이 있다. 같은 토큰의 revoked:sub:{sub} = iat − 60(재로그인 뒤 토큰이라 sub
-    키로는 폐기 아님 — 대조: 그 키만 있으면 200) + revoked:sid:{sid} → 401 session_revoked(sub 키가 있다고 sid를 보지 않으면
-    200이 된다 — 미들웨어 · T073 /session/check 둘 다)."""
+    """ac-13b — 거부 판정 조합(D7 · T070 r2 N1 · UD-7a 보정 — revokes = sub_nbf > iat 또는 sid_nbf > iat): 전체 로그아웃 →
+    재로그인 → 단일 기기 로그아웃 순서에서는 330 s 동안 두 키가 같이 있다. 같은 토큰의 revoked:sub:{sub} = iat − 60(재로그인
+    뒤 토큰이라 sub 키로는 폐기 아님 — 대조: 그 키만 있으면 200) + revoked:sid:{sid} = iat + 60 → 401 session_revoked(sub 키가
+    있다고 sid를 보지 않으면 200이 된다 — 미들웨어 · T073 /session/check 둘 다) / 단일 기기 로그아웃 뒤 같은 sid로 다시 발급된
+    토큰(revoked:sid = iat − 60 — W35 재로그인) → 200(존재 판정은 330 s 동안 401이었다)."""
     iat = int(time.time())
     headers = _headers(bearer=_bearer(jwks_server, iat=iat), access=_access(jwks_server))
     writer.set(f"revoked:sub:{BEARER_SUB}", iat - 60, ex=DENYLIST_TTL_S)
     assert auth_client.get(PROTECTED, headers=headers).status_code == 200
-    writer.set(f"revoked:sid:{BEARER_SID}", 1, ex=DENYLIST_TTL_S)
+    writer.set(f"revoked:sid:{BEARER_SID}", iat + 60, ex=DENYLIST_TTL_S)
     assert_problem(auth_client.get(PROTECTED, headers=headers), 401, "session_revoked")
+    writer.set(f"revoked:sid:{BEARER_SID}", iat - 60, ex=DENYLIST_TTL_S)
+    relogin = auth_client.get(PROTECTED, headers=headers)
+    assert relogin.status_code == 200
 
 
 def test_ac_13_client_is_reused_per_url(
@@ -2137,7 +2215,7 @@ def test_ac_13_client_is_reused_per_url(
     denylist = Denylist()
     before = connections_received(df_admin)
     for _ in range(3):
-        assert denylist.lookup("ac13c-sub", "ac13c-sid") == DenylistRecord(sub_nbf=None, sid_revoked=False)
+        assert denylist.lookup("ac13c-sub", "ac13c-sid") == DenylistRecord(sub_nbf=None, sid_nbf=None)
     assert connections_received(df_admin) - before == 1
     settings.DRAGONFLY_URL = dragonfly.writer_url
     assert denylist.lookup("ac13c-sub").sub_nbf is None
@@ -2155,23 +2233,27 @@ def test_ac_14_lookup_metric_labels(
     settings: SettingsWrapper,
 ) -> None:
     """ac-14 — 지표 denylist_lookup_seconds{result}(D7 — 조회 1회 = 관측 1회): ok(키 없음) · revoked(폐기 키가 있었다 — sub
-    키 또는 sid 키 · 요청 거부 여부는 호출자의 revokes(iat)가 판정한다 — 오래된 sub 키도 revoked) · error(조회 실패).
-    Denylist 직접 3회 · 미들웨어 경유(200 → ok · revoked:sid 401 → revoked)."""
+    키 또는 sid 키 · 요청 거부 여부는 호출자의 revokes(iat)가 판정한다 — 오래된 sub 키 · 오래된 sid 키(UD-7a 보정 — sid 값도
+    시각이다)도 revoked) · error(조회 실패). Denylist 직접 4회 · 미들웨어 경유(200 → ok · revoked:sid 값 > iat 401 →
+    revoked)."""
     labels = ("ok", "revoked", "error")
     before = {label: _lookup_count(label) for label in labels}
     denylist = Denylist()
     denylist.lookup("ac14-none")
     writer.set("revoked:sub:ac14-old", 100, ex=DENYLIST_TTL_S)
     assert denylist.lookup("ac14-old").revokes(int(time.time())) is False
+    writer.set("revoked:sid:ac14-old-sid", 100, ex=DENYLIST_TTL_S)
+    old_sid = denylist.lookup("ac14-none", "ac14-old-sid")
+    assert old_sid.revokes(int(time.time())) is False
     settings.DRAGONFLY_URL = _unreachable_url(closed_port())
     with pytest.raises(DenylistUnavailable):
         denylist.lookup("ac14-none")
-    assert {label: _lookup_count(label) - before[label] for label in labels} == {"ok": 1, "revoked": 1, "error": 1}
+    assert {label: _lookup_count(label) - before[label] for label in labels} == {"ok": 1, "revoked": 2, "error": 1}
     settings.DRAGONFLY_URL = dragonfly.reader_url
     client = make_client()
     before = {label: _lookup_count(label) for label in labels}
     assert client.get(PROTECTED, headers=_valid_headers(jwks_server)).status_code == 200
-    writer.set("revoked:sid:sid-1", 1, ex=DENYLIST_TTL_S)
+    writer.set("revoked:sid:sid-1", int(time.time()) + 60, ex=DENYLIST_TTL_S)
     assert_problem(client.get(PROTECTED, headers=_valid_headers(jwks_server)), 401, "session_revoked")
     assert {label: _lookup_count(label) - before[label] for label in labels} == {"ok": 1, "revoked": 1, "error": 0}
 
@@ -2329,7 +2411,8 @@ def test_ac_20_decisions_are_not_logged(
     auth_client: Client, writer: redis.Redis, jwks_server: JwksInfo, caplog: pytest.LogCaptureFixture
 ) -> None:
     """ac-20 — 미들웨어는 판정마다 로그를 남기지 않는다(D12 — 요청 로그는 T071 RequestIdMiddleware가 상태 코드로 남긴다):
-    200 · 403 · 401(만료) · 401(session_revoked) 동안 django_common.auth 기록 0(DEBUG 포함)."""
+    200 · 403 · 401(만료) · 401(session_revoked — revoked:sid 값 = iat + 60 · UD-7a 보정: 값은 폐기 시각이다) 동안
+    django_common.auth 기록 0(DEBUG 포함)."""
     caplog.set_level(logging.DEBUG, logger=LOGGER)
     now = int(time.time())
     access = _access(jwks_server)
@@ -2337,6 +2420,6 @@ def test_ac_20_decisions_are_not_logged(
     assert auth_client.get(PROTECTED, headers=_headers(bearer=_bearer(jwks_server))).status_code == 403
     expired = _bearer(jwks_server, iat=now - 360, exp=now - 60)
     assert auth_client.get(PROTECTED, headers=_headers(bearer=expired, access=access)).status_code == 401
-    writer.set("revoked:sid:sid-1", 1, ex=DENYLIST_TTL_S)
+    writer.set("revoked:sid:sid-1", now + 60, ex=DENYLIST_TTL_S)
     assert auth_client.get(PROTECTED, headers=_valid_headers(jwks_server)).status_code == 401
     assert _auth_records(caplog) == []
