@@ -2,12 +2,33 @@
   "name": "@jt/content",
   "version": "0.0.0",
   "private": true,
-  "description": "Content loaders and schemas (skeleton, T015)",
+  "description": "Content loader and schemas - Node only: the content generation step and its tests (T090)",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
-    "build": "echo @jt/content: skeleton, no build step",
-    "test": "vitest run"
+    "build": "echo @jt/content: no build step, Node runs src via type stripping",
+    "test": "vitest run",
+    "schema": "node src/schema.ts"
+  },
+  "dependencies": {
+    "@shikijs/rehype": "4.6.0",
+    "hast-util-to-html": "9.0.7",
+    "hast-util-to-string": "3.0.1",
+    "rehype-slug": "6.0.0",
+    "remark-frontmatter": "5.0.0",
+    "remark-gfm": "4.0.1",
+    "remark-parse": "11.0.0",
+    "remark-rehype": "11.1.2",
+    "unified": "11.0.5",
+    "unist-util-visit": "5.2.0",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
   },
   "devDependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
     "vitest": "^5.0.5"
   }
 }
