@@ -50,6 +50,7 @@ Codex는 `.claude/rules/*.md`의 `paths:` YAML을 해석하지 않는다. 경로
 | Codex 어댑터 동등성 | `pwsh -NoProfile -File tests/agents/codex-parity.tests.ps1` |
 | 전체 저장소 점검 | `pwsh -NoProfile -File tests/run-all.ps1` |
 | 콘텐츠 로더 시험(vitest) | `pnpm --filter @jt/content --fail-if-no-match test` — `--fail-if-no-match`가 없으면 일치하는 패키지가 없어도 exit 0 |
+| 콘텐츠 프런트매터 JSON Schema | `pnpm --filter @jt/content --fail-if-no-match schema` — `packages/content/src/schema.ts`에서 `packages/content/schemas/study.schema.json`을 다시 만든다. 다시 돌려 커밋하기 전까지 content vitest 신선도 사례가 FAIL한다 |
 | 웹 앱 시험(vitest — BFF gateway · 번들 예산) | `pnpm --filter @jt/web --fail-if-no-match test` |
 | E2E `site` 프로젝트(T087) | `BASE_URL`과 `JT_E2E_SITE_MODE`(`local` 또는 `prod`)를 env에 두고 `node e2e/lib/launch.mjs site`; 다른 런처 모드는 `e2e/README.md` |
 | E2E `site` 빨강 관찰(T087) | `node e2e/lib/launch.mjs site-red` — 닫힌 루프백 포트; 빨강 = `[gate] site-absent until T091` |

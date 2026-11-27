@@ -5764,3 +5764,88 @@ cert-manager는 TXT 조회 **전에** `followCNAMEs`를 돌린다. 그래서 이
 - **컨트롤러 결정**(마감 보고에서 한 줄씩 알림): 〔90-2〕 스캔 = `readdir`(문면 「`glob`」 — 편차 후보) · 〔90-3〕 blog · projects 잠정 계약(한쪽만 `change` = `variant-mismatch`) · B-5 http(s) URL userinfo 거부 · A-1 정규 파일이 아닌 `*.mdx` = `not-regular`(따라가지 않음) · A-9 CRLF 정상 · 따옴표 키 허용 · V2-1 JSON Schema url `format: "uri"` 되살림 · ① 산문 `xmpp:` 허용(실측 사실) · 위치 없는 노드 줄 대체 규칙.
 - **나중에 여쭐 것**: B-13(pnpm `trustPolicy` · `blockExoticSubdeps` — T090 밖 별도 커밋) — 마감 보고 때.
 - **빌드 조각**(설계 D12 · D15): ⓪ 기반(컨트롤러 — 커밋 ②) → ① 실물 대조(끝) → ② schema.ts · ③ mdx.ts · ④ loader.ts + index.ts(web-builder opus · 조각마다 빨강 → 초록) → ⑤ 변이(사본) → 문서 보정 · run-all 슬롯 → 리뷰 3렌즈 → 컨트롤러 빨강 · 초록 관찰 → 커밋 ③ · tick 89/119.
+
+### T090 빌드(2026-11-27)
+
+- **빌드 직전 빨강**(컨트롤러 · HEAD `4233ed1`): `pnpm --filter @jt/content --fail-if-no-match test` → `FAIL tests/loader.test.ts` · `Error: Cannot find module '../src/index'` · `Test Files 1 failed (1)` · `Tests no tests` · exit 1 — T086 §1-2 그대로(`evidence/red-green/red-before-build.log`).
+- **빌드 워크플로 `wf_82eccd85-f14`**(web-builder opus 4 · 순차 · 약 2시간 15분 · 보고 `.superpowers/t090/reviews/build-{s2,s3,s4,mu}.md`). 조각마다 설계 표와 다른 FAIL · 막힌 것 0.
+  - ② `src/schema.ts` + `tests/schema.test.ts`(sx 124) + `schemas/study.schema.json`(3,799 B — `schema` 스크립트 산출)
+    - 빨강: R1 모듈 없음 → R2 검증 함수만(77 실패) → R3 url `format` 되살림 없음(13 실패 — §6-2가 예상한 sx-1 · sx-5 · sx-7 JSON 쪽 8건) → R4 커밋 산출물 전(2 실패 — 신선도 가드)
+    - 초록 124.
+  - ③ `src/mdx.ts` + `tests/mdx.test.ts`(mx 138)
+    - 빨강: R1 모듈 없음 → R2 `compile` · `readingTime` 없음(48 실패) → R2' 프로그래머 오류 사례의 공허 통과를 양성 짝으로 막음
+    - 초록 138.
+    - VD-T090-2: 첫 하이라이터 146 · 177 ms. VD-T090-5 · 6 · 7: 실물과 일치.
+  - ④ `src/loader.ts` · `src/index.ts`(재수출 — 값 넷 · 형 여섯) + `tests/loader-extra.test.ts`(lx 70) · `src/.gitkeep` 삭제
+    - 빨강: R1 모듈 없음 → R2 표면 뼈대(64 실패 — 모두 단언 실패)
+    - 초록: **T086 `loader.test.ts` 48/48(시험 · 픽스처 변경 0)** · 패키지 380/380.
+    - VD-T090-2: ld-13 대조 163 · 192 ms. VD-T090-3: Node 24.11.1 타입 스트리핑 · 자식 stderr 0.
+  - ⑤ 변이(사본 `.superpowers/t090/evidence/mutants/` · junction 0으로 정리)
+    - 변이 99 + 기준 1 → killed 95 · 동등 3(mu-23 · mu-37 · 보조 mu-59b) · 생존 1(보조 mu-56b).
+    - D13 78행 = killed 76 · 동등 2.
+- **컨트롤러 초록 관찰**(HEAD `4233ed1` + 작업 트리)
+  - `pnpm --filter @jt/content --fail-if-no-match test` → `Test Files  4 passed (4)` · `Tests  380 passed (380)` · exit 0(`evidence/red-green/green-after-build.log`).
+  - T086 시험 · 픽스처 `git diff HEAD --stat` 0.
+- **컨트롤러 결정 K-1–K-5**(설계 정정 노트 1–5 · `decisions-controller.md` 「빌드 결과 · 컨트롤러 결정」)
+  - K-1: YAML 1.1 태그를 모르는 태그로 본다(`resolveKnownTags: false`). 변이 ⑤의 관찰을 컨트롤러 탐침 `evidence/known-tags/`로 재현했다.
+  - K-2: D5의 union 근거 문구를 고친다(zod `handleUnionResults`).
+  - K-3: D13 기대를 정정하고 동등을 기록한다.
+  - K-4: issue 순서를 정하는 자리를 고치고, 계약 키 순은 하나만 둔다.
+  - K-5: 빌더 해석을 받아들인다.
+  - K-1 · K-2 · K-4의 코드 반영은 리뷰 고침 단계(시험 먼저)가 맡는다.
+- **하위 에이전트 규칙 위반 자진 신고**(저장소 영향 0)
+  - ③: 초반 Bash `cd`(읽기 전용 탐침 + R1 빨강 실행 1회).
+  - ⑤: `cd` 1회 · `.superpowers/t090/evidence/` 디렉터리 이름 한 번 나열(내용 0).
+  - ④: 확장 3사례를 초록 뒤에 썼다(변이로 빨강을 대신 확인).
+
+### T090 리뷰 · 고침 · 재확인(2026-11-27)
+
+- **리뷰 워크플로 `wf_e3dfab6e-529`**(에이전트 5/5 · 오류 0 · 약 59분 · 보고 `.superpowers/t090/reviews/review-{A,B,C}.md` · `fix-review.md` · `recheck.md`)
+  - 3렌즈 판정은 모두 approve_with_fixes이고 HIGH는 0이다.
+    - A 정합(LOW 1 · NIT 4): 머리 주석 · D16 「해석 · 확장」 열 · 〔90-n〕 · §6 반영 · 문서 보정 · T086 불변을 행마다 대조했다. 뜻이 다른 곳은 정정 노트 1(이미 결정)뿐이다. 남은 것은 사람 계약 문면이다 — seriesOrder 양수 · 문자열 공백만 금지가 계약 문서에 없음 · KR 한 구 · url host 한계 · code 어휘 · updatedDate 행.
+    - B 노출 · 보안 · 공급망(LOW 1 · NIT 2): 입력 값 바늘 40종이 오류 객체 · 출력 · 경고 어디에도 0이었다. Shiki 자식 프로세스의 네트워크 호출 0, lock · 매니페스트는 HEAD와 같고 기대 lock과 바이트 동일. 지적은 셋이다 — 「공개 도메인」 문구가 실제 판정(꼴 검사)보다 많이 약속함 · lx-18 패턴 빈틈 · issue에 실리는 파일 이름 · 키 이름.
+    - C 하네스 · 변이(MEDIUM 1 · LOW 2 · NIT 3): 조각별 빨강 · D13 78행 · 동등 판단 · 신선도 · run-all 슬롯 네 상태를 재현했다. 지적은 blog · projects 로더 경로의 본문 · 필드 검증을 고정하는 사례 없음(MEDIUM — 변이 둘 생존 · 그 변이에서 `javascript:` href가 html로 나감) · 위치 없는 노드의 CRLF/CR 셈 · 자르기 사례 없음 · 슬롯 FORCE_COLOR 거짓 FAIL · description url host · lx-15 미래 공허 · 노트 1 문구.
+  - 고침(web-builder opus · 시험 먼저): K-1(`resolveKnownTags: false`) · K-2(주석) · K-4(`CONTRACT_KEYS` 하나 — 보고 표기는 「K-3」) · RB-1 주석 · RB-2 · RC-1 · RC-2 · RC-4 · RC-5. 빨강 → 초록: mx-2 5 실패 · lx-x2 2 실패 · sx-9 1 실패 → 초록. 수는 380 → 397(schema 125 · mdx 151 · loader 48 · loader-extra 73).
+  - 재확인(approve_with_fixes · 새 지적 NIT 2): 고침의 파일:줄 · 빨강 · 변이 주장을 스크래치 사본에서 모두 재현했다(기준 제외 24 실행 — 재생성 · 노트 draft 변형 포함). RR-1 = loader의 `CONTRACT_KEYS` 소비 자리를 고정하는 사례가 없다(k3-loader-rank 생존 · 이번 고침 전부터) · RR-2 = K 번호 어긋남(보고 「K-3」 = 결정 K-4).
+- **컨트롤러 결정 K-6–K-11**(설계 정정 노트 6–11 · `decisions-controller.md` 「리뷰 · 고침 · 재확인 결과」)
+  - K-6: url host는 문구만 실제 판정대로 고친다(점이 있는 도메인 이름 꼴 · 꼴 검사라 내부 이름 통과). 특수 용도 TLD 거부 목록은 새 계약 규칙이라 미룬다 = 〔90-11〕(마감 보고 알림).
+  - K-7: RR-1 사례를 더한다(후속 빌더). K-8: run-all 슬롯이 판정 전에 ANSI를 지운다(컨트롤러). K-9: RB-2의 좁힌 패턴을 받아들인다. K-10: 문서 몫은 컨트롤러가 한다.
+  - K-11(컨트롤러 관찰): 시험 자식 env에서 `FORCE_COLOR`를 지운다. `NO_COLOR` + `FORCE_COLOR`가 함께 있으면 Node 24가 자식 stderr에 env 충돌 경고를 찍어 mx-6 확장이 거짓 실패했다(탐침으로 재현 — 하나만이면 stderr 0).
+- **후속 빌더 ①**(web-builder opus · K-7 · K-6 · 보고 `.superpowers/t090/reviews/followup-rr1.md`)
+  - K-7: lx-13에 「변형 change · sources 동시 누락 → change variant-mismatch → sources missing」 사례(지금 동작을 고정 — 저장소에서 처음부터 초록). 스크래치 사본 + 변이 k3-loader-rank → `1 failed | 397 passed (398)`(그 사례만 · 순서가 뒤집힘) → 되돌림 398.
+  - K-6: description 「점이 있는 도메인 이름 꼴」 · schema.ts 주석. 재생성 전 sx-2 · sx-3 FAIL(신선도 가드가 문구 변경을 잡음 · 메시지에 재생성 명령) → `content-schema wrote=study.schema.json bytes=3810` → 125 초록.
+  - 컨트롤러 재관찰: content `Tests  398 passed (398)` · events 267 · T086 시험 · 픽스처 diff 0(`evidence/red-green/green-after-review.log`).
+- **후속 빌더 ②**(web-builder opus · K-11 · 보고 `.superpowers/t090/reviews/followup-k11.md`): 시험 도우미 셋(mdx · loader-extra · schema의 `childEnv`)이 `FORCE_COLOR`도 지운다.
+  - 빨강(고치기 전): `NO_COLOR=1 FORCE_COLOR=1` → `Tests  1 failed | 397 passed (398)` — mx-6 확장 「자식 stderr 0」 하나(다른 자식 사례 mx-3 · lx-15 · lx-16 · sx-3 · sx-4는 통과).
+  - 초록(고친 뒤): 둘 다 · 둘 다 없음 · FORCE_COLOR만 · NO_COLOR만 · `NODE_DISABLE_COLORS=1 FORCE_COLOR=1` 모두 398.
+  - 경고 출처: Shiki `engine-oniguruma` `wasm-inlined.mjs`의 `new Response(...)` → Node 내장 undici 지연 적재 → 색 깊이 측정(`--trace-warnings`). T091 인계: 생성 단계가 「stderr 0」을 단언하면 같은 env 정리가 필요하다(설계 정정 노트 11).
+- **컨트롤러 최종 관찰**(HEAD `4233ed1` + 작업 트리)
+  - content `Tests  398 passed (398)` · events `Tests  267 passed (267)` · T086 시험 · 픽스처 diff 0(`evidence/red-green/green-final.log`).
+  - run-all `content` 슬롯 모의(슬롯 블록을 run-all.ps1에서 글자 그대로 떼어 같은 Check로 실행): env 없음 · `FORCE_COLOR`만(출력에 ESC) · `NO_COLOR` + `FORCE_COLOR` 셋 다 `PASS content` · 다음 줄 계속(`evidence/red-green/slot-mock-*-after-k11.log`). K-11 전 둘 다 켠 실행은 FAIL이었다(`slot-mock-forcecolor.log`).
+
+### T090 VD-T090-8 · 합격선 · tick(2026-11-27)
+
+- **VD-T090-8 Linux 1회**(컨트롤러 · 16:44 KST · 91 s · `.superpowers/t090/evidence/vd-t090-8/` — `run.log` · `install.log` · `vitest-canonical.log` · `vitest-verbose.log`)
+  - 이미지 `node@sha256:49f7adaf…`(`node:24` · Linux x86_64 · Node 24.22.3 · corepack pnpm 10.34.5). 저장소를 읽기 전용으로 붙여 별도 clone(HEAD `4233ed1`)한 뒤 작업 트리를 겹쳤다(복사 22 · 삭제 1 — Windows git 목록 `overlay.txt` · `deleted.txt`).
+  - `pnpm install --frozen-lockfile --filter @jt/content` → exit 0(154 해석 · 154 추가).
+  - 정본 명령 `pnpm --filter @jt/content --fail-if-no-match test` → `Test Files  4 passed (4)` · `Tests  398 passed (398)` · exit 0.
+  - 소요(VD-T090-2 x86 Linux · 한도 vitest 기본 5 s): mx-6 첫 하이라이터 128 ms · ld-13 금지 46 ms · 대조 135 ms.
+  - 파일 심볼릭 링크 탐침(저장소 밖 정규 파일을 가리키는 `study/001-x.mdx` 링크 · 출력은 code만): `ContentValidationError` · issues 1 = `(study/001-x.mdx, file, not-regular)` → PASS. Windows 판(리뷰 B — 파일 링크 · junction)과 같다.
+- **합격선 §1-1(D15 — 1–9를 모두 채워야 tick)**
+  1. T086 48: `pnpm --filter @jt/content --fail-if-no-match exec vitest run tests/loader.test.ts` → `Test Files  1 passed (1)` · `Tests  48 passed (48)` · exit 0(`evidence/red-green/t086-48-final.log`). 패키지 전체 `Test Files  4 passed (4)` · `Tests  398 passed (398)` · 건너뜀 0 · exit 0(N = 48 + 350).
+  2. 정정 노트 35 root 우선순위: lx-1–lx-3 시험 먼저 → 빨강 → 초록(조각 ④ · `reviews/build-s4.md`).
+  3. 실물 remark 대조: 설치 직후 · 로더 코드 전에 끝냈고 전부 일치(「T090」 경과 ①).
+  4. 실제 노트 2편: ld-1 세 사례 · lx-15(자식 · 픽스처 root 기본 호출 → `001-public`만 · 실제 노트 기본 호출 → draft 항목 0 · `includeDrafts: true` → slug ⊇ {001, 002}) 초록.
+  5. JSON Schema 산출물: 스테이징 뒤 `pnpm --filter @jt/content --fail-if-no-match schema` 두 번(`content-schema wrote=study.schema.json bytes=3810` ×2) → `git diff --exit-code -- packages/content/schemas/` = 0(멱등). sx-1–sx-7 초록.
+  6. 공허 · 변이: 조각별 빨강(§1-2 이유 그대로) · D13 78행 + 보조 · 리뷰 변이 — 살아남은 것은 사례를 더해 잡았거나 동등을 기록했다(정정 노트 3 · 10). 참조 구현 0 · t086 증거 0(빌더 · 리뷰 자진 신고).
+  7. 설치 관문: 충족(2026-11-27 10:15 KST · 「⓪ 기반 설치」).
+  8. run-all(컨트롤러 · KUBECONFIG 없음 · 16:47:48–17:51:23 KST · 64분): `pwsh -NoProfile -File tests/run-all.ps1` → `1 FAILED` · exit 1. 슬롯 34 중 33 PASS · 구조 검사 9 PASS. FAIL = `platform` ← `infra tests`(`35 passed, 27 failed` — `tofu plan`이 변수 `budget_alert_email` 값 없음으로 멈춘다 · T086–T089 마감 run-all과 같은 기준선). `PASS content`(`Tests  398 passed (398)`) · `agent-layer` 79/0 · `codex-parity` 12/0 · `ci-gitleaks` 14/0 · `ci-events-compat` 117/0 · `e2e-selftest` 213/0 · `identity-harness` 475/0 · `specs-index-fresh`(재생성 변경 0) · run-all이 만든 작업 트리 변경 0. 로그 `.superpowers/t090/evidence/run-all/run-all-20261127-164748.log`. 슬롯 갈래(손 확인 — 슬롯 블록 그대로): 의존 없는 사본 → `SKIP content -- allowed (packages/content dependencies not installed)` · PATH에 pnpm 없음 → `FAIL content -- pnpm not found on PATH`(다음 줄 계속 — `evidence/red-green/slot-mock-state-d-skip.log` · `slot-mock-no-pnpm.log`) · vitest만 있고 로더 의존 없음 → `Test Files  4 failed (4)` · `FAIL content -- exit=1; …`(리뷰 C 실측 — 바꾸지 않은 갈래) · 설치됨 → `PASS content`(env 세 꼴).
+  9. 위생: CI 꼴 gitleaks staged → `no leaks found`(exit 0) · 스테이징 diff에 로컬 절대 경로 · 사설 IP 0 · `git status` = 지정 파일 · 부산물은 gitignore 자리(`node_modules/.vite` · `.superpowers/t090/`)뿐.
+  10. (권고) Linux 1회 — 위 VD-T090-8.
+- **tick**(2026-11-27): 합격선 1–9 충족 · (권고) 10 충족 → `tasks.md` **T090 `[X]` → 89/119**. **T090 닫힘** — 기록 · tick · 학습 로그 `content/tmp/003-t090/2026-11-27.md`는 커밋 ③에 함께 싣는다.
+- **컨트롤러 문서 몫**
+  - content.md · KR: seriesOrder 양의 정수 · 문자열 값 공백만 금지 · YAML 1.1 태그 = 모르는 태그 · 오류는 값을 싣지 않음(모르는 키는 이름으로) · url host 꼴(내부 이름은 손으로 뺀다) · KR 「어기면 로더가 실패한다」.
+  - data-model §11: updatedDate 행 · 공백만 금지 · seriesOrder ≥ 1 · 오류 어휘 줄.
+  - 설계 정정 노트 6–11(노트 1 허용 짝 문구는 제자리에서 고침).
+  - run-all 슬롯 ANSI 제거: 리뷰 C가 저장한 FORCE_COLOR 출력으로 정규식을 먼저 확인했다(원문 불일치 → 제거 뒤 일치 · 남은 ESC 0 · 실패 요약 줄은 계속 불일치).
+- **과정 편차**(기록): 고침 빌더가 변이를 저장소 작업 트리 제자리에서 돌렸다(sha256 복원 · 재확인이 mu-00 사본 대비 잔여 0 확인 · 후속 지시는 사본 강제). 리뷰 A · C가 Bash `cd`를 1회씩 썼다(변경 0).

@@ -236,15 +236,18 @@ frontmatter(`rules/content.md` 계약, zod로 코드화):
 
 | 필드 | 타입 | 규칙 |
 |---|---|---|
-| `title` · `description` | string | 필수 |
-| `pubDate` | date | 필수, `updatedDate` ≥ `pubDate` |
-| `tags` | string[] | 필수(빈 배열 허용) |
-| `series` · `seriesOrder` | string · int | 선택, 같이 존재 |
+| `title` · `description` | string | 필수 · 비어 있거나 공백만이면 안 된다(T090 보정 2026-11-27) |
+| `pubDate` | date — 'YYYY-MM-DD' 문자열(YAML 1.2 core · Date 아님 — T086 정정 노트 2 · T090 보정 2026-11-27) | 필수, `updatedDate` ≥ `pubDate` |
+| `updatedDate` | date — 'YYYY-MM-DD' 문자열(`pubDate`와 같은 꼴 — T090 보정 2026-11-27) | 선택, 있으면 ≥ `pubDate` |
+| `tags` | string[] | 필수(빈 배열 허용) · 원소는 비어 있거나 공백만이면 안 된다(T090 보정 2026-11-27) |
+| `series` · `seriesOrder` | string · 양의 정수 | 선택, 같이 존재 · `series`는 비어 있거나 공백만이면 안 되고 `seriesOrder` ≥ 1(T090 보정 2026-11-27) |
 | `draft` | boolean | 필수; PROD 빌드에서 `true`는 제외 |
-| `change` | string | 필수(study), `^\d{3}-[a-z0-9-]+$` |
-| `sources` | `{title, path?, url?}[]` | 필수(빈 배열 허용), 항목마다 `path` · `url` 가운데 정확히 하나 — `path` = 저장소 상대 경로 `^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$`(`.` · `..` 세그먼트가 없다) · `url` = http/https(T086 보정 2026-11-24 · N-13) |
+| `change` | string | 필수(study) · 선택(blog · projects — 변형은 ko 파일과 같은 값이거나 둘 다 없다 · T090 보정 2026-11-27 · 〔90-3〕 잠정), `^\d{3}-[a-z0-9-]+$` |
+| `sources` | `{title, path?, url?}[]` | 필수(빈 배열 허용), 항목마다 `path` · `url` 가운데 정확히 하나 — `path` = 저장소 상대 경로 `^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$`(`.` · `..` 세그먼트가 없다) · `url` = http/https(T086 보정 2026-11-24 · N-13) · 항목 `title`은 비어 있거나 공백만이면 안 된다 · `url` host는 도메인 이름 꼴(꼴 검사 — 내부 이름은 통과하므로 저자가 뺀다 · `rules/content.md` · T090 보정 2026-11-27) |
 
-파생 필드(로더가 계산): `slug`(파일명), `lang`(접미사 `.en`·`.ja` → `en`·`ja`, 없으면 `ko`), `collection`, `readingTime`, `headings[]`, `translations[]`(같은 slug의 다른 lang). 규칙: 같은 slug의 언어 변형은 `pubDate`·`change`가 같아야 하고, `ko` 파일이 없으면 오류.
+파생 필드(로더가 계산): `slug`(파일명), `lang`(접미사 `.en`·`.ja` → `en`·`ja`, 없으면 `ko`), `collection`, `readingTime`, `headings[]`, `translations[]`(같은 slug의 다른 lang). 규칙: 같은 slug의 언어 변형은 `pubDate`·`change`가 같아야 하고, `ko` 파일이 없으면 오류. `html`(본문 HTML — 원시 HTML 0 · Shiki 하이라이트 · 각주 라벨 · 되돌림 라벨 lang별) · `headings[]` = 목차(depth 2 · 3 · 각주 라벨 제외) · `translations[]`는 그 호출에서 draft를 거른 뒤 남은 같은 slug의 다른 lang(정렬) · ko 파일이 걸러지면 그 slug 전체 제외(T090 보정 2026-11-27).
+
+오류(T090 보정 2026-11-27 — 공개 CI 로그에 나가는 계약): 로더는 위반을 모아 `ContentValidationError` 하나로 던진다. issue = `{file, field, code, line?}`. `field`가 프런트매터 키 경로이면 `code` ∈ `missing` · `type` · `empty` · `format` · `range` · `unknown-key` · `series-pair` · `date-order` · `source-kind` · `variant-mismatch` · `invalid`이고, `field`가 `file`이면 `name` · `encoding` · `ko-missing` · `not-regular`, `frontmatter`이면 `fence` · `yaml`, `body`이면 `raw-html` · `esm` · `expression` · `unsafe-url`(`line` 필수)이다. issue · message에 값은 싣지 않는다(파일 이름 · 모르는 키 이름은 싣는다). 정본 = `packages/content/tests/loader.test.ts` 머리 · `packages/content/src/{schema,mdx,loader}.ts`의 code 형.
 
 ## 12. ADR — 소유 `docs/decisions/` (전역)
 

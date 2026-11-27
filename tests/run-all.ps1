@@ -96,6 +96,20 @@ Write-Host ($o.TrimEnd())
 if ($c -eq 0 -and $o -match '\ASKIP e2e-selftest tests -- ') { Write-Host 'SKIP e2e-selftest -- allowed (@playwright/test not installed; see SKIP line above)' }
 else { Check 'e2e-selftest' ($c -eq 0 -and $o -match '(?m)^\d+ passed, 0 failed\r?$') "exit=$c; see e2e selftest output above" }
 
+# 1b2a7. content (T090) — pnpm --filter @jt/content --fail-if-no-match test: 콘텐츠 로더 vitest(T086 계약 48 + T090 자기 시험 · 픽스처 · 실제 노트 2편 · 네트워크 0).
+#        packages/content/node_modules/vitest가 없으면 SKIP(설치 전 — 1b2a6과 같은 규율). pnpm이 PATH에 없으면 FAIL 줄(가드 없이 부르면
+#        $ErrorActionPreference = 'Stop'이 run-all 전체를 멈춘다). 그 밖에는 exit 0 이면서 요약 줄 'Tests  N passed (N)'(실패 · 건너뜀 0)이 있어야 PASS.
+#        판정 전에 ANSI 이스케이프(CSI)를 지운다 — 환경에 FORCE_COLOR가 있으면 vitest 요약 줄이 색 코드와 섞여 나와 거짓 FAIL이 된다(T090 리뷰 C RC-3).
+if (-not (Test-Path 'packages/content/node_modules/vitest')) { Write-Host 'SKIP content -- allowed (packages/content dependencies not installed)' }
+elseif (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) { Check 'content' $false 'pnpm not found on PATH' }
+else {
+    $o = pnpm --filter @jt/content --fail-if-no-match test 2>&1 | Out-String
+    $c = $LASTEXITCODE
+    Write-Host ($o.TrimEnd())
+    $plain = $o -replace '\x1b\[[0-?]*[ -/]*[@-~]', ''
+    Check 'content' ($c -eq 0 -and $plain -match '(?m)^\s*Tests\s+(\d+) passed \(\1\)\s*$') "exit=$c; see content vitest output above"
+}
+
 # 1b2b. backup-verify (T048) — tests/scripts/backup-verify.tests.ps1: scripts/backup-verify.ps1 하네스(진짜 age · age-keygen · tar · vault ·
 #       파이썬 sqlite3 + 가짜 oci 심 · 실행마다 임시 픽스처 · 실제 OCI · 클러스터 · 개인키 접근 없음 · 약 3분). 하네스가 설정됐을 때 요약 줄에 접미를 붙이는 환경 변수가 하나 더 있다(BACKUP_VERIFY_SCRIPT).
 #       도구가 없으면 하네스가 첫 줄 'SKIP backup-verify tests -- ' + exit 0으로 끝난다 — 그때만 SKIP 허용(1b3과 같은 규율).

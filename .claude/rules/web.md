@@ -11,7 +11,7 @@ Contract of record: `specs/003-platform-foundation/contracts/bff-api.md`. On con
 
 ## OpenNext lean
 
-- `apps/web` is Next.js deployed to Cloudflare Workers via OpenNext. The BFF Route Handlers under `/api/*` are the only server code; pages render without server-only dependencies.
+- `apps/web` is Next.js deployed to Cloudflare Workers via OpenNext. The BFF Route Handlers under `/api/*` are the only server code; pages render without server-only dependencies. `packages/content` (unified, remark, rehype, Shiki, yaml, zod) runs only in Node — in the content generation step and in its tests; pages and layouts import only the generated artifacts and at most `import type` from `@jt/content`, never a value import (T086-e; T091 guards it, T093 checks the server bundle).
 - Server bundle (`.open-next/worker.js` family) gzip ≤ 2.5 MiB. Allowed server deps: `jose`, standard Web Crypto, `ulid`. Banned from the server bundle: `@sentry/nextjs` server side, `next-intl` runtime, any ORM, `better-auth`. Sentry is browser-only (`maskAllText: true`, `tracesSampleRate 0.1`, no server SDK).
 - Keep `serverExternalPackages: ['jose']` in `next.config`, with the rationale as a comment next to the setting so it is not "cleaned up": OpenNext's workerd guidance puts packages with workerd conditional exports there; the setting only makes Next's server bundler skip `jose`, while OpenNext's esbuild step still inlines it into the Worker bundle — "Workers have no node_modules, so external fails at runtime" does not apply to this combination. NEVER remove it.
 - The `e2e/hello.spec.ts` prefetch guard stays: ≤ 10 `Next-Router-Prefetch: 1` requests within 30 s of load (prevents prefetch storms from burning the Free quota).

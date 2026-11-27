@@ -17,7 +17,7 @@ pubDate: 2026-08-26                 # required; ISO date
 updatedDate: 2026-08-27             # optional
 tags: ["claude-code", "spec-kit"]   # required; may be empty
 series: "sp-0-claude-setup"         # optional
-seriesOrder: 1                      # optional integer
+seriesOrder: 1                      # optional positive integer
 draft: true                         # required; generated notes start true, a human flips it to false
 change: "001-claude-setup"          # required; the feature directory name
 sources:                            # required; may be empty; each item has exactly one of path (repo-relative: ^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$, no . or .. segment) or url (http/https)
@@ -25,9 +25,11 @@ sources:                            # required; may be empty; each item has exac
 ---
 ```
 
-- 파일명 = `<NNN-slug>.mdx` (ASCII kebab-case). 기능당 노트 하나; 같은 기능에 대한 두 번째 노트는 사람에게 먼저 물어본 뒤에만 `-2` 접미사를 붙인다.
+- 파일명 = `<NNN-slug>.mdx` (ASCII kebab-case). 기능당 노트 하나; 같은 기능에 대한 두 번째 노트는 사람에게 먼저 물어본 뒤에만 `-2` 접미사를 붙인다. 번역은 그 옆에 `<NNN-slug>.en.mdx` 또는 `<NNN-slug>.ja.mdx`로 두고, 한국어 파일과 `pubDate` · `change`가 같아야 하며, 한국어 파일이 반드시 있어야 한다(어기면 로더가 실패한다 — T090).
+- `content/blog/` · `content/projects/`는 같은 프런트매터를 쓰되 `change`는 선택이다. 번역은 같은 규칙(같은 `pubDate` · 한국어 파일 필수)을 따르고, 한국어 파일과 같은 `change`를 갖거나 둘 다 갖지 않는다. 파일 이름은 ASCII kebab-case slug(`^[a-z0-9]+(-[a-z0-9]+)*(\.(en|ja))?\.mdx$`)다 — SP-2까지 잠정(T090).
 - 본문 섹션은 이 순서대로 둔다: `## 문제`, `## 배운 개념`, `## 선택과 대안`, `## 결과와 검증`, `## 다음 학습`. 각 섹션은 비어 있으면 안 된다.
 - 파일이 `.mdx`여도 본문은 Markdown + GFM이다: JSX · HTML 태그(`<…>` — 주석 포함)를 쓰지 않고, `import`/`export` 줄을 쓰지 않으며, 코드 스팬 · 펜스 코드 밖에서 `{` · `}`를 쓰지 않고, 링크 · 이미지 · 정의의 URL은 `http` · `https` · `mailto`(스킴 대소문자 무관) · 상대 경로 · `#` 조각만 쓴다. 프런트매터는 파일 첫 줄부터 정확한 `---` 줄 사이에 둔 YAML이다(BOM 없음 · `---js` 같은 다른 언어 없음). 로더는 노트를 순수 Markdown으로 파싱하고 위반이 하나라도 있으면 빌드를 실패시킨다(파일 · 줄 · 규칙 — 위반한 값은 싣지 않는다). 조용히 지우는 일은 없다.
+- 프런트매터는 YAML 1.2(core 스키마)로 읽는다: 날짜는 `YYYY-MM-DD` 문자열로 남고, 줄 끝은 LF · CRLF · CR 어느 것이든 되며, 모든 키는 따옴표 여부와 상관없이 `^[A-Za-z][A-Za-z0-9_]{0,63}$`에 맞아야 한다. 지시자(`%…`), 블록 안의 추가 문서 표식(`---` · `...`), 앵커와 별칭, 모르는 태그 같은 YAML 경고(`!!timestamp` · `!!set` 같은 YAML 1.1 태그 포함), 매핑이 아닌 블록은 프런트매터 오류다. 문자열 값(`title` · `description` · `series` · 태그 하나하나 · 출처 `title`)은 비어 있거나 공백만이면 안 된다. 프런트매터 오류는 파일 · 필드 경로 · 규칙을 짚고(모르는 키는 그 키 이름으로 짚는다), 값은 싣지 않는다. 프런트매터와 본문에서 `http`/`https` URL은 사용자 정보(`user:token@host`)를 싣지 않고, 어떤 URL도 공백 · 제어 문자 · `\`를 담지 않는다. 프런트매터 `sources[].url`의 host는 도메인 이름 꼴(점으로 나뉜 라벨 + 영문 최상위 라벨)이어야 하므로 localhost · 모든 표기의 IP 주소 · 단일 라벨 · 끝 점 · `xn--` 최상위 라벨은 거부한다. 꼴만 보는 검사라 `*.local` · `*.internal` · `*.home.arpa` · `*.localhost` 같은 내부 이름은 통과하므로 손으로 뺀다. 로더는 이름이 대소문자와 상관없이 `.mdx`로 끝나는 모든 항목을 읽는다: 파일 이름 규칙 밖의 이름(`.MDX` 같은 다른 대소문자 · 앞의 `.` · ASCII 밖 글자)과 정규 파일이 아닌 항목(디렉터리 · 심볼릭 링크 · junction)은 빌드를 실패시키고, 다른 확장자는 무시한다. 코드 펜스는 정해진 언어 목록에 한해 빌드 때 하이라이트하고, 그 밖 언어는 일반 텍스트로 렌더한다(T090).
 - 세션에 없었던 독자를 위해 작성한다: 개념이 무엇인지, 왜 여기서 중요했는지, 무엇을 기각했고 왜인지 서술한다.
 - 비밀 값, 토큰, 내부 호스트명, 개인 정보는 절대 포함하지 않는다.
 

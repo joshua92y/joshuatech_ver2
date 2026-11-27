@@ -1369,4 +1369,112 @@ r2 검증(`.superpowers/t090/reviews/verify-r2.md` — approve_with_fixes · HIG
 
 ## 정정 노트
 
-- 없음(확정).
+### 2026-11-27 — 빌드(조각 ②–⑤) 반영
+정본 = build-notes 「## T090」 · 보고 `.superpowers/t090/reviews/build-{s2,s3,s4,mu}.md`(빌드 `wf_82eccd85-f14` — 조각 ② schema · ③ mdx · ④ loader · index · ⑤ 변이) · 컨트롤러 결정 `.superpowers/t090/decisions-controller.md`. 결정 본문은 그대로이고, 실물과 다른 점과 인계만 적는다(설계 자리는 절 · 사례 id로 가리키고, 줄 번호는 이 확정본 기준 보조다). **이 노트가 본문 · §6과 어긋나면 이 노트가 이긴다.**
+
+1. **D5 판독 옵션에 `resolveKnownTags: false`를 더한다 — YAML 1.1 태그 = 모르는 태그**(변이 ⑤ 관찰 · 컨트롤러 〔태그 탐침〕)
+   - 결정: `parseDocument` 옵션 = D5 여섯 + `resolveKnownTags: false`. 그러면 `!!set` · `!!omap` · `!!pairs` · `!!timestamp` · `!!binary` · `!!merge`가 경고(TAG_RESOLVE_FAILED)가 되어 판독 2가 `yaml`로 닫는다. core 태그(`!!map` · `!!seq` · `!!str` · `!!null` · `!!bool` · `!!int` · `!!float`)는 그대로 풀린다.
+   - 왜: yaml 2.9.1은 `version: '1.2'`의 기본 옵션으로 `{ resolveKnownTags: true, schema: 'core' }`를 쓴다(〔소스〕 `dist/doc/Document.js:272`). 이 값이 참이면 스키마 밖 1.1 태그도 푼다(`dist/schema/Schema.js:18` · `dist/schema/tags.js:47–:54` `coreKnownTags`). 그래서 「YAML 1.2 core · 모르는 태그 → `yaml`」(머리 :42 · content.md · D5)과 실물이 달랐다.
+     - 빌드 실물: 루트 `!!set` 블록이 경고 0 · `isMap` 참 · toJS Set으로 판독을 통과했고, 로더는 블록에 있는 키까지 필드 일곱을 `missing`으로 냈다. `pubDate: !!timestamp …`는 Date라 `(pubDate, type)`이었고, `sources: !!pairs []`는 통과했다(값이 `[]`과 같아 무해). 닫힌 쪽이지만 code가 계약과 다르다.
+     - 〔태그 탐침〕 `.superpowers/t090/evidence/known-tags/`(2026-11-27 · 컨트롤러): 기본값에서 루트 `!!set` · `!!omap` · `!!pairs` · `!!timestamp` · `!!binary`, 중첩 `!!timestamp` · `!!pairs []` · `!!set {}` · `!!binary`가 모두 경고 0이다. `resolveKnownTags: false`에서는 모두 TAG_RESOLVE_FAILED 1이다. `!!map` · `!!str` · `!!int` · `!!bool` · `!!null` · `!!seq`는 두 값 모두 경고 0이고, process warning은 0이다.
+   - 사례(시험 먼저 — 리뷰 고침 단계)
+     - mx-2 REJECT: 루트 `!!set` · `!!omap` · `!!pairs` · `!!timestamp` · `!!binary`와 중첩 `pubDate: !!timestamp 2026-01-01` · `sources: !!pairs []` · `s: !!set {}` · `b: !!binary aGk=` → `yaml`.
+     - mx-2 허용 짝: 루트 `!!map` + 매핑, 중첩 값 `!!int` · `!!bool` · `!!null` · `!!seq`. 루트 스칼라 · 시퀀스는 판독 3이 `yaml`로 막으므로 허용 짝이 될 수 없다(리뷰 C RC-6으로 고친 문구 — 노트 11). `!!str`은 이미 있다.
+     - 파일 단위(lx 확장 — 사례 id lx-x2 · 노트 9): 루트 `!!set` 블록 → `[(…, frontmatter, yaml, -)]` 하나(지금은 필드 일곱 `missing`). 유효 프런트매터 + `pubDate: !!timestamp …` → `[(…, frontmatter, yaml, -)]` 하나(지금은 `(pubDate, type)`).
+   - 변이: D13에 mu-79 「`resolveKnownTags: false` 빠짐」 → 위 mx-2 REJECT · lx 확장을 더한다. 고침 뒤 보조 변이 mu-56b(판독 3의 `isMap`만 생략)는 동등이 된다. 1.1 형이 풀리지 않으면 `isMap`과 끝 `isRecord`가 같은 집합을 거르기 때문이다.
+
+2. **D5 sources 근거 문구 — union**(변이 ⑤ mu-15 실측)
+   - 결정: D5 「union으로 짜면 url 꼴 오류가 `sources.0`으로 올라가 ld-10 009–011이 깨진다(〔R1 ③-11〕)」를 고친다. 바른 문구는 「union으로 짜면 source-kind · title 없음 · 원소가 객체 아님이 `invalid`로 바뀐다」이다. strict 객체 하나 + zod 밖 규칙이라는 결정은 그대로다.
+     - D13 mu-15의 잡는 사례 = lx-8 · sx-1 · sx-5 · sx-8 · sx-9(ld-10 009–011 아님).
+     - 같은 문구를 단 `schema.ts` 코드 주석도 고친다(리뷰 고침 단계).
+   - 왜: zod 4.6.7 `handleUnionResults`(〔소스〕 `v4/core/schemas.js:1230–:1233`)는 중단되지 않은 갈래가 하나면 그 갈래의 issue를 그대로 낸다. 그래서 url 꼴 오류는 `sources.0.url`에 남는다(mu-15 사본에서 ld-10 009–011 PASS).
+
+3. **D13 잡는 사례 정정 · 동등 기록**(변이 ⑤ — 변이 99 + 기준 1 · 행 나눔과 보조 셋 포함)
+   - 결과: D13 78행 = killed 76 · 동등 2(mu-23 · mu-37). 보조 셋 중 mu-59b는 동등이고, mu-56b는 살아남았다(노트 1 고침 뒤 동등 · 새 mu-79 사례).
+   - mu-23(translations 정렬 0) = 동등이다. 스캔이 Ordinal이라 같은 slug의 파일은 늘 `S.en.mdx` < `S.ja.mdx` < `S.mdx` 순으로 들어온다(e 0x65 < j 0x6A < m 0x6D). 그래서 삽입 순(en → ja → ko)이 lang의 Ordinal 순과 같고 `.sort`는 no-op이다(차등 탐침 288회 — 차이 0). 정렬은 계약을 드러내려고 남긴다. 기대 lx-9는 이 변이를 잡지 못한다.
+   - mu-37(같은 경로의 첫 zod issue 채택) = 동등이다. D13이 미리 적은 대로이고, 차등 탐침 1,584 입력에서 차이 0이었다. 같은 경로에 code가 다른 검사(예: `.max()`)를 더할 때 lx-8b 사례를 함께 더한다.
+   - mu-45: lx-10이 잡는다. lx-9에는 draft가 없어 잡지 못한다.
+   - mu-73: 7-x2 · order-B가 잡는다. 7-x3은 결과가 같다(esm 줄 = 조상 시작 줄 + 값 안 줄 끝).
+   - 보조 mu-59b(판독 1 중 `%` 갈래만 생략) = 동등이다. 열 0의 `%` 줄이 문법에 맞는 경우는 문서 머리 지시자뿐이고, 그때는 `---` 줄이 있어 문서 표식 갈래가 잡는다. 문서 안의 열 0 `%`는 yaml이 스스로 오류를 낸다. 겹친 방어선이다.
+
+4. **D2 책임 표 — issue 순서의 자리 · 계약 키 순 하나**(빌더 ② · ③ · ④ 보고 · 동작은 같다)
+   - 결정: issue 순서를 정하는 자리를 다음처럼 고친다.
+     - 필드 issue 순서(D4 순서 3) = schema.ts `validateFrontmatter`의 반환 순서.
+     - 본문 issue 순서(D4 순서 4) = mdx.ts `parseFile`의 body 반환 순서.
+     - loader.ts는 파일 Ordinal → 단계 순과 variant-mismatch의 자리(최상위 키 순위 · 안정 정렬)만 정한다.
+   - 계약 키 순 목록은 schema.ts 하나로 둔다(zod 객체 shape에서 얻는다). loader.ts는 그것을 import한다. 빌드에는 zod 객체 · schema.ts 상수 · loader.ts 상수로 셋이 있었다(리뷰 고침 단계).
+   - 왜: 문서 키 순 · 없는 키 · 첨자 수 비교에는 프런트매터 객체가, 열에는 mdx가 필요하다. 그리고 키 순을 복제하면 하나만 바뀔 때 조용히 어긋난다.
+
+5. **빌더 해석 수용**(설계에 정함이 없던 자리 — 컨트롤러 수용 · 확장 사례는 각 시험 머리 주석에 표시)
+   - schema CLI
+     - 쓰기 실패 → exit 2 · stderr 한 줄 `content-schema: error write`(events check-compat 「IO 오류 = 2」 선례).
+     - `--out` 디렉터리가 없으면 만든다. `--out` 값 없음 · 빈 값 · 남는 인자 → `error usage`.
+     - `format` 되살림은 `.meta({ format: 'uri' })`로 한다(§6-2의 둘 중 하나).
+   - loader 옵션
+     - opts가 배열이면 TypeError. 모르는 옵션 키는 무시한다.
+     - env `''` → TypeError는 `opts.root`가 없을 때만이다(우선순위상 `opts.root`가 있으면 env를 보지 않는다).
+     - 메모 키 = `JSON.stringify([root, collection])`. Windows에서 대소문자만 다른 root는 따로 스캔된다(정확성 영향 0).
+     - compile 앞 불변식이 깨지면 값 없는 `Error('getCollection: internal invariant')`를 던진다(닿을 수 없는 상태 — 닫힌 쪽).
+   - mdx
+     - url이 문자열이 아니면 위반이다(파서가 만들지 않는 꼴 — 닫힌 쪽).
+     - esm에서 값 안 줄 끝 뒤 열은 1이다(§6-9 걸음).
+     - en은 `footnoteBackLabel` 키를 생략한다(라이브러리 기본값 — mx-4가 html 정확 문자열로 고정).
+     - `CODE_LANGS`의 Shiki 이름은 `shellscript`(bash 자리) · `docker`(dockerfile 자리)다.
+     - ICU 분절은 ko · en · ja에서 같다(mx-7 로케일 변이 = 동등).
+     - 형은 `mdast` · `hast` `import type` 대신 지역 구조형(`MdNode` · `MdRoot`)을 쓴다. packages/content에 `@types/*`가 없어서이고, 형 검사는 T091 · T093이 한다.
+   - 내보내기: loader.ts 전용 내보내기(`classifyEntry` · `Member` · `EntryClass` · `GetCollectionOptions` — lx-12 보조 시험)는 index.ts에 싣지 않는다. 공개 표면 = D2 정확(lx-0).
+   - 시험하지 않은 갈래(한계): 「그 밖 fs 오류(EACCES 등)는 그대로 던진다」 — 구현만 있고 Windows에서 재현 사례가 없다.
+
+### 2026-11-27 — 리뷰 · 고침 · 재확인 반영
+정본 = 보고 `.superpowers/t090/reviews/review-{A,B,C}.md` · `fix-review.md` · `recheck.md`(`wf_e3dfab6e-529` — 렌즈 A 정합 · B 노출 · 보안 · 공급망 · C 하네스 · 변이 → 고침 web-builder → 재확인) · 후속 빌더 보고(RR-1 · K-6 문구 — build-notes 「T090 리뷰」) · 컨트롤러 결정 `.superpowers/t090/decisions-controller.md` 「리뷰 · 고침 · 재확인 결과」(K-6–K-11). 판정은 모두 approve_with_fixes(HIGH 0)였고, 재확인의 새 지적은 NIT 둘이다. 위 노트와 같이 **이 노트가 본문 · §6 · 노트 1–5와 어긋나면 이 노트가 이긴다.**
+
+6. **url host = 점이 있는 도메인 이름 꼴(꼴 검사)**(리뷰 B RB-1 · 리뷰 A RA-3 — 결정 K-6)
+   - 결정: D5 「host = 공개 도메인 이름」, D16 :33–:36 행의 「url host = 공개 도메인 이름」, §6-4와 〔90-4〕의 「공개 도메인」을 「점이 있는 도메인 이름 꼴(영문 최상위 라벨)」로 읽는다. §5-1 18 · 23은 아래 25와 함께 읽는다. 동작은 그대로다(zod `httpUrl`의 hostname `domain` 검사 — 런타임 전용).
+     - 거부: localhost · 모든 표기의 IP(정수 · 16진 표기는 WHATWG URL 해석이 점 십진으로 바꾼 뒤 최상위 라벨이 숫자라서 · IPv6는 대괄호라서) · 단일 라벨 · 끝 점 FQDN · `xn--` 최상위.
+     - 통과: `*.localhost` · `*.local` · `*.internal` · `*.home.arpa` · `*.svc.cluster.local` · `*.corp` 같은 내부 이름과 `127.0.0.1.nip.io` 같은 IP 대리 이름.
+   - §5-1 25(이 노트가 더한다 — 받아들인 위험): 프런트매터 url host 검사는 꼴만 본다. 내부 이름을 빼는 것은 저자 몫이다(content.md 끝 줄 「internal hostnames」 금지 — content.md에 「keep them out by hand」를 적었다). 특수 용도 TLD 거부 목록(RFC 6761 · 6762 · 8375 · ICANN `.internal` 등)은 새 계약 규칙이라 이번에 넣지 않는다 → 〔90-11〕(마감 보고 알림 · 사용자 질문 후보).
+   - 반영: content.md · KR(사람 계약) · data-model §11 sources 행 · schema.ts 주석 · description 「url host 규칙(점이 있는 도메인 이름 꼴 — zod domain · 런타임 전용)」(§6-4 문구 개정 · 재생성 — sx-2).
+   - 왜: 리뷰 B가 `validateFrontmatter`를 직접 불러 호스트 17꼴을, 재확인이 14꼴을 쟀고 결과가 같았다. 「공개 도메인」은 로더가 내부 이름을 걸러 준다고 읽힌다.
+
+7. **issue에 실리는 저자 입력 = 파일 이름 · 키 이름**(리뷰 B RB-3 — §5-1 6 보탬)
+   - 「입력 값 0」은 값에 대한 계약이다. issue의 `file`(FILE_RE 안 이름)과 `field`(모르는 키는 그 키 이름 — KEY_RE · 64자까지)는 값이 아니지만 저자 입력이고, 공개 CI 로그에 나간다(T086 머리 :35 · ld-10 008 — 동작 그대로). 리뷰 B 탐침에서 토큰 꼴 키(`ghp_` + 36자)가 판독을 통과해 field로 실렸다.
+   - content.md · KR에 「프런트매터 오류는 파일 · 필드 경로 · 규칙을 짚고(모르는 키는 그 키 이름으로), 값은 싣지 않는다」를 적었다. data-model §11 오류 줄도 같다.
+
+8. **lx-18 네트워크 금지 패턴 = 가져오기 자리**(리뷰 B RB-2 · 고침 — 결정 K-9)
+   - D12 lx-18 목록의 `node:http` · `node:https` · `node:net` · `node:child_process`에 하나를 더한다: `from` · `import` · `import()` · `require()` 자리의 `http` · `https` · `http2` · `net` · `tls` · `dgram` · `dns` · `child_process` · `worker_threads`(`node:` 접두 유무 모두 · 하위 경로 포함). 그리고 `\bundici\b` · `\bWebSocket\b`를 더한다. hit · miss 배열 자가 시험이 함께 있다.
+   - 리뷰 제안(따옴표 안 이름 어디서나)을 좁힌 까닭: src에서 거짓 양성이 났다(mdx.ts 스킴 집합 `'http'` · `'https'` · schema.ts `name !== 'https'`). 이 두 꼴을 miss로 고정했다. 놓치는 꼴은 템플릿 리터럴 동적 import(`` import(`node:net`) ``) 하나다(받아들인 한계).
+   - 실행 탐침(리뷰 B): Shiki를 타는 자식 프로세스에서 CODE_LANGS 전부 · 별칭 · 모르는 언어를 컴파일하는 동안 `net.Socket#connect` · `dns.lookup` · `fetch` · `WebAssembly.instantiateStreaming` 호출 0이었다.
+
+9. **D12 사례 보탬**(고침 · 후속 — 시험 먼저: 빨강을 본 뒤 초록. 지금 동작을 고정하는 사례는 스크래치 사본 변이로 빨강을 확인했다)
+   - mx-2(노트 1): REJECT 9(루트 `!!set` · `!!omap` · `!!pairs` · `!!timestamp` · `!!binary`, 중첩 `pubDate` · `sources` · `s` · `b`)와 허용 짝(루트 `!!map` + 매핑, 중첩 `!!int` · `!!bool` · `!!null` · `!!seq` · 확장 `!!float`).
+   - mx-8(리뷰 C RC-2): CRLF · CR 7-x2에 셋째 줄을 붙인 사례 → `unsafe-url` 6, 한 줄 `a [b&#10;&#10;xmpp:c@d.e` → `unsafe-url` 5:25(줄 · 열 — 조상 끝 줄 자르기). D6 「위치 없는 노드의 줄」의 줄 끝 셈(`\r\n` · `\r` 각각 하나)과 자르기를 고정한다. 7-x2를 CRLF로만 바꾸면 끝 줄 자르기가 g2a를 가리므로 셋째 줄이 필요하다(mu-72와 같은 교훈).
+   - sx-1(RC-4): description `url host` 단언. sx-9(노트 4): `CONTRACT_KEYS` 내보내기 = 계약 순 · 얼림 · JSON Schema properties 순.
+   - lx-x2(새 id — 노트 1의 「파일 단위(lx 확장)」): 루트 `!!set` 파일 · `pubDate: !!timestamp` 파일 → 각각 `[(…, frontmatter, yaml, -)]` 하나 + 양성 짝.
+   - lx-13(RC-1): blog · projects 각각 필드 issue(`title` missing · projects는 `sources.0.url` format 포함)와 본문 issue(unsafe-url · raw-html 둘)를 정확한 quad로 단언한다. D6 「모든 컬렉션」과 D4를 로더 경로에서 고정한다(하류에 sanitizer가 없어 이 판정이 유일한 방어선이다).
+   - lx-13(재확인 RR-1 · 결정 K-7): blog 변형이 `change` · `sources`를 함께 빠뜨리면 `[(blog/x.en.mdx, change, variant-mismatch), (blog/x.en.mdx, sources, missing)]` — loader의 `CONTRACT_KEYS` 소비 자리(D4 순서 3 · 노트 4)를 고정한다.
+   - lx-15(RC-5): 자식이 먼저 `{ root: fixtures/drafts }` 기본 호출 → `001-public`만. 실제 노트가 draft를 뒤집어도(T086-a) 공허해지지 않는다.
+   - lx-18: 노트 8.
+   - 수: 380 → 397(고침) → 398(후속) — schema 125 · mdx 151 · loader 48 · loader-extra 74.
+
+10. **D13 보탬 · 결과**(고침 · 재확인 · 후속 실측)
+    - mu-79 「`resolveKnownTags: false` 빠짐」 → mx-2 루트 `!!set` + 중첩 넷 · lx-x2 둘(7건 FAIL). 루트 `!!omap` · `!!pairs` · `!!timestamp` · `!!binary`는 이 변이에서도 판독 3이 막는다(1.1 형으로 풀려 매핑이 아니다).
+    - mu-56b(판독 3의 `isMap` 생략) = 동등(K-1 뒤 397/397). mu-56b + mu-79는 10건 FAIL이다 — K-1이 동등의 근거다.
+    - g1 「본문 규칙 study만」 · g1b 「필드 검증 study만」 · g1-blog · g1b-projects → lx-13.
+    - g2a 「CRLF를 줄 끝 둘로」 · g2b 「CR 무시」 · g3 「자르기 없음」 · g3b 「줄만 자르고 열은 둠」 → mx-8.
+    - n1 「description url host 구 삭제」 → sx-1(재생성 뒤에도).
+    - mu-01 → lx-15(픽스처 단언) · ld-5. n2(노트 draft: false) + mu-01도 lx-15 새 단언이 잡는다.
+    - net-https · net-http2 · net-dns · net-ws(src에 import 한 줄) → lx-18. 고치기 전에는 넷 다 살아남았다.
+    - k3-reverse 「키 순 뒤집기」 · k3-unfrozen 「얼림 없음」 → sx-9. k3-loader-rank 「loader 계약 순위 −1」 → lx-13 RR-1 사례(재확인 때 생존 → 후속에서 잡음). k3-source-keys 「원소 키 순 뒤집기」 = 동등(원소에서 빠질 수 있는 키는 title 하나).
+    - 고침 단계 변이는 저장소 작업 트리 제자리에서 돌았다(노트 11). 재확인과 후속은 스크래치 사본에서 다시 돌렸다.
+
+11. **번호 대응 · 문면 · 과정**
+    - 고침 지시 · 보고의 「K-3(계약 키 순 하나)」은 결정 K-4(노트 4)다. 결정 문서 · build-notes의 K-3은 노트 3(D13 정정)이다(재확인 RR-2).
+    - 노트 1의 허용 짝 문구를 제자리에서 고쳤다(리뷰 C RC-6 — `!!int` · `!!bool` · `!!null` · `!!seq`는 중첩 값이다. 루트 스칼라 · 시퀀스는 판독 3이 막는다).
+    - 사람 계약 문서 보탬(설계 결정 변경 0)
+      - content.md · KR: seriesOrder 양의 정수 · 문자열 값 공백만 금지(D4 · D5 — RA-1) · YAML 1.1 태그 = 모르는 태그(노트 1) · 오류는 값을 싣지 않음(노트 7) · url host 꼴(노트 6) · KR 「어기면 로더가 실패한다」(RA-2).
+      - data-model §11: updatedDate 행(RA-5) · 오류 어휘 줄(RA-4 — D16 :37–:41 「공개 CI 로그에 나가는 계약」을 계약 문서에 둔다).
+    - run-all `content` 슬롯은 판정 전에 ANSI CSI를 지운다(리뷰 C RC-3 · 결정 K-8 — FORCE_COLOR 환경의 거짓 FAIL).
+    - 시험 자식 env는 `FORCE_COLOR`도 지운다(결정 K-11 — 컨트롤러 관찰). `NO_COLOR`(또는 `NODE_DISABLE_COLORS`)와 `FORCE_COLOR`가 함께 있으면 Node 24가 색 깊이를 잴 때 자식 stderr에 env 충돌 경고 한 줄을 찍어 mx-6 확장의 「자식 stderr 0」이 환경 탓으로 깨졌다(둘 중 하나만이면 0). 색 env는 시험 대상 계약이 아니다.
+      - 경고의 출처(후속 빌더 ② `--trace-warnings` 실측): Shiki `@shikijs/engine-oniguruma@4.6.0` `dist/wasm-inlined.mjs:3`의 `new Response(...)`가 Node 내장 undici를 늦게 불러오며 색 깊이를 잰다. 하이라이터를 만드는 자식만 이 길을 지나서 mx-6 확장만 깨졌다(네트워크 호출은 아니다 — 노트 8 실행 탐침).
+      - T091 인계(§5-2 보탬): 생성 단계나 CI가 두 env를 함께 둔 채 코드 블록이 있는 노트를 compile하면 같은 경고 한 줄이 그쪽 stderr에 찍힌다(무해). 그쪽에서 「stderr 0」을 단언하면 같은 env 정리가 필요하다.
+    - 과정 편차: 고침 빌더가 변이를 저장소 작업 트리 제자리에 넣고 sha256으로 되돌렸다(D13 「사본에서 돈다」 벗어남 — 자진 신고). T090 src · tests는 untracked라 git으로 되돌릴 길이 없었다. 재확인이 mu-00 사본 대비 diff로 잔여 0을 확인했고, 후속 빌더 지시는 사본에서만 돌게 했다.
